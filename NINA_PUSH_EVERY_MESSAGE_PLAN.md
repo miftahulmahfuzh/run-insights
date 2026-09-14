@@ -6,7 +6,7 @@
 **Worktree:** `/home/miftah/.worktrees/run-insights/nina-push-every-message`
 **Branch:** `feature/nina-push-every-message` (base: `origin/main` @ `0c53636`)
 **Phases:** 5
-**Status:** in progress — phases 1, 2 and 4 complete; 3 and 5 in flight (as of 2026-09-14 12:05). Phases run concurrently, so the ✅ ticks in the Phases table below are the authoritative per-phase record, not this line.
+**Status:** all 5 phases have landing commits on this branch as of 2026-09-14 12:10 — phase 1 `ba965d0`, phase 2 `0e6b047`, phase 3 `5c42668`, phase 4 `0092a93`, phase 5 `b2067bd`. Phases ran concurrently in one shared worktree, so each phase's own session owns the ✅ tick on its row below; this line was derived from `git log`, not from the ticks. Not yet merged — a plan set is reviewed and merged as a whole.
 **Coordinator:** —
 
 ---
