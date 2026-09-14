@@ -1,8 +1,8 @@
 # Package: scripts
 
 **Location**: `scripts`
-**Last Updated**: 2026-09-12 (nina-image-worker split into a barrel + `nina-image-worker/`
-directory; prior: verification pass — every claim re-checked against the tree; see Notes for the
+**Last Updated**: 2026-09-14 (the image worker now sends web-push notifications of its own —
+`nina-image-worker/push.ts`; prior: the barrel + `nina-image-worker/` split; see Notes for the
 documentation history)
 
 ## Overview
@@ -32,7 +32,11 @@ from its I/O half.
    (`lib/id.ts`, `lib/nina/shortcuts.ts`, `lib/records/catalog.ts`, `lib/nina/imagerecipe.ts`,
    `lib/photos/contentHash.ts`, …) — run under
    `node --experimental-strip-types --no-warnings`. Importing the real module instead of copying
-   it is the whole point: the copy is always the one that drifts. What can NEVER be imported is
+   it is the whole point: the copy is always the one that drifts. "Zero-import" is shorthand, not
+   the test: a `lib` module whose only runtime dependency is a package.json **dependency** (not a
+   devDependency) is importable too, because `npm ci --omit=dev` — what the worker's workflow runs
+   — still installs it. `lib/push/payload.ts` is the worked example: it pulls `zod`, and it
+   imports cleanly under `--experimental-strip-types`. What can NEVER be imported is
    `lib/db/*`, `lib/env.ts`, or anything `server-only`-sealed; so scripts open their own SQL with
    `@neondatabase/serverless`, read `process.env` and validate by hand, and
    `nina-image-worker.ts` adds an `information_schema` preflight that turns column drift into a
@@ -143,12 +147,53 @@ own SQL and validates env by hand, with the `information_schema` preflight as th
 
 Since 2026-09-12 the implementation lives in `scripts/nina-image-worker/`, one module per
 responsibility (`sql`, `preflight`, `claim`, `dedupe`, `generate`, `store`, `session`, `finish`,
-`cleanup`, `run`, `main`); the file at `scripts/nina-image-worker.ts` is the entry point npm and
-the workflow execute, the test's import path, and a re-export barrel whose published surface is
+`push`, `cleanup`, `run`, `main`); the file at `scripts/nina-image-worker.ts` is the entry point
+npm and the workflow execute, the test's import path, and a re-export barrel whose published surface is
 exactly the old single file's, so no importer changed. The `main()` entry guard MUST stay in the
 barrel: it compares `import.meta.url` against `process.argv[1]`, and only the barrel's path is
 ever `argv[1]` — moving it into the directory would silently stop `npm run nina:worker` from
 ever running a job.
+
+### `nina-image-worker/push.ts` — the worker notifies too
+
+Since 2026-09-14 the backstop tells the runner what it wrote. It exports `sendWorkerPush` (with
+`WorkerPushReport`, `WorkerNotifier`, `SendWorkerNotification`), and `finish.ts` calls it as the
+LAST statement of both `finishSelfie` (kind `'worker_photo_delivered'`) and `closeFailed`'s
+terminal branch (kind `'worker_photo_apology'`, and only when an apology row was actually
+written). Deliberately NOT re-exported by the barrel, for the same reason `finishAvatar` is not:
+the worker's published surface stays what it was.
+
+**Policy imported, plumbing restated.** `lib/push/send.ts` cannot be imported — `server-only`,
+plus `@/` aliases — so this file restates four statements against `push_subscriptions`, the TTL and
+the `web-push` call (loaded through `createRequire`, as CJS packages always are here). It imports
+every *judgement* from `lib/push/payload.ts`: `buildNinaPushPayload`, `encodeNinaPushPayload`,
+`classifyPushFailure`, `shouldRevokeSubscription`. **That split is the rule: new push logic goes in
+`lib/push/payload.ts` so both hosts inherit it; only transport may live here.** The thresholds
+(`PUSH_FAILURE_LIMIT`, `PUSH_BODY_MAX_CHARS`) appear nowhere in this file and must not.
+
+**The `worker_*` kinds are distinct on purpose** (plan-set decision D2). The app sends
+`photo_delivered` / `photo_apology`; this host sends `worker_photo_delivered` /
+`worker_photo_apology`. The worker runs ONLY when the app's own image invocation was killed, so a
+`worker_*` kind in a log line is the single signal anywhere that the backstop fired. Do not tidy
+the two pairs into one value.
+
+**Push is best-effort and structurally cannot cost a photograph.** It happens only after the rows
+AND the ledger close are committed; each call sits in its own `try` that swallows; and
+`sendWorkerPush` itself never throws — no VAPID, no live subscription, an empty body, an unreadable
+table and a dead endpoint are all a `skipped` reason or a counter in the returned report.
+`push_subscriptions` is deliberately absent from `preflight.ts`'s `REQUIRED_COLUMNS`: drift in a
+NOTIFICATION table must not abort the run that exists to rescue a generation.
+
+**`VAPID_*` are optional to this host.** `.github/workflows/nina-image.yml` passes
+`VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT` through, and they are NOT in
+`preflight.ts`'s `REQUIRED_ENV`: an absent secret interpolates to `''`, the worker logs a skip, and
+the run still finishes the photograph and still exits 0. When they are set they must be
+byte-identical to the Vercel **Production** pair — a runner signing with a different key pair is
+refused for every subscription the app registered.
+
+Both notifier parameters are defaulted test seams (`notify: WorkerNotifier = sendWorkerPush`), for
+the reason `releaseBlobIfUnreferenced`'s `delFn` is one: the real sender arrives through
+`createRequire`, which no `vi.mock` registry reaches. `run.ts` never passes them.
 
 ## CI boundary guards
 
@@ -250,6 +295,12 @@ real money on a real generation.
 live in the body sections and in each script's own header; narrative lives in git history, which
 is complete and ordered and costs a session no context to load.
 
+- **2026-09-14 — the worker notifies** (`nina-push-every-message`, phase 5 of 5; P1-SC-A002). New
+  `nina-image-worker/push.ts`, called by `finishSelfie` and by `closeFailed`'s terminal branch;
+  three `VAPID_*` lines added to `.github/workflows/nina-image.yml` (optional, absent secrets stay
+  an exit 0). Rule 4 above gained its real test — a runtime dependency is fine when it is a
+  package.json **dependency**, since `npm ci --omit=dev` installs it. `tests/nina.imageworker.test.ts`
+  grew 22 cases; the file stood at 72/72 passing on 2026-09-14.
 - **2026-09-12 — verification pass** (token-maxxing worker `scripts-readme-compact`, closing the
   day's seven-readme set): every npm-script mapping, file-inventory entry, guard rule, flag
   default and negative claim re-checked against the tree. Corrected: the client-secret raw-read

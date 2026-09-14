@@ -22,8 +22,10 @@ import {
 
 import { releaseBlobIfUnreferenced } from './cleanup.ts'
 import { findContentDuplicate } from './dedupe.ts'
+import { sendWorkerPush } from './push.ts'
 import { resolveWorkerSessionId } from './session.ts'
 import type { ClaimedJob } from './claim.ts'
+import type { WorkerNotifier } from './push.ts'
 import type { WorkerStoredImage } from './store.ts'
 import type { NeonSql } from './sql.ts'
 
@@ -74,16 +76,51 @@ import type { NeonSql } from './sql.ts'
  * app side calls — so a generation whose bytes this user already stores lands as a REFERENCE with no
  * second object; the race between the pre-put lookup and this insert is closed HERE, and the loser
  * blob is released only after the row that replaced it is in.*
+ *
+ * ── nina-push-every-message R1: THE KNOCK ON THE DOOR, FROM THIS HOST ─────────────────────────
+ * He asked for this photograph ninety seconds ago and has certainly locked his phone. Until this
+ * phase the only way he learned it had arrived was opening `/nina` and looking — and this is the
+ * host that finishes the jobs the app's own invocation was killed mid-flight, so it is the host
+ * where the wait was longest.
+ *
+ * `lib/nina/imagerun.ts`'s `finishSelfie` is the in-platform twin and sends its push at the SAME
+ * point in its own function: last statement, after both rows, after the dedupe re-check, after the
+ * ledger is closed.
+ *
+ * **It stamps a DIFFERENT kind, and that is deliberate.** That host sends `'photo_delivered'`;
+ * this one sends `'worker_photo_delivered'`. `NinaPushPayload.kind` is diagnostics only, and
+ * "which host delivered this photograph" is exactly the diagnostic this backstop exists to
+ * produce — it runs ONLY when the app's own invocation was killed, so a `worker_*` value in a log
+ * line is the one signal anywhere that says the backstop fired. Collapsing the two into one value
+ * would read identically on both hosts and answer nothing. DO NOT TIDY THEM TOGETHER.
+ *
+ * The bodies differ too — that host captions with `glm-4.6v` and this one uses `ninaImageCaption`'s
+ * pool — and that is not a drift to fix either, for the reason the INSERT's own comment gives
+ * below. The notification carries whatever the bubble carries, on each host, which is the property
+ * that matters.
+ *
+ * **`notify` is a parameter with a default, and that is the test seam.** `sendWorkerPush` reaches
+ * `web-push` through `createRequire`, which no `vi.mock` registry reaches, so the only way a test
+ * can assert the call is to hand one in. The precedent is `releaseBlobIfUnreferenced`'s `delFn`.
+ * `run.ts` passes four arguments and is unchanged.
  */
 export async function finishSelfie(
   sql: NeonSql,
   job: ClaimedJob,
   image: WorkerStoredImage,
   result: { costMicroUsd: number; latencyMs: number },
+  /** Test seam; see the header. Defaults to the real sender and `run.ts` never passes it. */
+  notify: WorkerNotifier = sendWorkerPush,
 ): Promise<void> {
   const messageId = newId()
   const imageId = newId()
   const { jobId, userId, args } = job
+
+  /* ONE value, used twice: the text of the bubble and the body of the notification. Two
+   * `ninaImageCaption(jobId)` calls WOULD agree — it is a pure FNV-1a over the job id, which is
+   * exactly why it is deterministic — so this is about making the agreement structural instead of
+   * merely true. A notification whose body is not the message is worse than no notification. */
+  const caption = ninaImageCaption(jobId)
 
   const sessionId = await resolveWorkerSessionId(sql, userId, args.replyToId)
   if (sessionId == null) {
@@ -142,7 +179,7 @@ export async function finishSelfie(
     insert into nina_messages
       (id, user_id, session_id, role, text, source, turn_id, reply_to_id, photo_only)
     values (
-      ${messageId}, ${userId}, ${sessionId}, 'nina', ${ninaImageCaption(jobId)}, 'chat', ${jobId},
+      ${messageId}, ${userId}, ${sessionId}, 'nina', ${caption}, 'chat', ${jobId},
       (select id from nina_messages where id = ${args.replyToId} and user_id = ${userId}),
       true
     )
@@ -175,6 +212,37 @@ export async function finishSelfie(
    * `finish:` failure branch already documents. */
   if (writePlan.release != null) {
     await releaseBlobIfUnreferenced(sql, userId, writePlan.release)
+  }
+
+  /*
+   * R1, from this host. See the header for why it is here and not higher up, and for why the body
+   * is `caption`.
+   *
+   * ── ITS OWN `try`, AND IT SWALLOWS (PLAN INVARIANT 2) ────────────────────────────────────────
+   * `sendWorkerPush` never throws on its own account — a runner with no `VAPID_*` is reported as
+   * `skipped`, not raised — so reaching this catch means a bug or an injected notifier. Neither is
+   * worth a photograph: the bubble is in the chat, the image row is in, the job is closed `ok`, and
+   * throwing here would send `runOneJob` into `closeFailed`, which would mark a DELIVERED
+   * generation `failed` and apologise for a picture he can already see. That is the same blast
+   * radius Finding 1 had, and the same wrapping closes it.
+   *
+   * The report is logged rather than returned: this function is `Promise<void>` and a photograph's
+   * success has nothing to do with whether a phone was reachable. `jobId` only — invariant 4, this
+   * line appears in a public Actions log.
+   */
+  try {
+    const report = await notify(
+      sql,
+      userId,
+      [{ id: messageId, body: caption }],
+      'worker_photo_delivered',
+    )
+    console.info('[nina-worker] notified', { jobId, ...report })
+  } catch (cause) {
+    console.warn('[nina-worker] the notification could not be sent; the photograph is in', {
+      jobId,
+      error: String(cause),
+    })
   }
 }
 
@@ -269,6 +337,8 @@ export async function closeFailed(
     /** Micro-USD this attempt is KNOWN to have spent. Null when the call returned no figure. */
     costMicroUsd: number | null
   },
+  /** Test seam; see `finishSelfie`'s header. Defaults to the real sender; `run.ts` never passes it. */
+  notify: WorkerNotifier = sendWorkerPush,
 ): Promise<'retry' | 'gave-up'> {
   const { jobId, userId, args, attempts } = job
   console.warn('[nina-worker] generation failed', {
@@ -289,21 +359,36 @@ export async function closeFailed(
     return 'retry'
   }
 
+  /* Bound outside the branch so the notify after the terminal UPDATE can see it. Null means NO ROW
+   * WAS WRITTEN — no session resolved, or the write threw — and a notification about a message that
+   * does not exist is strictly worse than silence. Same rule phase 3 applies to
+   * `postNinaApologyMessage`'s `insertNinaMessages` returning `[]`; different mechanism, because
+   * this host writes raw SQL and gets no row back to test. */
+  let apology: { id: string; body: string } | null = null
+
   if (args.purpose === 'selfie') {
     try {
       const sessionId = await resolveWorkerSessionId(sql, userId, args.replyToId)
       if (sessionId == null) {
         console.warn('[nina-worker] no session for the apology; closing the job anyway', { jobId })
       } else {
+        /* ONE id and ONE sentence, used by the INSERT and by the notification. `ninaImageApology`
+         * is deterministic over (kind, jobId) so two calls would agree — but `newId()` is not, and
+         * `NinaPushPayload.messageId` must name the row that actually exists. */
+        const messageId = newId()
+        const body = ninaImageApology(outcome.kind, jobId)
+
         await sql`
           insert into nina_messages
             (id, user_id, session_id, role, text, source, turn_id, reply_to_id)
           values (
-            ${newId()}, ${userId}, ${sessionId}, 'nina', ${ninaImageApology(outcome.kind, jobId)},
+            ${messageId}, ${userId}, ${sessionId}, 'nina', ${body},
             'chat', ${jobId},
             (select id from nina_messages where id = ${args.replyToId} and user_id = ${userId})
           )
         `
+        /* Only after the INSERT resolved. If it threw, the catch below runs and this stays null. */
+        apology = { id: messageId, body }
       }
     } catch (cause) {
       /* Best-effort, and it MUST stay that way. See the header: this throw is what killed the
@@ -323,5 +408,38 @@ export async function closeFailed(
           + ${outcome.costMicroUsd ?? NINA_IMAGE_COST_MICRO_USD}
     where id = ${jobId} and user_id = ${userId} and status = 'pending'
   `
+
+  /*
+   * ── R1, THE OTHER HALF: TWENTY MINUTES IS A LONG TIME TO WAIT FOR A PHOTO THAT IS NOT COMING ─
+   * The last uncovered `nina_messages` write in this plan set, on the host the runner cannot see.
+   * The app apologises through `lib/nina/imagejobs.ts`'s `postNinaApologyMessage` (phase 3) and
+   * pushes `'photo_apology'`; this is the same sentence, from the backstop, under its own
+   * `'worker_photo_apology'` — see this file's `finishSelfie` header for why the two hosts keep
+   * separate kinds.
+   *
+   * `apology == null` covers every path that wrote no row: a retry (which returned above), an
+   * avatar job (which never enters the branch), a session that would not resolve, and an INSERT
+   * that threw. None of them may buzz a phone.
+   *
+   * ── ITS OWN `try`, AND IT SWALLOWS (PLAN INVARIANT 2) ───────────────────────────────────────
+   * Deliberately NOT the `try` around the write above: that one's catch logs "the apology could
+   * not be written", and a notify failure landing there would file itself under a message that
+   * did get written. The job is already closed `failed` by the statement above, so nothing here
+   * can reopen it — throwing would only take `runOneJob` down after the money was recorded, which
+   * is the exact failure this function's header exists to prevent. `jobId` only: invariant 4, this
+   * line appears in a public Actions log.
+   */
+  if (apology != null) {
+    try {
+      const report = await notify(sql, userId, [apology], 'worker_photo_apology')
+      console.info('[nina-worker] apology notified', { jobId, ...report })
+    } catch (cause) {
+      console.warn('[nina-worker] the apology notification could not be sent; the job is closed', {
+        jobId,
+        error: String(cause),
+      })
+    }
+  }
+
   return 'gave-up'
 }

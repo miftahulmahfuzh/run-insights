@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { generateVAPIDKeys } from 'web-push'
 
 import {
   claimJob,
@@ -14,9 +15,22 @@ import {
   resolveWorkerSessionId,
 } from '../scripts/nina-image-worker.ts'
 import type { ClaimedJob, SchemaColumn } from '../scripts/nina-image-worker.ts'
+/* Imported by its own path, not through the barrel: the barrel's published surface is the old
+ * single file's surface (its header states the rule, which is also why `finishAvatar` is absent
+ * from it), and `push.ts` did not exist then. */
+import { sendWorkerPush } from '../scripts/nina-image-worker/push.ts'
+import type {
+  SendWorkerNotification,
+  WorkerNotifier,
+  WorkerPushReport,
+} from '../scripts/nina-image-worker/push.ts'
 import {
   NINA_IMAGE_COST_MICRO_USD,
   NINA_IMAGE_DISPATCH_GRACE_MS,
+  /* New: the `closeFailed` apology cases need a job AT the attempt ceiling, so that it gives up
+   * rather than queueing a retry. The real constant, not a literal — a bump to it must move the
+   * fixture, not silently turn six cases into retry cases that assert nothing. */
+  NINA_IMAGE_MAX_ATTEMPTS,
   OPENROUTER_IMAGE_URL,
 } from '../lib/nina/imagerecipe.ts'
 
@@ -830,5 +844,482 @@ describe('REQUIRED_COLUMNS — media-dedupe P3 names what it queries', () => {
     for (const column of ['thumb_pathname', 'thumb_url']) {
       expect(avatars?.columns, column).toContain(column)
     }
+  })
+})
+
+/**
+ * **The off-platform half of nina-push-every-message R1.**
+ *
+ * No network, no key, no database — the same three noes the rest of this file holds to. The send
+ * itself arrives through `createRequire`, which no `vi.mock` registry reaches, so it is injected;
+ * everything else is real, including `configureVapid`, which is driven with a genuine key pair
+ * generated offline so that the "configured" path is exercised rather than stubbed past.
+ */
+describe('sendWorkerPush — the app’s sender, restated for a host that cannot import it', () => {
+  /* A real P-256 pair, generated offline by web-push itself. `setVapidDetails` validates the point,
+   * so a made-up string would throw and every test below would take the "not configured" branch
+   * while appearing to test the others. */
+  const VAPID = generateVAPIDKeys()
+  const USER = 'user00000001'
+  const BUBBLE = [{ id: 'msg000000002', body: 'ini fotonya' }]
+  const SUB = {
+    id: 'sub000000001',
+    endpoint: 'https://web.push.apple.com/abcdef',
+    p256dh: 'p256dh-key',
+    auth: 'auth-secret',
+    failure_count: 0,
+  }
+
+  /** A `sql` that answers the subscription SELECT with `rows` and everything else with []. */
+  function sqlWithSubscriptions(rows: unknown[], options: { failOn?: RegExp } = {}): FakeSql {
+    return fakeSql({
+      failOn: options.failOn,
+      rows: (call) => (/from push_subscriptions/.test(call.text) ? rows : []),
+    })
+  }
+
+  function withVapid(): void {
+    vi.stubEnv('VAPID_SUBJECT', 'mailto:nina@example.com')
+    vi.stubEnv('VAPID_PUBLIC_KEY', VAPID.publicKey)
+    vi.stubEnv('VAPID_PRIVATE_KEY', VAPID.privateKey)
+  }
+
+  /** A send that resolves. Typed, so `mock.calls[0]` is a tuple and not `[]`. */
+  function stubSend(outcome?: Error) {
+    return vi.fn<SendWorkerNotification>(async () => {
+      if (outcome != null) throw outcome
+      return { statusCode: 201 }
+    })
+  }
+
+  beforeEach(() => {
+    vi.resetAllMocks()
+    vi.unstubAllEnvs()
+  })
+
+  it('skips with a reason, and touches nothing at all, when this host has no VAPID keys', async () => {
+    /* THE BRANCH EVERY RUN TAKES UNTIL THE THREE REPOSITORY SECRETS EXIST. Stubbed to '' rather
+     * than left unset, so a developer who happens to export VAPID_* in their shell gets the same
+     * verdict as CI. Plan invariant 4: a host with no keys is "no notifications", never an error. */
+    vi.stubEnv('VAPID_SUBJECT', '')
+    vi.stubEnv('VAPID_PUBLIC_KEY', '')
+    vi.stubEnv('VAPID_PRIVATE_KEY', '')
+    const sql = sqlWithSubscriptions([SUB])
+    const send = stubSend()
+
+    const report = await sendWorkerPush(sql, USER, BUBBLE, 'worker_photo_delivered', send)
+
+    expect(report.skipped).toMatch(/VAPID/)
+    expect(report.attempted).toBe(0)
+    expect(send).not.toHaveBeenCalled()
+    /* Not even the SELECT: the cheapest branch is the one every run takes. */
+    expect(sql.calls).toHaveLength(0)
+  })
+
+  it('skips before reading anything when no bubble has a body', async () => {
+    withVapid()
+    const sql = sqlWithSubscriptions([SUB])
+    const send = stubSend()
+
+    const report = await sendWorkerPush(
+      sql,
+      USER,
+      [{ id: 'm1', body: '   ' }],
+      'worker_photo_delivered',
+      send,
+    )
+
+    expect(report.skipped).toBe('no message body to send')
+    expect(send).not.toHaveBeenCalled()
+    expect(sql.calls).toHaveLength(0)
+  })
+
+  it('asks the owner-scoped, not-revoked question `listLivePushSubscriptions` asks', async () => {
+    withVapid()
+    const sql = sqlWithSubscriptions([SUB])
+
+    await sendWorkerPush(sql, USER, BUBBLE, 'worker_photo_delivered', stubSend())
+
+    const [select] = sent(sql, /from push_subscriptions/)
+    expect(select?.text).toMatch(/user_id = \$\d+/)
+    expect(select?.text).toMatch(/revoked_at is null/)
+    /* Every column this statement names, so a rename is caught here — `push_subscriptions` is
+     * deliberately NOT in preflight's REQUIRED_COLUMNS (a drift must not abort a generation), so
+     * this assertion is the instrument that replaces it. */
+    for (const column of ['id', 'endpoint', 'p256dh', 'auth', 'failure_count']) {
+      expect(select?.text, column).toContain(column)
+    }
+    expect(select?.values).toContain(USER)
+  })
+
+  it('"notifications are off" is a normal outcome, not an error', async () => {
+    withVapid()
+    const sql = sqlWithSubscriptions([])
+    const send = stubSend()
+
+    const report = await sendWorkerPush(sql, USER, BUBBLE, 'worker_photo_delivered', send)
+
+    expect(report.skipped).toBe('no live subscriptions')
+    expect(send).not.toHaveBeenCalled()
+  })
+
+  it('sends the wire format lib/service-worker.js reads, under the one Nina tag', async () => {
+    withVapid()
+    const sql = sqlWithSubscriptions([SUB])
+    const send = stubSend()
+
+    await sendWorkerPush(sql, USER, BUBBLE, 'worker_photo_delivered', send)
+
+    const call = send.mock.calls[0]!
+    expect(call[0]).toEqual({
+      endpoint: SUB.endpoint,
+      keys: { p256dh: SUB.p256dh, auth: SUB.auth },
+    })
+    /* Built by `buildNinaPushPayload`, not assembled here — the whole point of importing
+     * `lib/push/payload.ts` is that the two hosts cannot disagree about the wire. */
+    expect(JSON.parse(call[1] as string)).toEqual({
+      v: 1,
+      title: 'Nina',
+      body: 'ini fotonya',
+      url: '/nina',
+      tag: 'nina',
+      messageId: 'msg000000002',
+      kind: 'worker_photo_delivered',
+    })
+    const options = call[2] as Record<string, unknown>
+    expect(options.TTL).toBe(3 * 60 * 60)
+    expect(options.urgency).toBe('normal')
+    expect(options.topic).toBe('nina')
+    /* The ceiling the app side does not have: this runs under `timeout-minutes: 6` shared with
+     * three 78-second generations. */
+    expect(options.timeout).toBeTypeOf('number')
+  })
+
+  it('a delivered push clears the failure streak', async () => {
+    withVapid()
+    const sql = sqlWithSubscriptions([{ ...SUB, failure_count: 3 }])
+
+    const report = await sendWorkerPush(sql, USER, BUBBLE, 'worker_photo_delivered', stubSend())
+
+    expect(report).toEqual({
+      attempted: 1,
+      delivered: 1,
+      pruned: 0,
+      retryable: 0,
+      skipped: null,
+    })
+    const [update] = sent(sql, /update push_subscriptions/)
+    expect(update?.text).toMatch(/failure_count = 0/)
+    expect(update?.text).toMatch(/last_success_at = now\(\)/)
+    expect(update?.values).toContain(SUB.id)
+    expect(update?.values).toContain(USER)
+  })
+
+  it('a 410 Gone revokes the subscription in the same statement', async () => {
+    withVapid()
+    const sql = sqlWithSubscriptions([SUB])
+    const gone = Object.assign(new Error('Gone'), { statusCode: 410 })
+
+    const report = await sendWorkerPush(sql, USER, BUBBLE, 'worker_photo_delivered', stubSend(gone))
+
+    expect(report.pruned).toBe(1)
+    expect(report.delivered).toBe(0)
+    const [update] = sent(sql, /update push_subscriptions/)
+    expect(update?.text).toMatch(/failure_count = failure_count \+ 1/)
+    expect(update?.text).toMatch(/revoked_at = case when/)
+    expect(update?.values).toContain(true)
+  })
+
+  it('a socket fault is retryable and the subscription is kept', async () => {
+    withVapid()
+    const sql = sqlWithSubscriptions([SUB])
+
+    const report = await sendWorkerPush(
+      sql,
+      USER,
+      BUBBLE,
+      'worker_photo_delivered',
+      stubSend(new Error('ECONNRESET')),
+    )
+
+    expect(report.retryable).toBe(1)
+    expect(report.pruned).toBe(0)
+    const [update] = sent(sql, /update push_subscriptions/)
+    expect(update?.values).toContain(false)
+  })
+
+  it('the fifth consecutive failure revokes even with no terminal status', async () => {
+    /* `shouldRevokeSubscription` is the app's own function, imported — PUSH_FAILURE_LIMIT appears
+     * nowhere in the worker. This is the assertion that proves it, because getting the threshold
+     * from a second copy would be invisible everywhere else. */
+    withVapid()
+    const sql = sqlWithSubscriptions([{ ...SUB, failure_count: 4 }])
+
+    const report = await sendWorkerPush(
+      sql,
+      USER,
+      BUBBLE,
+      'worker_photo_delivered',
+      stubSend(new Error('ETIMEDOUT')),
+    )
+
+    expect(report.pruned).toBe(1)
+    expect(sent(sql, /update push_subscriptions/)[0]?.values).toContain(true)
+  })
+
+  it('one subscription’s failure does not stop the next — a phone and a laptop are two rows', async () => {
+    withVapid()
+    const second = { ...SUB, id: 'sub000000002', endpoint: 'https://fcm.googleapis.com/xyz' }
+    const sql = sqlWithSubscriptions([SUB, second])
+    const send = vi.fn<SendWorkerNotification>(async (subscription) => {
+      if (subscription.endpoint === SUB.endpoint) throw new Error('ECONNRESET')
+      return { statusCode: 201 }
+    })
+
+    const report = await sendWorkerPush(sql, USER, BUBBLE, 'worker_photo_delivered', send)
+
+    expect(report.attempted).toBe(2)
+    expect(report.delivered).toBe(1)
+    expect(report.retryable).toBe(1)
+  })
+
+  it('an unreadable push_subscriptions degrades to a skip and never throws', async () => {
+    /* The reason that table is absent from preflight's REQUIRED_COLUMNS: a notification drift must
+     * surface as one log line, not as a red workflow that never claims the job it exists to
+     * rescue. */
+    withVapid()
+    const sql = sqlWithSubscriptions([SUB], { failOn: /from push_subscriptions/ })
+    const send = stubSend()
+
+    const report = await sendWorkerPush(sql, USER, BUBBLE, 'worker_photo_delivered', send)
+
+    expect(report.skipped).toMatch(/subscriptions unreadable/)
+    expect(send).not.toHaveBeenCalled()
+  })
+
+  it('a bookkeeping fault after a delivered push does not turn it into a failure', async () => {
+    /* The one place this file deliberately does NOT mirror `sendPushToSubscription`, which keeps
+     * `recordPushSuccess` inside the send's `try` and would increment the failure streak of a
+     * subscription that just worked. */
+    withVapid()
+    const sql = fakeSql({
+      failOn: /update push_subscriptions/,
+      rows: (call) => (/from push_subscriptions/.test(call.text) ? [SUB] : []),
+    })
+
+    const report = await sendWorkerPush(sql, USER, BUBBLE, 'worker_photo_delivered', stubSend())
+
+    expect(report.delivered).toBe(1)
+    expect(report.retryable).toBe(0)
+    expect(report.pruned).toBe(0)
+  })
+})
+
+/**
+ * The call site: `finishSelfie` notifies, and nothing it does to the notification can cost the
+ * photograph. Separate from the `finishSelfie — Finding 1` block above so that block's nine cases
+ * keep passing four arguments, which is also the proof the new parameter's default works.
+ */
+describe('finishSelfie — the push (nina-push-every-message R1)', () => {
+  const image = {
+    blobUrl: 'https://blob/x.png',
+    pathname: 'nina/u/selfie-x.png',
+    bytes: 1234,
+    contentHash: null as string | null,
+    duplicateOf: null,
+  }
+  const result = { costMicroUsd: 40_000, latencyMs: 78_200 }
+  const NO_PUSH: WorkerPushReport = {
+    attempted: 0,
+    delivered: 0,
+    pruned: 0,
+    retryable: 0,
+    skipped: 'test',
+  }
+
+  beforeEach(() => {
+    vi.resetAllMocks()
+  })
+
+  it('notifies once, with the caption it actually wrote and this host’s own kind', async () => {
+    const sql = sqlResolving(SESSION_ID)
+    const notify = vi.fn<WorkerNotifier>(async () => NO_PUSH)
+
+    await finishSelfie(sql, jobFixture(), image, result, notify)
+
+    expect(notify).toHaveBeenCalledTimes(1)
+    const [, userId, messages, kind] = notify.mock.calls[0]!
+    expect(userId).toBe('user00000001')
+    /* NOT `lib/nina/imagerun.ts`'s `'photo_delivered'`. The two hosts stamp DIFFERENT kinds for
+     * the same event on purpose: this worker only runs when the app's own invocation was killed,
+     * so the `worker_` prefix is the one thing in a log line that says the backstop delivered this
+     * photograph. Collapsing them would make the diagnostic vacuous. */
+    expect(kind).toBe('worker_photo_delivered')
+    /* The body is the string the INSERT bound, not a second `ninaImageCaption` call that happens
+     * to agree. */
+    const [insert] = sent(sql, /insert into nina_messages/)
+    expect(insert?.values).toContain(messages[0]?.body)
+    expect(messages).toHaveLength(1)
+  })
+
+  it('sends only after the message row, the image row and the ok close are all in', async () => {
+    /* A notification for a photograph that is not in the chat yet is the worst outcome available
+     * here: the tap opens an empty frame. */
+    const sql = sqlResolving(SESSION_ID)
+    let statementsAtNotify = -1
+    const notify = vi.fn<WorkerNotifier>(async () => {
+      statementsAtNotify = sql.calls.length
+      return NO_PUSH
+    })
+
+    await finishSelfie(sql, jobFixture(), image, result, notify)
+
+    expect(sent(sql, /insert into nina_messages/)).toHaveLength(1)
+    expect(sent(sql, /insert into nina_message_images/)).toHaveLength(1)
+    expect(sent(sql, /set status = 'ok'/)).toHaveLength(1)
+    /* Nothing runs after the notify, so every statement the function sends was already sent when
+     * it fired. */
+    expect(statementsAtNotify).toBe(sql.calls.length)
+  })
+
+  it('a notifier that throws leaves the photograph, its image row and the closed job alone', async () => {
+    /* Plan invariant 2, and Finding 1's blast radius restated: a throw here would send `runOneJob`
+     * into `closeFailed`, which would mark a DELIVERED generation failed and apologise for a
+     * picture he can already see. */
+    const sql = sqlResolving(SESSION_ID)
+    const notify = vi.fn<WorkerNotifier>(async () => {
+      throw new Error('push service on fire')
+    })
+
+    await expect(finishSelfie(sql, jobFixture(), image, result, notify)).resolves.toBeUndefined()
+
+    expect(sent(sql, /insert into nina_messages/)).toHaveLength(1)
+    expect(sent(sql, /insert into nina_message_images/)).toHaveLength(1)
+    expect(sent(sql, /set status = 'ok'/)).toHaveLength(1)
+  })
+
+  it('does not notify when no session resolves, because no message was written', async () => {
+    const sql = sqlResolving(null)
+    const notify = vi.fn<WorkerNotifier>(async () => NO_PUSH)
+
+    await expect(finishSelfie(sql, jobFixture(), image, result, notify)).rejects.toThrow(
+      /no session/,
+    )
+
+    expect(notify).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * `closeFailed` — R22's apology on this host, and the last uncovered `nina_messages` write in the
+ * plan set (reconciler ruling; see Step 2f). The in-platform twin is
+ * `lib/nina/imagejobs.ts`'s `postNinaApologyMessage`, which phase 3 pushes as `'photo_apology'`.
+ * This host stamps `'worker_photo_apology'`, deliberately — see `finishSelfie`'s header.
+ *
+ * The existing `closeFailed` cases above pass three arguments and still do, which is the proof the
+ * new parameter's default works.
+ */
+describe('closeFailed — the apology push (nina-push-every-message R1)', () => {
+  const GAVE_UP = { kind: 'timeout' as const, latencyMs: 78_000, detail: 'x', costMicroUsd: null }
+  const NO_PUSH: WorkerPushReport = {
+    attempted: 0,
+    delivered: 0,
+    pruned: 0,
+    retryable: 0,
+    skipped: 'test',
+  }
+
+  /** A job at the attempt ceiling, so `closeFailed` gives up rather than queueing a retry. */
+  function spentJob(overrides: Partial<ClaimedJob> = {}): ClaimedJob {
+    return { ...jobFixture(), attempts: NINA_IMAGE_MAX_ATTEMPTS, ...overrides } as ClaimedJob
+  }
+
+  beforeEach(() => {
+    vi.resetAllMocks()
+  })
+
+  it('pushes the apology it wrote, with the id the row carries and the worker kind', async () => {
+    const sql = sqlResolving(SESSION_ID)
+    const notify = vi.fn<WorkerNotifier>(async () => NO_PUSH)
+
+    await expect(closeFailed(sql, spentJob(), GAVE_UP, notify)).resolves.toBe('gave-up')
+
+    expect(notify).toHaveBeenCalledTimes(1)
+    const [, , messages, kind] = notify.mock.calls[0]!
+    /* NOT phase 3's `'photo_apology'`: the two hosts keep separate kinds so a log line can say
+     * which one gave the photograph up. */
+    expect(kind).toBe('worker_photo_apology')
+    /* Both the id and the sentence are the INSERT's own bound values, not a second draw. */
+    const [insert] = sent(sql, /insert into nina_messages/)
+    expect(insert?.values).toContain(messages[0]?.id)
+    expect(insert?.values).toContain(messages[0]?.body)
+  })
+
+  it('pushes only after the job is closed failed, never while it is still pending', async () => {
+    const sql = sqlResolving(SESSION_ID)
+    let statementsAtNotify = -1
+    const notify = vi.fn<WorkerNotifier>(async () => {
+      statementsAtNotify = sql.calls.length
+      return NO_PUSH
+    })
+
+    await closeFailed(sql, spentJob(), GAVE_UP, notify)
+
+    expect(sent(sql, /set status = 'failed'/)).toHaveLength(1)
+    expect(statementsAtNotify).toBe(sql.calls.length)
+  })
+
+  it('a retry says nothing — there is nothing to apologise for yet', async () => {
+    const sql = sqlResolving(SESSION_ID)
+    const notify = vi.fn<WorkerNotifier>(async () => NO_PUSH)
+
+    await expect(
+      closeFailed(sql, { ...jobFixture(), attempts: 1 } as ClaimedJob, GAVE_UP, notify),
+    ).resolves.toBe('retry')
+
+    expect(sent(sql, /insert into nina_messages/)).toHaveLength(0)
+    expect(notify).not.toHaveBeenCalled()
+  })
+
+  it('an AVATAR job says nothing — nobody asked for one in the chat', async () => {
+    const sql = sqlResolving(SESSION_ID)
+    const job = spentJob()
+    const notify = vi.fn<WorkerNotifier>(async () => NO_PUSH)
+
+    await closeFailed(
+      sql,
+      { ...job, args: { ...job.args, purpose: 'avatar' } } as ClaimedJob,
+      GAVE_UP,
+      notify,
+    )
+
+    expect(notify).not.toHaveBeenCalled()
+  })
+
+  it('says nothing when no session resolved, because no apology row was written', async () => {
+    const sql = sqlResolving(null)
+    const notify = vi.fn<WorkerNotifier>(async () => NO_PUSH)
+
+    await expect(closeFailed(sql, spentJob(), GAVE_UP, notify)).resolves.toBe('gave-up')
+
+    expect(sent(sql, /insert into nina_messages/)).toHaveLength(0)
+    expect(notify).not.toHaveBeenCalled()
+    /* The job is still closed. A missing apology never costs the ledger. */
+    expect(sent(sql, /set status = 'failed'/)).toHaveLength(1)
+  })
+
+  it('a notifier that throws still closes the job and still returns gave-up', async () => {
+    /* Plan invariant 2, and this function's own header: a throw here is what once killed the
+     * process before the money was recorded. The notify's `try` is separate from the apology
+     * write's, so this failure cannot be logged as "the apology could not be written" either. */
+    const sql = sqlResolving(SESSION_ID)
+    const notify = vi.fn<WorkerNotifier>(async () => {
+      throw new Error('push service on fire')
+    })
+
+    await expect(closeFailed(sql, spentJob(), GAVE_UP, notify)).resolves.toBe('gave-up')
+
+    expect(sent(sql, /insert into nina_messages/)).toHaveLength(1)
+    expect(sent(sql, /set status = 'failed'/)).toHaveLength(1)
   })
 })
