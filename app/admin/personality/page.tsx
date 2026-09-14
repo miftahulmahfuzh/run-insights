@@ -1,8 +1,10 @@
+import { ChatFallbackModelSelect } from '@/components/admin/ChatFallbackModelSelect'
 import { CharacterPanel } from '@/components/admin/CharacterPanel'
 import { TextModelSelect } from '@/components/admin/TextModelSelect'
 import { requireAdmin } from '@/lib/admin/requireAdmin'
 import { toTuningDraft } from '@/lib/admin/tuningModel'
 import { narrativeModel } from '@/lib/llm/textModel'
+import { ninaChatFallbackModel } from '@/lib/nina/chatFallbackModel'
 import { buildNinaSystemPrompt } from '@/lib/nina/prompts'
 import { readNinaTuning } from '@/lib/nina/queries'
 import { NINA_TUNING_DEFAULTS } from '@/lib/nina/tuning'
@@ -57,10 +59,11 @@ import { NINA_TUNING_DEFAULTS } from '@/lib/nina/tuning'
  * this page may: the preview is deliberately the pure assembler and never a turn entry point. It
  * shows the SAVED tuning, so it changes when a save changes the row, not as a slider moves.
  *
- * ── ONE READ, SO NO `Promise.all` ───────────────────────────────────────────────────────────
- * On the album page this read joined two others in a `Promise.all` so three round trips did not
- * run in sequence. Here there is one read and a bare `await` is the honest shape; a `Promise.all`
- * over a single promise is a comment pretending to be code.
+ * ── THREE INDEPENDENT READS, ONE `Promise.all` ──────────────────────────────────────────────
+ * The tuning row and the two `app_settings` resolvers (`narrativeModel()`, `ninaChatFallbackModel()`)
+ * share nothing and gate nothing on each other, so they run concurrently — the album page's own
+ * reason for batching three reads. Each is a single indexed SELECT, not a model call —
+ * `ci:llm-payload-guard`'s table has no entry for either resolver and needs none.
  */
 
 export const dynamic = 'force-dynamic'
@@ -68,15 +71,14 @@ export const dynamic = 'force-dynamic'
 export default async function AdminPersonalityPage() {
   const { userId } = await requireAdmin()
 
-  const tuning = await readNinaTuning(userId)
-
-  /*
-   * The EFFECTIVE text model, not the raw stored one: `narrativeModel()` is the same resolver
-   * every text call makes, so the dropdown shows what the next turn will actually dial. It is a
-   * one-row indexed SELECT, not a model call — `ci:llm-payload-guard`'s table has no entry for it
-   * and needs none.
-   */
-  const textModel = await narrativeModel()
+  const [tuning, textModel, chatFallbackModel] = await Promise.all([
+    readNinaTuning(userId),
+    /* The EFFECTIVE text model, not the raw stored one — the dropdown shows what the next turn
+     * will actually dial. */
+    narrativeModel(),
+    /* Same shape, the OTHER dropdown: the model the chat fallback will dial when z.ai fails. */
+    ninaChatFallbackModel(),
+  ])
 
   return (
     <div>
@@ -91,13 +93,18 @@ export default async function AdminPersonalityPage() {
       </header>
 
       {/*
-       * The text model (the 2026-09-10 ask). It sits ABOVE the character panel because it is the
-       * wider setting: the panel below configures what she says, this select configures which
-       * brain says it — her replies, captions, titles and the insights rollup together. It edits
-       * `app_settings`, not the tuning row, which is why it is its own component and its own
-       * action file (`lib/admin/textModelActions.ts`) rather than a control on the panel.
+       * The text model (the 2026-09-10 ask) and its fallback (the 2026-09-14 ask), side by side
+       * from `sm:` up and stacked below it — the `grid gap-4 sm:grid-cols-2` shape `app/admin/page.tsx`
+       * already uses for this exact "two independent settings, one row" layout. Both sit ABOVE the
+       * character panel because they are the wider setting: the panel below configures what she
+       * says, these configure which brain says it and which brain rescues it. Both edit
+       * `app_settings`, not the tuning row, which is why each is its own component and its own
+       * action file rather than a control on the panel.
        */}
-      <TextModelSelect model={textModel} />
+      <div className="grid gap-4 sm:grid-cols-2">
+        <TextModelSelect model={textModel} />
+        <ChatFallbackModelSelect model={chatFallbackModel} />
+      </div>
 
       {/*
        * The tuning crosses to the client as a plain `TuningDraft` — `toTuningDraft` is the one

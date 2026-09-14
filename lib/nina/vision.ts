@@ -3,7 +3,7 @@ import 'server-only'
 import { env, ninaEnv } from '@/lib/env'
 import { logNinaError } from './errorlogs'
 import { NINA_CHAT_CONTENT_TYPE } from './images'
-import { NINA_FALLBACK_TEXT_MODEL, OPENROUTER_CHAT_URL } from './openrouter'
+import { NINA_VISION_FALLBACK_MODEL, OPENROUTER_CHAT_URL } from './openrouter'
 import {
   NINA_DESCRIBE_SYSTEM_PROMPTS,
   buildDescribeUserContent,
@@ -509,7 +509,7 @@ async function describeNinaImagesWithOpenRouter(
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: NINA_FALLBACK_TEXT_MODEL,
+        model: NINA_VISION_FALLBACK_MODEL,
         max_tokens: NINA_DESCRIBE_FALLBACK_MAX_TOKENS,
         /* No `thinking` field. That is a z.ai vendor extension; this is not z.ai's endpoint, and an
          * unprobed field on a vendor whose failure mode is "200 OK with invented content" is not
@@ -642,7 +642,7 @@ export async function describeNinaImagesWithFallback(
     } catch (fallback) {
       await recordDescribeFailure({
         provider: 'openrouter',
-        model: NINA_FALLBACK_TEXT_MODEL,
+        model: NINA_VISION_FALLBACK_MODEL,
         timeoutMs: NINA_DESCRIBE_FALLBACK_TIMEOUT_MS,
         cause: fallback,
         imageCount: images.length,

@@ -5,18 +5,28 @@ import type Anthropic from '@anthropic-ai/sdk'
 import { ninaEnv } from '@/lib/env'
 
 import { logNinaError } from './errorlogs'
-import { NINA_FALLBACK_TEXT_MODEL, OPENROUTER_CHAT_URL } from './openrouter'
+import { NINA_CHAT_FALLBACK_DEFAULT_MODEL, OPENROUTER_CHAT_URL } from './openrouter'
 import type { NinaLlmClientLike } from './turn'
 
 /**
  * ════════════════════════════════════════════════════════════════════════════════════════════
- *  THE SECOND PROVIDER. z.ai first, OpenRouter's `z-ai/glm-5.3-flash` second, silence third.
+ *  THE SECOND PROVIDER. z.ai first, the operator-selected OpenRouter model second, silence third.
  *
  *  R1, and it exists because of a measured incident: 2026-09-11 22:29 – 00:12 UTC, eleven
  *  consecutive `nina_turns` rows with `status='failed', error_code='unavailable'` on the z.ai
  *  Anthropic-compatible endpoint, zero automatic recovery, and a live probe of the same endpoint
  *  at 00:17 that succeeded. A transient provider-side condition cost the runner two hours of
  *  conversation, and nothing in the app noticed.
+ *
+ *  **2026-09-14 addendum, and the reason the fallback model is a parameter now.** A z.ai-family
+ *  route can go down as a WHOLE, not just this one endpoint: `z-ai/glm-5.3-flash` timed out on
+ *  BOTH the direct z.ai call and this exact OpenRouter route for two straight hours
+ *  (`nina_error_logs`, 07:40–09:38 UTC), because OpenRouter's route to that model is the same
+ *  vendor's infrastructure, not an independent one. `ninaFallbackTextClient` now takes the model
+ *  to dial as an option, resolved live by `ninaChatFallbackModel()` from `app_settings` — the same
+ *  no-redeploy shape `lib/llm/textModel.ts` gives the primary model — so a genuinely different
+ *  vendor (`nvidia/nemotron-3.5-lightning`, the shipped default) is one dropdown away, not a code
+ *  change.
  *
  * ── WHY THIS IS A CLIENT AND NOT A BRANCH IN `turn.ts` ────────────────────────────────────────
  *  `turn.ts` already isolates the model call behind `NinaLlmClientLike` — the seam
@@ -41,20 +51,18 @@ import type { NinaLlmClientLike } from './turn'
  */
 
 /*
- * ── THE ENDPOINT AND THE MODEL ID ARE IMPORTED, NOT DECLARED ──────────────────────────────────
- * `OPENROUTER_CHAT_URL` and `NINA_FALLBACK_TEXT_MODEL` live in `lib/nina/openrouter.ts`, which
- * phase 3 creates, because phase 3's vision fallback needs the same two values. Two call paths
- * spelling one endpoint and one model id twice is exactly how they drift apart, and neither a
- * text-chat client nor a vision module is the right home for the other's copy — so neither owns
- * them.
+ * ── THE ENDPOINT IS IMPORTED; THE MODEL ID IS A PARAMETER NOW ────────────────────────────────
+ * `OPENROUTER_CHAT_URL` still lives in `lib/nina/openrouter.ts` — it is the one thing this file
+ * shares with `vision.ts`'s fallback, and declaring it twice is how it would drift. The model id
+ * used to live there too, hardcoded; it is now `ninaFallbackTextClient`'s `fallbackModel` option,
+ * resolved by the caller (`turn.ts`'s `productionDeps`) through `ninaChatFallbackModel()`. Every
+ * function below still defaults to `NINA_CHAT_FALLBACK_DEFAULT_MODEL` when no model is passed, so
+ * a caller that does not care — every existing test included — keeps working unchanged.
  *
- * Both remain hardcoded rather than env vars, like `OPENROUTER_IMAGE_URL` / `NINA_IMAGE_MODEL` in
- * `lib/nina/imagerecipe.ts:114-115`, and the plan's Decisions table follows that precedent: the
- * PRIMARY text model is operator-selectable through `app_settings.text_model`, the fallback is not.
- * An operator who can misconfigure the safety net can turn the safety net off by accident.
- * `z-ai/glm-5.3-flash` and not `z-ai/glm-5.3` because OpenRouter lists the flash variant as natively
- * multimodal, which is what R1 asks for in as many words — the full argument is on the constant's
- * own docblock in `openrouter.ts`.
+ * `openrouter.ts`'s vision-only sibling, `NINA_VISION_FALLBACK_MODEL`, stays hardcoded and
+ * multimodal on purpose: an operator picking a candidate for THIS dropdown must not be able to
+ * break the photo-description path, which is why the two catalogs are disjoint concepts even
+ * though today they happen to share one candidate (`z-ai/glm-5.3-flash`).
  */
 
 /**
@@ -370,12 +378,14 @@ function pushTranslatedTurn(out: OpenRouterMessage[], turn: Anthropic.MessagePar
  * conditional on the thing being logged.
  *
  * `body.model` is DISCARDED — it is the z.ai model id (`glm-5.3` or whatever
- * `app_settings.text_model` holds) and means nothing to OpenRouter. `max_tokens` is carried
- * across unchanged: `NINA_MAX_TOKENS` is 2400 because a thinking block may eat the front of the
- * budget, and that risk does not go away at a second provider.
+ * `app_settings.text_model` holds) and means nothing to OpenRouter; `fallbackModel` (the second
+ * argument) replaces it. `max_tokens` is carried across unchanged: `NINA_MAX_TOKENS` leaves room
+ * for a `thinking`/`reasoning` preamble neither provider promises to suppress, and that risk does
+ * not go away at a second provider.
  */
 export function toOpenRouterChatBody(
   body: Anthropic.MessageCreateParamsNonStreaming,
+  fallbackModel: string = NINA_CHAT_FALLBACK_DEFAULT_MODEL,
 ): OpenRouterChatBody {
   const messages: OpenRouterMessage[] = []
 
@@ -388,7 +398,7 @@ export function toOpenRouterChatBody(
   const toolChoice = translateToolChoice(body.tool_choice)
 
   return {
-    model: NINA_FALLBACK_TEXT_MODEL,
+    model: fallbackModel,
     max_tokens: body.max_tokens,
     messages,
     ...(tools.length > 0 ? { tools } : {}),
@@ -396,14 +406,14 @@ export function toOpenRouterChatBody(
     ...(tools.length > 0 && toolChoice != null ? { tool_choice: toolChoice } : {}),
     /*
      * No reasoning-control field. MEASURED 2026-09-12 13:11 WIB: sending the once-standard
-     * `reasoning: { enabled: false }` now gets a `400 "Reasoning is mandatory for this endpoint
-     * and cannot be disabled."` from `z-ai/glm-5.3-flash` — the fallback this codebase relies on
-     * for a z.ai outage failed itself, on the exact incident it exists to survive. Omitting the
-     * field entirely follows `vision.ts:112-117`'s already-established rule for this same
-     * provider/model: an unprobed reasoning-control shape is not something to trust against a
-     * vendor whose behaviour here has now changed once already, and `NINA_MAX_TOKENS` (2400,
-     * carried across unchanged) already budgets slack for a reasoning preamble the z.ai side
-     * itself does not guarantee suppressing.
+     * `reasoning: { enabled: false }` got a `400 "Reasoning is mandatory for this endpoint and
+     * cannot be disabled."` from `z-ai/glm-5.3-flash` — the fallback this codebase relies on for a
+     * z.ai outage failed itself, on the exact incident it exists to survive. Omitting the field
+     * entirely follows `vision.ts:112-117`'s already-established rule: an unprobed reasoning-control
+     * shape is not something to trust against a vendor whose behaviour can change underneath this
+     * codebase. `nvidia/nemotron-3.5-lightning` (the default) does not require it at all —
+     * `reasoning.mandatory: false`, probed live 2026-09-14 — but the field stays omitted for both
+     * candidates rather than branching on which one is configured.
      */
   }
 }
@@ -567,7 +577,10 @@ async function postOpenRouterChat(
     throw new Error(`openrouter error: ${parsed.error.message ?? safeStringify(parsed.error)}`)
   }
 
-  return toAnthropicMessage(parsed, NINA_FALLBACK_TEXT_MODEL)
+  /* `body.model` is the fallback model `toOpenRouterChatBody` already stamped onto the request
+   * that produced this response — reading it back here is cheaper than threading a second
+   * parameter down to say the same thing twice. */
+  return toAnthropicMessage(parsed, body.model)
 }
 
 /**
@@ -618,9 +631,14 @@ function describeCause(cause: unknown): string {
  */
 export function ninaFallbackTextClient(
   primary: NinaLlmClientLike,
-  options: { userId?: string | null } = {},
+  options: { userId?: string | null; fallbackModel?: string } = {},
 ): NinaLlmClientLike {
   const userId = options.userId ?? null
+  /* Resolved ONCE per client, by the caller — `turn.ts`'s `productionDeps` reads
+   * `ninaChatFallbackModel()` live and passes the result in, exactly as it already does for
+   * `model` two lines above that call. Defaulted here too, so a caller that does not care (every
+   * existing test included) keeps working unchanged. */
+  const fallbackModel = options.fallbackModel ?? NINA_CHAT_FALLBACK_DEFAULT_MODEL
 
   return {
     messages: {
@@ -632,6 +650,7 @@ export function ninaFallbackTextClient(
         } catch (zaiCause) {
           console.warn('[nina] z.ai text call failed — considering openrouter', {
             model: body.model,
+            fallbackModel,
             timeoutMs,
             error: String(zaiCause),
           })
@@ -656,13 +675,13 @@ export function ninaFallbackTextClient(
           }
 
           /* Built before the POST so the logged `fullInput` is the payload that went on the wire. */
-          const openRouterBody = toOpenRouterChatBody(body)
+          const openRouterBody = toOpenRouterChatBody(body, fallbackModel)
           const startedAt = Date.now()
 
           try {
             const message = await postOpenRouterChat(openRouterBody, timeoutMs)
             console.info('[nina] openrouter text fallback answered', {
-              model: NINA_FALLBACK_TEXT_MODEL,
+              model: fallbackModel,
               latencyMs: Date.now() - startedAt,
               stopReason: message.stop_reason,
             })
@@ -672,7 +691,7 @@ export function ninaFallbackTextClient(
               category: 'text',
               userId,
               provider: 'openrouter',
-              model: NINA_FALLBACK_TEXT_MODEL,
+              model: fallbackModel,
               fullInput: safeStringify(openRouterBody),
               errorMessage: describeCause(openRouterCause),
               timeoutMs,

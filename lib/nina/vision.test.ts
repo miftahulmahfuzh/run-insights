@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { describeSubjectForSide } from './album'
-import { NINA_FALLBACK_TEXT_MODEL, OPENROUTER_CHAT_URL } from './openrouter'
+import { NINA_VISION_FALLBACK_MODEL, OPENROUTER_CHAT_URL } from './openrouter'
 import {
   NINA_DESCRIBE_REQUEST_TEXT,
   NINA_DESCRIBE_SYSTEM_PROMPT,
@@ -358,7 +358,7 @@ describe('the OpenRouter fallback (R1)', () => {
     expect((init.headers as Record<string, string>).Authorization).toMatch(/^Bearer /)
 
     const body = JSON.parse(String(init.body))
-    expect(body.model).toBe(NINA_FALLBACK_TEXT_MODEL)
+    expect(body.model).toBe(NINA_VISION_FALLBACK_MODEL)
     expect(body.thinking).toBeUndefined() // a z.ai vendor extension; never sent here
     expect(body.messages[0].content).toBe(NINA_SELF_DESCRIBE_SYSTEM_PROMPT)
     expect(body.messages[1].content[0]).toEqual({
@@ -397,7 +397,7 @@ describe('the OpenRouter fallback (R1)', () => {
     const second = logNinaError.mock.calls[1]![0] as Record<string, unknown>
     expect(second.category).toBe('multimodal')
     expect(second.provider).toBe('openrouter')
-    expect(second.model).toBe(NINA_FALLBACK_TEXT_MODEL)
+    expect(second.model).toBe(NINA_VISION_FALLBACK_MODEL)
     expect(second.timeoutMs).toBe(NINA_DESCRIBE_FALLBACK_TIMEOUT_MS)
     expect(second.imageUrl).toBe('https://blob.example/nina/chat/abc.jpg')
     expect(String(second.errorMessage)).toContain('503')

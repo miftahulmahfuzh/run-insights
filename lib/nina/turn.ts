@@ -4,6 +4,7 @@ import { narrativeClient } from '@/lib/llm/client'
 import { narrativeModel } from '@/lib/llm/textModel'
 import type Anthropic from '@anthropic-ai/sdk'
 
+import { ninaChatFallbackModel } from './chatFallbackModel'
 import { buildNinaRunFact, type NinaContext, type NinaRunFact } from './context'
 import { dbNinaToolGateway, dbNinaTurnStore } from './gateway'
 import { ninaFallbackTextClient } from './llmFallbackText'
@@ -136,16 +137,25 @@ const MAX_PROSE_RETRIES = 1
  * block anyway** (round 2 without one). So sizing `max_tokens` to the payload alone would be
  * sizing it to a response shape z.ai does not promise: the block would eat the front of the
  * budget, the `tool_use` behind it would be cut mid-object, `stop_reason` would be `max_tokens`,
- * and the turn would degrade for a reason that looks nothing like its cause. 2400 is the payload
- * ceiling plus room for the observed block.
+ * and the turn would degrade for a reason that looks nothing like its cause. 2400 was the payload
+ * ceiling plus room for that observed block, and F07's own finding stood beside it: 4000 tokens
+ * bought 4000 tokens of z.ai `thinking` and still no answer, so raising this without limit was
+ * never the fix for THAT provider.
  *
- * **What is NOT the fix:** raising this without limit. F07 measured that 4000 tokens buys 4000
- * tokens of thinking and still no answer, and that finding stands. This is headroom for a block
- * that arrives *alongside* the answer, not a budget for one that replaces it. And the flag stays
- * on every body regardless — see `ninaBody`, including why "keep sending it" and "do not do
- * arithmetic against it" are both true at once.
+ * **2026-09-14: raised to 24000 for a different provider's shape of the same problem.** The
+ * OpenRouter chat fallback (`lib/nina/chatFallbackModel.ts`) can now be pointed at a reasoning
+ * model whose `reasoning` is not mandatory but whose UNFORCED calls still spend real tokens on a
+ * visible chain-of-thought before any content — probed live 2026-09-14 on
+ * `nvidia/nemotron-3.5-lightning`, which burned an entire 200-token ceiling on reasoning with
+ * `content: null`. Every non-final round in this loop uses `tool_choice: 'any'`/`'required'`
+ * rather than a single forced tool (see `ninaBody`'s note), which is exactly the unforced shape
+ * that let the reasoning run long. 24000 is headroom for that chain-of-thought on top of the
+ * payload+thinking-block ceiling above, still one shared constant across every provider this loop
+ * can call — the alternative, a per-provider budget, would need `ninaBody` to know which provider
+ * `deps.client` is about to dial, which breaks the whole point of `NinaLlmClientLike` being one
+ * interchangeable seam.
  */
-export const NINA_MAX_TOKENS = 2_400
+export const NINA_MAX_TOKENS = 24_000
 
 /**
  * **The same client, on purpose.** `narrativeClient()` is `@anthropic-ai/sdk` against
@@ -1113,22 +1123,29 @@ async function attemptNinaRepair(
  * commit, at creation, rather than as a later phase reaching in.
  *
  * ── AND THE CLIENT IS WRAPPED, WHICH IS THE WHOLE OF R1's TEXT PATH ───────────────────────────
- * `ninaFallbackTextClient` tries `ninaClient()` (z.ai) first and OpenRouter's
- * `z-ai/glm-5.3-flash` second, logging each failed attempt to `nina_error_logs`. **This one line
- * covers every model call a turn makes** — primary, both continuations, the prose re-ask and
- * `attemptNinaRepair`'s — because all five go through `deps.client.messages.create`, and none of
- * them can tell the difference: the fallback synthesizes an `Anthropic.Message` that
- * `findSendBlock`, `findToolUses`, `usageOf` and the `stop_reason` check read unchanged.
+ * `ninaFallbackTextClient` tries `ninaClient()` (z.ai) first and the operator-selected OpenRouter
+ * model second (`ninaChatFallbackModel()`, below — `nvidia/nemotron-3.5-lightning` by default),
+ * logging each failed attempt to `nina_error_logs`. **This one line covers every model call a
+ * turn makes** — primary, both continuations, the prose re-ask and `attemptNinaRepair`'s —
+ * because all five go through `deps.client.messages.create`, and none of them can tell the
+ * difference: the fallback synthesizes an `Anthropic.Message` that `findSendBlock`,
+ * `findToolUses`, `usageOf` and the `stop_reason` check read unchanged.
  *
  * `userId` is optional and defaults to null so the one production caller can attribute its log
  * rows while nothing else has to know the parameter exists. It is NOT part of `NinaTurnDeps`: a
  * turn's deps are provider-shaped, the user is turn-shaped, and `runNinaTurn` already has
  * `input.userId` in hand at the only place that constructs deps implicitly.
+ *
+ * **The fallback model is now resolved here too, alongside `model`.** Same reason, same shape:
+ * `ninaChatFallbackModel()` reads `app_settings.text_fallback_model` live, with no cache, so a
+ * dropdown edit on `/admin/personality` is in force on the very next turn. The two reads run
+ * concurrently — one more `Promise.all` on a function that already awaits a database round trip.
  */
 export async function productionDeps(userId: string | null = null): Promise<NinaTurnDeps> {
+  const [model, fallbackModel] = await Promise.all([ninaModel(), ninaChatFallbackModel()])
   return {
-    client: ninaFallbackTextClient(ninaClient(), { userId }),
-    model: await ninaModel(),
+    client: ninaFallbackTextClient(ninaClient(), { userId, fallbackModel }),
+    model,
     toolSet: NINA_CORE_TOOL_SET,
     gateway: dbNinaToolGateway,
     store: dbNinaTurnStore,

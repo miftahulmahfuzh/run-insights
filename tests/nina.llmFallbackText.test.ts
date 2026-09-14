@@ -9,7 +9,7 @@ import {
   toOpenRouterChatBody,
 } from '../lib/nina/llmFallbackText.ts'
 /* Phase 3's shared constants module — this phase imports them, it does not declare them. */
-import { NINA_FALLBACK_TEXT_MODEL, OPENROUTER_CHAT_URL } from '../lib/nina/openrouter.ts'
+import { NINA_CHAT_FALLBACK_DEFAULT_MODEL, OPENROUTER_CHAT_URL } from '../lib/nina/openrouter.ts'
 import type { NinaLlmClientLike } from '../lib/nina/turn.ts'
 
 /**
@@ -73,7 +73,7 @@ describe('toOpenRouterChatBody', () => {
   it('translates the envelope `ninaBody` builds, and swaps in the fallback model', () => {
     const out = toOpenRouterChatBody(ninaBodyLike())
 
-    expect(out.model).toBe(NINA_FALLBACK_TEXT_MODEL)
+    expect(out.model).toBe(NINA_CHAT_FALLBACK_DEFAULT_MODEL)
     expect(out.max_tokens).toBe(2_400)
     /*
      * Measured 2026-09-12 13:11 WIB: OpenRouter rejected `reasoning: { enabled: false }` for
@@ -200,7 +200,7 @@ describe('toAnthropicMessage', () => {
     const message = toAnthropicMessage(
       {
         id: 'gen-1',
-        model: NINA_FALLBACK_TEXT_MODEL,
+        model: NINA_CHAT_FALLBACK_DEFAULT_MODEL,
         choices: [
           {
             finish_reason: 'tool_calls',
@@ -218,7 +218,7 @@ describe('toAnthropicMessage', () => {
         ],
         usage: { prompt_tokens: 1_234, completion_tokens: 56 },
       },
-      NINA_FALLBACK_TEXT_MODEL,
+      NINA_CHAT_FALLBACK_DEFAULT_MODEL,
     )
 
     expect(message.type).toBe('message')
@@ -239,7 +239,7 @@ describe('toAnthropicMessage', () => {
   it('maps a truncated completion onto the one stop_reason turn.ts actually compares', () => {
     const message = toAnthropicMessage(
       { choices: [{ finish_reason: 'length', message: { content: 'half a sen' } }] },
-      NINA_FALLBACK_TEXT_MODEL,
+      NINA_CHAT_FALLBACK_DEFAULT_MODEL,
     )
     expect(message.stop_reason).toBe('max_tokens')
   })
@@ -317,7 +317,7 @@ describe('ninaFallbackTextClient', () => {
     expect(logNinaError.mock.calls[1]?.[0]).toMatchObject({
       category: 'text',
       provider: 'openrouter',
-      model: NINA_FALLBACK_TEXT_MODEL,
+      model: NINA_CHAT_FALLBACK_DEFAULT_MODEL,
     })
     expect(String(logNinaError.mock.calls[1]?.[0]?.errorMessage)).toContain('OPENROUTER_API_KEY')
   })
@@ -377,7 +377,7 @@ describe('ninaFallbackTextClient', () => {
 
       const init = fetchMock.mock.calls[0]?.[1]
       const sent = JSON.parse(String(init?.body)) as { model: string; tool_choice: string }
-      expect(sent.model).toBe(NINA_FALLBACK_TEXT_MODEL)
+      expect(sent.model).toBe(NINA_CHAT_FALLBACK_DEFAULT_MODEL)
       expect(sent.tool_choice).toBe('required')
       /* The actual wire payload — not just `toOpenRouterChatBody`'s return type. */
       expect(sent).not.toHaveProperty('reasoning')
@@ -414,10 +414,10 @@ describe('ninaFallbackTextClient', () => {
       expect(logNinaError.mock.calls[0]?.[0]).toMatchObject({ provider: 'zai' })
       expect(logNinaError.mock.calls[1]?.[0]).toMatchObject({
         provider: 'openrouter',
-        model: NINA_FALLBACK_TEXT_MODEL,
+        model: NINA_CHAT_FALLBACK_DEFAULT_MODEL,
       })
       /* The OpenRouter row's `fullInput` is the TRANSLATED payload, not the Anthropic one. */
-      expect(String(logNinaError.mock.calls[1]?.[0]?.fullInput)).toContain(NINA_FALLBACK_TEXT_MODEL)
+      expect(String(logNinaError.mock.calls[1]?.[0]?.fullInput)).toContain(NINA_CHAT_FALLBACK_DEFAULT_MODEL)
     })
 
     it('skips the fallback, and rethrows z.ai’s own error, with no budget left', async () => {
