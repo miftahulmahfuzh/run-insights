@@ -43,21 +43,21 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "5c42668",
       "depends_on": [
         1
       ],
       "difficulty": "NORMAL",
       "n": 3,
-      "note": null,
+      "note": "delivered/apology push added in imagerun.ts+imagejobs.ts; full-suite red in tests/nina.turnpush.test.ts is phase 2's in-flight work, not mine",
       "package": "lib/nina",
       "plan": ".workflows/plan/nina-push-every-message/phase-3.md",
-      "reported_at": null,
+      "reported_at": "2026-09-14T04:38:29+00:00",
       "satisfies": [
         "R1"
       ],
-      "status": "pending",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-NIN-A049",
       "title": "Push when the photo lands, and when it cannot"
     },
     {
@@ -102,7 +102,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-push-every-message/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-push-every-message",
-  "updated": "2026-09-14T04:34:18+00:00",
+  "updated": "2026-09-14T04:38:29+00:00",
   "verified_at": "2026-09-14T04:34:18+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-push-every-message"
 }
