@@ -6,7 +6,7 @@
 **Worktree:** `/home/miftah/.worktrees/run-insights/nina-push-every-message`
 **Branch:** `feature/nina-push-every-message` (base: `origin/main` @ `0c53636`)
 **Phases:** 5
-**Status:** 3/5 complete (1, 3, 4) — verified from git/ledger; phases 2 and 5 still running
+**Status:** 4/5 complete (1, 3, 4, 5) — verified from git/ledger; phase 2 still running
 **Coordinator:** —
 
 ---
@@ -112,7 +112,7 @@ Every phase must hold all of these.
 | 2 | Push when she replies to him | R1 | `lib/nina` | 2 | 1 | HARD | `.workflows/plan/nina-push-every-message/phase-2.md` | `P1-NIN-A048` | — |
 | 3 ✅ | Push when the photo lands, and when it cannot | R1 | `lib/nina` | 4 | 1 | NORMAL | `.workflows/plan/nina-push-every-message/phase-3.md` | `P1-NIN-A049` | — |
 | 4 ✅ | Push when a photo is added to her chat from `/admin` | R2 | `lib/admin` | 2 | 1 | EASY | `.workflows/plan/nina-push-every-message/phase-4.md` | `P1-ADM-A003` | — |
-| 5 | Push from the off-platform backstop worker | R1 | `scripts` | 4 | 1 | HARD | `.workflows/plan/nina-push-every-message/phase-5.md` | `P1-SC-A002` | — |
+| 5 ✅ | Push from the off-platform backstop worker | R1 | `scripts` | 4 | 1 | HARD | `.workflows/plan/nina-push-every-message/phase-5.md` | `P1-SC-A002` | — |
 
 Phases 2, 3, 4 and 5 share no edge and are all runnable concurrently once phase 1 lands. No two
 phases touch the same source file or the same test file — verified file by file during

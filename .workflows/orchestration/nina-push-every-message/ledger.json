@@ -81,7 +81,7 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "b2067bd",
       "depends_on": [
         1
       ],
@@ -90,19 +90,19 @@
       "note": null,
       "package": "scripts",
       "plan": ".workflows/plan/nina-push-every-message/phase-5.md",
-      "reported_at": null,
+      "reported_at": "2026-09-14T04:39:47+00:00",
       "satisfies": [
         "R1"
       ],
-      "status": "pending",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-SC-A002",
       "title": "Push from the off-platform backstop worker"
     }
   ],
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-push-every-message/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-push-every-message",
-  "updated": "2026-09-14T04:38:29+00:00",
+  "updated": "2026-09-14T04:39:47+00:00",
   "verified_at": "2026-09-14T04:34:18+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-push-every-message"
 }
