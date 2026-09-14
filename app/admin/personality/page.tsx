@@ -100,8 +100,13 @@ export default async function AdminPersonalityPage() {
        * says, these configure which brain says it and which brain rescues it. Both edit
        * `app_settings`, not the tuning row, which is why each is its own component and its own
        * action file rather than a control on the panel.
+       *
+       * `gap-2 sm:gap-4`, tightened at xs on top of each select's own `mb-2 sm:mb-6`: stacked on a
+       * phone these two add up (a grid item's margin is not absorbed by the row gap), so both had
+       * to shrink together to close the runner's "too much air between the cards" gap without
+       * touching the desktop row's spacing.
        */}
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-2 sm:grid-cols-2 sm:gap-4">
         <TextModelSelect model={textModel} />
         <ChatFallbackModelSelect model={chatFallbackModel} />
       </div>

@@ -61,7 +61,7 @@ export function TextModelSelect({ model }: TextModelSelectProps) {
   }
 
   return (
-    <section className="mb-6 rounded-card border border-rule bg-card px-5 py-5">
+    <section className="mb-2 rounded-card border border-rule bg-card px-5 py-5 sm:mb-6">
       <label className="block">
         <span className="mb-1.5 flex items-baseline gap-2 text-[12px] font-semibold tracking-[0.02em] text-ink-2">
           Text model
