@@ -75,7 +75,15 @@ describe('the media rail exists where the verbs migrated to', () => {
 describe('R2 — the prompt affordance exists only while the sidecar does', () => {
   it('the brush toggle is INSIDE the prompt != null conditional', () => {
     const source = readRepoCode(PANE)
-    expect(source).toMatch(/photo\.prompt != null && \(\s*\n\s*<button/)
+    expect(source).toMatch(/photo\.prompt != null && \(\s*\n\s*<>\s*\n\s*<button/)
+  })
+
+  it('the separator after the brush toggle is inside the same conditional', () => {
+    const source = readRepoCode(PANE)
+    // The divider must not be a stray leftover when the brush button is hidden.
+    expect(source).toMatch(
+      /<BrushIcon[^]*?<\/button>\s*\n\s*\n\s*<span aria-hidden="true" className="mx-1 h-6 w-px bg-rule" \/>\s*\n\s*<\/>\s*\n\s*\)\}/,
+    )
   })
 
   it('no dim state exists for prompt — the old defect spelled as an absence', () => {

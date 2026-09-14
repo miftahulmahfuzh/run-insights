@@ -217,19 +217,21 @@ export function MediaPane({
             expanded block re-checks, so a selection swap under a reused pane cannot print a stale
             sidecar. */}
         {photo.prompt != null && (
-          <button
-            type="button"
-            onClick={() => setShowPrompt((value) => !value)}
-            aria-expanded={showPrompt}
-            aria-label="What she was asked to draw"
-            title="What she was asked to draw"
-            className={cn(rowToggle(), '-ml-2')}
-          >
-            <BrushIcon className="size-4" />
-          </button>
-        )}
+          <>
+            <button
+              type="button"
+              onClick={() => setShowPrompt((value) => !value)}
+              aria-expanded={showPrompt}
+              aria-label="What she was asked to draw"
+              title="What she was asked to draw"
+              className={cn(rowToggle(), '-ml-2')}
+            >
+              <BrushIcon className="size-4" />
+            </button>
 
-        <span aria-hidden="true" className="mx-1 h-6 w-px bg-rule" />
+            <span aria-hidden="true" className="mx-1 h-6 w-px bg-rule" />
+          </>
+        )}
 
         <Button
           size="md"
