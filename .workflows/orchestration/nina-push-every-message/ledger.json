@@ -37,7 +37,7 @@
       "satisfies": [
         "R1"
       ],
-      "status": "spawned",
+      "status": "pending",
       "task_id": null,
       "title": "Push when she replies to him"
     },
@@ -56,27 +56,27 @@
       "satisfies": [
         "R1"
       ],
-      "status": "spawned",
+      "status": "pending",
       "task_id": null,
       "title": "Push when the photo lands, and when it cannot"
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "0092a93",
       "depends_on": [
         1
       ],
       "difficulty": "EASY",
       "n": 4,
-      "note": null,
+      "note": "notifyNinaPush('admin_chat_photo') added past addChatPhotoAction's 4 refusals; no decisions",
       "package": "lib/admin",
       "plan": ".workflows/plan/nina-push-every-message/phase-4.md",
-      "reported_at": null,
+      "reported_at": "2026-09-14T04:34:06+00:00",
       "satisfies": [
         "R2"
       ],
-      "status": "spawned",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-ADM-A003",
       "title": "Push when a photo is added to her chat from `/admin"
     },
     {
@@ -94,7 +94,7 @@
       "satisfies": [
         "R1"
       ],
-      "status": "spawned",
+      "status": "pending",
       "task_id": null,
       "title": "Push from the off-platform backstop worker"
     }
@@ -102,7 +102,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-push-every-message/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-push-every-message",
-  "updated": "2026-09-14T04:25:49+00:00",
-  "verified_at": "2026-09-14T04:24:38+00:00",
+  "updated": "2026-09-14T04:34:18+00:00",
+  "verified_at": "2026-09-14T04:34:18+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-push-every-message"
 }
