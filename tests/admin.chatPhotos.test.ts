@@ -402,6 +402,7 @@ const describeNinaImages = vi.fn()
 const captionNinaPhoto = vi.fn()
 const resolveNinaWriteSession = vi.fn()
 const revalidatePath = vi.fn()
+const notifyNinaPush = vi.fn()
 
 /**
  * `after()` is captured rather than executed, because the thing under test is precisely that the
@@ -444,6 +445,22 @@ vi.mock('@/lib/nina/queries', () => ({
   updateNinaMessage: (...args: unknown[]) => updateNinaMessage(...args),
 }))
 vi.mock('@/lib/nina/blobRelease', () => ({ releaseBlobIfUnreferenced: vi.fn() }))
+
+/**
+ * The push seam. Mocked WHOLESALE rather than spied, for two reasons that both matter here: the
+ * real module opens with `import 'server-only'` and pulls in `web-push` and `pushEnv()`, and plan
+ * invariant 7 says no test in this set may reach a push service or need a VAPID key.
+ *
+ * All three of the module's exports are named even though this file only calls one. A `vi.mock`
+ * factory REPLACES the module, so a name it omits is missing for every importer in the graph —
+ * `lib/nina/proactive.ts` imports `pushNotifier` from here — and that failure surfaces as an
+ * unrelated module-resolution error rather than as anything about this test.
+ */
+vi.mock('@/lib/push/send', () => ({
+  notifyNinaPush: (...args: unknown[]) => notifyNinaPush(...args),
+  sendNinaPush: vi.fn(),
+  pushNotifier: vi.fn(),
+}))
 
 type Actions = typeof import('@/lib/admin/chatPhotoActions')
 let actions: Actions
@@ -496,6 +513,7 @@ beforeEach(async () => {
   updateNinaMessage.mockResolvedValue({ id: MESSAGE_ID })
   updateNinaChatPhotoBlob.mockResolvedValue({ id: IMAGE_ID })
   updateNinaChatPhotoDescription.mockResolvedValue({ id: IMAGE_ID })
+  notifyNinaPush.mockResolvedValue(undefined)
 
   actions = await import('@/lib/admin/chatPhotoActions')
 })
@@ -789,6 +807,115 @@ describe('addChatPhotoAction write-time dedup (media-dedupe P3)', () => {
     expect(insertNinaMessageImages).toHaveBeenCalledWith(USER, [
       expect.objectContaining({ contentHash: null, sourceImageId: null }),
     ])
+  })
+})
+
+/**
+ * **The push (nina-push-every-message, R2).** An operator adding a photograph from `/admin` is Nina
+ * speaking on her own initiative, and until this phase nothing told the phone: the service-worker
+ * refresh this file's own comment names only ever fires inside a `push` handler.
+ *
+ * The exit criterion has two halves and both are failure-shaped, so both are asserted case by case:
+ * an add that LANDED announces exactly the sentence that is in the chat, and an add that returned
+ * `{ ok: false }` announces nothing at all. The second half is four cases because the action has
+ * four refusals, and the last of them writes a message row and then deletes it — the one place a
+ * misplaced call would announce a bubble that no longer exists.
+ */
+describe('addChatPhotoAction tells his phone (R2)', () => {
+  /** A RUNNER-upload pathname: valid for the store and for the schema, refused by the admin guard. */
+  const runnerPathname = `nina/${USER}/chat/${ID}-${BLOB_SUFFIX}.jpg`
+
+  it('pushes the bubble it just wrote, with the sentence that is actually in the chat', async () => {
+    const result = await actions.addChatPhotoAction(goodBlob)
+    expect(result).toEqual({ ok: true, id: IMAGE_ID })
+
+    expect(notifyNinaPush).toHaveBeenCalledTimes(1)
+
+    // The body is not merely "a pool line" — it is THE pool line the insert was given. Asserting
+    // the equality rather than the shape is what rules out a second `ninaImageCaption(newId())`
+    // call, which would be a legal-looking string and wrong four times in five.
+    const [, [inserted]] = insertNinaMessages.mock.calls[0] as [string, [{ body: string }], string]
+    expect(notifyNinaPush).toHaveBeenCalledWith(
+      USER,
+      [{ id: MESSAGE_ID, body: inserted.body }],
+      'admin_chat_photo',
+    )
+    expect(NINA_IMAGE_CAPTIONS).toContain(inserted.body)
+  })
+
+  it('announces nothing when the file did not land in her photo folder', async () => {
+    const result = await actions.addChatPhotoAction({
+      ...goodBlob,
+      blobUrl: `${STORE}/${runnerPathname}`,
+      pathname: runnerPathname,
+    })
+
+    expect(result.ok).toBe(false)
+    expect(insertNinaMessages).not.toHaveBeenCalled()
+    expect(notifyNinaPush).not.toHaveBeenCalled()
+  })
+
+  it('announces nothing when the pinned duplicate has since been removed', async () => {
+    getNinaMessageImage.mockResolvedValue(null)
+
+    const result = await actions.addChatPhotoAction({ ...goodBlob, duplicateOfId: 'keep123XYZ_9' })
+
+    expect(result.ok).toBe(false)
+    expect(notifyNinaPush).not.toHaveBeenCalled()
+  })
+
+  it('announces nothing when no place could be opened in the conversation', async () => {
+    // `insertNinaMessages` returns `[]` rather than throwing for a session that is not his.
+    insertNinaMessages.mockResolvedValue([])
+
+    const result = await actions.addChatPhotoAction(goodBlob)
+
+    expect(result).toEqual({ ok: false, error: 'Could not open a place in the conversation for it.' })
+    expect(notifyNinaPush).not.toHaveBeenCalled()
+  })
+
+  it('announces nothing when the picture could not be attached and the bubble was undone', async () => {
+    // The sharpest case on this surface: a message row WAS written, then deleted. A notification
+    // here would open a chat with nothing in it — the exact defect the empty-bubble unwind exists
+    // to prevent, reintroduced through the lock screen.
+    insertNinaMessageImages.mockResolvedValue([])
+    const { deleteNinaMessage } = await import('@/lib/nina/queries')
+
+    const result = await actions.addChatPhotoAction(goodBlob)
+
+    expect(result).toEqual({ ok: false, error: 'The photo could not be attached to a message.' })
+    expect(deleteNinaMessage).toHaveBeenCalledWith(USER, MESSAGE_ID)
+    expect(notifyNinaPush).not.toHaveBeenCalled()
+  })
+
+  it('a failed push never fails the add, and never costs the photograph its caption', async () => {
+    // Plan invariant 2. `notifyNinaPush` is documented as never throwing; this case proves the
+    // call site does not depend on that promise being kept.
+    notifyNinaPush.mockRejectedValue(new Error('APNs is having a day'))
+
+    const result = await actions.addChatPhotoAction(goodBlob)
+
+    expect(result).toEqual({ ok: true, id: IMAGE_ID })
+    expect(revalidatePath).toHaveBeenCalledWith(ADMIN_CHAT_PHOTOS_PATH)
+
+    // The captioner was registered BEFORE the push was attempted, so a push that rejects — or one
+    // that hangs — cannot take the description and the caption down with it.
+    await runTheAfterCallback()
+    expect(setNinaMessageImageDescription).toHaveBeenCalledWith(USER, IMAGE_ID, STORED_DESCRIPTION)
+    expect(updateNinaMessage).toHaveBeenCalledWith(USER, MESSAGE_ID, CAPTION)
+  })
+
+  it('the actions that mint no message announce nothing', async () => {
+    // Replace swaps the bytes behind a bubble that already exists and Edit rewrites a paragraph on
+    // the photograph; neither is Nina saying anything new, so neither may buzz his phone. ADD is
+    // the only writer of a `nina_messages` row on this surface and that is why it is the only site.
+    await actions.replaceChatPhotoAction({ id: IMAGE_ID, ...goodBlob })
+    await actions.editChatPhotoDescriptionAction({
+      id: IMAGE_ID,
+      description: 'She is sitting on a kerb in low orange light, a bottle in one hand.',
+    })
+
+    expect(notifyNinaPush).not.toHaveBeenCalled()
   })
 })
 

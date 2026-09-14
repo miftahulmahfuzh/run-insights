@@ -44,6 +44,7 @@ import {
 import { resolveNinaWriteSession } from '@/lib/nina/sessionResolve'
 import { NinaVisionTokenFloorError, describeNinaImages } from '@/lib/nina/vision'
 import { isValidContentHash } from '@/lib/photos/contentHash'
+import { notifyNinaPush } from '@/lib/push/send'
 
 /**
  * Nina's chat photographs, from `/admin`. R2's write half: *"user can replace a photo in there with
@@ -300,12 +301,25 @@ export async function addChatPhotoAction(input: unknown): Promise<ChatPhotoActio
 
   const sessionId = await resolveNinaWriteSession(userId)
 
+  /*
+   * Her words for this bubble, minted ONCE and spent twice: the row below is written with this
+   * string and the notification further down carries the same one to the lock screen.
+   *
+   * It is a `const` rather than two calls because `ninaImageCaption` is `pickLine` over a FRESH
+   * `newId()` — pure, but not idempotent across calls. A second call for the notification would
+   * pick one of `NINA_IMAGE_CAPTION_POOL`'s five lines at random, so four times in five the phone
+   * would show a sentence the chat does not contain. It is a `const` rather than a read-back of
+   * `message.body` because that would make the notification depend on a projection nothing else
+   * here reads, to learn a string this function already knows.
+   */
+  const body = ninaImageCaption(newId())
+
   const [message] = await insertNinaMessages(
     userId,
     [
       {
         role: 'nina',
-        body: ninaImageCaption(newId()),
+        body,
         source: 'chat',
         turnId: null,
         replyToId: null,
@@ -364,6 +378,42 @@ export async function addChatPhotoAction(input: unknown): Promise<ChatPhotoActio
   }
 
   scheduleChatPhotoCaption(userId, image.id)
+
+  /* ── AND TELL HIS PHONE (nina-push-every-message, R2) ───────────────────────────────────────
+   * The header of `scheduleChatPhotoCaption` below says the runner's screen picks a new bubble up
+   * "on its next load or service-worker refresh". The refresh half was aspirational: the service
+   * worker's `postMessage({type:'nina:new'})` fires only inside its `push` handler, and nothing
+   * pushed for a photograph an operator added — so until this line the bubble arrived on the next
+   * page load and no sooner. This is the push that makes that sentence true.
+   *
+   * ── IT IS PAST EVERY REFUSAL, AND THAT IS THE WHOLE GUARD ──────────────────────────────────
+   * A vanished pinned row (:275), a file outside her photo folder (:284), an unowned session
+   * (:320) and an image that could not be attached (:351) all `return` above this line, and the
+   * last of them DELETES the bubble it wrote. There is no fifth condition to test here: reaching
+   * this statement is the proof that a message row and an image row are both committed, which is
+   * also why it is here rather than beside the insert — a notification that opens a chat showing
+   * a caption above an empty frame is worse than no notification.
+   *
+   * ── `body`, NOT `message.body` ─────────────────────────────────────────────────────────────
+   * The same string the row was written with, by construction. See the `const` at :303.
+   *
+   * ── IT NEVER FAILS THE ADD (plan invariant 2) ──────────────────────────────────────────────
+   * `proactive.ts:611-615`'s shape, and `notifyNinaPush` already swallows everything a push can do
+   * wrong — no VAPID, no subscriptions, a dead endpoint, a 500 from Apple. This `try` is the belt
+   * to that brace: the photograph is in the collection and in the conversation whatever happens
+   * next, and an operator must never see "The photo could not be attached" because a phone was
+   * unreachable.
+   */
+  try {
+    await notifyNinaPush(userId, [{ id: message.id, body }], 'admin_chat_photo')
+  } catch (cause) {
+    console.warn('[push] admin chat photo notify failed', {
+      userId,
+      messageId: message.id,
+      imageId: image.id,
+      error: String(cause),
+    })
+  }
 
   revalidatePath(ADMIN_CHAT_PHOTOS_PATH)
   return { ok: true, id: image.id }
