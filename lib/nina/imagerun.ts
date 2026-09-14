@@ -6,6 +6,7 @@ import { after } from 'next/server'
 import { blobEnv } from '@/lib/env'
 import { newId } from '@/lib/id'
 import { contentHashOf } from '@/lib/photos/contentHash'
+import { notifyNinaPush } from '@/lib/push/send'
 
 import { releaseBlobIfUnreferenced } from './blobRelease'
 import { captionNinaPhoto } from './caption'
@@ -461,6 +462,41 @@ async function finishSelfie(
   }
 
   await completeNinaImageJob(userId, jobId, result)
+
+  /*
+   * ── THE KNOCK ON THE DOOR (R1) ────────────────────────────────────────────────────────────
+   * He asked for this photograph ninety seconds ago and has certainly locked his phone — that is
+   * what the whole `after()` design is FOR. Until this line the only way he learned the picture
+   * had arrived was opening `/nina` and looking.
+   *
+   * ── WHY IT IS THE LAST STATEMENT IN THE FUNCTION ──────────────────────────────────────────
+   * Every reason "THE ORDER IS LOAD-BEARING" gives above applies harder to a network call. This
+   * awaits a signed HTTPS POST per live subscription; placed before `completeNinaImageJob` it
+   * would widen the window in which this job is still `pending` while its photograph is already
+   * in the chat — and an instance killed inside that window hands `sweepStaleNinaImageJobs` a job
+   * to apologise for that nobody needs an apology about. Placed here, the most a push can cost is
+   * the push. Both rows are committed, the dedup re-check has had its say, the ledger is closed.
+   *
+   * ── WHY THE BODY IS `caption` AND NOT `message.body` ──────────────────────────────────────
+   * They are the same string by construction — `insertNinaMessages` writes `text: row.body` from
+   * exactly this value — but `caption` is the one this process computed and proved non-empty at
+   * the insert above ("Never empty", and both halves of that expression are non-empty strings).
+   * Reading it back off the returned row would make the notification's body depend on a column
+   * round-trip for no gain. `message.id` is the row's, because a notification's `messageId` must
+   * name a row that exists.
+   *
+   * ── ITS OWN `try`, AND IT SWALLOWS (PLAN INVARIANT 2) ─────────────────────────────────────
+   * The exact shape of `lib/nina/proactive.ts:702–706`. `notifyNinaPush` already never throws on
+   * its own account — a deployment with no `VAPID_*` is reported as `skipped`, not raised — so
+   * reaching this catch means a bug or a database fault in the push bookkeeping. Neither is worth
+   * a photograph: the job is already `ok`, the bubble is already in the chat, and throwing here
+   * would make `runNinaImageJob` close a delivered generation as a failure.
+   */
+  try {
+    await notifyNinaPush(userId, [{ id: message.id, body: caption }], 'photo_delivered')
+  } catch (cause) {
+    console.warn('[nina] photo notify failed', { jobId, error: String(cause) })
+  }
 }
 
 /**

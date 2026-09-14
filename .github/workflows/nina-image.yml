@@ -93,6 +93,26 @@ jobs:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+
+      # ── THE NOTIFICATION, AND THE ONE STEP THIS COMMIT COULD NOT PERFORM ──────────────────────
+      # When this backstop finishes a photograph, scripts/nina-image-worker/push.ts sends the same
+      # Web Push the app sends for the same event — otherwise the runner learns his picture arrived
+      # only by opening /nina, which on the backstop path is the longest wait in the system.
+      #
+      # THESE THREE SECRETS DO NOT EXIST YET. Only the repository owner can add them, in
+      # Settings -> Secrets and variables -> Actions, and they MUST be byte-identical to the Vercel
+      # Production environment's: a push is signed for one VAPID key pair, and a runner signing with
+      # a different one is refused by the push service for every subscription the app registered.
+      # (Production scope, not Preview — see the note in docs about VAPID_* being production-only.)
+      #
+      # UNTIL THEY EXIST, NOTHING BREAKS. An undefined secret interpolates to the empty string, the
+      # worker reads that as "no VAPID", logs `skipped: 'VAPID not configured'` and returns. The
+      # photograph is still written, the job is still closed `ok`, the run still exits 0. That is
+      # deliberate and it is why these three are NOT in preflight.ts's REQUIRED_ENV: a missing
+      # notification must never stop a generation this workflow exists to rescue.
+      VAPID_PUBLIC_KEY: ${{ secrets.VAPID_PUBLIC_KEY }}
+      VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+      VAPID_SUBJECT: ${{ secrets.VAPID_SUBJECT }}
     steps:
       - uses: actions/checkout@v4
 

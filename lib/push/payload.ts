@@ -138,6 +138,77 @@ export function parsePushSubscription(value: unknown): PushSubscriptionInput | n
 }
 
 /**
+ * ── THE KIND VOCABULARY, AND WHY IT LIVES IN THIS FILE ────────────────────────────────────────
+ * Every push this app sends is stamped with one of these. `kind` is diagnostics only — it reaches
+ * the wire, the log line and nothing else — but it is a CLOSED list anyway, because it is the one
+ * field of the payload a human reads at 2am to answer "which of the seven places Nina writes a
+ * message sent this?", and a free string answers that question with typos.
+ *
+ * **It is here rather than in `send.ts` for one reason, and the reason is load-bearing.**
+ * `send.ts` opens with `import 'server-only'` and reaches `lib/env` and the database through `@/`
+ * aliases. The off-platform image worker (`scripts/nina-image-worker/*`) runs under
+ * `node --experimental-strip-types` with no bundler: it cannot resolve `@/`, it cannot import
+ * `server-only`, and it reaches this module through a relative `../../lib/push/payload.ts`
+ * specifier. This file has no `server-only` and no I/O — that is its entire design — so the
+ * vocabulary is importable from both worlds and there is one list rather than two.
+ *
+ * **For the same reason this file does not import `ProactiveTriggerKind`.** The first five entries
+ * are that union spelled out by hand; importing it would drag `@/lib/nina/prompts` into a module
+ * the worker loads. The two lists are pinned together by the `NinaPushKind` annotation in
+ * `send.ts`'s `pushNotifier` — the one place that legitimately knows about both — so adding a
+ * trigger without adding it here fails `npx tsc --noEmit` at that seam.
+ */
+export const NINA_PUSH_KINDS = [
+  /* `ProactiveTriggerKind` verbatim (lib/nina/prompts/system.ts:561). She opened the conversation;
+   * `emitProactiveMessage` passes `detail.kind` straight through, so these ARE the trigger names
+   * and renaming one here would change what a push says it is without changing what sends it. */
+  'run_committed',
+  'missed_usual_day',
+  'pattern_crossed',
+  'silence',
+  'avatar_changed',
+
+  /* The "Send me a test" button on `/me`. `lib/push/actions.ts` passes this literal as a bare
+   * string and is deliberately not typed to this union ("this is not a trigger", its own comment);
+   * it is listed so that narrowing it one day is a rename and not a decision. */
+  'manual_test',
+
+  /* One kind per message write. The log line is the only place anyone will ever reconstruct which
+   * of them buzzed the phone, so each gets its own name rather than sharing 'photo'.
+   *
+   * ── THE TWO HOSTS DELIBERATELY DO NOT SHARE A KIND ──────────────────────────────────────────
+   * A delivered photograph is written by TWO different processes — `lib/nina/imagerun.ts` in the
+   * app and `scripts/nina-image-worker/finish.ts` on a GitHub runner — and the apology likewise.
+   * They get `photo_delivered`/`photo_apology` and `worker_photo_*` rather than one value each,
+   * because `kind` is diagnostics only and "which host delivered this photograph" is EXACTLY the
+   * diagnostic the off-platform backstop exists to produce: the worker only runs when the app's
+   * own invocation was killed, so a `worker_*` line in the log is the signal that the backstop
+   * fired. Collapsing the pairs would destroy that signal and leave nothing in its place. Do not
+   * "tidy" them back together. */
+  /** Her reply to something he said — every chat turn, including resends, revives and the chain. */
+  'chat_reply',
+  /** The photograph he asked for, delivered by the in-platform run. */
+  'photo_delivered',
+  /** R22's apology, when the photograph he asked for could not be made. */
+  'photo_apology',
+  /** A photo added to her chat from `/admin`. */
+  'admin_chat_photo',
+  /** The photograph he asked for, delivered by the off-platform backstop worker. */
+  'worker_photo_delivered',
+  /** R22's apology, written by the off-platform backstop worker when it gave the photograph up. */
+  'worker_photo_apology',
+] as const
+
+/**
+ * The closed set above, as a type. `buildNinaPushPayload` still takes `kind: string` on purpose:
+ * the service worker reads that field with no type system and may be a version older than the
+ * server pushing to it, so the WIRE contract stays "an opaque string" (invariant 5) and this union
+ * is caller-side discipline rather than a new wire constraint. Adding a value is an addition, not
+ * a meaning change, and `v` stays `1`.
+ */
+export type NinaPushKind = (typeof NINA_PUSH_KINDS)[number]
+
+/**
  * ── THE PAYLOAD CONTRACT WITH `lib/service-worker.js` ─────────────────────────────────────────
  * This type and that file are two halves of one wire format, and the service worker is the half
  * that cannot be type-checked (it is plain JS, it runs in a worker global, and it may be a version
@@ -158,7 +229,13 @@ export interface NinaPushPayload {
   tag: string
   /** The `nina_messages.id` of the first bubble, or null. Diagnostics only; nothing reads it yet. */
   messageId: string | null
-  /** Phase 10's `ProactiveTriggerKind`, as an opaque string. Diagnostics only. */
+  /**
+   * A `NinaPushKind` (see `NINA_PUSH_KINDS` above), as an opaque string. Diagnostics only, and
+   * typed `string` rather than `NinaPushKind` ON PURPOSE: `lib/service-worker.js` reads this field
+   * with no type system and may be a registration older than the deploy that is pushing to it, so
+   * a kind added this week must not break a worker installed last week. Adding a value is an
+   * addition, never a meaning change — `v` stays `1`.
+   */
   kind: string
 }
 

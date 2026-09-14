@@ -1,7 +1,8 @@
 # Package: admin
 
 **Location**: `lib/admin`
-**Last Updated**: 2026-09-12 — full rewrite/compaction against the current tree (every export
+**Last Updated**: 2026-09-14 (media add's push notification, P1-ADM-A003). Baseline:
+2026-09-12 — full rewrite/compaction against the current tree (every export
 block, signature, constant and reverse dependency re-verified mechanically; the per-task changelog
 this file used to carry inline now lives in `git log -- lib/admin`, see *Recent Changes*).
 
@@ -33,8 +34,9 @@ exactly one definition — `schema.ts` imports every bound it enforces rather th
 - Own the album's write side: register a dropped folder, promote, crop, describe (by model or by
   hand), adopt a chat photo, delete, and maintain folders (create/rename/move/delete, bulk
   move/remove).
-- Own the media collection's write side: add (with write-time dedupe), replace, remove (with
-  blob release), describe, and the hand-written description edit.
+- Own the media collection's write side: add (with write-time dedupe, and the push notification
+  that tells his phone the bubble exists), replace, remove (with blob release), describe, and the
+  hand-written description edit.
 - Own `/admin/memory`'s write side (four actions), and make it structurally impossible to write
   a memory row without the `admin` source label.
 - Own `/admin/shortcuts`'s write side, and make it structurally impossible for a caller — or a
@@ -57,7 +59,7 @@ exactly one definition — `schema.ts` imports every bound it enforces rather th
 | `ninaAlbumActions.ts` | `'use server'` | The album's write side: 15 actions — describe/edit prose, face, crop, delete, folder register/manifest, folder maintenance. |
 | `chatPhotos.ts` | pure | The media collection's vocabulary: pathname shapes, ceilings, id regexes, the carrier-message rule, `planChatPhotoAddWrite`'s types. |
 | `chatPhotoSchema.ts` | pure | Every Zod schema the media collection accepts. Separate from `schema.ts` (different table, different route). `schema.ts` imports from it. |
-| `chatPhotoActions.ts` | `'use server'` | Six actions: add, replace, find-duplicate, remove, describe, edit description. |
+| `chatPhotoActions.ts` | `'use server'` | Six actions: add (the only one that mints a message — and so the only one that pushes), replace, find-duplicate, remove, describe, edit description. |
 | `users.ts` | `server-only` | The unscoped account enumeration the memory page's picker (and others) need. |
 | `memoryModel.ts` | pure | Memory bounds, the seven categories, and `MemoryRow` — the one row model of `/admin/memory`. |
 | `memoryVocab.ts` | `server-only` in practice (no pill; a test imports it) | The bridge from the closed slot vocabulary to the page's rows: `buildMemoryRows`, `canonicaliseSlotValue`. |
@@ -471,6 +473,35 @@ already in hand), and the loser's fresh PUT is released after the row lands (ROW
 SECOND). A row's `content_hash` describes the bytes its `blob_url` serves — a reference carries
 the KEEPER's measured hash, even when that is NULL, never the claim's.
 
+**Add tells his phone** (`nina-push-every-message` R2, *"when Nina speaks on her own initiative,
+a push notification is sent"*): after `scheduleChatPhotoCaption` and before `revalidatePath`,
+`addChatPhotoAction` calls `notifyNinaPush(userId, [{ id: message.id, body }], 'admin_chat_photo')`.
+Three rules hold it together, and each is a rule rather than a detail:
+
+- **The caption is minted once and spent twice.** `body = ninaImageCaption(newId())` is a `const`
+  read by the message insert AND by the notification. `ninaImageCaption` is `pickLine` over a
+  FRESH id — pure but not idempotent across calls — so a second draw for the push would put one
+  of the pool's other lines on the lock screen four times in five, a sentence the chat does not
+  contain. Pass `body`, never `message.body` and never a second call.
+- **It sits past every refusal, and that IS the guard.** All four `{ ok: false }` returns — the
+  vanished pinned row, the pathname outside her folder, the message that could not be opened, and
+  the image that could not be attached (which DELETES the bubble it just wrote) — return above the
+  notify. Reaching the call is the proof that a message row and an image row are both committed;
+  there is no fifth condition to test, and putting it beside the insert would let a notification
+  open a chat showing a caption above an empty frame.
+- **It never fails the add.** `notifyNinaPush` already swallows everything a push can do wrong (no
+  VAPID, no subscriptions, a dead endpoint, a vendor 500); the `try/catch` here is the belt to
+  that brace and only `console.warn`s. An operator must never see "The photo could not be
+  attached" because a phone was unreachable, and a notify failure must not cost the photograph its
+  deferred caption.
+
+This is also what makes `scheduleChatPhotoCaption`'s own sentence — the bubble arrives "on the
+next load or service-worker refresh" — true. The service worker's `nina:new` `postMessage` fires
+only inside its `push` handler, and until this line nothing pushed for an operator-added
+photograph, so the refresh half was aspirational. The other five actions in the file mint no
+message and deliberately notify nothing: replace/describe/edit change an EXISTING bubble or a
+private note, and remove takes one away — none of them is Nina speaking.
+
 **Remove** resolves the empty-bubble problem: when the last image on a message that exists only
 to carry it goes, the MESSAGE goes too (in the same transaction — `message_id` is `ON DELETE SET
 NULL` since the orphan work, so a deleted SESSION cannot take photographs with it; a
@@ -819,6 +850,11 @@ to her, is described on demand — and then either in-band (the two describe act
 - `@/lib/llm/{catalog,textModel}` — the narrative text model's id list and its store
   (`textModelActions.ts` only).
 - `@/lib/photos/contentHash` — the dedupe hash (`chatPhotoActions.ts`).
+- `@/lib/push/send` — `notifyNinaPush`, the one push seam under `lib/admin`, called by
+  `addChatPhotoAction` and nothing else here. A test's `vi.mock('@/lib/push/send', …)` factory
+  must name **all three** runtime exports (`sendNinaPush`, `notifyNinaPush`, `pushNotifier`): the
+  module graph reaches it through `lib/nina/proactive.ts`, which imports `pushNotifier`, so an
+  omitted key is a module-resolution error rather than a silent undefined.
 - `@/lib/id` — `isValidId` shape checks on claimed ids.
 - `@/lib/db`, `@/lib/db/schema`, `@/lib/db/queries` — `users.ts` and the memory type imports;
   `isUniqueViolation` (shortcuts' 23505 catch).
@@ -913,8 +949,10 @@ No thread primitives; the relevant facts are the runtime's:
 - **The page boundary throws framework control flow** (`redirect()`/`notFound()`); the API
   boundary throws typed errors (`UnauthorizedError` 401, `AdminForbiddenError` 404) so one catch
   serves both.
-- **Vendor and blob failures are non-fatal and logged** (with distinct log levels for "the vendor
-  answered 200 and dropped the image" — the token floor — versus a dead socket).
+- **Vendor, blob and push failures are non-fatal and logged** (with distinct log levels for "the
+  vendor answered 200 and dropped the image" — the token floor — versus a dead socket). The
+  media add's notify is wrapped even though `notifyNinaPush` already swallows its own failures:
+  a phone is never allowed to decide whether a photograph was added.
 - **A failed `del` still reports success** after logging: the row is already gone, and a
   recoverable orphan beats a broken image under a live row. The orphan window is named, not
   fixed — the blob reaper owns it, deliberately out of scope here.
@@ -963,6 +1001,14 @@ export default async function Page() {
   pass; re-captioning the bubble rewrites a sentence Nina already said.
 - **Keep `.max()` ahead of `.transform()`** in `chatPhotoDescriptionField`, and do not add
   `.min(1)` — the empty box is the clear (D1).
+- **Do not draw the media add's caption twice.** One `const body = ninaImageCaption(newId())`
+  feeds both the message row and the push; a second call picks a different pool line and the lock
+  screen then quotes a sentence the conversation does not contain.
+- **Do not move the media add's `notifyNinaPush` above any `{ ok: false }` return.** Its position
+  past all four of them is the entire guard that a notification only ever announces a bubble that
+  exists — including the refusal that writes a message row and then deletes it.
+- **Do not let a push failure change an action's result.** Every notify here is `try`/`catch` →
+  `console.warn`, and the action still returns `{ ok: true }`.
 - **Do not delete a photo's row without considering both blob references and shared objects** —
   the row is the only record a thumbnail exists, and `releaseBlobIfUnreferenced` decides the
   release.
@@ -1010,6 +1056,20 @@ registered) is real and belongs to the reaper, not to this package.
 
 ## Recent Changes
 
+- **2026-09-14** — `nina-push-every-message` phase 4 (P1-ADM-A003), satisfying R2 *"when Nina
+  speaks on her own initiative, a push notification is sent"*: `addChatPhotoAction` now calls
+  `notifyNinaPush(userId, [{ id: message.id, body }], 'admin_chat_photo')` after
+  `scheduleChatPhotoCaption` and before `revalidatePath`, past all four `{ ok: false }` returns
+  and inside a log-only `try`/`catch`. The bubble's caption became a `const body` written once
+  into the row and read again for the notification, replacing a second `ninaImageCaption(newId())`
+  draw — the row and the push now carry the same string by construction. Adding a photo from
+  `/admin` buzzes the phone with the bubble's own line; refusals push nothing; a notify failure
+  costs neither the row nor the deferred caption. `tests/admin.chatPhotos.test.ts` gained a
+  whole-module `vi.mock('@/lib/push/send', …)` naming all three runtime exports plus a 7-case
+  `addChatPhotoAction tells his phone (R2)` block (90 tests in that file, full suite 5824 green
+  with no `VAPID_*` set — both counts measured 2026-09-14). The other four phases of that plan set
+  are peer phases in flight in the same worktree (`lib/nina`, `scripts/nina-image-worker`) and are
+  deliberately not documented here.
 - **2026-09-13** — dead-export sweep (token-maxxing session `lib-admin-yagni`): a knip
   `exports`/`types` pass flagged 26 items across `schema.ts`, `folderOps.ts`, `chatPhotoSchema.ts`,
   `chatPhotos.ts`, `memoryModel.ts` and `shortcutModel.ts` — every one verified by grep against

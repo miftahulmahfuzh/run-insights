@@ -5,6 +5,7 @@ import { and, asc, desc, eq, isNotNull, isNull, lt, or, sql } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { ninaTurns } from '@/lib/db/schema'
 import type { NinaTurnStatus } from '@/lib/db/schema'
+import { notifyNinaPush } from '@/lib/push/send'
 
 import { ninaImageApology, type NinaImageFailure } from './imagefail'
 import {
@@ -617,12 +618,16 @@ async function postNinaApologyMessage(input: {
 }): Promise<void> {
   const sessionId = await resolveNinaSessionForMessage(input.userId, input.replyToId)
 
-  await insertNinaMessages(
+  /* Hoisted out of the insert so the row and the notification below say the same sentence by
+   * construction rather than by calling a deterministic function twice and trusting it. */
+  const body = ninaImageApology(input.kind, input.jobId)
+
+  const [apology] = await insertNinaMessages(
     input.userId,
     [
       {
         role: 'nina',
-        body: ninaImageApology(input.kind, input.jobId),
+        body,
         source: 'chat',
         turnId: input.jobId,
         replyToId: input.replyToId,
@@ -630,6 +635,39 @@ async function postNinaApologyMessage(input: {
     ],
     sessionId,
   )
+
+  /*
+   * ── R1: TWENTY MINUTES IS A LONG TIME TO WAIT FOR A PHOTO THAT IS NOT COMING ──────────────
+   * One site here covers BOTH callers — `failNinaImageJob`'s terminal give-up and
+   * `sweepStaleNinaImageJobs`' 20-minute deadline — and, more importantly, it inherits their two
+   * gates instead of restating them. Neither caller reaches this function for an AVATAR job
+   * (nobody asked for one in the chat, so there is nothing to apologise for and nothing to
+   * announce) nor for a job the runner has HIDDEN (`deleted_at` read off each caller's own
+   * `returning`, which is R2's whole point). A notification written in the callers would be a
+   * second copy of both rules, in duplicate, free to drift.
+   *
+   * ── WHY THE ROW IS BOUND AND NOT DISCARDED ────────────────────────────────────────────────
+   * `insertNinaMessages` returns `[]` rather than throwing when the session is not this user's —
+   * its documented convention — so an empty result means NO ROW WAS WRITTEN. Notifying then would
+   * buzz a phone about a message that does not exist, which is strictly worse than silence. The
+   * id is also what `NinaPushPayload.messageId` carries, and that field must name a real row.
+   *
+   * ── ITS OWN `try`, AND IT IS LOAD-BEARING IN BOTH CALLERS ─────────────────────────────────
+   * The shape of `lib/nina/proactive.ts:702–706`, and here the swallow buys two specific things
+   * beyond invariant 2's general rule. `failNinaImageJob` wraps its call to this function in a
+   * catch that logs *"image apology could not be written; closing the job anyway"* — a notify
+   * failure escaping to there would file itself under a message that DID get written. And
+   * `sweepStaleNinaImageJobs` wraps its call in a per-row try whose `swept += 1` sits AFTER it,
+   * so an escaping notify failure would under-count the sweep and log a job that was in fact
+   * closed as one that failed to close.
+   */
+  if (apology != null) {
+    try {
+      await notifyNinaPush(input.userId, [{ id: apology.id, body }], 'photo_apology')
+    } catch (cause) {
+      console.warn('[nina] apology notify failed', { jobId: input.jobId, error: String(cause) })
+    }
+  }
 }
 
 /**

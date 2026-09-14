@@ -2,7 +2,7 @@
 
 **Package Path**: `lib/admin`
 **Package Code**: ADM
-**Last Updated**: 2026-09-12
+**Last Updated**: 2026-09-14
 **Total Active Tasks**: 0
 
 ## Quick Stats
@@ -12,7 +12,7 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 5
+- Completed: 6
 - Archived: 4
 
 ---
@@ -38,6 +38,21 @@
 (all four completed tasks were archived on 2026-09-12 — see Archive; full
 per-task detail — Context, Drift, Decided, Files — survives in git history and
 in `.workflows/package_readme.md`)
+
+- [x] **P1-ADM-A003** Phase 4: Push when a photo is added to her chat from `/admin`
+  - **Difficulty**: EASY
+  - **Type**: Feature
+  - **Context**: Owns `lib/admin/chatPhotoActions.ts` and its test (`tests/admin.chatPhotos.test.ts`, modified) — adds one notify call stamped `'admin_chat_photo'` after the photo bubble and its image row are written, past all four of the action's refusal returns, with the bubble's caption hoisted so the row and the notification carry the same string by construction. Exit: adding a photo from `/admin` buzzes the phone with the bubble's caption; all four `{ ok: false }` returns push nothing; a notify failure never fails the add and never costs the photograph its deferred caption.
+  - **Status**: completed
+  - **Plan Set**: `NINA_PUSH_EVERY_MESSAGE_PLAN.md` (phase 4 of 5)
+  - **Satisfies**: R2 — When Nina speaks on her own initiative, a push notification is sent
+  - **Depends on**: `P1-PSH-A000`
+  - **Plan**: `.workflows/plan/P1-ADM-A003.md`
+  - **Completed**: 2026-09-14 11:28
+  - **Method**: /do
+  - **Files**: lib/admin/chatPhotoActions.ts, tests/admin.chatPhotos.test.ts
+  - **Verified**: `npx tsc --noEmit` clean; `npm run lint` 0 errors (2 pre-existing warnings in `scripts/nina-image-worker/finish.ts`, phase 5's file, not introduced here); `npx vitest run tests/admin.chatPhotos.test.ts` 90 passed; full `npm test` 334 files / 5824 tests passed — all with no `VAPID_*` set (invariant 7).
+  - **Note**: Applied verbatim from `.workflows/plan/P1-ADM-A003.md` — line numbers matched exactly. No drift, no decisions. `addChatPhotoAction` hoists the bubble caption into a `const body` written once and read twice, then calls `notifyNinaPush(userId, [{ id: message.id, body }], 'admin_chat_photo')` after `scheduleChatPhotoCaption` and before `revalidatePath`, inside its own try/catch that only logs.
 
 - [x] **P1-ADM-A002** Phase 5: Admin Error Logs page
   - **Difficulty**: HARD
