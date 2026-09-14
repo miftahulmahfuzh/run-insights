@@ -94,19 +94,23 @@ export default async function AdminPersonalityPage() {
 
       {/*
        * The text model (the 2026-09-10 ask) and its fallback (the 2026-09-14 ask), side by side
-       * from `sm:` up and stacked below it — the `grid gap-4 sm:grid-cols-2` shape `app/admin/page.tsx`
-       * already uses for this exact "two independent settings, one row" layout. Both sit ABOVE the
+       * from `sm:` up and stacked below it — the two-column-grid shape `app/admin/page.tsx` already
+       * uses for this exact "two independent settings, one row" layout. Both sit ABOVE the
        * character panel because they are the wider setting: the panel below configures what she
        * says, these configure which brain says it and which brain rescues it. Both edit
        * `app_settings`, not the tuning row, which is why each is its own component and its own
        * action file rather than a control on the panel.
        *
-       * `gap-2 sm:gap-4`, tightened at xs on top of each select's own `mb-2 sm:mb-6`: stacked on a
-       * phone these two add up (a grid item's margin is not absorbed by the row gap), so both had
-       * to shrink together to close the runner's "too much air between the cards" gap without
-       * touching the desktop row's spacing.
+       * NO base `gap-*`: below `sm:` these two stack into one column, and a grid's row-gap does
+       * NOT collapse with a stacked item's own margin — it adds. With both, Text model → Fallback
+       * model measured wider than Fallback model → Her character, because the row-gap only sits
+       * between the first two cards. Leaving the gap at 0 below `sm:` makes both selects' own
+       * `mb-2` (identical on both, see their own files) the ONE source of spacing at that width,
+       * so all three cards read as evenly spaced. `sm:gap-4` still opens up the column gap once
+       * the two selects sit side by side and their own margin no longer separates them from each
+       * other.
        */}
-      <div className="grid gap-2 sm:grid-cols-2 sm:gap-4">
+      <div className="grid sm:grid-cols-2 sm:gap-4">
         <TextModelSelect model={textModel} />
         <ChatFallbackModelSelect model={chatFallbackModel} />
       </div>
