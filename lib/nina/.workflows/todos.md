@@ -3,16 +3,16 @@
 **Package Path**: `lib/nina`
 **Package Code**: NIN
 **Last Updated**: 2026-09-14
-**Total Active Tasks**: 2
+**Total Active Tasks**: 1
 
 ## Quick Stats
 - P0 Critical: 0
-- P1 High: 2
+- P1 High: 1
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 48
+- Completed: 49
 - Archived: 36
 
 ---
@@ -20,26 +20,6 @@
 ## Active Tasks
 
 ### [P1] High
-
-- [ ] **P1-NIN-A048** Phase 2: Push when she replies to him
-  - **Difficulty**: HARD
-  - **Type**: Feature
-  - **Context**: Owns `lib/nina/turnrun.ts` and its test (`tests/nina.turnpush.test.ts`, created) — adds one notify call in `runNinaBackgroundTurn` stamped `'chat_reply'`, after the bubbles are committed and the claim is closed and before the distillation's model call, covering `sendNinaMessage`, `resendNinaTurn`, `reviveNinaChatTurn` and the burst chain through the one function they all converge on. Exit: a committed reply sends exactly one push carrying the first bubble; a chained follow-up sends its own; none of the four no-bubble paths (supersession, deleted-session, null payload, empty insert) sends anything; a notify failure leaves the rows, the closed claim, the distillation and the auto-title untouched.
-  - **Status**: active
-  - **Plan Set**: `NINA_PUSH_EVERY_MESSAGE_PLAN.md` (phase 2 of 5)
-  - **Satisfies**: R1 — When Nina answers something the runner said, a push notification is sent
-  - **Depends on**: `P1-PSH-A000`
-  - **Plan**: `.workflows/plan/P1-NIN-A048.md`
-
-- [ ] **P1-NIN-A049** Phase 3: Push when the photo lands, and when it cannot
-  - **Difficulty**: NORMAL
-  - **Type**: Feature
-  - **Context**: Owns `lib/nina/imagerun.ts` and `lib/nina/imagejobs.ts` (plus `tests/nina.imagerun.test.ts` modified and the new `tests/nina.imagepush.test.ts`) — notifies `'photo_delivered'` as the last statement of `finishSelfie`, and `'photo_apology'` inside the shared `postNinaApologyMessage` reached by both `failNinaImageJob` and `sweepStaleNinaImageJobs`, inheriting both callers' avatar/hidden gates. Exit: a delivered photograph pushes its caption; a failed or swept selfie job pushes her apology from either caller; an avatar job and a hidden job push nothing by not reaching the helper; a notify failure never fails or reopens a job and never under-counts the sweep.
-  - **Status**: active
-  - **Plan Set**: `NINA_PUSH_EVERY_MESSAGE_PLAN.md` (phase 3 of 5)
-  - **Satisfies**: R1 — When Nina answers something the runner said, a push notification is sent
-  - **Depends on**: `P1-PSH-A000`
-  - **Plan**: `.workflows/plan/P1-NIN-A049.md`
 
 ### [P2] Medium
 
@@ -237,6 +217,38 @@ per-task detail — Context, Drift, Decided, Files — survives in git history a
   - **Method**: /implement
   - **Files**: lib/admin/folderOps.ts, lib/admin/ninaAlbumActions.ts, lib/nina/.workflows/package_readme.md, lib/nina/imageprefs.ts, lib/nina/queries.ts, lib/nina/queries/imageprefs.ts, lib/nina/queries/images.ts, lib/nina/queries/messages.ts, lib/nina/queries/shapes.ts, lib/nina/searchActions.ts
   - **Verified**: prettier clean + typecheck green + FULL vitest 5388 passed / 293 files + knip observed + `next build` green under Turbopack; repo-wide lint's 1 pre-existing error (`components/review/MoreDetails.test.tsx`) predates this branch on `origin/main` — recorded, not fixed (commit `802d3a1`).
+
+- [x] **P1-NIN-A049** Phase 3: Push when the photo lands, and when it cannot
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns `lib/nina/imagerun.ts` and `lib/nina/imagejobs.ts` (plus `tests/nina.imagerun.test.ts` modified and the new `tests/nina.imagepush.test.ts`) — notifies `'photo_delivered'` as the last statement of `finishSelfie`, and `'photo_apology'` inside the shared `postNinaApologyMessage` reached by both `failNinaImageJob` and `sweepStaleNinaImageJobs`, inheriting both callers' avatar/hidden gates. Exit: a delivered photograph pushes its caption; a failed or swept selfie job pushes her apology from either caller; an avatar job and a hidden job push nothing by not reaching the helper; a notify failure never fails or reopens a job and never under-counts the sweep.
+  - **Status**: done
+  - **Plan Set**: `NINA_PUSH_EVERY_MESSAGE_PLAN.md` (phase 3 of 5)
+  - **Satisfies**: R1 — When Nina answers something the runner said, a push notification is sent
+  - **Depends on**: `P1-PSH-A000`
+  - **Plan**: `.workflows/plan/P1-NIN-A049.md`
+  - **Completed**: 2026-09-14 11:30
+  - **Method**: /do
+  - **Files**: lib/nina/imagerun.ts, lib/nina/imagejobs.ts, tests/nina.imagerun.test.ts, tests/nina.imagepush.test.ts (created)
+  - **Drift**: None against the phase plan itself — the plan's quoted code blocks matched the current tree exactly (line-for-line) before editing.
+  - **Drift**: Full `npm test` showed 4 failures, all in `tests/nina.turnpush.test.ts` — phase 2's own new test file, paired with phase 2's uncommitted `lib/nina/turnrun.ts`, both in-flight in this shared worktree from a concurrent session. Not caused by and not fixable from this phase's diff (confined to `lib/nina/imagerun.ts`, `lib/nina/imagejobs.ts` and their two test files); confirmed via `git status` showing those two paths modified/untracked independently. Left to phase 2 — out of this phase's Owns/scope.
+  - **Verified**: `npm run typecheck` green (next typegen + `tsc --noEmit`); `npm run lint` 0 errors (7 pre-existing warnings in `tests/nina.imageworker.test.ts`, phase 5's file, untouched here); targeted vitest across 6 files / 87 tests all passed; full `npm test` 335/336 files and 5838/5842 tests passed, the one red file being phase 2's in-flight work above.
+
+- [x] **P1-NIN-A048** Phase 2: Push when she replies to him
+  - **Difficulty**: HARD
+  - **Type**: Feature
+  - **Context**: Owns `lib/nina/turnrun.ts` and its test (`tests/nina.turnpush.test.ts`, created) — adds one notify call in `runNinaBackgroundTurn` stamped `'chat_reply'`, after the bubbles are committed and the claim is closed and before the distillation's model call, covering `sendNinaMessage`, `resendNinaTurn`, `reviveNinaChatTurn` and the burst chain through the one function they all converge on. Exit: a committed reply sends exactly one push carrying the first bubble; a chained follow-up sends its own; none of the four no-bubble paths (supersession, deleted-session, null payload, empty insert) sends anything; a notify failure leaves the rows, the closed claim, the distillation and the auto-title untouched.
+  - **Status**: done
+  - **Plan Set**: `NINA_PUSH_EVERY_MESSAGE_PLAN.md` (phase 2 of 5)
+  - **Satisfies**: R1 — When Nina answers something the runner said, a push notification is sent
+  - **Depends on**: `P1-PSH-A000`
+  - **Plan**: `.workflows/plan/P1-NIN-A048.md`
+  - **Completed**: 2026-09-14 12:05
+  - **Method**: /do
+  - **Files**: lib/nina/turnrun.ts, tests/nina.turnpush.test.ts (created)
+  - **Drift**: Small drift, code intent preserved: the test suite (written verbatim from the phase plan) asserted `notify` was called with the raw `insertNinaMessages` row shape (including `seq`), but the pre-existing `bubbles = rows.map(...)` line (not touched by this phase) projects rows down to `SentBubble` (`{ id, body, replyToId }`), dropping `seq`. Fixed by adding a `toBubbles()` helper in the test and asserting against the projected shape instead of the raw row shape.
+  - **Drift**: Small drift, code intent preserved: the plan's Test 8 ("a notify that fails costs the turn nothing") asserted `insertNinaMessages`, `closeNinaChatTurn` and `runTurnDistillation` were each called exactly once, but the test drives `turnInput({ depth: 1 })` with `NINA_TURN_CHAIN_MAX = 2`, so the chain runs one more link at depth 2 before the cap stops it — each of those three mocks is genuinely called twice (once per link), which the plan's own inline note beneath the test already acknowledged ("that is two links … it's the chain's own suite's business"). Corrected the three assertions from `toHaveBeenCalledTimes(1)` to `toHaveBeenCalledTimes(2)` (or dropped the count assertion in favour of `toHaveBeenCalledWith`, for `closeNinaChatTurn`) to match actual, correct behaviour.
+  - **Verified**: `npm run typecheck` clean; `npm run lint` clean; `npm run format:check` clean (scoped to the two touched files); `npx vitest run tests/nina.turnpush.test.ts` 9/9; sibling suites `tests/nina.burstCancel.test.ts tests/nina.turnrevive.test.ts tests/nina.resend.test.ts` 41/41; full `npm test` 336/336 files and 5864/5864 tests (a first-run `components/admin/explorer/MediaPane.test.tsx` red reproduced as a known pre-existing parallel-load flake — green in isolation and on a clean re-run of the full suite); `npm run ci:llm-payload-guard` passed (9 guarded symbols confined); `npm run knip` passed (neither `NinaTurnNotifier` nor `NinaTurnDeps` in the unused-exports report).
 
 ---
 

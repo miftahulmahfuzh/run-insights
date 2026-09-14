@@ -26,7 +26,10 @@ see Images. Restated 2026-09-13: `turnflight.ts`'s `NINA_TURN_POLL_GIVE_UP_MS = 
 was knip's one genuine "duplicate exports" finding across the repo — a bare-identifier initializer
 pointing at another export in the same file. It carries a `@alias` JSDoc tag now (knip's own
 escape hatch for a deliberate value alias — see The chat turn's Flight paragraph for why the two
-names must stay equal), not a suppression or a merge of the two names.
+names must stay equal), not a suppression or a merge of the two names. Restated 2026-09-14 for
+P1-NIN-A049 (NINA_PUSH_EVERY_MESSAGE phase 3): the image path now knocks — `finishSelfie` notifies
+`'photo_delivered'` as its last statement, and the module-private `postNinaApologyMessage` notifies
+`'photo_apology'` once for both of its callers — see Images.
 **Documentation Created**: 2026-09-05 (`NINA_CHARACTER_TUNING_PLAN.md` phase 2)
 
 ## Overview
@@ -415,6 +418,36 @@ photograph — original OR reference) and `planJobPhoto` (the Detail-foto icon; 
 answers `none` — no job→avatar key exists, and matching one by description or date would be a
 guess). `getNinaJobPhoto` projects `{ id }`: `description` is structurally never selected.
 
+**The photograph knocks, and so does the apology** (since 2026-09-14, P1-NIN-A049) — both through
+`notifyNinaPush` (`lib/push/send`), the seam that already swallows its own failures, and both still
+wrapped in a `try` of their own (`proactive.ts`'s shape; the seam's list read is outside its
+`try`). Two rules hold the placement:
+
+- **The notify is the LAST statement, never an earlier one.** `finishSelfie` notifies
+  `'photo_delivered'` AFTER `completeNinaImageJob`, for the same reason the message and image rows
+  go in before the job is marked `ok`, only harder: a signed HTTPS POST per live subscription
+  placed above the terminal write widens the window in which the job is still `pending` while its
+  photograph is already in the chat — and an instance killed inside that window hands
+  `sweepStaleNinaImageJobs` a job to apologise for that nobody needs an apology about. Below it,
+  the most a push can cost is the push. The body is the `caption` this process computed and proved
+  non-empty at the insert, not a column round trip off the returned row; `message.id` is the row's,
+  because a notification's `messageId` must name a row that exists.
+- **The apology notifies from ONE site, which INHERITS its callers' gates instead of restating
+  them.** `postNinaApologyMessage` is where `'photo_apology'` is sent, so both callers —
+  `failNinaImageJob`'s terminal give-up and `sweepStaleNinaImageJobs`' 20-minute deadline — are
+  covered by one line, and an AVATAR job or a job the runner HID (`deleted_at`, read off each
+  caller's own `returning`, R2) pushes nothing by never reaching the helper. A notification written
+  in the callers would be a second copy of both rules, free to drift. It is bound on the returned
+  row (`insertNinaMessages` returns `[]` when the session is not his, so an empty result means NO
+  ROW — buzzing a phone about a message that does not exist is strictly worse than silence), and
+  the swallow is load-bearing in both callers specifically: `failNinaImageJob`'s catch logs *"image
+  apology could not be written"*, which would misfile a notify failure under a message that DID get
+  written, and the sweep's `swept += 1` sits AFTER the call, so an escaping failure would
+  under-count the sweep.
+
+`finishAvatar` deliberately notifies nothing: nobody asked in the chat, and the NULL `announced_at`
+is the `avatar_changed` proactive trigger — the next cron tick is what makes her mention it.
+
 **Every failed generation CALL leaves a `nina_error_logs` row** (`imagerun.ts`'s module-private
 `recordImageCallFailure`, since 2026-09-12), not merely every failed JOB. The call site sits in
 `attemptOnce`, ABOVE `closeFailed`, deliberately: `closeFailed` either requeues (the attempt was
@@ -616,6 +649,11 @@ not a (T): it is the barrel contract test, not a pure module's suite.
   `mergeServerMessages`.
 - **Died turn**: sweep closes it `stale`; next render of `/nina` revives it (`turnrevive.ts`);
   his tap resends it (`resendNinaMessage`) — manual override outruns the cap.
+- **Photograph home**: `runNinaImageJob` → `finishSelfie` → message row + image row →
+  `completeNinaImageJob` → `notifyNinaPush(…, 'photo_delivered')`, in that order and never another.
+  When it cannot: `failNinaImageJob` (budget spent) or `sweepStaleNinaImageJobs` (20 min) →
+  `postNinaApologyMessage` → apology row → `notifyNinaPush(…, 'photo_apology')`. An avatar job and
+  a hidden job reach neither notify, because they reach neither writer.
 - **Proactive**: cron per user → `resolveNinaPromises` → `evaluateAndEmitForUser` →
   `emitProactiveMessage` (trigger block from `system.ts`'s copy, push via `lib/push/send`).
 - **Character path**: `readNinaTuning` → `coerceNinaTuning` → `buildNinaSystemPrompt(tuning)`.
@@ -630,7 +668,10 @@ not a (T): it is the barrel contract test, not a pure module's suite.
 (heaviest), `@/lib/photos/contentHash` (the sha-256 hex format the whole dedupe set answers
 from), `@/lib/date/ranges` (the Jakarta day model behind nags/patterns/promises/proactive),
 `@/lib/format`, `@/lib/metrics/*`, `@/lib/llm/client`, `@/lib/env`, `@/lib/id`, `@/lib/auth`,
-`@/lib/push/send`. One benign cycle: `proactive.ts` → `lib/push/send` → type-only back. One
+`@/lib/push/send` (`proactive.ts`'s own notifier, plus — since 2026-09-14 — `imagerun.ts` and
+`imagejobs.ts` through its `notifyNinaPush` seam; the seam exists because `proactive.ts`'s
+`ProactiveNotifier` infers the narrower `ProactiveTriggerKind`, and that file must stay untouched).
+One benign cycle: `proactive.ts` → `lib/push/send` → type-only back. One
 dynamic import: `distill.ts` → `./gateway`.
 
 ## Reverse dependencies
@@ -697,6 +738,12 @@ and picks what she says — a failure is a message from Nina, never a stack trac
   ONE reader that must never grow the predicate.
 - **Never `DELETE` a `nina_turns` row**; never add a confirmation to a `/nina/jobs` control;
   never let a redo touch the failed row or copy `attempts`.
+- **A push is the last statement of the writer that earned it, and it is always swallowed.** Never
+  move `notifyNinaPush` above the terminal ledger write (`completeNinaImageJob`) "to tell him
+  sooner" — that trades a few hundred milliseconds for a window where a killed instance leaves a
+  delivered photograph looking like a job to apologise for. And never hoist the apology's notify up
+  into `failNinaImageJob` or the stale sweep: the avatar gate and the `deleted_at` gate are the
+  callers', and `postNinaApologyMessage` inherits both by being the one site below them.
 - **Never widen a blob-pathname range to cover the stored form**, and never write an invented
   fixture suffix — a 3-symbol one hid a shipped-broken feature behind a green suite.
 - **The five `PERCEPTUAL_*` gates move in TWO files or not at all.**
@@ -818,6 +865,20 @@ recursive — a new module under `queries/` does not automatically join the walk
   multi-round turn (the statelessness property). The loop's own suite stays out of the way:
   `lib/nina/turn.test.ts` injects its scripted client through `fakeTurnDeps`, so it never
   exercises the wrapper — the seam is what keeps both suites honest.
+- **The image push is pinned at both ends of the job, in two suites split by which door is
+  exported** (2026-09-14). The delivered side has none — `finishSelfie` is module-private — so
+  `tests/nina.imagerun.test.ts` drives `runNinaImageJob` whole and asserts the ARGUMENTS
+  (`'photo_delivered'`, the row id, and the body being whatever landed in the bubble, canned
+  fallback included), that an avatar generation notifies nothing, and that a rejecting
+  `notifyNinaPush` costs neither the rows nor the `ok`. The apology side has two exported doors, so
+  `tests/nina.imagepush.test.ts` (new) drives `failNinaImageJob` and `sweepStaleNinaImageJobs`
+  directly and pins the same properties through the shared helper: one push carrying her apology
+  verbatim, NOTHING for an avatar or a hidden job, nothing when the insert wrote no row, and a
+  notify failure neither losing the apology row nor stopping the sweep counting the job.
+  `@/lib/push/send` is MOCKED in both rather than left inert-for-lack-of-`VAPID_*` — that is what
+  makes the kind and body assertable instead of resting on an unset environment variable. **What no
+  test pins is the ORDERING** (the notify sitting after `completeNinaImageJob`): it is held by the
+  docstring and by review, so read the Gotcha before moving that line.
 - **Known-answer vectors** pin the perceptual gates in BOTH copies of the predicate
   (`tests/nina.perceptual.test.ts`, `tests/nina.dedupeMedia.test.ts`), so the two cannot drift.
 - **Real-module integration**: `tests/nina.resend.test.ts` and `tests/nina.burstCancel.test.ts`

@@ -18,6 +18,7 @@ import {
 } from '@/lib/nina/queries'
 import { resolveNinaWriteSession } from '@/lib/nina/sessionResolve'
 import { NINA_TUNING_DEFAULTS } from '@/lib/nina/tuning'
+import { notifyNinaPush } from '@/lib/push/send'
 
 /**
  * **Phase 4: `finishSelfie` captions from the scene she asked for.**
@@ -69,6 +70,16 @@ vi.mock('@/lib/nina/queries', () => ({
   readNinaTuning: vi.fn(),
 }))
 vi.mock('@/lib/nina/sessionResolve', () => ({ resolveNinaWriteSession: vi.fn() }))
+/* All three of the module's runtime exports are named, even though this file calls one. A
+ * `vi.mock` factory REPLACES the module, so a name it omits is missing for every importer in the
+ * graph — `lib/nina/proactive.ts` imports `pushNotifier` from here — and that surfaces as an
+ * unrelated module-resolution error rather than as anything about this test. Phases 2 and 4 write
+ * the same three-key factory for the same reason; one shape across the set. */
+vi.mock('@/lib/push/send', () => ({
+  notifyNinaPush: vi.fn(),
+  pushNotifier: vi.fn(),
+  sendNinaPush: vi.fn(),
+}))
 
 const caption = vi.mocked(captionNinaPhoto)
 const claim = vi.mocked(claimNinaImageJob)
@@ -81,6 +92,7 @@ const insertMessages = vi.mocked(insertNinaMessages)
 const insertAvatar = vi.mocked(insertNinaAvatarAsCurrent)
 const tuning = vi.mocked(readNinaTuning)
 const writeSession = vi.mocked(resolveNinaWriteSession)
+const notify = vi.mocked(notifyNinaPush)
 
 const USER = 'user-1'
 const JOB_ID = 'job-abc'
@@ -127,6 +139,7 @@ beforeEach(() => {
   })
   findDuplicate.mockResolvedValue(null)
   releaseLoser.mockResolvedValue('deleted')
+  notify.mockResolvedValue(undefined)
 })
 
 describe('finishSelfie captions from the scene', () => {
@@ -317,5 +330,66 @@ describe('write-time dedup (media-dedupe P3)', () => {
 
     expect(findDuplicate).not.toHaveBeenCalled()
     expect(insertAvatar).toHaveBeenCalled()
+  })
+})
+
+/**
+ * **R1: the photograph knocks on the door.**
+ *
+ * `runNinaBackgroundTurn`'s sibling problem, in the one place it bites hardest. He asked for this
+ * picture ninety seconds ago and the whole `after()` design exists so he can put the phone down;
+ * until this phase the only way he learned it had arrived was opening `/nina` and looking.
+ *
+ * `@/lib/push/send` is mocked rather than left real, even though the real `sendNinaPush` is inert
+ * with no `VAPID_*` in the environment (it catches `pushEnv()` and reports `skipped` before
+ * touching a database). Mocking it is what lets these cases assert the ARGUMENTS — which body,
+ * which id, which kind — and it is plan invariant 7 held by construction rather than by an
+ * environment variable staying unset.
+ */
+describe('the delivered photograph buzzes the phone', () => {
+  it('sends exactly one push carrying the caption and the row that was written', async () => {
+    await expect(runNinaImageJob(USER, JOB_ID)).resolves.toBe('ok')
+
+    expect(notify).toHaveBeenCalledTimes(1)
+    expect(notify).toHaveBeenCalledWith(USER, [{ id: 'msg-1', body: 'nih, di pantai' }], 'photo_delivered')
+  })
+
+  it('pushes the canned fallback line when the caption call was refused', async () => {
+    /* Whatever landed in the bubble is what the lock screen says — the notification is never
+     * assembled from a second source. */
+    caption.mockResolvedValue(null)
+
+    await runNinaImageJob(USER, JOB_ID)
+
+    expect(notify).toHaveBeenCalledWith(
+      USER,
+      [{ id: 'msg-1', body: ninaImageCaption(JOB_ID) }],
+      'photo_delivered',
+    )
+  })
+
+  it('a notify failure never costs the photograph, the image row or the closed job', async () => {
+    /* Plan invariant 2. `notifyNinaPush` never throws on its own account, so reaching the catch is
+     * a bug or a bookkeeping fault — and neither is worth a generation that has already been paid
+     * for, stored and captioned. */
+    notify.mockRejectedValue(new Error('push: bookkeeping failed'))
+
+    await expect(runNinaImageJob(USER, JOB_ID)).resolves.toBe('ok')
+
+    expect(insertMessages).toHaveBeenCalled()
+    expect(insertImages).toHaveBeenCalled()
+    expect(complete).toHaveBeenCalled()
+  })
+
+  it('an avatar generation pushes nothing: no bubble was written, so there is nothing to announce', async () => {
+    /* `finishAvatar` writes no `nina_messages` row at all — "nobody asked in chat", and the
+     * `avatar_changed` proactive trigger is what mentions it later, through `proactive.ts`'s own
+     * notify. A push from here would be Nina announcing something the runner never requested. */
+    claim.mockResolvedValue({ args: { ...ARGS, purpose: 'avatar' }, attempts: 1 } as never)
+
+    await expect(runNinaImageJob(USER, JOB_ID)).resolves.toBe('ok')
+
+    expect(insertAvatar).toHaveBeenCalled()
+    expect(notify).not.toHaveBeenCalled()
   })
 })
