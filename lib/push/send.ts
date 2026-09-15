@@ -152,8 +152,15 @@ export async function sendNinaPush(
   userId: string,
   messages: ReadonlyArray<{ id: string; body: string }>,
   kind: string,
+  /**
+   * Where a tap goes. Omitted means `/nina`, which is every caller that existed before the
+   * duplicate-image notification. Appended rather than folded into an options object because the
+   * four positional arguments read as a sentence and an options bag for one optional field would
+   * churn six call sites to say nothing.
+   */
+  url?: string,
 ): Promise<PushSendReport> {
-  const payload = buildNinaPushPayload({ messages, kind })
+  const payload = buildNinaPushPayload({ messages, kind, url })
   if (!payload) return NOTHING('no message body to send')
 
   try {
@@ -220,20 +227,24 @@ export type NinaPushNotifier = (
   userId: string,
   messages: ReadonlyArray<{ id: string; body: string }>,
   kind: NinaPushKind,
+  url?: string,
 ) => Promise<void>
 
 /**
  * Annotated rather than `satisfies`, unlike `pushNotifier` below: the type it conforms to is
  * declared three lines up, so there is no other file for a mismatch to surface in, and the
- * annotation types the three parameters contextually instead of restating them.
+ * annotation types the parameters contextually instead of restating them.
  *
  * **Returns `void`, not the report.** A caller that branched on `delivered` would be making a
  * message's success depend on a phone's reachability, which is exactly the coupling invariant 2
  * forbids. The numbers go to the log line, which is the only consumer they have ever had.
+ *
+ * **`url` is optional and its default is `/nina`** — the shape every caller before
+ * `notifyDuplicateImagePush` relies on, and `pushNotifier` below never passes it at all.
  */
-export const notifyNinaPush: NinaPushNotifier = async (userId, messages, kind) => {
+export const notifyNinaPush: NinaPushNotifier = async (userId, messages, kind, url) => {
   try {
-    const report = await sendNinaPush(userId, messages, kind)
+    const report = await sendNinaPush(userId, messages, kind, url)
     console.info('[push] notified', { userId, kind, ...report })
   } catch (cause) {
     /* The message row is already committed and the caller has already moved on: there is nothing

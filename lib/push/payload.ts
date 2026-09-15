@@ -197,6 +197,15 @@ export const NINA_PUSH_KINDS = [
   'worker_photo_delivered',
   /** R22's apology, written by the off-platform backstop worker when it gave the photograph up. */
   'worker_photo_apology',
+
+  /* ── THE ONE KIND THAT IS NOT ABOUT A MESSAGE ─────────────────────────────────────────────
+   * Every value above names a bubble somebody wrote. This one names an UPLOAD: bytes arrived on
+   * one of the five upload routes and the collection already held them, so the runner is told
+   * once, with a tap that opens the copy he already has. It is the only kind whose payload
+   * carries a `url` other than `/nina` — `/photo/<kind>/<id>`, built by `photoViewerPath`
+   * (`lib/photos/pointer.ts`) and by nothing else. */
+  /** An upload whose bytes already existed somewhere in this user's image collection. */
+  'duplicate_image',
 ] as const
 
 /**
@@ -227,7 +236,14 @@ export interface NinaPushPayload {
   /** Where a tap goes. Always same-origin and always a path, never an absolute URL. */
   url: string
   tag: string
-  /** The `nina_messages.id` of the first bubble, or null. Diagnostics only; nothing reads it yet. */
+  /**
+   * The `nina_messages.id` of the first bubble, or null. Diagnostics only; nothing reads it yet.
+   *
+   * **The `duplicate_image` kind is the one exception and it is deliberate**: that notification is
+   * about an upload, not a bubble, so there is no message row to name and the field carries the
+   * duplicated photograph's own row id instead. Diagnostics only remains true — a log line that
+   * says which photograph was pointed at is more useful than a null.
+   */
   messageId: string | null
   /**
    * A `NinaPushKind` (see `NINA_PUSH_KINDS` above), as an opaque string. Diagnostics only, and
@@ -267,6 +283,19 @@ export function truncateForNotification(body: string, max: number = PUSH_BODY_MA
 export function buildNinaPushPayload(input: {
   messages: ReadonlyArray<{ id: string; body: string }>
   kind: string
+  /**
+   * Where a tap goes. **Omitted means `/nina`**, which is every caller that existed before the
+   * duplicate-image notification and which must keep behaving identically.
+   *
+   * ── IT MUST BE A SAME-ORIGIN PATH ────────────────────────────────────────────────────────
+   * `NinaPushPayload.url`'s contract, and `lib/service-worker.js:44`'s `FALLBACK_URL` is what
+   * happens when it is not: a value the worker cannot use lands the tap on `/nina` instead of on
+   * the thing the notification was about. Not validated here — the only producer is
+   * `photoViewerPath` (`lib/photos/pointer.ts`), whose own test freezes the shape, and a
+   * validator in this file would be a second, weaker statement of the same rule that this module
+   * (no imports beyond `zod`, loadable by a strip-types script) cannot share with it.
+   */
+  url?: string
 }): NinaPushPayload | null {
   const first = input.messages.find((message) => message.body.trim().length > 0)
   if (!first) return null
@@ -274,7 +303,7 @@ export function buildNinaPushPayload(input: {
     v: 1,
     title: PUSH_TITLE,
     body: truncateForNotification(first.body),
-    url: PUSH_TARGET_URL,
+    url: input.url ?? PUSH_TARGET_URL,
     tag: PUSH_NOTIFICATION_TAG,
     messageId: first.id,
     kind: input.kind,

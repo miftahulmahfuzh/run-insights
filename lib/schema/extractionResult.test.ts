@@ -97,6 +97,31 @@ describe('ExtractRequestSchema', () => {
     const parsed = ExtractRequestSchema.parse({ images: [ref()] })
     expect(parsed.images[0]).toMatchObject({ width: null, height: null, bytes: null })
   })
+
+  it('defaults the content hash to null — an older client is still a valid client', () => {
+    // `RetryExtraction` re-POSTs rows persisted before this field existed, so "absent" has to
+    // mean "dedup inactive for this shot", never "invalid request".
+    const parsed = ExtractRequestSchema.parse({ images: [ref()] })
+    expect(parsed.images[0]).toMatchObject({ contentHash: null })
+  })
+
+  it('accepts a well-formed content hash', () => {
+    const hash = '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08'
+    const parsed = ExtractRequestSchema.parse({ images: [ref({ contentHash: hash })] })
+    expect(parsed.images[0]).toMatchObject({ contentHash: hash })
+  })
+
+  it('rejects a malformed content hash rather than storing a value nothing can match', () => {
+    // Uppercase included: `contentHashOf` emits lowercase only, so anything else did not come
+    // from our util and must not reach the column in a second spelling.
+    for (const contentHash of [
+      'not-a-hash',
+      '9F86D081884C7D659A2FEAA0C55AD015A3BF4F1B2B0B822CD15D6C15B0F00A08',
+      '9f86d081',
+    ]) {
+      expect(ExtractRequestSchema.safeParse({ images: [ref({ contentHash })] }).success).toBe(false)
+    }
+  })
 })
 
 describe('the terminal-status contract', () => {

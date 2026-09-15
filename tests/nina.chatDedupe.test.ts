@@ -194,7 +194,8 @@ describe('STEP 1b race-close: a claim whose bytes already exist becomes a refere
      * when the response is done. Invoking it now must ask about THIS claim's blob, not the
      * keeper's. */
     expect(spies.releaseBlobIfUnreferenced).not.toHaveBeenCalled()
-    expect(afterTasks).toHaveLength(1)
+    /* Two deferred tasks: [0] the blob release, [1] the duplicate-image push this keeper earned. */
+    expect(afterTasks).toHaveLength(2)
     await afterTasks[0]!()
     expect(spies.releaseBlobIfUnreferenced).toHaveBeenCalledTimes(1)
     expect(spies.releaseBlobIfUnreferenced).toHaveBeenCalledWith('u1', {
@@ -469,7 +470,8 @@ describe('STEP 1b perceptual twins: a re-encode of a stored photograph becomes a
     expect(referenceRow).not.toHaveProperty('perceptualHash') // a reference owns no bytes
 
     expect(spies.releaseBlobIfUnreferenced).not.toHaveBeenCalled()
-    expect(afterTasks).toHaveLength(1)
+    /* Two deferred tasks: [0] the blob release, [1] the duplicate-image push the twin earned. */
+    expect(afterTasks).toHaveLength(2)
     await afterTasks[0]!()
     expect(spies.releaseBlobIfUnreferenced).toHaveBeenCalledWith('u1', {
       blobUrl: CLAIM_A.blobUrl,

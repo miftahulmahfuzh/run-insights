@@ -264,7 +264,7 @@ describe('memory: the slots, the ledger, and R26 hand-editing', () => {
 })
 
 describe('nina_avatars', () => {
-  it('carries exactly the twenty columns phases 12-15 and F34 were written against', () => {
+  it('carries exactly the twenty-one columns phases 12-15, F34 and the duplicate push were written against', () => {
     expect(names(schema.ninaAvatars)).toEqual(
       [
         'id',
@@ -278,6 +278,10 @@ describe('nina_avatars', () => {
         'source_key',
         'thumb_url',
         'thumb_pathname',
+        // dup-image-push-notify phase 1: `source_key`'s content-addressed TWIN, not its
+        // replacement — one is (path, size, mtime) and enforces a batch's uniqueness, the other
+        // is sha-256 over stored bytes and only makes a lookup cheap. See the column header.
+        'content_hash',
         'width',
         'height',
         'bytes',
@@ -311,8 +315,18 @@ describe('nina_avatars', () => {
     }
   })
 
-  it('has the folder page index and the dedupe-key unique index beside the two it already had', () => {
+  it('content_hash is nullable with no default, like its twin on run_photos', () => {
+    /* NULL is a real, permanent, dedup-INACTIVE state — `nina_message_images.content_hash`'s
+     * header states it once for all three tables. No backfill, so every pre-existing album row
+     * stays NULL and can never match. */
+    expect(sqlType(schema.ninaAvatars, 'content_hash')).toBe('text')
+    expect(columns(schema.ninaAvatars).get('content_hash')?.notNull).toBe(false)
+    expect(columns(schema.ninaAvatars).get('content_hash')?.hasDefault).toBe(false)
+  })
+
+  it('has the folder page index, the dedupe-key unique index and the content-hash index beside the two it already had', () => {
     expect(indexNames(schema.ninaAvatars)).toEqual([
+      'nina_avatars_user_content_hash_idx',
       'nina_avatars_user_created_idx',
       'nina_avatars_user_current_unq',
       'nina_avatars_user_folder_created_idx',

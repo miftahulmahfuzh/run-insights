@@ -36,6 +36,12 @@ vi.mock('@/lib/db/queries', () => ({
   attachExtractionPhotos: vi.fn(),
 }))
 vi.mock('@/lib/llm/runExtractionJob', () => ({ runExtractionJob: vi.fn() }))
+const { findGlobalDuplicatePhoto, notifyDuplicateImagePush } = vi.hoisted(() => ({
+  findGlobalDuplicatePhoto: vi.fn(),
+  notifyDuplicateImagePush: vi.fn(),
+}))
+vi.mock('@/lib/photos/globalDuplicate', () => ({ findGlobalDuplicatePhoto }))
+vi.mock('@/lib/push/duplicateImage', () => ({ notifyDuplicateImagePush }))
 
 const requireUserIdApiMock = vi.mocked(requireUserIdApi)
 const createExtractionMock = vi.mocked(createExtraction)
@@ -46,8 +52,11 @@ const afterMock = vi.mocked(after)
 const USER_ID = 'u12345678901'
 const EXTRACTION_ID = 'ext123456789'
 
+/** sha256("test") — a known-answer vector, the same one the chat-dedupe suite uses. */
+const HASH = '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08'
+
 /** A blob ref that satisfies the real `ExtractionBlobRefSchema`, for one `kind`. */
-function image(kind: 'summary' | 'splits' | 'heartrate') {
+function image(kind: 'summary' | 'splits' | 'heartrate', contentHash: string | null = null) {
   const pathname = 'shots/abcdefghijkl-abcdefghijklmnop.jpg'
   return {
     url: `https://xyz.public.blob.vercel-storage.com/${pathname}`,
@@ -56,6 +65,7 @@ function image(kind: 'summary' | 'splits' | 'heartrate') {
     width: 560,
     height: 1200,
     bytes: 58_000,
+    ...(contentHash === null ? {} : { contentHash }),
   }
 }
 
@@ -74,6 +84,8 @@ beforeEach(() => {
   requireUserIdApiMock.mockResolvedValue(USER_ID)
   createExtractionMock.mockResolvedValue({ id: EXTRACTION_ID })
   attachExtractionPhotosMock.mockResolvedValue({ ids: [] })
+  findGlobalDuplicatePhoto.mockResolvedValue(null)
+  notifyDuplicateImagePush.mockResolvedValue(undefined)
 })
 
 describe('POST /api/extract — refusals', () => {
@@ -132,9 +144,12 @@ describe('POST /api/extract — the happy path', () => {
 
     expect(response.status).toBe(202)
     await expect(response.json()).resolves.toEqual({ extractionId: EXTRACTION_ID })
-    // The audit row carries the vision model the session was opened with.
+    // The audit row carries the vision model the session was opened with — and NOT the content
+    // hash: `blob_urls` is the immutable record of what the model was shown, and `RetryExtraction`
+    // re-POSTs it verbatim.
     expect(createExtractionMock).toHaveBeenCalledWith(USER_ID, images, 'glm-4.6v')
-    expect(afterMock).toHaveBeenCalledTimes(1)
+    // Two deferred callbacks now: [0] the duplicate scan, [1] the extraction job.
+    expect(afterMock).toHaveBeenCalledTimes(2)
   })
 
   it('attaches the photos with their sort order, scoped to the user', async () => {
@@ -153,6 +168,7 @@ describe('POST /api/extract — the happy path', () => {
         width: img.width,
         height: img.height,
         bytes: img.bytes,
+        contentHash: null,
         sortOrder: index,
       })),
     )
@@ -162,16 +178,80 @@ describe('POST /api/extract — the happy path', () => {
     const images = [image('heartrate')]
     await post({ images })
 
-    const callback = afterMock.mock.calls[0]![0] as () => Promise<void>
+    const callback = afterMock.mock.calls[1]![0] as () => Promise<void>
     await callback()
 
     expect(runExtractionJobMock).toHaveBeenCalledTimes(1)
     const jobInput = runExtractionJobMock.mock.calls[0]![0]!
     expect(jobInput.userId).toBe(USER_ID)
     expect(jobInput.extractionId).toBe(EXTRACTION_ID)
-    expect(jobInput.images).toEqual(images)
+    expect(jobInput.images).toEqual(images.map((img) => ({ ...img, contentHash: null })))
     // The invocation clock is stamped in the handler, not inside the job — the job's soft
     // deadline must be measured against the same origin as the request.
     expect(typeof jobInput.invocationStartedAt).toBe('number')
+  })
+})
+
+/**
+ * R1 — the duplicate-image push. The scan runs in its own deferred callback, so nothing here can
+ * delay the 202; these cases drive that callback directly.
+ */
+describe('POST /api/extract — the duplicate-image push', () => {
+  /** Run the deferred duplicate scan — always `after`'s FIRST callback. */
+  async function drainScan(): Promise<void> {
+    const callback = afterMock.mock.calls[0]![0] as () => Promise<void>
+    await callback()
+  }
+
+  it('asks the whole collection once per shot and pushes the photograph it finds', async () => {
+    attachExtractionPhotosMock.mockResolvedValue({ ids: ['pho000000001'] })
+    findGlobalDuplicatePhoto.mockResolvedValue({
+      kind: 'image',
+      id: 'imgKEEPER001',
+      url: 'https://blob.example/nina/u1/chat/keeper.jpg',
+    })
+
+    await post({ images: [image('summary', HASH)] })
+    await drainScan()
+
+    // The row this upload just wrote is excluded: "already" means before now.
+    expect(findGlobalDuplicatePhoto).toHaveBeenCalledWith(USER_ID, HASH, {
+      exclude: [{ kind: 'shot', id: 'pho000000001' }],
+    })
+    expect(notifyDuplicateImagePush).toHaveBeenCalledTimes(1)
+    expect(notifyDuplicateImagePush).toHaveBeenCalledWith(USER_ID, {
+      kind: 'image',
+      id: 'imgKEEPER001',
+      url: 'https://blob.example/nina/u1/chat/keeper.jpg',
+    })
+  })
+
+  it('a genuinely new shot is never announced', async () => {
+    attachExtractionPhotosMock.mockResolvedValue({ ids: ['pho000000001'] })
+
+    await post({ images: [image('summary', HASH)] })
+    await drainScan()
+
+    expect(findGlobalDuplicatePhoto).toHaveBeenCalledTimes(1)
+    expect(notifyDuplicateImagePush).not.toHaveBeenCalled()
+  })
+
+  it('a shot with no hash is never looked up — dedup is inactive, not broken', async () => {
+    attachExtractionPhotosMock.mockResolvedValue({ ids: ['pho000000001'] })
+
+    await post({ images: [image('summary')] })
+    await drainScan()
+
+    expect(findGlobalDuplicatePhoto).not.toHaveBeenCalled()
+    expect(notifyDuplicateImagePush).not.toHaveBeenCalled()
+  })
+
+  it('a failed lookup is swallowed — the photos are already committed', async () => {
+    attachExtractionPhotosMock.mockResolvedValue({ ids: ['pho000000001'] })
+    findGlobalDuplicatePhoto.mockRejectedValue(new Error('db down'))
+
+    await post({ images: [image('summary', HASH)] })
+    await expect(drainScan()).resolves.toBeUndefined()
+    expect(notifyDuplicateImagePush).not.toHaveBeenCalled()
   })
 })

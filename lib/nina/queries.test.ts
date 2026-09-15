@@ -44,6 +44,10 @@ const BARREL_VALUE_EXPORTS = [
   'deleteNinaMessageImage',
   'deleteNinaShortcut',
   'ensureNinaSession',
+  // dup-image-push-notify phase 1: the `nina_avatars` arm of the cross-table duplicate lookup
+  // (plan index R1). A documented growth of the surface, 85 -> 86, added in the same commit as
+  // the query — which is what this file's header asks for.
+  'findNinaAvatarByContentHash',
   'findNinaImageByContentHash',
   'findNinaSignedOriginals',
   // queries-split phase 4: internal — shared with sibling query modules (plan index Decisions),

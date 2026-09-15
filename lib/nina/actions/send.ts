@@ -22,6 +22,9 @@ import { NINA_MAX_CHAT_IMAGES } from '../images'
 import { verifyNinaImageTicket, type NinaImageClaims } from '../imageTicket'
 import { isPerceptualTwin, parseDhashHex, sig16FromBase64 } from '../perceptual'
 import { fetchAndSignImage, type NinaImageSignature } from '../perceptualSign'
+import { findGlobalDuplicatePhoto } from '@/lib/photos/globalDuplicate'
+import type { ResolvedPhotoPointer } from '@/lib/photos/pointer'
+import { notifyDuplicateImagePush } from '@/lib/push/duplicateImage'
 import { NINA_DESCRIPTION_UNAVAILABLE } from '../prompts/describe'
 import {
   adoptNinaMessageImage,
@@ -532,6 +535,33 @@ export async function sendNinaMessage(input: {
   if (attach !== null && attached === null) return REFUSED
 
   /*
+   * ── R1: THE DUPLICATE-IMAGE PUSH, AND WHY IT IS TWO LISTS ────────────────────────────────────
+   * This send already makes a complete duplicate judgement for `nina_message_images` — the
+   * composer's pre-check, STEP 1b's exact-hash race-close, the same-send split and the perceptual
+   * twin scan. That judgement is UNCHANGED and stays silent in the collection; what is new is
+   * that it is now also REPORTED.
+   *
+   *   · `duplicateHits` — photographs this send proved were ALREADY in the collection. They need
+   *     no further lookup: the keeper row is in hand. This is the only way a PERCEPTUAL duplicate
+   *     can ever be announced, since its bytes are new by definition and no content-hash lookup
+   *     would find it.
+   *   · `crossTableScan` — the claims this send decided are genuinely NEW to
+   *     `nina_message_images`, paired with the row id each became. Their bytes may still be
+   *     sitting in `run_photos` or `nina_avatars`, which is precisely the question no existing
+   *     layer asks. Phase 1's cross-table lookup answers it, with these rows excluded.
+   *
+   * Both are drained in ONE deferred task at the very end of the action (see 8e). Nothing here
+   * may delay the response: F36 R6's "it quickly shows that the message is sent" is a claim about
+   * everything above STEP 1c being the only synchronous work.
+   *
+   * The PINNED photo (`attached`, R26's "Kirim ke chat") is deliberately NOT collected. He tapped
+   * a specific photograph out of the album; telling him it already exists is telling him what he
+   * just did.
+   */
+  const duplicateHits: ResolvedPhotoPointer[] = []
+  const crossTableScan: Array<{ id: string; contentHash: string }> = []
+
+  /*
    * STEP 0d-bis — THE DEDUPLICATED TILES (media-dedupe P2). Resolved BEFORE the runner's row, so
    * a dead keeper is discovered before anything is written — and it DEGRADES rather than refuses,
    * which is where these tiles part company with the pinned photo one block up. The pinned photo
@@ -555,6 +585,10 @@ export async function sendNinaMessage(input: {
         continue
       }
       dedupedPhotos.push(resolved)
+      /* R1. The composer's pre-check already proved these bytes are in the collection — this
+       * pointer IS the photograph that was already saved, and it is the common case by a wide
+       * margin (the race-close below only fires when the keeper landed after the pre-check ran). */
+      duplicateHits.push({ kind: 'image', id: pointer.id, url: resolved.blobUrl })
     } catch (cause) {
       console.warn('[nina] could not resolve a deduplicated tile', {
         id: pointer.id,
@@ -735,6 +769,10 @@ export async function sendNinaMessage(input: {
         const row = freshRows[index]
         if (claim.contentHash !== null && row !== undefined) {
           sameSend.set(claim.contentHash, row)
+          /* R1. This claim is NEW to `nina_message_images` — every layer of this file agreed on
+           * that. Whether its bytes are already in `run_photos` or `nina_avatars` is a question
+           * only phase 1's cross-table lookup can answer, and it is asked after the response. */
+          crossTableScan.push({ id: row.id, contentHash: claim.contentHash })
         }
       })
 
@@ -762,6 +800,17 @@ export async function sendNinaMessage(input: {
         referenceRows.push(
           ninaUploadInsertRow({ messageId: runnerMessageId, claim, keeper: resolved }).row,
         )
+        /*
+         * R1. `keeper` and not `resolved`, and the difference is the whole rule: a non-null
+         * `keeper` is a row that PREDATES this send — the exact-hash race-close's answer, or the
+         * perceptual twin scan's — and is therefore a photograph he already had. A same-send
+         * reference (`keeper === null`, resolved out of `sameSend`) points at a row this very
+         * send created seconds ago; announcing that as "you already have this" would be a lie
+         * about "already", so it is left silent exactly as it is today.
+         */
+        if (keeper !== null) {
+          duplicateHits.push({ kind: 'image', id: keeper.id, url: keeper.blobUrl })
+        }
         /* These bytes landed for THIS send and the row now points at the keeper's URL instead —
          * nobody references them. Released below, and only here. */
         releases.push({ blobUrl: claim.blobUrl, pathname: claim.pathname })
@@ -948,6 +997,27 @@ export async function sendNinaMessage(input: {
     })
   }
 
+  /*
+   * R1 — THE DUPLICATE-IMAGE PUSH, DRAINED AFTER THE RESPONSE.
+   *
+   * Registered LAST, after `startNinaBackgroundTurn`, on purpose: every other `after()` this
+   * action registers (the blob releases, the background turn) keeps the index it has always had,
+   * so nothing that reasons about deferred-task order — the suites included — shifts underneath
+   * it. Registered CONDITIONALLY for the same reason: a send with nothing to report defers
+   * nothing, exactly as before.
+   */
+  if (duplicateHits.length > 0 || crossTableScan.length > 0) {
+    after(async () => {
+      try {
+        await notifyDuplicateChatImages(userId, duplicateHits, crossTableScan)
+      } catch (cause) {
+        /* The rows are committed and the turn is running; a notification is a courtesy and must
+         * never be able to make either look like a failure. */
+        console.warn('[nina] duplicate-image notify failed', { error: String(cause) })
+      }
+    })
+  }
+
   return { ok: true, userMessageId: runnerMessageId, sessionId, cursor: runnerSeq, turnId }
 }
 
@@ -1060,4 +1130,61 @@ async function perceptualTwinsForClaims(
     })
   }
   return keepers
+}
+
+/**
+ * **The duplicate-image push for one chat send (R1)** — the reporting half of a judgement that
+ * was already made, plus the one question no existing layer asks.
+ *
+ * `hits` are photographs this send PROVED were already in the collection (the composer's
+ * pre-check, the exact-hash race-close, the perceptual twin scan). They are announced as they
+ * are: the keeper row is the "saved image" the notification's deep link opens.
+ *
+ * `scan` are the rows this send wrote as genuine originals. Their bytes are new to
+ * `nina_message_images` — and may still be sitting in `run_photos` or `nina_avatars`, which is the
+ * gap this feature exists to close. One lookup per DISTINCT hash, with EVERY row this send wrote
+ * excluded, so "already" keeps meaning "before now" even when the same file was picked twice.
+ *
+ * ── AT MOST ONE PUSH PER PHOTOGRAPH ───────────────────────────────────────────────────────────
+ * Three tiles of the same picture are one duplicate, not three. `notified` is keyed by the
+ * pointer, so a keeper announced from `hits` is never announced again from the scan.
+ *
+ * ── EVERY FAILURE IS SILENT ───────────────────────────────────────────────────────────────────
+ * The message, its images and its turn are all committed before this runs. A dead lookup warns
+ * and the next hash is asked; nothing here may ever be load-bearing for a send.
+ */
+async function notifyDuplicateChatImages(
+  userId: string,
+  hits: readonly ResolvedPhotoPointer[],
+  scan: ReadonlyArray<{ id: string; contentHash: string }>,
+): Promise<void> {
+  const notified = new Set<string>()
+
+  for (const hit of hits) {
+    const key = `${hit.kind}:${hit.id}`
+    if (notified.has(key)) continue
+    notified.add(key)
+    await notifyDuplicateImagePush(userId, hit)
+  }
+
+  if (scan.length === 0) return
+  const exclude = scan.map((row) => ({ kind: 'image' as const, id: row.id }))
+  const asked = new Set<string>()
+  for (const row of scan) {
+    if (asked.has(row.contentHash)) continue
+    asked.add(row.contentHash)
+    try {
+      const existing = await findGlobalDuplicatePhoto(userId, row.contentHash, { exclude })
+      if (existing === null) continue
+      const key = `${existing.kind}:${existing.id}`
+      if (notified.has(key)) continue
+      notified.add(key)
+      await notifyDuplicateImagePush(userId, existing)
+    } catch (cause) {
+      console.warn('[nina] cross-table duplicate check failed', {
+        hash: row.contentHash,
+        error: String(cause),
+      })
+    }
+  }
 }

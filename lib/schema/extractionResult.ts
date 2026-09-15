@@ -6,6 +6,7 @@ import {
   SHOT_STORED_PATHNAME_RE,
   type ExtractionErrorCode,
 } from '@/lib/extract/constants'
+import { isValidContentHash } from '@/lib/photos/contentHash'
 import { ScreenKindSchema, type ExtractedSession, type ScreenKind } from './extractedSession'
 
 /**
@@ -39,6 +40,23 @@ const ExtractionBlobRefSchema = z.object({
   width: z.number().int().positive().nullable().default(null),
   height: z.number().int().positive().nullable().default(null),
   bytes: z.number().int().positive().nullable().default(null),
+  /**
+   * **The duplicate-image push's key (R1).** `contentHashOf` over the EXACT bytes the browser
+   * PUT — the compressed output, never the picked file (`lib/photos/contentHash.ts`'s stated
+   * contract, and the same rule `useComposerPhotos` follows for chat photos).
+   *
+   * A CLAIM, in the trust class `width`/`height`/`bytes` are already in: format-checked here,
+   * never signature-checked (`/api/upload`'s token payload is deliberately untouched). Absent —
+   * an older client, or `RetryExtraction` re-POSTing rows stored before this field existed —
+   * defaults to `null`, the shot lands with `content_hash = NULL`, and duplicate detection is
+   * silently inactive for it. A shot must never fail to upload because a hash could not be
+   * computed or could not be trusted.
+   */
+  contentHash: z
+    .string()
+    .refine(isValidContentHash, 'content hash must be 64 lowercase hex characters')
+    .nullable()
+    .default(null),
 })
 export type ExtractionBlobRef = z.infer<typeof ExtractionBlobRefSchema>
 

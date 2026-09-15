@@ -17,6 +17,7 @@ import {
   isNinaPhotoCarrierMessage,
   planChatPhotoAddWrite,
   type ChatPhotoActionResult,
+  type ChatPhotoAddPlan,
 } from '@/lib/admin/chatPhotos'
 import { requireAdmin } from '@/lib/admin/requireAdmin'
 import { isValidId, newId } from '@/lib/id'
@@ -44,6 +45,9 @@ import {
 import { resolveNinaWriteSession } from '@/lib/nina/sessionResolve'
 import { NinaVisionTokenFloorError, describeNinaImages } from '@/lib/nina/vision'
 import { isValidContentHash } from '@/lib/photos/contentHash'
+import { findGlobalDuplicatePhoto } from '@/lib/photos/globalDuplicate'
+import type { ResolvedPhotoPointer } from '@/lib/photos/pointer'
+import { notifyDuplicateImagePush } from '@/lib/push/duplicateImage'
 import { notifyNinaPush } from '@/lib/push/send'
 
 /**
@@ -165,17 +169,22 @@ export async function replaceChatPhotoAction(input: unknown): Promise<ChatPhotoA
     }
   }
 
+  /* media-dedupe P3, invariant 4. A byte swap MUST move the hash with it: the same trust class
+   * as every other claim this action accepts (the bytes themselves are a claim). No claim or a
+   * malformed one retracts the column to NULL — dedup goes quiet for this row, which is the
+   * honest answer for bytes nothing has hashed yet.
+   *
+   * Hoisted out of the call below since dup-image-push-notify: the duplicate check at the bottom
+   * needs the same normalised value, and normalising twice is two places for one policy to live. */
+  const claimedHash = isValidContentHash(contentHash) ? contentHash : null
+
   const updated = await updateNinaChatPhotoBlob(userId, id, {
     blobUrl,
     pathname,
     width,
     height,
     bytes,
-    /* media-dedupe P3, invariant 4. A byte swap MUST move the hash with it: the same trust class
-     * as every other claim this action accepts (the bytes themselves are a claim). No claim or a
-     * malformed one retracts the column to NULL — dedup goes quiet for this row, which is the
-     * honest answer for bytes nothing has hashed yet. */
-    contentHash: isValidContentHash(contentHash) ? contentHash : null,
+    contentHash: claimedHash,
   })
   if (updated == null) return { ok: false, error: 'That photo is not in the collection.' }
 
@@ -199,6 +208,35 @@ export async function replaceChatPhotoAction(input: unknown): Promise<ChatPhotoA
    * a message. Deciding what a replaced photograph's bubble should say in the gap is its own card.
    */
   scheduleChatPhotoCaption(userId, id)
+
+  /* ── THE NEW BYTES MAY ALREADY BE IN THE COLLECTION (dup-image-push-notify R1) ──────────────
+   * Until this phase, `contentHash` on this route was a claim that got WRITTEN and never READ:
+   * round-tripped onto the row and compared against nothing (the analysis's Entry Point 3 — "not
+   * even detected"). This is the one line that makes it answer a question.
+   *
+   * ── AND THE REPLACE STILL HAPPENS, WHICH IS THE WHOLE POINT OF ITS POSITION ─────────────────
+   * Below the write, below the release, below the captioner. Replace's contract is "swap the bytes
+   * behind THIS row"; `chatPhotoUpload.ts:155-161` argues at length why a deduped replace would be
+   * a defect (it would repoint the row at another row's object and strip its provenance to a
+   * reference, which the collection reads then hide — the photograph the operator can SEE would
+   * vanish from the Media folder). So nothing here skips, references or unwinds. The operator is
+   * merely TOLD, and the notification opens the copy that was already there.
+   *
+   * The exclusion is this row: it now carries `claimedHash` itself, by the statement six lines up.
+   * Without it every replace would report itself as its own duplicate.
+   */
+  if (claimedHash != null) {
+    try {
+      const duplicate = await findGlobalDuplicatePhoto(userId, claimedHash, {
+        exclude: { kind: 'image', id },
+      })
+      if (duplicate != null) await notifyDuplicateImagePush(userId, duplicate)
+    } catch (cause) {
+      /* Invariant: a notification never fails the write it is attached to. The bytes are swapped
+       * and the row is committed whatever a lookup or a phone does next. */
+      console.warn('[dup] replace duplicate check failed', { userId, id, error: String(cause) })
+    }
+  }
 
   revalidatePath(ADMIN_CHAT_PHOTOS_PATH)
   return { ok: true, id, ...(note === undefined ? {} : { note }) }
@@ -379,12 +417,57 @@ export async function addChatPhotoAction(input: unknown): Promise<ChatPhotoActio
 
   scheduleChatPhotoCaption(userId, image.id)
 
-  /* ── AND TELL HIS PHONE (nina-push-every-message, R2) ───────────────────────────────────────
+  /* ── IS THIS PHOTOGRAPH ALREADY IN THE COLLECTION? (dup-image-push-notify R1) ───────────────
+   * Two questions, asked in the order that makes the second one rare.
+   *
+   * FIRST, the plan. If `planChatPhotoAddWrite` wrote this row as a REFERENCE then the answer is
+   * already in hand, exact, and free — see `duplicateTargetFromPlan`. That is also the only branch
+   * that can answer for a keeper whose own `content_hash` is NULL.
+   *
+   * SECOND, and only for a genuinely fresh original, phase 1's cross-table finder: these bytes may
+   * be sitting in `nina_avatars` or `run_photos`, which NO layer on this route has ever looked at.
+   * `findNinaImageByContentHash` above already ruled out the chat table, so this is strictly the
+   * new ground R1 asked for.
+   *
+   * ── THE EXCLUSION IS NOT OPTIONAL ──────────────────────────────────────────────────────────
+   * The row we just inserted carries `plan.contentHash`, which on this branch IS `claimedHash`
+   * (`planChatPhotoAddWrite`'s keeper-less return copies the claim through). Without the exclusion
+   * every fresh add would find itself and announce that it is a duplicate of itself.
+   *
+   * ── NO HASH, NO QUESTION ───────────────────────────────────────────────────────────────────
+   * Invariant 9, the same reading the race door at :291 takes: a malformed or absent claim is a
+   * NULL and a proceed. There is nothing to look up and the add is not refused.
+   */
+  let duplicate = duplicateTargetFromPlan(plan)
+  if (duplicate == null && claimedHash != null) {
+    try {
+      duplicate = await findGlobalDuplicatePhoto(userId, claimedHash, {
+        exclude: { kind: 'image', id: image.id },
+      })
+    } catch (cause) {
+      /* A detection failure is not an add failure. The photograph is in the collection and in the
+       * conversation; the operator simply does not learn that it was already there. */
+      console.warn('[dup] cross-table lookup failed on an admin add', {
+        userId,
+        imageId: image.id,
+        error: String(cause),
+      })
+    }
+  }
+
+  /* ── AND TELL HIS PHONE ─────────────────────────────────────────────────────────────────────
    * The header of `scheduleChatPhotoCaption` below says the runner's screen picks a new bubble up
    * "on its next load or service-worker refresh". The refresh half was aspirational: the service
    * worker's `postMessage({type:'nina:new'})` fires only inside its `push` handler, and nothing
    * pushed for a photograph an operator added — so until this line the bubble arrived on the next
    * page load and no sooner. This is the push that makes that sentence true.
+   *
+   * ── EXACTLY ONE NOTIFICATION, AND WHICH ONE DEPENDS ON THE ANSWER ABOVE ────────────────────
+   * dup-image-push-notify's ruling: *"send a push notification... if duplicate"* reads as ONE
+   * dedicated notification per event, not two. So `admin_chat_photo` — which fired on every add
+   * including duplicates, and could not tell the operator which it was — is SUPPRESSED on a hit and
+   * `duplicate_image` takes its place, pointing at the photograph that was already there. On a
+   * genuine new add nothing about this line has changed: same kind, same body, same array.
    *
    * ── IT IS PAST EVERY REFUSAL, AND THAT IS THE WHOLE GUARD ──────────────────────────────────
    * A vanished pinned row (:275), a file outside her photo folder (:284), an unowned session
@@ -398,19 +481,24 @@ export async function addChatPhotoAction(input: unknown): Promise<ChatPhotoActio
    * The same string the row was written with, by construction. See the `const` at :303.
    *
    * ── IT NEVER FAILS THE ADD (plan invariant 2) ──────────────────────────────────────────────
-   * `proactive.ts:611-615`'s shape, and `notifyNinaPush` already swallows everything a push can do
+   * `proactive.ts:611-615`'s shape, and both notifiers already swallow everything a push can do
    * wrong — no VAPID, no subscriptions, a dead endpoint, a 500 from Apple. This `try` is the belt
    * to that brace: the photograph is in the collection and in the conversation whatever happens
    * next, and an operator must never see "The photo could not be attached" because a phone was
    * unreachable.
    */
   try {
-    await notifyNinaPush(userId, [{ id: message.id, body }], 'admin_chat_photo')
+    if (duplicate != null) {
+      await notifyDuplicateImagePush(userId, duplicate)
+    } else {
+      await notifyNinaPush(userId, [{ id: message.id, body }], 'admin_chat_photo')
+    }
   } catch (cause) {
     console.warn('[push] admin chat photo notify failed', {
       userId,
       messageId: message.id,
       imageId: image.id,
+      duplicateOf: duplicate?.id ?? null,
       error: String(cause),
     })
   }
@@ -757,6 +845,41 @@ function isChatPhotoReference(
   row: Pick<NinaImageRow, 'sourceAvatarId' | 'sourceImageId'>,
 ): boolean {
   return row.sourceAvatarId != null || row.sourceImageId != null
+}
+
+/**
+ * **Was this add a duplicate, and which row is the original?** — read off the plan rather than
+ * asked a second time.
+ *
+ * `planChatPhotoAddWrite` sets exactly one of `sourceImageId` / `sourceAvatarId` on its two
+ * duplicate branches (the pre-check pin and the race-door hash hit) and neither on a fresh
+ * original — and `ninaPhotoProvenance`, its one writer, has already FLATTENED a pinned row that was
+ * itself a re-share down to the photograph it re-shows. So this is both the cheapest and the most
+ * correct answer available at the call site: no query, and a pointer at the row the operator would
+ * actually want to see, not at the reference that happened to be pinned.
+ *
+ * ── WHY NOT JUST CALL PHASE 1'S LOOKUP FOR EVERY ADD ────────────────────────────────────────
+ * Because the lookup is keyed by content hash and a duplicate's hash is the KEEPER's hash, which
+ * `planChatPhotoAddWrite`'s own header says may legitimately be NULL ("a keeper that never had a
+ * hash keeps this row hash-less"). An add we have positive proof is a duplicate would then produce
+ * no notification, and the operator would get the generic `admin_chat_photo` push for a photograph
+ * the collection already held — which is the exact defect R1 exists to close. The cross-table
+ * lookup is still asked, at the call site, for the case this function cannot answer: a genuinely
+ * new chat-photo row whose bytes live in `nina_avatars` or `run_photos`.
+ *
+ * `url` is `plan.blobUrl` and not a re-read: on both duplicate branches the plan has already
+ * adopted the keeper's object, so that string IS the original's blob URL.
+ */
+function duplicateTargetFromPlan(
+  plan: Pick<ChatPhotoAddPlan, 'blobUrl' | 'sourceAvatarId' | 'sourceImageId'>,
+): ResolvedPhotoPointer | null {
+  if (plan.sourceImageId != null) {
+    return { kind: 'image', id: plan.sourceImageId, url: plan.blobUrl }
+  }
+  if (plan.sourceAvatarId != null) {
+    return { kind: 'avatar', id: plan.sourceAvatarId, url: plan.blobUrl }
+  }
+  return null
 }
 
 async function loadPhotoCarrier(

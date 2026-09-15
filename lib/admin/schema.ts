@@ -368,6 +368,21 @@ const avatarBatchRecordSchema = z.object({
   width: z.number().int().min(ADMIN_AVATAR_MIN_EDGE_PX).max(ADMIN_AVATAR_MAX_EDGE_PX),
   height: z.number().int().min(ADMIN_AVATAR_MIN_EDGE_PX).max(ADMIN_AVATAR_MAX_EDGE_PX),
   bytes: z.number().int().positive().max(ADMIN_AVATAR_MAX_UPLOAD_BYTES),
+  /**
+   * dup-image-push-notify R1. sha-256 over the bytes this record's object holds — the picked file
+   * itself, since this path PUTs it unmodified.
+   *
+   * SHAPE only, and `nullish`, both deliberately. The FORMAT is validated in the action with
+   * `isValidContentHash` because invariant 9 makes a malformed hash a NULL and a proceed, never a
+   * refused batch — `chatPhotoContentHash` in `lib/admin/chatPhotoSchema.ts` is the same constant
+   * for the same reason. `null` is what the client sends when `crypto.subtle` was unavailable or
+   * the file could not be re-read; ABSENT is what every record written before this phase looks
+   * like. Both have to mean "no claim", so both are accepted.
+   *
+   * It is NOT the album's dedupe key and must never become one: `sourceKey` and its unique index
+   * decide what lands, and two identical files under two folder paths are two rows on purpose.
+   */
+  contentHash: z.string().min(1).max(128).nullish(),
   thumb: avatarThumbSchema.nullable(),
 })
 export type AvatarBatchRecord = z.infer<typeof avatarBatchRecordSchema>

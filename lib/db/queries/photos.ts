@@ -1,6 +1,7 @@
-import { and, asc, eq, exists, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, exists, inArray, notInArray, sql } from 'drizzle-orm'
 
 import { newPhotoId } from '@/lib/id'
+import { isValidContentHash } from '@/lib/photos/contentHash'
 
 import { db } from '../index'
 import { extractions, runPhotos, type PhotoKind, type RunPhoto } from '../schema'
@@ -20,12 +21,24 @@ export interface NewPhotoInput {
   height?: number | null
   bytes?: number | null
   sortOrder?: number
+  /**
+   * **The duplicate-image push's key (R1).** `contentHashOf` over the bytes this row's blob
+   * holds, as claimed by the browser that PUT them. THIS FUNCTION IS THE INSERT DOOR: anything
+   * that is not 64 lowercase hex is written as NULL — dedup silently inactive for that row —
+   * which is the same rule, for the same reason, that `insertNinaMessageImages` applies to
+   * `nina_message_images.content_hash`. One spelling in the column, or nothing.
+   */
+  contentHash?: string | null
 }
 
 /**
  * Attaches uploaded screenshots to their extraction (R-1). `run_id` stays NULL until
  * `commitExtractedRun` backfills it, so a photo is never orphaned and no placeholder run is
  * needed to hold it.
+ *
+ * **`ids` comes back in INPUT ORDER**, and that is a contract rather than an accident: the ids
+ * are minted here, one per `photos[i]`, and `POST /api/extract` zips them back against the claims
+ * it sent to know which row carries which hash for the duplicate scan. Do not reorder the map.
  */
 export async function attachExtractionPhotos(
   userId: string,
@@ -44,6 +57,7 @@ export async function attachExtractionPhotos(
     height: photo.height ?? null,
     bytes: photo.bytes ?? null,
     sortOrder: photo.sortOrder ?? i,
+    contentHash: isValidContentHash(photo.contentHash) ? photo.contentHash : null,
   }))
   await db.insert(runPhotos).values(rows)
   return { ids: rows.map((r) => r.id) }
@@ -69,6 +83,113 @@ export async function listExtractionPhotos(
       ),
     )
     .orderBy(asc(runPhotos.sortOrder), asc(runPhotos.createdAt))
+}
+
+/**
+ * **"Does this user already store these bytes as a run screenshot?"** — the `run_photos` arm of
+ * the cross-table duplicate lookup (`lib/photos/globalDuplicate.ts`), and this table's first
+ * content-addressed read of any kind.
+ *
+ * ── THE OWNERSHIP HALF IS `runPhotoOwnedBy`, NOT A `user_id` ─────────────────────────────────
+ * This table carries no owner column on purpose (§3's header, and `tests/db.schema.test.ts:270`
+ * asserts the absence). `runPhotoOwnedBy` is the correlated double-EXISTS back to `extractions`
+ * OR `runs` — either parent claiming the row is enough, because a photo has only an extraction
+ * until the review commit backfills `run_id`. It runs IN THE SAME STATEMENT as the hash
+ * predicate, so there is no window between the check and the read.
+ *
+ * ── TWO HASHES, ONE ROUND TRIP ───────────────────────────────────────────────────────────────
+ * `string | readonly string[]`, exactly as `findNinaImageByContentHash` takes it and for the same
+ * measured reason: an upload carries two hashes worth asking about — the encode's (the bytes a
+ * PUT carries) and the picked file's own, which for a download-then-reupload IS a stored row's
+ * bytes. `in (…)` asks both at once.
+ *
+ * ── `excludeIds` IS NOT OPTIONAL BEHAVIOUR, IT IS THE POINT ──────────────────────────────────
+ * The caller runs this AFTER inserting the rows it is asking about, so without the exclusion every
+ * genuinely-new upload matches itself and every upload notifies. Pushed into SQL rather than
+ * post-filtered, because a post-filter over a `LIMIT 1` would answer "no duplicate" whenever a
+ * row being excluded happened to sort first — which it always does, being the newest.
+ *
+ * **A LIST, not one id** (reconciler ruling, round 1). One `POST /api/extract` writes up to THREE
+ * `run_photos` rows and two of them can carry identical bytes — the kinds must differ, the pixels
+ * need not. Excluding only the asking row then makes each of the two match the other and announce
+ * a photograph this very request created. "Already" has to mean "before now", which is the whole
+ * batch, not one row of it. An empty array is "exclude nothing" and must not emit a
+ * `not in ()` — hence the length guard below.
+ *
+ * ── NEWEST FIRST ─────────────────────────────────────────────────────────────────────────────
+ * `(created_at desc, id desc)` — `findNinaImageByContentHash`'s standing rule, quoted: any match
+ * is a correct target, and the newest is the least likely to have been deleted between this read
+ * and the notification that follows.
+ *
+ * `null` means "not yours", "no such bytes" and "nobody stores them" alike — §3's rule, and here
+ * it is also the answer the caller wants: nothing to notify about.
+ */
+export async function findRunPhotoByContentHash(
+  userId: string,
+  contentHash: string | readonly string[],
+  excludeIds?: readonly string[],
+): Promise<{ id: string; blobUrl: string } | null> {
+  const hashes = Array.isArray(contentHash) ? [...contentHash] : [contentHash as string]
+  if (hashes.length === 0) return null
+  const excluded = excludeIds ?? []
+  const rows = await db
+    .select({ id: runPhotos.id, blobUrl: runPhotos.blobUrl })
+    .from(runPhotos)
+    .where(
+      and(
+        inArray(runPhotos.contentHash, hashes),
+        excluded.length > 0 ? notInArray(runPhotos.id, [...excluded]) : undefined,
+        runPhotoOwnedBy(userId),
+      ),
+    )
+    .orderBy(desc(runPhotos.createdAt), desc(runPhotos.id))
+    .limit(1)
+  return rows[0] ?? null
+}
+
+/** What the `/photo/shot/<id>` deep link needs off a screenshot row, and nothing more. */
+export interface RunPhotoPoint {
+  id: string
+  blobUrl: string
+  kind: PhotoKind
+  /**
+   * NULL until the review commit backfills it (R-1's two-parent lifecycle, `attachExtractionPhotos`
+   * above). The deep-link route reads it to decide where CLOSING the viewer lands: a committed
+   * photo closes onto its run, an uncommitted one onto the runs list.
+   */
+  runId: string | null
+}
+
+/**
+ * One screenshot by id, ownership-scoped — the `/photo/shot/<id>` deep-link read (R2).
+ *
+ * The mirror of `getNinaAvatar` (`lib/nina/queries/avatars.ts:211`) and `getNinaMessageImage`
+ * (`lib/nina/queries/images.ts:272`) for the third image table, and it keeps their rule: `null` for
+ * "not yours" and for "does not exist" alike. The caller has no legitimate use for the difference,
+ * and a surface that distinguishes them is a surface that tells a stranger which ids exist.
+ *
+ * Ownership goes through `runPhotoOwnedBy` (`./ownership.ts:40`) rather than a `user_id` column,
+ * because `run_photos` has none by design — the correlated EXISTS covers BOTH parents, so a photo
+ * uploaded minutes ago (extraction only, `run_id` still NULL) is as reachable as one on a committed
+ * run. A `runs`-only check would have made every pre-commit screenshot a silent 404.
+ *
+ * An EXPLICIT PROJECTION, not `select()`: drizzle expands a bare `select().from(t)` into every
+ * column it knows about, so the shape of this read would otherwise change under a schema edit it
+ * has no opinion about — phase 1 adds `content_hash` to this very table. Four columns are what the
+ * viewer needs; `blob_url` is the photograph and `kind` is its label.
+ */
+export async function getRunPhoto(userId: string, photoId: string): Promise<RunPhotoPoint | null> {
+  const rows = await db
+    .select({
+      id: runPhotos.id,
+      blobUrl: runPhotos.blobUrl,
+      kind: runPhotos.kind,
+      runId: runPhotos.runId,
+    })
+    .from(runPhotos)
+    .where(and(eq(runPhotos.id, photoId), runPhotoOwnedBy(userId)))
+    .limit(1)
+  return rows[0] ?? null
 }
 
 /** R-11 / F11's per-photo opt-out. */

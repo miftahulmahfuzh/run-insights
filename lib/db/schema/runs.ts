@@ -307,6 +307,28 @@ export const runPhotos = pgTable(
     width: integer('width'),
     height: integer('height'),
     bytes: integer('bytes'),
+    /**
+     * ── SHA-256 OVER THIS ROW'S STORED BYTES, AND NOTHING ELSE ───────────────────────────────
+     *
+     * 64 lowercase hex characters, `lib/photos/contentHash.ts` the only intended producer, and
+     * the semantics are `nina_message_images.content_hash`'s VERBATIM — that column's header
+     * (`lib/db/schema/nina/chat.ts`) carries the whole argument and this one deliberately does
+     * not restate it: equal hash ⟺ equal stored bytes; NULL is a real, permanent,
+     * dedup-INACTIVE state, never "definitely unique"; the hash is computed in the browser over
+     * the bytes a PUT carries, because the server never sees them.
+     *
+     * **It exists here for notification, not for a dedup decision.** Nothing in the shots path
+     * skips, references or releases a blob on a hash match — `attachExtractionPhotos` inserts
+     * exactly what it was handed, before and after this column. The only reader is
+     * `findRunPhotoByContentHash`, whose one consumer is the cross-table lookup behind the
+     * duplicate-image push. A future shots-side dedup DECISION would be a separate decision, and
+     * this column not carrying one is why it is a plain index rather than UNIQUE.
+     *
+     * **No backfill.** Every row that predates this column stores NULL and always will; the
+     * media-dedupe rollout set that precedent (detection shipped first, `scripts/nina-dedupe-media.mjs`
+     * later) and this phase follows it.
+     */
+    contentHash: text('content_hash'),
     sortOrder: integer('sort_order').notNull().default(0),
     /** R-11 / F11 — per-photo opt-out from the public share page. */
     excludedFromShare: boolean('excluded_from_share').notNull().default(false),
@@ -315,6 +337,21 @@ export const runPhotos = pgTable(
   (t) => [
     index('run_photos_extraction_idx').on(t.extractionId),
     index('run_photos_run_idx').on(t.runId),
+    /**
+     * "Does this user already store these bytes as a shot?" as one indexed question.
+     *
+     * **No `user_id` leading column, unlike `nina_message_images`'s equivalent, because this
+     * table has no `user_id`** (`tests/db.schema.test.ts:270` asserts that on purpose: the
+     * correlated EXISTS back to `extractions`/`runs` is the ownership primitive —
+     * `lib/db/queries/ownership.ts:40-52`). So the index answers the hash half and
+     * `runPhotoOwnedBy` answers the owner half, in the same statement.
+     *
+     * Partial, for `nina_message_images_user_content_hash_idx`'s stated reason: a NULL row can
+     * never be a match, so it does not belong in the index.
+     */
+    index('run_photos_content_hash_idx')
+      .on(t.contentHash)
+      .where(sql`${t.contentHash} is not null`),
   ],
 )
 

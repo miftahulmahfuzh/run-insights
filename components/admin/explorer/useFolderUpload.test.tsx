@@ -29,12 +29,17 @@ vi.mock('@/lib/admin/ninaAlbumActions', () => ({
   listNinaAlbumManifestAction: vi.fn(),
   registerNinaAvatarsAction: vi.fn(),
 }))
+vi.mock('@/lib/photos/contentHash', () => ({
+  contentHashOf: (...args: unknown[]) => contentHashOfMock(...args),
+}))
 
 const uploadMock = vi.mocked(upload)
 const measureMock = vi.mocked(await import('./thumbnail')).measureAndThumbnail
 const walkMock = vi.mocked(await import('./dropWalk')).walkEntries
 const manifestMock = vi.mocked(listNinaAlbumManifestAction)
 const registerMock = vi.mocked(registerNinaAvatarsAction)
+const { contentHashOfMock } = vi.hoisted(() => ({ contentHashOfMock: vi.fn() }))
+const FILE_HASH = 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'
 
 /** `PutBlobResult` is not exported from the client package; capture it off the function instead. */
 type PutResult = Awaited<ReturnType<typeof upload>>
@@ -115,6 +120,7 @@ beforeEach(() => {
   measureMock.mockResolvedValue(measureOk())
   manifestMock.mockResolvedValue({ ok: true, entries: [], truncated: false })
   registerMock.mockResolvedValue({ ok: true, inserted: [], skipped: 0 })
+  contentHashOfMock.mockResolvedValue(FILE_HASH)
 })
 
 describe('useFolderUpload — the gesture’s decisions before any byte moves', () => {
@@ -328,6 +334,37 @@ describe('useFolderUpload — one file through the lanes', () => {
       filename: 'DSC_1.jpg',
       thumb: null,
     })
+  })
+
+  it('hashes the PICKED FILE — the bytes it PUTs — and carries the hash on the record', async () => {
+    const { result } = makeHook()
+    await act(async () => {
+      result.current.start([walkedFile('bali/DSC_1.jpg')])
+    })
+    await waitFor(() => expect(result.current.phase).toBe('finished'))
+
+    // The file itself, not a re-encode: this path uploads `file` unmodified, so the file's bytes
+    // ARE the bytes the row's blob_url will serve.
+    const [hashed] = contentHashOfMock.mock.calls[0] as [unknown]
+    const [, putBody] = uploadMock.mock.calls[0]!
+    expect(hashed).toBe(putBody)
+
+    const arg = registerMock.mock.calls[0]![0] as { records: Array<{ contentHash: unknown }> }
+    expect(arg.records[0]!.contentHash).toBe(FILE_HASH)
+  })
+
+  it('a hash that cannot be computed is a null on the record, never a lost upload', async () => {
+    contentHashOfMock.mockRejectedValue(new Error('no crypto.subtle on this origin'))
+    const { result } = makeHook()
+    await act(async () => {
+      result.current.start([walkedFile('bali/DSC_1.jpg')])
+    })
+    await waitFor(() => expect(result.current.phase).toBe('finished'))
+
+    expect(result.current.items[0]?.state).toBe('done')
+    expect(uploadMock).toHaveBeenCalled()
+    const arg = registerMock.mock.calls[0]![0] as { records: Array<{ contentHash: unknown }> }
+    expect(arg.records[0]!.contentHash).toBeNull()
   })
 
   it('a decode failure marks only THAT item and the lane moves on', async () => {
