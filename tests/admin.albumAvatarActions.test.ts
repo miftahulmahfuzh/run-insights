@@ -36,12 +36,15 @@ const BLOB_URL = `${STORE}/${PATHNAME}`
 const THUMB_PATHNAME = `nina/${USER}/thumb-${ID}-Tu6HvWq2m0k3rB8nQ1zXeRfYdGjL.webp`
 const THUMB_URL = `${STORE}/${THUMB_PATHNAME}`
 const DESCRIPTION = 'A woman in a black swimsuit fins-deep in a pool, mid-lap.'
+/** A stand-in vector. Its length is irrelevant to these tests; only its identity is asserted. */
+const EMBEDDING = [0.1, 0.2, 0.3]
 
 const requireAdmin = vi.fn()
 const del = vi.fn()
 const put = vi.fn()
 const fetchMock = vi.fn()
 const describeNinaImages = vi.fn()
+const embedNinaText = vi.fn()
 const revalidatePath = vi.fn()
 const afterCallbacks: Array<() => Promise<void>> = []
 
@@ -55,6 +58,9 @@ vi.mock('next/server', () => ({
 vi.mock('next/cache', () => ({ revalidatePath: (path: string) => revalidatePath(path) }))
 vi.mock('@/lib/nina/vision', () => ({
   describeNinaImages: (...args: unknown[]) => describeNinaImages(...args),
+}))
+vi.mock('@/lib/nina/embedding', () => ({
+  embedNinaText: (...args: unknown[]) => embedNinaText(...args),
 }))
 
 type Actions = typeof import('@/lib/admin/ninaAlbumActions')
@@ -90,6 +96,21 @@ function avatarRow(overrides: Record<string, unknown> = {}): unknown[] {
   )
 }
 
+/**
+ * The `describeTargetColumns` projection in order — five values. Same `in`-not-`??` discipline as
+ * `avatarRow()` above, for the same reason: a deliberate `{ description: null }` must not read as
+ * "no opinion".
+ */
+function describeTargetRow(overrides: Record<string, unknown> = {}): unknown[] {
+  return projectedRow(
+    'id' in overrides ? overrides.id : ID,
+    'blobUrl' in overrides ? overrides.blobUrl : BLOB_URL,
+    'pathname' in overrides ? overrides.pathname : PATHNAME,
+    'description' in overrides ? overrides.description : null,
+    'embedded' in overrides ? overrides.embedded : 0,
+  )
+}
+
 /** The manifest projection: `{ id, folder, sourceKey }`, as an arrayMode row in key order. */
 function manifestRow(overrides: Record<string, unknown> = {}): unknown[] {
   return projectedRow(
@@ -110,6 +131,8 @@ beforeEach(async () => {
   describeNinaImages
     .mockReset()
     .mockResolvedValue({ description: 'fresh prose', completionTokens: 60 })
+  embedNinaText.mockReset()
+  embedNinaText.mockResolvedValue(EMBEDDING)
   revalidatePath.mockReset()
   fake = installFakeDb()
   actions = await import('@/lib/admin/ninaAlbumActions')
@@ -138,10 +161,12 @@ describe('describeNinaAvatarAction', () => {
     expect(describeNinaImages).toHaveBeenCalledWith([{ blobUrl: BLOB_URL, pathname: PATHNAME }], {
       subject: 'self',
     })
+    expect(embedNinaText).toHaveBeenCalledTimes(1)
+    expect(embedNinaText).toHaveBeenCalledWith('fresh prose', { userId: USER })
     const update = fake.last()
     expect(update.sql).toContain('update "nina_avatars"')
     expect(update.sql).toContain('"description"')
-    expect(update.params).toEqual(['fresh prose', USER, ID])
+    expect(update.params).toEqual(['fresh prose', JSON.stringify(EMBEDDING), USER, ID])
     expect(revalidatePath).toHaveBeenCalledTimes(1)
     expect(revalidatePath).toHaveBeenCalledWith('/admin/nina')
     expect(afterCallbacks).toHaveLength(0) // the prose is in-band; nothing is deferred
@@ -155,7 +180,18 @@ describe('describeNinaAvatarAction', () => {
 
     expect(result).toEqual({ ok: true, description: 'fresh prose' })
     expect(describeNinaImages).toHaveBeenCalledTimes(1)
-    expect(fake.last().params).toEqual(['fresh prose', USER, ID])
+    expect(fake.last().params).toEqual(['fresh prose', JSON.stringify(EMBEDDING), USER, ID])
+  })
+
+  it('an embedding failure keeps the prose — the vector writes NULL, not the write itself', async () => {
+    fake.enqueue([avatarRow()])
+    fake.enqueue([{ id: ID }])
+    embedNinaText.mockRejectedValue(new Error('embeddings endpoint down'))
+
+    const result = await actions.describeNinaAvatarAction(ID)
+
+    expect(result).toEqual({ ok: true, description: 'fresh prose' })
+    expect(fake.last().params).toEqual(['fresh prose', null, USER, ID])
   })
 
   it('refuses a malformed id before reading anything', async () => {
@@ -233,26 +269,44 @@ describe('setCurrentNinaAvatarAction', () => {
     expect(afterCallbacks).toHaveLength(1)
     expect(describeNinaImages).not.toHaveBeenCalled() // not on the action's clock
 
-    fake.enqueue([avatarRow({ description: null })]) // the callback's own re-read
-    fake.enqueue([{ id: ID }]) // setNinaAvatarDescription RETURNING
+    fake.enqueue([describeTargetRow({ description: null })]) // the callback's own re-read
+    fake.enqueue([{ id: ID }]) // setNinaAvatarDescriptionAndEmbedding RETURNING
     await afterCallbacks[0]?.()
 
     expect(describeNinaImages).toHaveBeenCalledTimes(1)
     expect(describeNinaImages).toHaveBeenCalledWith([{ blobUrl: BLOB_URL, pathname: PATHNAME }], {
       subject: 'self',
     })
+    expect(embedNinaText).toHaveBeenCalledTimes(1)
+    expect(embedNinaText).toHaveBeenCalledWith('fresh prose', { userId: USER })
     expect(fake.last().sql).toContain('update "nina_avatars"')
-    expect(fake.last().params).toEqual(['fresh prose', USER, ID])
+    expect(fake.last().params).toEqual(['fresh prose', JSON.stringify(EMBEDDING), USER, ID])
   })
 
-  it('promoting an already-described photo costs one indexed read and no vendor call', async () => {
+  it('promoting an already-described-and-embedded photo costs one indexed read and no vendor call', async () => {
     enqueuePromote()
-    fake.enqueue([avatarRow({ description: 'already hers', isCurrent: false })])
+    fake.enqueue([describeTargetRow({ description: 'already hers', embedded: 1 })])
 
     await actions.setCurrentNinaAvatarAction(ID)
     await afterCallbacks[0]?.()
 
     expect(describeNinaImages).not.toHaveBeenCalled()
+    expect(embedNinaText).not.toHaveBeenCalled()
+  })
+
+  it('promoting a described-but-unembedded photo embeds without a vision call', async () => {
+    enqueuePromote()
+
+    await actions.setCurrentNinaAvatarAction(ID)
+
+    fake.enqueue([describeTargetRow({ description: 'already hers', embedded: 0 })])
+    fake.enqueue([{ id: ID }]) // setNinaAvatarDescriptionAndEmbedding RETURNING
+    await afterCallbacks[0]?.()
+
+    expect(describeNinaImages).not.toHaveBeenCalled()
+    expect(embedNinaText).toHaveBeenCalledTimes(1)
+    expect(embedNinaText).toHaveBeenCalledWith('already hers', { userId: USER })
+    expect(fake.last().sql).toContain('update "nina_avatars"')
   })
 
   it('is idempotent when the row is already current: no un-currenting, no re-arm', async () => {
@@ -265,11 +319,12 @@ describe('setCurrentNinaAvatarAction', () => {
     expect(fake.queries).toHaveLength(1) // the pre-read only
     expect(revalidatePath).toHaveBeenCalledWith('/admin/nina')
 
-    // The describe pre-pass still arms — and immediately no-ops on a described row.
+    // The describe pre-pass still arms — and immediately no-ops on a described-and-embedded row.
     expect(afterCallbacks).toHaveLength(1)
-    fake.enqueue([avatarRow({ isCurrent: true, description: 'already hers' })])
+    fake.enqueue([describeTargetRow({ description: 'already hers', embedded: 1 })])
     await afterCallbacks[0]?.()
     expect(describeNinaImages).not.toHaveBeenCalled()
+    expect(embedNinaText).not.toHaveBeenCalled()
   })
 
   it('refuses an id that is not in the album, before any write and without arming the describe', async () => {
@@ -395,7 +450,7 @@ describe('registerNinaAvatarsAction', () => {
     ])
     expect(result.skipped).toBe(0)
     expect(revalidatePath).toHaveBeenCalledWith('/admin/nina')
-    expect(afterCallbacks).toHaveLength(0) // a face already wears the crown; no promotion
+    expect(afterCallbacks).toHaveLength(1) // no promotion — but every inserted row still earns its description (R2)
   })
 
   it('writes the admin source, the folder, the dedupe key and the thumbnail pair', async () => {
@@ -471,14 +526,35 @@ describe('registerNinaAvatarsAction', () => {
 
     expect(result.ok).toBe(true)
     expect(fake.batches).toHaveLength(1) // the un-current/current pair, via setCurrentNinaAvatar
-    expect(afterCallbacks).toHaveLength(1) // and the fresh face earns its description
+    expect(afterCallbacks).toHaveLength(1) // the batch's rows earn their descriptions, promotion or not
 
-    fake.enqueue([avatarRow({ description: null })]) // the callback's own re-read
+    fake.enqueue([describeTargetRow({ description: null })]) // the callback's own re-read
     fake.enqueue([{ id: ID }])
     await afterCallbacks[0]?.()
     expect(describeNinaImages).toHaveBeenCalledWith([{ blobUrl: BLOB_URL, pathname: PATHNAME }], {
       subject: 'self',
     })
+  })
+
+  it('describes and embeds EVERY inserted row in a batch, not just the first', async () => {
+    fake.enqueue([avatarRow()]) // getCurrentNinaAvatar — a face already wears the crown
+    fake.enqueue([{ folder: 'Pictures/2026' }]) // declareNinaFolders
+    fake.enqueue([avatarRow({ id: 'ava1' }), avatarRow({ id: 'ava2' })]) // insertNinaAvatars
+
+    await actions.registerNinaAvatarsAction({
+      records: [batchRecord(), batchRecord({ sourceKey: 'k2', pathname: `${PATHNAME}-2` })],
+    })
+
+    expect(afterCallbacks).toHaveLength(1) // ONE callback for the whole batch
+    expect(describeNinaImages).not.toHaveBeenCalled()
+
+    fake.enqueue([describeTargetRow({ id: 'ava1' }), describeTargetRow({ id: 'ava2' })])
+    fake.enqueue([{ id: 'ava1' }])
+    fake.enqueue([{ id: 'ava2' }])
+    await afterCallbacks[0]?.()
+
+    expect(describeNinaImages).toHaveBeenCalledTimes(2)
+    expect(embedNinaText).toHaveBeenCalledTimes(2)
   })
 
   it('re-sent batches write nothing and skip everything — the constraint is the idempotence', async () => {
@@ -491,7 +567,7 @@ describe('registerNinaAvatarsAction', () => {
     expect(result.ok).toBe(true)
     expect(result.inserted).toEqual([])
     expect(result.skipped).toBe(1)
-    expect(afterCallbacks).toHaveLength(0) // nothing inserted → no promotion, no describe
+    expect(afterCallbacks).toHaveLength(0) // nothing inserted → no promotion, and an empty id list schedules nothing
   })
 
   it('drops a returned row no record claims from `inserted` — the join never guesses', async () => {

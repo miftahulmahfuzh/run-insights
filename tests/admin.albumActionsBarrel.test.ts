@@ -23,7 +23,13 @@ vi.mock('@vercel/blob', () => ({ put: vi.fn(), del: vi.fn() }))
 vi.mock('next/server', () => ({ after: vi.fn() }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 vi.mock('@/lib/admin/requireAdmin', () => ({ requireAdmin: vi.fn() }))
-vi.mock('@/lib/nina/vision', () => ({ describeNinaImages: vi.fn() }))
+vi.mock('@/lib/nina/vision', () => ({
+  describeNinaImages: vi.fn(),
+  describeNinaImagesWithFallback: vi.fn(),
+  NinaVisionTokenFloorError: class NinaVisionTokenFloorError extends Error {},
+  NinaVisionTransportError: class NinaVisionTransportError extends Error {},
+}))
+vi.mock('@/lib/nina/embedding', () => ({ embedNinaText: vi.fn() }))
 
 const BARREL_ACTIONS = [
   'createNinaAlbumFolderAction',
@@ -39,6 +45,7 @@ const BARREL_ACTIONS = [
   'removeNinaAvatarsAction',
   'renameNinaAlbumFolderAction',
   'saveNinaAvatarCropAction',
+  'searchNinaAvatarsAction',
   'setChatPhotoAsAvatarAction',
   'setCurrentNinaAvatarAction',
 ]
@@ -85,4 +92,9 @@ it('the folder module exports exactly its six maintenance actions', async () => 
     'removeNinaAvatarsAction',
     'renameNinaAlbumFolderAction',
   ])
+})
+
+it('the search module exports exactly its one search action', async () => {
+  const mod = await import('@/lib/admin/ninaAlbumSearchActions')
+  expect(Object.keys(mod).sort()).toEqual(['searchNinaAvatarsAction'])
 })

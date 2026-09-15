@@ -1,9 +1,9 @@
 # Package: db
 
 **Location**: `lib/db`
-**Last Updated**: 2026-09-13 (file-layout section refreshed after `db-schema-split` and
-`db-queries-split` landed later on 2026-09-12, past this page's own compaction pass that morning —
-see Notes for the documentation history)
+**Last Updated**: 2026-09-15 (`P2-DB-A001` — `nina_avatars.description_embedding`, the first
+pgvector column in the schema, plus its HNSW cosine index and migration `0022`; see Notes for the
+documentation history)
 
 ## Overview
 
@@ -121,7 +121,7 @@ R-13, R-22, R-28 — ten in all). Where a module and a feature plan disagree, th
 | `ninaMemoryFacts` | `nina_memory_facts` | Append-only "what he has told me" ledger | `nina_memory_facts_user_created_idx` |
 | `ninaShortcuts` | `nina_shortcuts` | The trigger registry — one emoji or short token standing for a long directive he wrote once | `nina_shortcuts_user_match_unq`, `nina_shortcuts_user_enabled_idx` |
 | `ninaNags` | `nina_nags` | Escalation-ladder state per nag code | PK `(user_id, code)` |
-| `ninaAvatars` | `nina_avatars` | Nina's photo album: folder, crop transform, thumbnail, dedupe key | `nina_avatars_user_current_unq` (partial), `nina_avatars_user_created_idx`, `nina_avatars_user_folder_created_idx`, `nina_avatars_user_source_key_unq` |
+| `ninaAvatars` | `nina_avatars` | Nina's photo album: folder, crop transform, thumbnail, dedupe key, `description` + its `description_embedding` vector | `nina_avatars_user_current_unq` (partial), `nina_avatars_user_created_idx`, `nina_avatars_user_folder_created_idx`, `nina_avatars_user_source_key_unq`, `nina_avatars_description_embedding_hnsw_idx` (HNSW, `vector_cosine_ops`) |
 | `ninaFolders` | `nina_folders` | Asserts a folder exists even when empty | PK `(user_id, folder)` |
 | `ninaTuning` | `nina_tuning` | Nina's per-user character: twelve trait dials, the relationship, the four extra dials, seventeen enable flags and a notes field | PK `user_id` |
 | `ninaImagePrefs` | `nina_image_prefs` | How she is photographed: the prompt-length slider, six focus flags, four lines of free text, `prompt_template` + `model` (the image-gen controls), the chosen photo reference | PK `user_id` |
@@ -223,6 +223,26 @@ place): `run_splits`, `run_zones`, `records`, `badges`, `nina_memory_slots`, `ni
 `extractions.corrections` (`ExtractionCorrections`), `insights.payload`, `nina_turns.args`
 (untyped on purpose, so adding a job field is not a migration) and `nina_memory_slots.value`
 (`NinaSlotValue`).
+
+**One column is a vector, and every rule about it is a rule about its width.**
+`nina_avatars.description_embedding` is `vector(1536)` — the schema's only pgvector column, added
+2026-09-15. The width is declared once, as `NINA_EMBEDDING_DIMENSIONS` in
+`lib/db/schema/nina/avatars.ts`, and exported through the `schema.ts` barrel so the client
+(`lib/nina/embedding.ts`) imports the column's number rather than restating it. It lives here and
+not beside `NINA_EMBEDDING_MODEL` in `lib/nina/openrouter.ts` because it is a property of the
+column, and because `drizzle-kit` loads `lib/db/schema/` outside Next — a `@/lib/nina/*` edge would
+be the first path alias in its resolution path. Three rules follow and none of them is optional:
+
+- **The model and the constant change together, in one migration, with a full re-embed.** Two
+  embedding models do not share a vector space, so changing one without the other does not degrade
+  the ranking — it randomises it, with no error anywhere.
+- **2000 is pgvector's hard ceiling for an HNSW index** (the `vector` type itself allows 16000). A
+  wider model stores fine and then fails at `CREATE INDEX`, at migration time, against production.
+- **The operator class is named at both ends.** The index is `hnsw (… vector_cosine_ops)` because
+  the search uses `<=>`; an HNSW index built for one operator class does not serve another — a
+  mismatched query silently falls back to a seq scan, which is correct and slow and reported
+  nowhere. The index is deliberately **not** partial: pgvector's HNSW does not index NULL rows
+  anyway, so `WHERE … IS NOT NULL` would only be one more predicate the planner must prove.
 
 **`app_settings` is the escape hatch for values that are decisions rather than infrastructure.**
 `key` is `text` and the vocabulary of keys is spelled where they are read; `value` is `text` and
@@ -501,15 +521,22 @@ or calls `process.exit`, and no error is swallowed.
   underlying facts have not changed.
 - Records are recomputed wholesale rather than incremented (roadmap §4.5 / R-10), which trades a
   little work for immunity to drift after a correction.
+- **The HNSW index is insurance, not a requirement.** A per-user album of hundreds ranks fine on a
+  sequential scan — a few hundred 1536-float dot products is sub-millisecond. It is declared now
+  because declaring it now is free and adding it later is a migration, and because the album's own
+  premise is "hundreds of profile pics" growing. Building it cost nothing at migration time either:
+  every row was NULL, and pgvector does not index NULLs, so `0022` had nothing to build over. That
+  is the cheapest moment this index will ever cost.
 - One read is knowingly *not* optimised: the avatar subtree scan (`folder` prefix match) cannot
   range-scan a b-tree under a non-C collation without `text_pattern_ops`, so it degrades to a
   `user_id` scan with a filter. Accepted deliberately — it runs once per dropped folder over a
   table sized in hundreds, and a second index would be maintained on every insert for a query that
   runs when a human drags something.
 
-No benchmark files exist for this package. Correctness is covered by thirteen suites:
+No benchmark files exist for this package. Correctness is covered by fourteen suites:
 `db.client.test.ts`, `db.ownership.test.ts`, `db.schema.test.ts`, `db.schema.nina.test.ts`,
-`db.schema.errorlogs.test.ts`, and eight `db.queries.*.test.ts` files.
+`db.schema.errorlogs.test.ts`, `db.schemaDrift.test.ts` (the drift script's own pure comparators,
+no database), and eight `db.queries.*.test.ts` files.
 
 ## Usage
 
@@ -568,8 +595,12 @@ clean. Later migrations repeat the arrangement for the other reasons a hand-writ
 `0009`/`0010` (marking production's existing rows for a retroactive nullable column),
 `0011_natural_nico_minoru` (moving `nina_tuning.wardrobe` into the new `nina_image_prefs` inside the
 migration that creates the destination, because on a fresh database the files replay in order and a
-copy written later would read a column an earlier migration had already dropped), and
-`0001_badge_award_ledger` (filling `dedupe_key` before the PK that requires it). All of them keep
+copy written later would read a column an earlier migration had already dropped),
+`0001_badge_award_ledger` (filling `dedupe_key` before the PK that requires it), and
+`0022_nina_avatar_embedding` (a hand-written `CREATE EXTENSION IF NOT EXISTS vector` above the
+generated DDL — **drizzle-kit emits the column and the index and assumes the extension exists**, so
+a generated-only file would replay on a fresh database as an error; `IF NOT EXISTS` makes a re-run,
+or a database where someone already enabled it, a no-op). All of them keep
 the generated DDL at the top and put the hand-written statements below a
 `--> statement-breakpoint` under a banner saying so, because
 **`npm run db:generate` will silently drop them if the file is regenerated**: diff the old file
@@ -596,11 +627,25 @@ diffs the snapshot tip against `information_schema` — every table, column, typ
 foreign key, unique constraint and index. With no reachable `DATABASE_URL` it runs the static half
 only and says so, which is how it also runs in CI.
 
-**Deploy state (2026-09-13: all 22 of 22 journal entries applied, zero drift — run the guard,
+**One declared narrowing in the guard, added with the vector column.** `information_schema.columns`
+structurally cannot report a vector's width — it lives in `pg_attribute.atttypmod`, which the
+script's query does not read — so `normalizeSnapshotType` folds `vector(N)` to bare `vector` and
+the comparator checks the TYPE while saying nothing about the width. It is a narrowing, not a
+widening: `halfvec`, `sparsevec` and `bit` are distinct `udt_name`s and stay distinct, with a
+negative control in `tests/db.schemaDrift.test.ts` pinning that. The width is pinned elsewhere, in
+three places holding one number — `NINA_EMBEDDING_DIMENSIONS`, `tests/db.schema.nina.test.ts`
+asserting `vector(NINA_EMBEDDING_DIMENSIONS)` against the schema object, and
+`lib/nina/embedding.ts`'s width guard rejecting any response of the wrong length before it can
+reach the column.
+
+**Deploy state (2026-09-15: all 23 of 23 journal entries applied, zero drift — run the guard,
 do not trust this line):** Production has no
 `nina_tuning.revision`, no `nina_turns.tuning_revision`, no `nina_image_prefs.revision`; it does
 have `content_hash`, `perceptual_hash`, `perceptual_sig`, `prompt_template`, `model`,
-`app_settings` and `nina_error_logs` (with its one index).
+`app_settings` and `nina_error_logs` (with its one index). It also has
+`nina_avatars.description_embedding`, its HNSW index and the `vector` extension: `0022` is
+**already applied**, confirmed 2026-09-15 by reading `information_schema.columns`, `pg_indexes` and
+`pg_extension` directly — not by `db:migrate`'s exit code, which is green over a no-op.
 
 **`0011_rare_blockbuster` was the one stranded entry, and on 2026-09-13 it was repaired by hand.**
 For six days it sat journalled-but-unapplied: its journal `when` (1788786634959) is older than the
@@ -621,7 +666,9 @@ should never again be the thing you rely on.
 
 **And it is the ONLY drift.** The 2026-09-12 pass checked the columns it had reason to suspect; the
 2026-09-13 guard run compared the whole surface — 29 tables, 309 columns, 37 foreign keys, 31
-indexes, 1 unique constraint — and `nina_memory_facts.confidence` is the single divergence. That is
+indexes, 1 unique constraint (counts as measured that day) — and `nina_memory_facts.confidence` is
+the single divergence. The 2026-09-15 run after `0022` reports zero drift over 29 tables and 309
+columns (measured 2026-09-15; the table count is unchanged because `0022` adds no table). That is
 the useful half of the result: the stranded migration did not take anything else with it, and the
 snapshot chain is unbroken (every `prevId` links, despite the collision-era renumbering above). Do
 not re-derive this by hand either — the counts are what the guard prints on a clean run.
@@ -646,6 +693,20 @@ not re-derive this by hand either — the counts are what the guard prints on a 
   those rows would hide every folder created by dropping one.
 - **A thumbnail is two columns.** Recording `thumb_url` without `thumb_pathname` is how an album
   accumulates blob orphans that only a store listing can find.
+- **`description_embedding` must stay OUT of the shared row projection.** `avatarColumns` in
+  `lib/nina/queries/columns.ts` (and the `shapes.ts` row types over it) names every avatar column
+  the query layer returns — and deliberately not this one. A 1536-float vector on a shared
+  projection rides every album read: roughly 1.5 MB of extra wire per page of the explorer, for a
+  value no renderer, prompt or export has any use for, and it would break four suites'
+  `projectedRow(...)` fixtures on the way. Search selects the column (or, better, a similarity
+  expression over it) in its own statement. **The rule generalises: a column whose only consumer is
+  one query does not belong in the projection every query shares.**
+- **Every path that writes `description` must write `description_embedding` in the same step.**
+  A row with prose and a NULL embedding is invisible to search while looking perfectly healthy in
+  the explorer — the one failure mode here with no symptom. NULL itself is a legal state forever
+  (a photo whose describe pass failed is simply not in the search index; a cosine predicate skips
+  NULL rows and HNSW does not index them, so "unsearchable" costs nothing at read time), which is
+  exactly why a *stale* NULL beside a fresh description cannot be detected by the column alone.
 - **`NOT NULL` cannot be added to a populated table in one statement.** A new required column is
   three statements and a backfill between them, in the migration file itself. See `0004`.
 - **A re-attached photo is a reference, not a copy.** `nina_message_images` rows share a `blob_url`
@@ -702,8 +763,10 @@ not re-derive this by hand either — the counts are what the guard prints on a 
 ### Deploy state of the journal
 
 Kept short because it is the fact most likely to have changed since this page was written (and
-three times has): see **Migrations → Deploy state** above — as of 2026-09-13, 22 of 22 entries
-applied and no drift, `0011_rare_blockbuster` repaired by hand. Do not read that paragraph for a
+four times has): see **Migrations → Deploy state** above — as of 2026-09-15, 23 of 23 entries
+applied and no drift, `0022_nina_avatar_embedding` verified applied against
+`information_schema` / `pg_indexes` / `pg_extension` rather than against an exit code, and
+`0011_rare_blockbuster` repaired by hand back on 2026-09-13. Do not read that paragraph for a
 current answer; run `npm run ci:schema-drift-guard`, which is the whole point of it existing.
 
 ### Documentation history
@@ -737,3 +800,4 @@ history, and the decisions worth keeping are folded into the sections above. The
 | 2026-09-12 | db-schema-split | `schema.ts` split into eight domain modules behind an `export *` barrel; no table, column or behavior changed | — |
 | 2026-09-12 | nina-queries-split, db-queries-split | `queries.ts` split into thirteen `queries/*.ts` modules (+ `queries/internal.ts`, not re-exported) behind an `export *` barrel; `lib/nina/queries.ts` split in parallel; no query behavior changed | — |
 | 2026-09-13 | schema-llm-insights (doc-drift fix) | this page's file-layout language updated to match the two splits above, which landed after that morning's compaction pass; the "no importers" row-type list extended from 2 to 8 entries (grep-verified, `components/` included) | — |
+| 2026-09-15 | P2-DB-A001 (admin-album-semantic-search p1) | `nina_avatars` + nullable `description_embedding vector(1536)` and an HNSW `vector_cosine_ops` index; `NINA_EMBEDDING_DIMENSIONS` exported through the schema barrel; the drift guard taught to fold `vector(N)` (width pinned by the schema test instead); nothing writes the column in this phase | `0022_nina_avatar_embedding` (applied; hand-written `CREATE EXTENSION IF NOT EXISTS vector` above the generated DDL) |

@@ -85,6 +85,22 @@ export function normalizeSnapshotType(type) {
   // drizzle writes `numeric(5, 3)` with a space; information_schema has no spelling at all.
   const numeric = /^numeric\s*\(\s*(\d+)\s*,\s*(\d+)\s*\)$/.exec(t)
   if (numeric) return `numeric(${numeric[1]},${numeric[2]})`
+  /*
+   * pgvector (2026-09-15, nina_avatars.description_embedding). The snapshot spells the dimension
+   * — `vector(1536)` — and `information_schema.columns` structurally cannot: a vector's width
+   * lives in `pg_attribute.atttypmod`, which this script's query does not read. So both sides fold
+   * to bare `vector` and this comparator checks the TYPE while saying nothing about the width.
+   *
+   * That is a NARROWING, and it is declared here rather than hidden: the width is pinned instead
+   * by `tests/db.schema.nina.test.ts`, which asserts `vector(NINA_EMBEDDING_DIMENSIONS)` against
+   * the schema — and the client validates every response against that same constant before it can
+   * reach the column (`lib/nina/embedding.ts`'s width guard). Three places, one number.
+   *
+   * It is NOT a widening. `halfvec`, `sparsevec` and `bit` are distinct udt_names and stay
+   * distinct; the negative control in this script's test pins that.
+   */
+  const pgvector = /^vector\s*\(\s*\d+\s*\)$/.exec(t)
+  if (pgvector) return 'vector'
   const varchar = /^varchar\s*\(\s*(\d+)\s*\)$/.exec(t)
   if (varchar) return `character varying(${varchar[1]})`
   if (t === 'varchar') return 'character varying'

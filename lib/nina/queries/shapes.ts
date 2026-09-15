@@ -479,6 +479,45 @@ export interface NinaAvatarFolderPage {
 }
 
 /**
+ * One ranked row of a semantic search over the album — `NinaAvatarRow` plus the score it ranked on.
+ *
+ * A SUPERSET of `NinaAvatarRow` rather than a parallel shape, deliberately: `app/admin/nina/page.tsx`
+ * already owns the one `NinaAvatarRow -> AlbumExplorerPhoto` mapping this app has, and a search
+ * result is the same photograph that the grid draws — it has just been found a different way. An
+ * extra property is structurally invisible to that mapping, so a second copy of it never has to
+ * exist.
+ */
+export interface NinaAvatarSearchRow extends NinaAvatarRow {
+  /**
+   * Cosine similarity against the query vector, `1 - (embedding <=> query)`.
+   *
+   * In `[-1, 1]` by definition, and in practice in `[0, 1]` for two embeddings of English prose
+   * from one model — a negative score means the two texts are actively opposed, which a description
+   * corpus does not produce. It is a RELATIVE number: read it to order results and to grey out the
+   * weak tail, never as a percentage, and never compare one query's scores against another's.
+   *
+   * On `searchNinaAvatarsByTextAndCaption` it is the WEIGHTED similarity — see that function.
+   */
+  score: number
+}
+
+/**
+ * A page of search results — the same `{ rows, total }` pair `NinaAvatarFolderPage` carries, and
+ * assignable to it, so nothing downstream needs a second branch.
+ *
+ * `total` means something different here and the difference matters: it is **how many album rows
+ * were actually compared**, i.e. how many carry a `description_embedding` at all. It is NOT the
+ * album's size and it is NOT a pager's denominator — search returns one flat top-N list and has no
+ * pager. It is the coverage number: "48 shown, out of 342 photos that have been described". Phase
+ * 2's backfill is what moves it.
+ */
+export interface NinaAvatarSearchPage {
+  rows: NinaAvatarSearchRow[]
+  /** Rows with a non-NULL `description_embedding`, for this user, across EVERY folder. */
+  total: number
+}
+
+/**
  * One already-uploaded file, as the client-side diff needs it — F34 R1's *"only upload the new
  * folders and files"*.
  *

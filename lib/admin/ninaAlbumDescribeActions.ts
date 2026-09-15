@@ -4,10 +4,11 @@ import { revalidatePath } from 'next/cache'
 
 import { ADMIN_CHAT_PHOTO_MAX_DESCRIPTION_CHARS } from '@/lib/admin/chatPhotos'
 import type { AdminActionResult } from '@/lib/admin/ninaAlbumActions'
+import { embedNinaAvatarDescription, scheduleEmbed } from '@/lib/admin/ninaAlbumDeferredDescribe'
 import { requireAdmin } from '@/lib/admin/requireAdmin'
 import { avatarDescriptionSchema, avatarIdSchema } from '@/lib/admin/schema'
 import { describeSubjectForSide } from '@/lib/nina/album'
-import { getNinaAvatar, setNinaAvatarDescription } from '@/lib/nina/queries'
+import { getNinaAvatar, setNinaAvatarDescriptionAndEmbedding } from '@/lib/nina/queries'
 import { describeNinaImages } from '@/lib/nina/vision'
 
 /**
@@ -56,7 +57,26 @@ export async function describeNinaAvatarAction(rawId: string): Promise<AdminActi
       [{ blobUrl: row.blobUrl, pathname: row.pathname }],
       { subject: describeSubjectForSide('hers') },
     )
-    await setNinaAvatarDescription(userId, row.id, description)
+    /*
+     * ── AND THE VECTOR, IN THE SAME UPDATE ──────────────────────────────────────────────────
+     * `admin-album-semantic-search` R2. This action OVERWRITES whatever was stored (R3, 2026-09-10),
+     * so leaving the old vector in place would leave the photo searchable under the prose it just
+     * stopped having — the one failure mode a stale derived column has, and the reason both columns
+     * move in one statement (`setNinaAvatarDescriptionAndEmbedding`'s docstring argues the window).
+     *
+     * IN BAND rather than `after()`, unlike the upload path, and the arithmetic is why: the
+     * operator is already waiting ~8-11 s for the vision call they clicked, and an embedding is one
+     * small text request against a model with no image in it. Deferring it would add a second
+     * moving part to save a fraction of the latency the click already costs. `after()` here would
+     * also be the wrong shape for `ensureNinaAvatarDescriptionAction`, which delegates to this
+     * function precisely BECAUSE it needs the answer in band.
+     *
+     * `embedNinaAvatarDescription` never throws: an embedding outage must not turn a successful
+     * describe into a failed one. It answers `null`, the row is written prose-with-no-vector, and
+     * `listNinaAvatarDescribeBacklog` picks it up on the next sweep.
+     */
+    const embedding = await embedNinaAvatarDescription(description, userId)
+    await setNinaAvatarDescriptionAndEmbedding(userId, row.id, description, embedding)
     revalidatePath('/admin/nina')
     return { ok: true, description }
   } catch (cause) {
@@ -104,7 +124,24 @@ export async function editNinaAvatarDescriptionAction(input: unknown): Promise<A
   /* The empty box IS the clear — the same policy line `editChatPhotoDescriptionAction` runs. */
   const next = description.length === 0 ? null : description
 
-  await setNinaAvatarDescription(userId, id, next)
+  /*
+   * ── THE VECTOR IS CLEARED HERE AND RE-EARNED AFTERWARDS ─────────────────────────────────────
+   * `admin-album-semantic-search` R2. The docstring above says this action makes NO model call,
+   * and that rule is kept for the call that matters — nothing re-describes prose a human just
+   * typed. But `description_embedding` is DERIVED from that prose, so leaving the old vector
+   * behind would leave the photo searchable under the words the operator just deleted: a stale
+   * derived column, invisible until a search returns the wrong photo.
+   *
+   * So the vector is set to NULL in the SAME UPDATE as the new prose — the row is never, for any
+   * window, a pair of columns that disagree — and `scheduleEmbed` re-earns it after the response
+   * has gone out. NULL is the honest intermediate state and it is the one the backlog read already
+   * looks for, so a callback that never runs costs a sweep, not a correction.
+   *
+   * `scheduleEmbed` and not `scheduleDescribe`: a CLEARED box must not summon `glm-4.6v` to
+   * invent prose the operator just removed. The embed-only worker leaves a NULL description alone.
+   */
+  await setNinaAvatarDescriptionAndEmbedding(userId, id, next, null)
+  if (next != null) scheduleEmbed(userId, id)
 
   revalidatePath('/admin/nina')
   return {
@@ -129,6 +166,11 @@ export async function editNinaAvatarDescriptionAction(input: unknown): Promise<A
  * single-row read with no model call at all. Only a never-promoted, never-shared photo pays the
  * ~8-11 s. That is the shape that makes it safe for phase 7 to await — and phase 7 must still open
  * the tab BEFORE awaiting it, because `window.open` after an `await` has lost the user gesture.
+ *
+ * The fast path deliberately does NOT check `description_embedding`. Sharing a photo to Nina is
+ * about the prose reaching her prompt; whether the album's search can also find that photo is the
+ * backfill's question, and making a share tab wait on an embedding call would answer it in the
+ * most expensive possible place.
  */
 export async function ensureNinaAvatarDescriptionAction(rawId: string): Promise<AdminActionResult> {
   const { userId } = await requireAdmin()

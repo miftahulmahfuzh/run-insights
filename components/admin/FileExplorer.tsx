@@ -19,6 +19,8 @@ import { entriesFromDrop, filesFromDropList, filesFromPicker } from './explorer/
 import { FolderTree } from './explorer/FolderTree'
 import { MediaAdd } from './explorer/MediaAdd'
 import { PhotoGrid } from './explorer/PhotoGrid'
+import { PhotoSearchBar, type AlbumSearchState } from './explorer/PhotoSearchBar'
+import { SearchResultsGrid } from './explorer/SearchResultsGrid'
 import { SelectionPane } from './explorer/SelectionPane'
 import { UploadQueue } from './explorer/UploadQueue'
 import { useFolderUpload } from './explorer/useFolderUpload'
@@ -146,7 +148,25 @@ export function FileExplorer({
    * unmounts under it — and rendered under the toolbar until the next removal replaces it. */
   const [notice, setNotice] = useState<string | null>(null)
 
+  /**
+   * The landed search, or `null` for "browsing". Held here and not in `PhotoSearchBar` because the
+   * thing that has to branch on it is the content pane below; the bar owns the draft and hands a
+   * result up. Client state and not a URL parameter, for the reason this file's header gives about
+   * `selectedId`: it would re-run a Server Component that just did two database reads, for a state
+   * change that never leaves the client — and here the rows do not even come from that read.
+   */
+  const [search, setSearch] = useState<AlbumSearchState | null>(null)
+
   const isMediaView = view === 'media'
+
+  /**
+   * The search that is actually driving the pane. `null` on the Media arm even when a search has
+   * landed: the feature is the ALBUM's (the plan's first Decision — Media is a separate arm
+   * throughout this codebase), so the results are simply not on screen there. Derived rather than
+   * cleared by an effect, so switching to Media and back does not throw away a search the operator
+   * ran, and there is no effect to reason about.
+   */
+  const activeSearch = isMediaView ? null : search
 
   const folderInputRef = useRef<HTMLInputElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -252,6 +272,18 @@ export function FileExplorer({
     setSelectedId(id)
   }
 
+  /*
+   * A search has landed. The selection goes with it: the open pane is showing a photograph from
+   * the folder that is about to leave the screen, and a details rail about a row the operator can
+   * no longer see is a rail about nothing. Done in the event handler and not an effect — the
+   * pane-close focus restoration above then runs its fallback (`contentRef.focus()`), which is a
+   * place to stand, which is correct for a pane that closed because the view changed.
+   */
+  function onSearchResults(next: AlbumSearchState) {
+    setSearch(next)
+    setSelectedId(null)
+  }
+
   function onPickFolder(event: React.ChangeEvent<HTMLInputElement>) {
     const walked = filesFromPicker(event.target.files)
     event.target.value = '' // so re-picking the same folder fires change again
@@ -327,6 +359,23 @@ export function FileExplorer({
 
   return (
     <div>
+      {/* ── SEARCH ──────────────────────────────────────────────────────────────────────────
+          FIRST, deliberately: *"in image collection, above 'Album' text"*. Both places that print
+          that word are below this line — the breadcrumb's root crumb (`trail[0]`, next) and the
+          folder tree's root row (`FolderTree`, in the grid further down) — so one element in one
+          place satisfies the requirement for both, and no sibling has to know about it.
+
+          Album-only. The Media arm's photographs are a different table with no description column
+          (the plan's first Decision), so a search field over it would be a field that cannot
+          answer — absent, not disabled. */}
+      {!isMediaView && (
+        <PhotoSearchBar
+          active={activeSearch !== null}
+          onResults={onSearchResults}
+          onClear={() => setSearch(null)}
+        />
+      )}
+
       {/* ── TOOLBAR ─────────────────────────────────────────────────────────────────────────
           Two rows below `lg` — crumbs over controls — and one flex line at `lg`, unchanged from
           what shipped. `lg:contents` on the control group is what buys that: at `lg` the wrapper
@@ -511,14 +560,23 @@ export function FileExplorer({
               />
             )}
 
-            <PhotoGrid
-              photos={photos}
-              page={page}
-              view={view}
-              selectedId={selected?.id ?? null}
-              onSelect={select}
-              hrefForPage={hrefForPage}
-            />
+            {/* Browsing, or the answer to a search. The two grids are siblings and not one
+                component with a mode, because they differ in the three things a grid is: where the
+                rows come from, whether there is a page after this one, and what a click does. While
+                results are on screen `selectedId` is null (see `onSearchResults`), so `PhotoMoveBar`
+                above is already in its nothing-selected state and needs no branch of its own. */}
+            {activeSearch !== null ? (
+              <SearchResultsGrid hits={activeSearch.hits} />
+            ) : (
+              <PhotoGrid
+                photos={photos}
+                page={page}
+                view={view}
+                selectedId={selected?.id ?? null}
+                onSelect={select}
+                hrefForPage={hrefForPage}
+              />
+            )}
           </div>
 
           {!isMediaView && (

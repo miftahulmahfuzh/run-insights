@@ -2,7 +2,7 @@
 
 **Package Path**: `lib/db`
 **Package Code**: DB
-**Last Updated**: 2026-09-12
+**Last Updated**: 2026-09-15
 **Total Active Tasks**: 0
 
 ## Quick Stats
@@ -12,7 +12,7 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 8
+- Completed: 9
 - Archived: 7
 
 ---
@@ -38,6 +38,20 @@
 (all seven completed tasks were archived on 2026-09-12 — see Archive; full
 per-task detail — Context, Drift, Decided, Files — survives in git history and
 in `.workflows/package_readme.md`)
+
+- [x] **P2-DB-A001** Phase 1: Schema + embedding client
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns the nullable `description_embedding vector(N)` column + HNSW cosine index on `nina_avatars` (`lib/db/schema/nina/avatars.ts`), the migration that enables the `vector` extension, `lib/nina/openrouter.ts`'s embeddings endpoint/model constants, and a new `lib/nina/embedding.ts` (`embedNinaText`) that turns text into a `number[]` via one fetch against a probe-confirmed embeddings endpoint. Leaves `lib/nina/queries/columns.ts`/`shapes.ts` untouched so the vector never rides the shared row projection. Exit: `db:check` passes and the database itself reports the `vector` extension, the nullable column and the HNSW index; `embedNinaText` is unit-testable against a mocked fetch and returns the documented dimension; the model id + dimension are confirmed by a live probe and recorded in the module's doc comment.
+  - **Status**: completed
+  - **Plan Set**: `ADMIN_ALBUM_SEMANTIC_SEARCH_PLAN.md` (phase 1 of 4)
+  - **Satisfies**: R2, R3, R4 — shared infra for text-only search (R2), image-only search (R3, via caption+embed), and combined text+image search (R4)
+  - **Depends on**: —
+  - **Plan**: `.workflows/plan/P2-DB-A001.md`
+  - **Completed**: 2026-09-15 09:54
+  - **Method**: /implement
+  - **Files**: lib/nina/openrouter.ts, lib/db/schema/nina/avatars.ts, lib/nina/embedding.ts, lib/nina/embedding.test.ts, drizzle/0022_nina_avatar_embedding.sql, drizzle/meta/0022_snapshot.json, drizzle/meta/_journal.json, tests/db.schema.nina.test.ts, tests/db.schemaDrift.test.ts, scripts/check-schema-drift.mjs
+  - **Verified**: live embeddings probe landed on the plan's Branch A first try — `openai/text-embedding-3-small`, 200 OK, finite 1536-dim vector, so `NINA_EMBEDDING_DIMENSIONS = 1536` matches the plan's written default with no branch deviation. Migration `0022` already applied to the (single, production) database and confirmed by direct `information_schema` / `pg_indexes` / `pg_extension` reads, not just `db:migrate`'s exit code. `npm test` (5905 tests, 339 files), `npm run typecheck`, `npm run build`, `npm run lint`, `npm run ci:openrouter-guard` and `npm run ci:schema-drift-guard` (0 drift vs the 29-table/309-column production schema) all pass. `npm run format:check`'s 4 unformatted files (`components/nina/NinaAboutScreen.tsx`, `tests/admin.chatPhotos.test.ts`, `tests/nina.imagerun.test.ts`, `tests/nina.llmFallbackText.test.ts`) are pre-existing drift this phase never touched (checked against `git status --porcelain`). `npm run knip` flags `embedNinaText` as an unused export — expected and plan-documented; phases 2/3 consume it, so it must not be suppressed or deleted.
 
 - [x] **P1-DB-A007** Phase 1: Error-log schema + writer/reader
   - **Difficulty**: NORMAL

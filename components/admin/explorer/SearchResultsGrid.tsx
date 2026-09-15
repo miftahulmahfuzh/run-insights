@@ -1,0 +1,126 @@
+'use client'
+
+import { useMemo, useState } from 'react'
+
+import { EmptyState } from '@/components/ui'
+import { PhotoViewer, type ViewerPhoto } from '@/components/ui/PhotoViewer'
+import { NINA_FOLDER_ROOT_LABEL } from '@/lib/admin/filetree'
+
+import type { AdminSearchHit } from '@/lib/admin/ninaAlbumActions'
+
+/**
+ * The ranked answer to a search — R1's *"we output similar images"*, drawn as one sheet.
+ *
+ * ── THE SAME BORDERLESS RECIPE, THREE DELIBERATE DIFFERENCES ────────────────────────────────
+ * `PhotoGrid.tsx:115-178` is the idiom and this mirrors it exactly: `gap-[3px]`, one
+ * `overflow-hidden rounded-field` on the `<ul>` and nowhere else, `aspect-square` tiles on a
+ * `bg-ink-3/20` bed, no per-tile border or radius or padding, the `Hers` pill in the top-left
+ * corner, `focus-visible:ring-inset` (a ring outside the clip is a ring nobody sees), a plain
+ * `<img>` on `thumbUrl ?? url` with `loading="lazy"`. `tests/admin.photoSearch.test.ts` pins the
+ * mirror the way `tests/admin.photoGrid.test.ts` pins the original, and neither suite may edit the
+ * other's file.
+ *
+ * What is NOT mirrored, and why:
+ *
+ *   1. **No pager.** A ranked list has no page 2 — rank 121 is not "older", it is "worse", and a
+ *      Newer/Older row would invite the operator to walk into noise. The list IS the top N, capped
+ *      by the Server Action.
+ *   2. **No selection, and no `SelectionPane`.** A tile click opens the full-screen overlay
+ *      instead — the mid-turn addendum, verbatim: *"if admin click one of the result, it will pop
+ *      up the full screen image view"*. The plan's Scope keeps the pane's verbs (make current,
+ *      delete, move, share) out of the result set on purpose; browsing is where a photograph gets
+ *      operated on, and Clear is one button away. There is also no `data-photo-id` here — that
+ *      attribute is `FileExplorer`'s pane-close focus hook (`FileExplorer.tsx:189-198`) and this
+ *      grid opens no pane.
+ *   3. **The folder is in the accessible name.** *"i am struggling to see the image i want"* is a
+ *      complaint about not knowing where a photograph is filed, and the search answers it — so the
+ *      tile says `<filename> in 2026/bali`, and the root says `Album` (`NINA_FOLDER_ROOT_LABEL`,
+ *      the same string the breadcrumb and the tree print). It stays out of the VISIBLE tile for
+ *      `PhotoGrid`'s own reason: a text label under every tile is what broke the sheet.
+ *
+ * ── THE OVERLAY IS SCOPED TO THE RESULTS, AND THAT IS WHY IT LIVES IN THIS FILE ─────────────
+ * `components/ui/PhotoViewer` is the app's one full-screen overlay and this is its second caller
+ * under `components/admin/` (`ErrorLogList.tsx:167-175` is the first, and this file follows its
+ * shape). Holding `viewerIndex` HERE means the index a tile hands over and the list the overlay
+ * pages through are derived from one array — so a swipe or an arrow key moves between search
+ * results and can never wander into the folder the operator happened to be browsing.
+ */
+export function SearchResultsGrid({ hits }: { hits: readonly AdminSearchHit[] }) {
+  /** An index into `hits`, or `null` for "no overlay". `ErrorLogList.tsx:45`'s shape. */
+  const [viewerIndex, setViewerIndex] = useState<number | null>(null)
+
+  /**
+   * The overlay's list, 1:1 with the sheet so the indices agree by construction. `kind` is the
+   * row's `source` and `label` is its filename — without the label the header would read the
+   * literal word `avatar` (`PhotoViewer.tsx:50-58`).
+   */
+  const photos = useMemo<ViewerPhoto[]>(
+    () => hits.map((hit) => ({ url: hit.url, kind: hit.source, label: hit.filename })),
+    [hits],
+  )
+
+  if (hits.length === 0) {
+    return (
+      <EmptyState
+        title="Nothing matched"
+        description="Try fewer words, a different photo, or both together. A photo can only be matched once it has been described."
+      />
+    )
+  }
+
+  return (
+    <>
+      <ul className="grid grid-cols-[repeat(auto-fill,minmax(88px,1fr))] gap-[3px] overflow-hidden rounded-field">
+        {hits.map((hit, index) => {
+          const where = hit.folder === '' ? NINA_FOLDER_ROOT_LABEL : hit.folder
+          return (
+            <li key={hit.id} className="relative aspect-square bg-ink-3/20">
+              <button
+                type="button"
+                onClick={() => setViewerIndex(index)}
+                aria-label={
+                  hit.isCurrent
+                    ? `${hit.filename} in ${where} — her current profile picture`
+                    : `${hit.filename} in ${where}`
+                }
+                title={`${hit.filename} · ${where}`}
+                className="block size-full focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element -- Blob-hosted and
+                 * deliberately un-transformed; `PhotoGrid.tsx:56-60`'s standing ruling. */}
+                <img
+                  src={hit.thumbUrl ?? hit.url}
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                  draggable={false}
+                  className="size-full object-cover"
+                />
+                {hit.isCurrent && (
+                  <span className="absolute top-1 left-1 rounded-pill bg-ink px-1.5 py-0.5 text-[9px] font-semibold tracking-[0.04em] text-card uppercase">
+                    Hers
+                  </span>
+                )}
+              </button>
+            </li>
+          )
+        })}
+      </ul>
+
+      {/* `photos[viewerIndex] != null` and not just a non-null index: `PhotoViewer` opens with
+          `photos[index]!` (`PhotoViewer.tsx:96`), so a list that shrank under an open overlay
+          would call `nameOf(undefined)`. `ErrorLogList.tsx:167`'s guard, for the same reason.
+          `subject="foto"` for the reason that file and `NinaAboutScreen` both give: "avatar
+          screenshot" is not a thing. */}
+      {viewerIndex !== null && photos[viewerIndex] != null && (
+        <PhotoViewer
+          photos={photos}
+          index={viewerIndex}
+          onIndex={setViewerIndex}
+          onClose={() => setViewerIndex(null)}
+          subject="foto"
+        />
+      )}
+    </>
+  )
+}

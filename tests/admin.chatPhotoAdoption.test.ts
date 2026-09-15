@@ -55,8 +55,12 @@ const put = vi.fn()
 const del = vi.fn()
 const fetchMock = vi.fn()
 const describeNinaImages = vi.fn()
+const embedNinaText = vi.fn()
 const revalidatePath = vi.fn()
 const afterCallbacks: Array<() => Promise<void>> = []
+
+/** A stand-in vector. Its length is irrelevant to these tests; only its identity is asserted. */
+const EMBEDDING = [0.1, 0.2, 0.3]
 
 vi.mock('@vercel/blob', () => ({ put: (...args: unknown[]) => put(...args), del }))
 vi.mock('@/lib/admin/requireAdmin', () => ({ requireAdmin: () => requireAdmin() }))
@@ -68,6 +72,9 @@ vi.mock('next/server', () => ({
 vi.mock('next/cache', () => ({ revalidatePath: (path: string) => revalidatePath(path) }))
 vi.mock('@/lib/nina/vision', () => ({
   describeNinaImages: (...args: unknown[]) => describeNinaImages(...args),
+}))
+vi.mock('@/lib/nina/embedding', () => ({
+  embedNinaText: (...args: unknown[]) => embedNinaText(...args),
 }))
 
 type Actions = typeof import('@/lib/admin/ninaAlbumActions')
@@ -128,6 +135,17 @@ function avatarRow(overrides: Record<string, unknown> = {}): unknown[] {
   )
 }
 
+/** `describeTargetColumns` in projection order — five values, the deferred worker's own read. */
+function describeTargetRow(overrides: Record<string, unknown> = {}): unknown[] {
+  return projectedRow(
+    pick(overrides, 'id', AVATAR_ID),
+    pick(overrides, 'blobUrl', adoptedUrl),
+    pick(overrides, 'pathname', adoptedPathname),
+    pick(overrides, 'description', SOURCE_DESCRIPTION),
+    pick(overrides, 'embedded', 0),
+  )
+}
+
 function sourceKeyOf(imageId: string): string {
   return `chat-photo:${imageId}`
 }
@@ -150,6 +168,8 @@ beforeEach(async () => {
   describeNinaImages
     .mockReset()
     .mockResolvedValue({ description: 'fresh prose', completionTokens: 60 })
+  embedNinaText.mockReset()
+  embedNinaText.mockResolvedValue(EMBEDDING)
   revalidatePath.mockReset()
   fake = installFakeDb()
   actions = await import('@/lib/admin/ninaAlbumActions')
@@ -298,13 +318,21 @@ describe('setChatPhotoAsAvatarAction — the fresh adoption', () => {
     expect(revalidatePath).toHaveBeenCalledWith('/admin/nina')
   })
 
-  it('seeds no vendor call when the chat row is already described', async () => {
+  it('the prose came from the chat row; the VECTOR still has to be earned', async () => {
     enqueueFreshAdopt()
 
     await actions.setChatPhotoAsAvatarAction(FRAMED)
 
-    expect(afterCallbacks).toHaveLength(0)
+    expect(afterCallbacks).toHaveLength(1)
     expect(describeNinaImages).not.toHaveBeenCalled()
+
+    fake.enqueue([describeTargetRow({ description: SOURCE_DESCRIPTION, embedded: 0 })])
+    fake.enqueue([{ id: AVATAR_ID }]) // setNinaAvatarDescriptionAndEmbedding RETURNING
+    await afterCallbacks[0]?.()
+
+    expect(describeNinaImages).not.toHaveBeenCalled()
+    expect(embedNinaText).toHaveBeenCalledTimes(1)
+    expect(embedNinaText).toHaveBeenCalledWith(SOURCE_DESCRIPTION, { userId: USER })
   })
 
   it('schedules the describe for an undescribed row, pointing at the NEW object', async () => {
@@ -319,8 +347,8 @@ describe('setChatPhotoAsAvatarAction — the fresh adoption', () => {
     expect(afterCallbacks).toHaveLength(1)
     expect(describeNinaImages).not.toHaveBeenCalled() // not on the action's clock
 
-    fake.enqueue([avatarRow({ description: null })]) // the callback's own re-read
-    fake.enqueue([{ id: AVATAR_ID }]) // setNinaAvatarDescription RETURNING
+    fake.enqueue([describeTargetRow({ description: null })]) // the callback's own re-read
+    fake.enqueue([{ id: AVATAR_ID }]) // setNinaAvatarDescriptionAndEmbedding RETURNING
     await afterCallbacks[0]?.()
 
     /* R3: the adopted row is a photograph of HERS, so the deferred describe carries the self

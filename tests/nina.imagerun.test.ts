@@ -351,7 +351,11 @@ describe('the delivered photograph buzzes the phone', () => {
     await expect(runNinaImageJob(USER, JOB_ID)).resolves.toBe('ok')
 
     expect(notify).toHaveBeenCalledTimes(1)
-    expect(notify).toHaveBeenCalledWith(USER, [{ id: 'msg-1', body: 'nih, di pantai' }], 'photo_delivered')
+    expect(notify).toHaveBeenCalledWith(
+      USER,
+      [{ id: 'msg-1', body: 'nih, di pantai' }],
+      'photo_delivered',
+    )
   })
 
   it('pushes the canned fallback line when the caption call was refused', async () => {

@@ -1,7 +1,12 @@
 # Package: components/admin
 
 **Location**: `components/admin`
-**Last Updated**: 2026-09-13 (doc-drift fix: the 2026-09-12 optional-prop-vs-callsite AST sweep
+**Last Updated**: 2026-09-15 (`admin-album-semantic-search` phase 4/4, `P2-CA-A001`: the album's
+semantic search row — `explorer/PhotoSearchBar.tsx`, `explorer/SearchResultsGrid.tsx`,
+`explorer/searchQueryImage.ts`, and `FileExplorer`'s one branch between browsing and results.
+Everything below the search additions is the 2026-09-13 pass, unchanged.)
+
+**Previously**: 2026-09-13 (doc-drift fix: the 2026-09-12 optional-prop-vs-callsite AST sweep
 — commit `1fec595`, `components/admin` in full — landed after this file's same-day compaction
 and left two claims stale, `photoIcons.tsx`'s deleted `EyeIcon` and an `export`-keyword code
 sample for the now-un-exported `EXPLORER_UPLOAD_CONCURRENCY`; both corrected. Also folded in
@@ -13,7 +18,8 @@ log at the foot.)
 
 `components/admin` is the view layer of `/admin/**`: the Image collection — `/admin/nina`'s file
 manager, her album as a folder tree and grid with the Media view (every photograph of the
-conversation) behind the same chrome — plus the framing studio, `/admin/personality`'s two
+conversation) behind the same chrome, and a semantic search row above both — plus the framing
+studio, `/admin/personality`'s two
 controls, `/admin/image-generation`, `/admin/memory`'s one table, and `/admin/shortcuts`.
 There is no data access, no validation and no vendor call in this directory. Reads arrive as
 props from a Server Component; writes leave through a Server Action in `lib/admin`.
@@ -60,6 +66,9 @@ see Test consumers under Reverse Dependencies.
 - Be `/admin/nina`'s file manager: folder tree, breadcrumb, folder-scoped paginated grid,
   drag-and-drop of nested folders, a directory picker, and a details rail; create, rename, move
   and delete folders from the row that names them, with every refusal left on the server.
+- Search that album semantically, album-wide, from a row above everything: words, a photograph
+  re-encoded in the browser as a question and never uploaded, or both; render the ranked answer as
+  its own sheet whose tile opens the shared full-screen viewer. The ranking itself is `lib/`'s.
 - Serve the Media view — the conversation's photographs, her generated selfies and his composer
   uploads alike — with the full verb set: adopt as her profile picture under a draft framing,
   replace, remove, download, hand-edit or re-run the vision describe, read the generation
@@ -81,7 +90,10 @@ see Test consumers under Reverse Dependencies.
 | File | Kind | Purpose |
 |---|---|---|
 | `touch.ts` | **no directive** | The 44 px rule spelled once: `TOUCH_TARGET`, `TOUCH_ICON`. Zero imports. |
-| `FileExplorer.tsx` | `'use client'` | The `/admin/nina` screen. Layout, toolbar, breadcrumb, drop target, the two-arm URL grammar (`hrefForFolder` / `hrefForMediaView` / `hrefForPage`), the removal-`notice` line. Toolbar buttons are icon-only (private Lucide glyphs, `aria-label` is the name). Below `lg`: two-row toolbar, folder rail behind the `treeOpen` drawer (`id="admin-folder-rail"`). `?view=media` swaps the content pane to the Media view inside the same chrome; re-exports the `explorer/model.ts` types. |
+| `FileExplorer.tsx` | `'use client'` | The `/admin/nina` screen. Layout, toolbar, breadcrumb, drop target, the two-arm URL grammar (`hrefForFolder` / `hrefForMediaView` / `hrefForPage`), the removal-`notice` line. Toolbar buttons are icon-only (private Lucide glyphs, `aria-label` is the name). Below `lg`: two-row toolbar, folder rail behind the `treeOpen` drawer (`id="admin-folder-rail"`). `?view=media` swaps the content pane to the Media view inside the same chrome; re-exports the `explorer/model.ts` types. Holds the landed `search` (client state, `null` = browsing) and branches the content pane between `PhotoGrid` and `SearchResultsGrid`. |
+| `explorer/PhotoSearchBar.tsx` | `'use client'` | The album search row, rendered FIRST so it sits above every printing of the word "Album". Owns only the DRAFT (words, picked photograph, in-flight, the one sentence under the row) and hands a landed search UP through `onResults`; `Clear` resets it and calls `onClear`. Calls `searchNinaAvatarsAction` as a black box. Album arm only — absent on Media, not disabled. Shows neither the caption nor the score. |
+| `explorer/SearchResultsGrid.tsx` | `'use client'` | The ranked answer as one sheet, `PhotoGrid`'s borderless recipe mirrored with three deliberate differences: no pager (a ranked list has no page 2), no selection and no `SelectionPane` (a tile opens `components/ui/PhotoViewer` instead, scoped to the result set via a local `viewerIndex` + `useMemo`'d `ViewerPhoto[]`), and the folder in the accessible name (`<filename> in 2026/bali`, root as `NINA_FOLDER_ROOT_LABEL`). |
+| `explorer/searchQueryImage.ts` | browser APIs | The one encode in this folder that does **not** PUT: one decode → `SEARCH_QUERY_SHORT_EDGE_PX = 768` on the SHORT edge (`longEdgeTargetFor`), `SEARCH_QUERY_QUALITY = 0.75` JPEG, out as a data URI, capped at `SEARCH_QUERY_MAX_DATA_URI_CHARS = 700_000`. The four constants stay `export`ed with a symbol-level note because knip cannot see their reader — see Test consumers. |
 | `explorer/model.ts` | **types only** | The Server→client props contract and the row union: `ExplorerPhoto` is `AlbumExplorerPhoto \| MediaExplorerPhoto`, discriminated by `origin`. The media arm types `thumbUrl` as the literal `null` (no thumbnail column) and `isCurrent` as `false` (adoption copies bytes into `nina_avatars`; the copy carries the flag). `QueueItem` / `QueueReport` — `report.already` is the number the upload exists to show. No runtime export. |
 | `explorer/dropWalk.ts` | browser APIs | `webkitGetAsEntry()` capture, the `readEntries` pump (`EXPLORER_WALK_MAX_FILES = 2000`, `EXPLORER_WALK_MAX_DEPTH = 12`), the `webkitdirectory` picker. Decides nothing. |
 | `explorer/thumbnail.ts` | browser APIs | One decode: intrinsic size out, `EXPLORER_THUMB_SHORT_EDGE_PX = 256` JPEG (`EXPLORER_THUMB_QUALITY = 0.82`) out. |
@@ -142,6 +154,12 @@ at `lg` via `lg:contents` on the control group.
   `nina_folders`; this state only covers the window before the server's list includes it, and the
   merge into `allFolders` is a **filter, not a union**, so the pending copy dies the moment the
   server knows the folder.
+- **The landed search is `useState` too**, for `selectedId`'s reason and one more: its rows do not
+  come from the page's read at all, so a URL parameter would re-run two database queries to render
+  rows the server never produced. `FileExplorer` holds it because the content pane is what branches
+  on it; `PhotoSearchBar` holds only the draft. The pane reads a DERIVED `activeSearch` that is
+  `null` on the Media arm — so switching views and back does not throw a search away, and there is
+  no effect to reason about.
 
 The URL grammar has one home in `FileExplorer.tsx` and is a two-arm family: `hrefForFolder`
 spells `?folder=&page=`, `hrefForMediaView` spells `?view=media&page=N` (name and value from
@@ -150,6 +168,37 @@ view so media page 2 cannot drop the operator into the album. Root folder is the
 `?folder=`, page 1 the **absence** of `?page=`. There are two ways out of the grammar, not two
 spellings: `hrefFor` *builds* (for `<Link>`), `navigateToFolder` *goes* (`router.push`) for
 folder operations that only learn their destination from the server's answer.
+
+### Semantic search over the album
+
+The requirement is one sentence — *"in image collection, above 'Album' text. put a search field,
+plus a button to upload image"* — and the placement is the load-bearing half of it. The row is the
+**first element `FileExplorer` returns**, above the toolbar; both places that print the word are
+below that line (the breadcrumb's root crumb and `FolderTree`'s root row), so one element in one
+place satisfies the requirement for both and no sibling has to know about it.
+
+Three properties are worth more than the markup:
+
+1. **The photograph is a question, not an upload.** `searchQueryImage.ts` is the only encode module
+   in `explorer/` that ends in a data URI rather than a PUT. A PUT here would leave one orphan blob
+   per search, of an image nobody will ever ask for again, in a store whose orphans already need a
+   reaper. Its numbers (768 px short edge, q0.75) are declared locally rather than imported for
+   `chatPhotoUpload.ts`/`thumbnail.ts`'s standing ruling — a constant is shared when it is *agreed
+   on*, and the data URI crosses the boundary as opaque bytes nothing re-derives. The cap exists
+   only so a pathological source gets a sentence instead of Next's 1 MB Server Action body error.
+2. **The search is album-wide, and `?folder=` is deliberately not sent.** The complaint behind the
+   feature is not knowing *which* folder; scoping the answer to the folder being browsed would
+   answer a question nobody asked. The breadcrumb still says where browsing would resume.
+3. **Neither the caption nor the score is rendered.** The vision model's prose about a photograph is
+   Nina's (invariant 5, the same rule `explorer/model.ts` states for the browsing grid) and that
+   covers the caption derived from the query image. A raw cosine number is the other half of the
+   same mistake: the ranking *is* the answer, and a number beside it is one nobody can act on.
+
+A landed search clears `selectedId` in the event handler — the open rail is describing a row that is
+about to leave the screen — which also leaves `PhotoMoveBar` in its nothing-selected state with no
+branch of its own. The two grids are siblings rather than one component with a mode, because they
+differ in the three things a grid is: where the rows come from, whether there is a page after this
+one, and what a click does.
 
 ### The two gestures produce one shape
 
@@ -784,8 +833,9 @@ counts stay MEMORY counts: still true of the account, just not of this page.
   `folderAncestors`, `folderBreadcrumbs`, `folderName`, `folderParent`, `isInFolderTree`, the
   `LocalFileLike`/`UploadRefusal`/`FolderNode`/`PlannedUpload` types, and the media arm's
   `NINA_MEDIA_VIEW_PARAM`/`NINA_MEDIA_VIEW_VALUE` + `readExplorerView` (writer and reader in one
-  module) plus `NINA_MEDIA_NODE_LABEL`/`mediaViewNode`. **Zero-import** — which is why client
-  files may import it.
+  module) plus `NINA_MEDIA_NODE_LABEL`/`mediaViewNode`, and `NINA_FOLDER_ROOT_LABEL` — the one
+  string the breadcrumb, the tree and a search result's accessible name all print for the root.
+  **Zero-import** — which is why client files may import it.
 - `@/lib/admin/chatPhotoActions` — the media arm's six writes (`add`, `replace`, `remove`,
   `editChatPhotoDescription`, `findChatPhotoDuplicate`, `describeChatPhotoAction` — the vision
   overwrite that refuses a reference row and picks its subject through `describeSubjectForSide`).
@@ -802,7 +852,10 @@ counts stay MEMORY counts: still true of the account, just not of this page.
   `ensureNinaAvatarDescriptionAction`, the six folder/move ops, and the Media view's
   `setChatPhotoAsAvatarAction` (id + DRAFT scale/x/y → bytes copied into a fresh `avatar-`
   object). `AdminActionResult` comes from here too — since R3 it carries an optional
-  `description` so fresh prose reaches the panel in the describe round trip.
+  `description` so fresh prose reaches the panel in the describe round trip. Since the
+  semantic-search set, also `searchNinaAvatarsAction` + the `AdminSearchHit` row type: the album
+  search's whole server surface, called as a black box by `PhotoSearchBar`. A hit carries
+  `description` and `score`; this package renders neither.
 - `@/lib/admin/folderOps` — **not imported, deliberately.** It holds every folder refusal and
   the Zod schemas behind them; the components call actions and render sentences. (There is no
   `lib/admin/folderPath.ts`; reconciliation deleted it.)
@@ -858,6 +911,9 @@ counts stay MEMORY counts: still true of the account, just not of this page.
   `onClick` on itself — can borrow the look), and `useSavePhoto`/`SaveNotice`
   (`@/components/ui/useSavePhoto`), the shared save/download/open ladder both rails warm on
   `pointerdown`.
+- `@/components/ui/PhotoViewer` — `PhotoViewer` + `ViewerPhoto`, the app's ONE full-screen overlay.
+  `SearchResultsGrid` is its second caller under `components/admin/` (`ErrorLogList.tsx` is the
+  first, and the newer file follows its shape); there is no second overlay here.
 - `@/lib/cn` — `cn()`.
 
 **No runtime import in this directory reaches `zod`, `server-only`, or the database.** The three
@@ -900,7 +956,10 @@ calling bundle. `lib/share/origin.ts` is the mirror: it opens with `import 'serv
 ### Internal to the package
 
 - `FileExplorer` re-exports the `explorer/model.ts` types so a consumer needs one import path;
-  it is the only consumer of `PhotoMoveBar` and `MediaAdd`, and holds the removal `notice`.
+  it is the only consumer of `PhotoMoveBar`, `MediaAdd`, `PhotoSearchBar` and `SearchResultsGrid`,
+  and holds both the removal `notice` and the landed `search`. `PhotoSearchBar` is the only
+  consumer of `explorer/searchQueryImage.ts`; `AlbumSearchState` is its export and `FileExplorer`'s
+  state shape, so the draft and the landed search cannot drift apart.
 - `explorer/FolderTree.tsx` is the only consumer of `FolderMenu` (once per `Row`, root included,
   Media row never). `MediaPane` is the only consumer of `MediaControls`. `PhotoDescription` has
   TWO consumers (`AlbumSelectionPane`, `MediaPane`), one mount each, each handing in its own
@@ -917,7 +976,8 @@ calling bundle. `lib/share/origin.ts` is the mirror: it opens with `import 'serv
 
 Three layers, none of them an accident:
 
-1. **Colocated component suites** — 27 `*.test.tsx` files beside the components, each opening
+1. **Colocated component suites** — 32 `*.test.tsx` files beside the components (counted
+   2026-09-15; the count moves with the module map, the rule does not), each opening
    with `// @vitest-environment happy-dom` (the repo default is `environment: 'node'`;
    `components/**/*.test.tsx` is in vitest's include). Every component in the module map has
    one; they drive real DOM interactions (dispatches, optimistic tables, the upload state
@@ -936,7 +996,17 @@ Three layers, none of them an accident:
    nowhere in raw source, the debounce path, blur-only notes, `tuningDraftEquals` guard sites).
    `admin.mediaPane.test.ts` pins the dispatcher, the pane keyed by `photo.id`, the prompt
    toggle INSIDE its conditional, both arms mounting `<PhotoDescription`, and
-   `MediaDescription.tsx`'s absence. These are guards against a future edit, which is why the
+   `MediaDescription.tsx`'s absence. `admin.photoSearch.test.ts` is the search set's member and
+   `admin.photoGrid.test.ts`'s sibling — each scoped to its own files by its `read()` paths, so
+   neither suite may edit the other's component. It pins the search row's position above the
+   toolbar, `role="search"`, the Media arm's `{!isMediaView && (`, the absence of `@vercel/blob`
+   from both the bar and the encode module, the four `SEARCH_QUERY_*` numbers, the results sheet's
+   mirror of the borderless recipe, the absent pager/`SelectionPane`/`data-photo-id`, the
+   `photos[viewerIndex] != null` guard, and that no `hit.description` reaches the browser. **Its
+   `readFileSync` is why `searchQueryImage.ts`'s four constants keep their `export`** — the import
+   graph shows no reader, so knip flags them; they are annotated at the symbol, never suppressed
+   (`EXTRACTION_SHAPE` in `lib/llm/prompts/extraction.ts` is the same documented blind spot).
+   These are guards against a future edit, which is why the
    docstrings in the guarded files never *spell* the specifiers and names they explain: a text
    guard cannot tell an explanation from a reintroduction (the tuning suite splits the
    difference with `codeOnly()`, which strips block comments for identifier assertions).
@@ -948,7 +1018,13 @@ app/admin/nina/page.tsx  (Server Component, force-dynamic, requireAdmin() on lin
   │  validateFolderPath(?folder) · readExplorerView(?view) · parallel reads
   │  shareOrigin()   ← server-only, resolved HERE, handed down as a string
   ▼
-FileExplorer ─── FolderTree ─────────► <Link href="?folder=…">  (server re-read)
+FileExplorer ─── PhotoSearchBar ─────► encodeSearchQueryImage(file) → data URI (NO PUT)
+     │             (album arm only)    searchNinaAvatarsAction({ text?, imageDataUri? })
+     │                    │            └─► hits ──► onResults ──► setSearch + setSelectedId(null)
+     │      ── activeSearch = isMediaView ? null : search ── branches the content pane ──┐
+     │      ─── SearchResultsGrid ────► tile click → viewerIndex → <PhotoViewer>   ◄─────┘
+     │             (no pager, no pane, overlay scoped to the result set)
+     │      ─── FolderTree ───────────► <Link href="?folder=…">  (server re-read)
      │             └── Row/FolderMenu ► create/rename/move/delete folder
      │                    │             └─► AdminActionResult.folder ──► navigateToFolder()
      │      ─── PhotoMoveBar ─────────► moveNinaAvatarsAction([selectedId], folder)
@@ -1039,6 +1115,12 @@ can act on:
   cannot render where it happened is a successful REMOVE's `note` (bytes still referenced
   elsewhere): the pane unmounts under the revalidation carrying it, so `FileExplorer` holds it
   in `notice` under the toolbar.
+- **Per search**, in `PhotoSearchBar`'s own `role="alert"` line: a pick that will not decode, a
+  browser with no `OffscreenCanvas`, an image over the data-URI cap, or the action's own refusal —
+  never a silent fallback, because a search that quietly dropped its photograph would return
+  text-only results and read as a ranking bug. Its success twin is the `aria-live="polite"` summary
+  naming what was searched for, which is what separates a text-and-photo search from one that
+  ignored the words. An empty result is not an error: `SearchResultsGrid` renders an `EmptyState`.
 - **Per auto-save commit**, in the panel's `result`: the action's own sentence (which names the
   retry that exists now there is no Save button), rendered once as a red paragraph while the
   status line falls back to "Unsaved edits". Nothing was written, `saved` stays put, the pending
@@ -1067,9 +1149,17 @@ check in the upload path, because only a decode knows the pixels.
 - **Parallel bytes, batched bookkeeping**: blob PUTs genuinely overlap through the Route
   Handler; Server Action dispatches are sequential by platform and their latencies add.
 - **No vision call on any upload path.** The 8–11 s describe is scheduled by the promote action
-  on `after()`; the ONE vendor call a click can start here is `PhotoDescription`'s describe
-  button — user-initiated, one row, overwriting by design. The test panel's generation is a
-  second, explicitly paid, off the saved row.
+  on `after()`. Three vendor calls can be started by a click here, all user-initiated and none of
+  them on an upload: `PhotoDescription`'s describe button (one row, overwriting by design), the
+  test panel's explicitly paid generation off the saved row, and a search whose query carries a
+  photograph — that one captions and embeds the query server-side, which is why the Search button
+  spends the whole round trip in its `loading` state.
+- **The query photograph is re-encoded before it is sent, not after.** 768 px short edge at q0.75
+  keeps the Server Action body two orders of magnitude under Next's 1 MB default, and the preview
+  beside the field is that same data URI — so what the operator sees is what the model sees, with
+  no second decode.
+- **The results sheet is the whole answer**, capped by the Server Action: no pager, no second
+  request, `thumbUrl ?? url` with `loading="lazy"` exactly as the browsing grid.
 - **A folder operation moves no bytes** — one UPDATE of the `folder` column; four hundred
   photographs between folders cost one statement and zero blob traffic.
 - `buildTree`, the on-path set, `allFolders` and each menu's `moveTargets` are `useMemo`'d —
@@ -1153,6 +1243,26 @@ be a second definition that one day disagrees (or a canon leak into the bundle).
   `MediaDescription.tsx` stays deleted and no eye icon remains in `MediaPane`.
 - **Do not add a second upload path to the explorer screen.** Two upload paths in one screen is
   exactly what `UploadAvatar.tsx` became and why it was deleted.
+- **Do not PUT the search query photograph.** `searchQueryImage.ts` ends at a data URI on purpose;
+  an `@vercel/blob` import in it or in `PhotoSearchBar.tsx` is one orphan blob per search, and
+  `tests/admin.photoSearch.test.ts` fails on the specifier.
+- **Do not move the search row below the toolbar, or give the Media arm a disabled one.** The
+  requirement is *above* the word "Album", which is printed by two siblings below that line; and
+  the media table has no description column, so a field there is a field that cannot answer.
+- **Do not scope a search to `?folder=`, and do not put the landed search in the URL.** The feature
+  exists because the operator does not know which folder, and its rows do not come from the page's
+  read — a URL parameter would re-run two queries to render rows the server never produced.
+- **Do not render a hit's `description` or its `score`.** Invariant 5 covers the caption the vision
+  model derives from the query image too, and a cosine number is one nobody can act on.
+- **Do not grow a pager, a selection, or a `data-photo-id` on the results sheet.** A ranked list has
+  no page 2 (rank 121 is not "older", it is worse), the pane's verbs belong to browsing and Clear is
+  one button away, and that attribute is `FileExplorer`'s pane-close focus hook.
+- **Do not open a second full-screen overlay.** `components/ui/PhotoViewer` is the app's one; hold
+  its index in the grid so the overlay can only page through the results, and keep the
+  `photos[viewerIndex] != null` guard — `PhotoViewer` opens with `photos[index]!`.
+- **Do not drop `export` from the four `SEARCH_QUERY_*` constants to quiet knip.** Their only reader
+  reads this file's source text, so the graph shows nothing; annotate at the symbol, never suppress,
+  or the pinned numbers silently desync from what the test reads.
 - **Do not pass `dedupe` to a Replace.** Add is the only caller; a deduped replace points the row
   at another row's object and strips its provenance to a reference — the photograph the operator
   can see vanishes from the folder.
@@ -1262,7 +1372,10 @@ repeat across two consecutive pages during an upload (nothing is ever skipped); 
 directories in a dropped tree cannot survive an upload (invisible to the browser); media rows
 never get thumbnails (48/page originals); multi-select is not built (the actions are already
 plural, so it is a client-only change when it comes); internal drag-to-move is not built (the
-`<select>` is the gesture). The character panel has no live bubble preview — a sample reply is a
+`<select>` is the gesture). Search ranks only photographs that already carry a description and an
+embedding — the empty state says so in words rather than letting the operator conclude the photo is
+not there — and the sheet offers none of the pane's verbs, by design. The character panel has no
+live bubble preview — a sample reply is a
 model call and Rule 2 puts that off a render; seeing a dial's effect means moving it and talking
 to her.
 
@@ -1312,3 +1425,9 @@ to her.
   re-run here** — it already covers the entire directory (export-level AND prop-level,
   "zero dead exports in the whole directory" was its own headline verdict) and re-running it
   would re-litigate a settled, landed result.
+- **2026-09-15** — `admin-album-semantic-search` phase 4/4 (`P2-CA-A001`): the album's search row,
+  results sheet and query-image encode, plus `FileExplorer`'s one branch between the two grids.
+  Phases 1–3 (the embedding column, the write path, the query layer and its Server Action) are
+  `db/`, `lib/nina/` and `lib/admin/`'s and are documented in those packages; this phase touches no
+  `lib/` file and calls `searchNinaAvatarsAction` as a black box. Folder browsing is byte-identical
+  — the two grids are siblings, not a mode. Colocated component-suite count restamped 27 → 32.

@@ -12,7 +12,7 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 7
+- Completed: 8
 - Archived: 4
 
 ---
@@ -54,6 +54,24 @@ in `.workflows/package_readme.md`)
   - **Drift**: The plan's Step 7c premise ("no behavioural test exists for `registerNinaAvatarsAction`") was wrong: `tests/admin.albumAvatarActions.test.ts` already covers it end-to-end via `fakeDb`. That suite does not exercise the new duplicate-scan behavior (its `batchRecord()` fixture carries no `contentHash`, so `scheduleAvatarDuplicateScan` never schedules anything there), so the new `tests/admin.albumUploadActions.test.ts` (mocked-seam style, per the plan) adds real, non-duplicate coverage rather than being redundant. Verified the pre-existing suite still passes unmodified.
   - **Verified**: `npx tsc --noEmit` clean; `npm run typecheck` (incl. `next typegen`) clean; full `npm test` 343 files / 5951 tests passed; `npm run lint` clean. All run in the shared swarm worktree with phases 2/3 in flight.
   - **Note**: No decisions were forced onto a precedence-ladder rung — the plan applied cleanly against the current tree; the only drift was ordinary line-number movement in `lib/nina/queries/avatars.ts` from phase 1 landing first, exactly as the plan's multi-owner-file notes anticipated.
+
+- [x] **P2-ADM-A001** Phase 2: Description coverage: deferred describe+embed wiring + backfill
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns extending the deferred describe pipeline (`lib/admin/ninaAlbumDeferredDescribe.ts`) to also compute and store the embedding right after a description is written, for every inserted row in a batch (not only `rows[0]`); keeps every other write site (`ninaAlbumDescribeActions.ts`, `ninaAlbumAvatarActions.ts`) in sync; a one-time `requireAdminApi()`-gated backfill route for existing NULL rows; the four narrow embedding reads/writes in `lib/nina/queries/avatarEmbeddings.ts`; and `app/admin/nina/page.tsx`'s `maxDuration = 300` since `after()` inherits the route's budget. Exit: every code path writing `description` also writes `description_embedding` in the same non-blocking step with no added upload latency; a fresh multi-file folder upload fills every row within a bounded time window; the backfill runs once against existing data and reports how many rows it filled.
+  - **Status**: completed
+  - **Plan Set**: `ADMIN_ALBUM_SEMANTIC_SEARCH_PLAN.md` (phase 2 of 4)
+  - **Satisfies**: R2, R3, R4 — description coverage is what lets text-only, image-only and combined search actually cover the whole album, not just promoted/shared/described rows
+  - **Depends on**: `P2-DB-A001`
+  - **Plan**: `.workflows/plan/P2-ADM-A001.md`
+  - **Completed**: 2026-09-15 10:18
+  - **Method**: /do
+  - **Files**: app/api/admin/nina/backfill-descriptions/route.ts, lib/nina/queries/avatarEmbeddings.ts, tests/admin.albumDescribeEmbed.test.ts, app/admin/nina/page.tsx, lib/admin/ninaAlbumAvatarActions.ts, lib/admin/ninaAlbumDeferredDescribe.ts, lib/admin/ninaAlbumDescribeActions.ts, lib/admin/ninaAlbumUploadActions.ts, tests/admin.albumAvatarActions.test.ts, tests/admin.chatPhotoAdoption.test.ts, lib/nina/queries.ts, lib/nina/queries.test.ts
+  - **Drift**: Ran in a worktree live-shared with the concurrently executing phase 3 session (`P2-NIN-A001`), which held its own uncommitted changes in the same directory for most of this phase. Staging was therefore done by explicit per-file pathspec — never `git add -A`, never a directory pathspec over `lib/admin/`, `app/admin/` or `app/api/`, each of which also held phase 3's files — with the staged list checked against the Files line before committing.
+    Phase 3's pusher landed `ab93b16` **during** this phase's completion handling, which changed the picture for the better and is the reason the landing is clean. Two consequences worth the record: (a) it swept this phase's already-applied tick of row 2 and the `**Status:**` line in `ADMIN_ALBUM_SEMANTIC_SEARCH_PLAN.md` into its own commit, so the plan index is correctly ticked for phases 1–3 but phase 2's tick is attributed to phase 3's commit; (b) it committed its own hunks of the two shared files and its own `lib/admin/.workflows/package_readme.md` prose, leaving this phase's remaining diff in `lib/nina/queries.ts` and `lib/nina/queries.test.ts` purely its own.
+    `lib/nina/queries.ts` and `lib/nina/queries.test.ts` are the two files phases 2 and 3 both edit additively, per the plan index's reconciled rule (final export order `avatars`, `avatarEmbeddings`, `avatarsearch`; barrel test array total 92). Because phase 3 committed first, this commit adds only phase 2's barrel line and its four names on top of phase 3's 88, reaching the reconciled 92 — and `queries/avatarsearch.ts` already exists in HEAD, so this commit's barrel exports resolve. Had phase 2 committed first, the merged working-tree content would have exported a module absent from the tree; the ordering, not the plan, is what made it safe.
+    This phase owns the header prose counts (85 → 92); phase 3 added no prose edits there.
+  - **Verified**: `npx next typegen && npx tsc --noEmit` clean; full `npm test` 342 files / 5945 tests green; `npm run lint` clean; `npm run knip` clean (its 4 unused-export findings are all phase 3's files); `npm run ci:openrouter-guard` OK.
 
 - [x] **P1-ADM-A003** Phase 4: Push when a photo is added to her chat from `/admin`
   - **Difficulty**: EASY

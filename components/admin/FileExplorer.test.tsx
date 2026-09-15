@@ -87,6 +87,20 @@ vi.mock('./explorer/PhotoGrid', () => ({
   ),
 }))
 
+// Phase 4's search row and results sheet call the real `@/lib/admin/ninaAlbumActions` barrel,
+// which now re-exports `searchNinaAvatarsAction` from a `'use server'` module that reaches
+// `requireAdmin()` (next-auth). This suite renders the real `FileExplorer` tree with none of that
+// mocked, so both are stubbed the same way `SelectionPane` and `PhotoGrid` are above — this file's
+// scope is folder browsing, not search, which has its own suites (`PhotoSearchBar.test.tsx`,
+// `SearchResultsGrid.test.tsx`, `tests/admin.photoSearch.test.ts`).
+vi.mock('./explorer/PhotoSearchBar', () => ({
+  PhotoSearchBar: () => <div data-testid="photo-search-bar" />,
+}))
+
+vi.mock('./explorer/SearchResultsGrid', () => ({
+  SearchResultsGrid: () => <div data-testid="search-results-grid" />,
+}))
+
 vi.mock('./explorer/SelectionPane', () => ({
   SelectionPane: ({
     photo,
