@@ -158,6 +158,69 @@ describe('the rows come back scored', () => {
   })
 })
 
+describe('the relevance threshold cuts the ranked tail', () => {
+  it('keeps only rows scoring at or above the floor, while the total stays the candidate count', async () => {
+    fake.enqueue(
+      [
+        projectedRow(
+          'avtAAAAAAAAA', // id
+          'https://blob/x.jpg', // blobUrl
+          'nina/u/x.jpg', // pathname
+          '2026/bali', // folder
+          'x.jpg', // filename
+          null, // thumbUrl
+          null, // thumbPathname
+          1024, // width
+          768, // height
+          200_000, // bytes
+          'upload', // source
+          null, // cropScale
+          null, // cropX
+          null, // cropY
+          'she is on a beach', // description
+          false, // isCurrent
+          null, // announcedAt
+          '2026-09-01 10:00:00+00', // createdAt
+          0.82, // score
+        ),
+        projectedRow(
+          'avtBBBBBBBBBB', // id
+          'https://blob/y.jpg', // blobUrl
+          'nina/u/y.jpg', // pathname
+          '2026/bali', // folder
+          'y.jpg', // filename
+          null, // thumbUrl
+          null, // thumbPathname
+          1024, // width
+          768, // height
+          200_000, // bytes
+          'upload', // source
+          null, // cropScale
+          null, // cropX
+          null, // cropY
+          'she is in a pool', // description
+          false, // isCurrent
+          null, // announcedAt
+          '2026-09-02 10:00:00+00', // createdAt
+          0.11, // score
+        ),
+      ],
+      [projectedRow(2)],
+    )
+
+    const page = await queries.searchNinaAvatarsByText(USER, TEXT_VECTOR)
+
+    /* `searched` is about the CANDIDATE SET that was ranked — the threshold narrows the page,
+     * not the coverage story. */
+    expect(page.total).toBe(2)
+    /* 0.82 and 0.11 straddle any value the threshold constant will plausibly hold (the probe's
+     * relevant scores start near 0.21, its noise tail ends near 0.18), so the assertion survives
+     * retuning — and a threshold moved past either fixture breaks this test on purpose, forcing
+     * the fixtures to be re-read against the new value. */
+    expect(page.rows.map((row) => row.id)).toEqual(['avtAAAAAAAAA'])
+  })
+})
+
 describe('a malformed query vector never reaches Postgres', () => {
   it('refuses an empty embedding', async () => {
     await expect(queries.searchNinaAvatarsByText(USER, [])).rejects.toThrow(/empty/)

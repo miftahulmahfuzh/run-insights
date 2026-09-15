@@ -53,9 +53,22 @@ export function SearchResultsGrid({ hits }: { hits: readonly AdminSearchHit[] })
    * The overlay's list, 1:1 with the sheet so the indices agree by construction. `kind` is the
    * row's `source` and `label` is its filename — without the label the header would read the
    * literal word `avatar` (`PhotoViewer.tsx:50-58`).
+   *
+   * `meta` carries the hit's row id and similarity score into the header — the ONE place a score
+   * is allowed on this screen. `PhotoSearchBar`'s header rules a cosine number out of the tiles,
+   * where it would decorate a ranking the operator cannot act on; in the open viewer they CAN act
+   * on it, because citing "id X scored 0.302" is exactly how a result gets argued about in a
+   * tuning session (`scripts/album-search-probe.mjs` reads the same column back). Three decimals:
+   * the threshold band the probe measured is 0.18–0.25, which two decimals cannot resolve.
    */
   const photos = useMemo<ViewerPhoto[]>(
-    () => hits.map((hit) => ({ url: hit.url, kind: hit.source, label: hit.filename })),
+    () =>
+      hits.map((hit) => ({
+        url: hit.url,
+        kind: hit.source,
+        label: hit.filename,
+        meta: `#${hit.id} · ${hit.score.toFixed(3)}`,
+      })),
     [hits],
   )
 
@@ -83,7 +96,7 @@ export function SearchResultsGrid({ hits }: { hits: readonly AdminSearchHit[] })
                     ? `${hit.filename} in ${where} — her current profile picture`
                     : `${hit.filename} in ${where}`
                 }
-                title={`${hit.filename} · ${where}`}
+                title={`${hit.filename} · ${where} · #${hit.id}`}
                 className="block size-full focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset"
               >
                 {/* eslint-disable-next-line @next/next/no-img-element -- Blob-hosted and

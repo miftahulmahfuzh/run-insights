@@ -56,6 +56,14 @@ export interface ViewerPhoto {
    * dot row then announces "generated screenshot".
    */
   label?: string
+  /**
+   * A short identifying line shown beside the name in the header — the search grid passes each
+   * hit's row id and similarity score, so an operator can cite a photograph ("that one, id X,
+   * scored 0.30") without leaving the viewer. Absent renders NOTHING, same promise as `label`:
+   * the review surfaces keep the header they have always drawn
+   * (`components/ui/PhotoViewer.test.tsx` holds both halves).
+   */
+  meta?: string
 }
 
 export function PhotoViewer({
@@ -210,6 +218,9 @@ export function PhotoViewer({
       <div className="flex items-center justify-between px-4 pt-[calc(0.75rem+var(--safe-top))] pb-3">
         <span className="text-[13px] font-semibold text-card">
           {nameOf(photo)}
+          {photo.meta != null && (
+            <span className="ml-2 font-mono text-[11px] font-medium opacity-60">{photo.meta}</span>
+          )}
           {photos.length > 1 && (
             <span className="ml-2 font-medium opacity-60">
               {index + 1} / {photos.length}

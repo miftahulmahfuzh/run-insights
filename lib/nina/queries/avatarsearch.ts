@@ -75,6 +75,30 @@ const NINA_SEARCH_LIMIT = 48
  */
 const NINA_SEARCH_TEXT_WEIGHT = 0.5
 
+/**
+ * **The one value that separates a relevant hit from a merely-ranked one** — a floor on the
+ * projected cosine similarity, and THE answer to "every query returns 48 tiles no matter what I
+ * type". Below it a hit is cut, however high it ranked; a search whose every row falls below it
+ * returns nothing, which is the honest answer.
+ *
+ * **PROVISIONAL 0.2, set 2026-09-15 from the first measured distribution and expected to move.**
+ * `scripts/album-search-probe.mjs` (same column, same `<=>` spelling, same encoding) scored ten
+ * queries against the live album: relevant scores start near 0.21 (`caucasian` tops at 0.239,
+ * `paha` at 0.209) while the noise tail never clears ~0.18, so 0.2 sits in the one gap the data
+ * names. The final value comes from the operator's per-image relevance annotations against this
+ * same probe — retuning it is THIS line and nothing else; the fixtures in
+ * `tests/nina.avatarSearch.test.ts` straddle it deliberately and will break if a new value lands
+ * outside 0.11–0.82, which is the test asking to be re-read.
+ *
+ * Applied in JS and not in a SQL `WHERE`, for three measured reasons: the ordering the HNSW index
+ * answers must stay byte-identical (a `WHERE` on the distance rides AFTER an index scan and changes
+ * nothing about which rows Postgres visits, so it buys nothing); the page is already capped at 48
+ * rows, so filtering the fetched page costs nothing; and the count statement keeps reporting the
+ * CANDIDATE set, which is what `searched` has always meant. Module-private for the same reason the
+ * weights above are.
+ */
+const NINA_SEARCH_MIN_SCORE = 0.2
+
 /** The other half. Derived, never typed twice — the two must sum to 1 or the identity in
  *  `searchNinaAvatarsByTextAndCaption`'s docstring stops holding. */
 const NINA_SEARCH_CAPTION_WEIGHT = 1 - NINA_SEARCH_TEXT_WEIGHT
@@ -146,7 +170,7 @@ async function rankByDistance(
 ): Promise<NinaAvatarSearchPage> {
   const scope = searchScope(userId)
 
-  const [rows, counted] = await Promise.all([
+  const [ranked, counted] = await Promise.all([
     db
       .select({ ...avatarColumns, score: sql<number>`1 - ${distance}`.mapWith(Number) })
       .from(ninaAvatars)
@@ -158,6 +182,11 @@ async function rankByDistance(
       .from(ninaAvatars)
       .where(scope),
   ])
+
+  /* The relevance floor, applied to the fetched page — see `NINA_SEARCH_MIN_SCORE` for why the
+   * cut lives here and not in a `WHERE`. Ordering is untouched: the rows arrive ranked and leave
+   * ranked, some of them gone. */
+  const rows = ranked.filter((row) => row.score >= NINA_SEARCH_MIN_SCORE)
 
   return { rows, total: counted[0]?.total ?? 0 }
 }

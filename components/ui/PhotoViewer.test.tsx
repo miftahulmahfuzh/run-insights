@@ -167,6 +167,24 @@ describe('PhotoViewer', () => {
     expect(screen.queryByRole('button', { name: 'Download' })).not.toBeInTheDocument()
   })
 
+  describe('the header meta line', () => {
+    it('shows a photo meta it was given — the search grid passes each hit its id and score here', () => {
+      renderViewer({
+        photos: [
+          { url: 'blob:photo-a', kind: 'avatar', label: 'Profile photo', meta: '#a1b2c3 · 0.302' },
+        ],
+      })
+
+      expect(screen.getByText('#a1b2c3 · 0.302')).toBeInTheDocument()
+    })
+
+    it('absent renders nothing — the review surfaces keep the header they have always drawn', () => {
+      renderViewer({ photos: [PHOTOS[0]!] })
+
+      expect(screen.queryByText(/·/)).not.toBeInTheDocument()
+    })
+  })
+
   it('locks the body scroll while mounted and restores it on the way out', () => {
     document.body.style.overflow = 'auto'
     const { unmount } = renderViewer()

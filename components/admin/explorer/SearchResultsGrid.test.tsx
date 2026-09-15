@@ -117,4 +117,21 @@ describe('a click opens the full-screen view over the RESULT SET (R1 addendum)',
     expect(screen.queryByRole('dialog')).toBeNull()
     expect(screen.getAllByRole('listitem')).toHaveLength(2)
   })
+
+  it('shows the open result its id and score, so an admin can cite what they are looking at', () => {
+    render(<SearchResultsGrid hits={[HIT, SECOND]} />)
+    fireEvent.click(screen.getByRole('button', { name: 'DSC_0031.jpg in 2026/bali' }))
+    expect(screen.getByText('#a1 · 0.810')).toBeInTheDocument()
+
+    // The meta follows the paging, like every other header element.
+    fireEvent.keyDown(document, { key: 'ArrowRight' })
+    expect(screen.getByText('#a2 · 0.640')).toBeInTheDocument()
+    expect(screen.queryByText('#a1 · 0.810')).toBeNull()
+  })
+
+  it('names the id in the tile tooltip as well', () => {
+    render(<SearchResultsGrid hits={[HIT]} />)
+    const tile = screen.getByRole('button', { name: 'DSC_0031.jpg in 2026/bali' })
+    expect(tile.getAttribute('title')).toBe('DSC_0031.jpg · 2026/bali · #a1')
+  })
 })
