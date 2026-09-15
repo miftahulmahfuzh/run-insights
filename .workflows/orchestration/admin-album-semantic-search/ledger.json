@@ -67,28 +67,28 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "c3f2f62",
       "depends_on": [
         3
       ],
       "difficulty": "NORMAL",
       "n": 4,
-      "note": null,
+      "note": "Admin UI: search bar, results grid, full-screen viewer; PhotoViewer wired as ErrorLogList.tsx's second caller",
       "package": "components/admin",
       "plan": ".workflows/plan/admin-album-semantic-search/phase-4.md",
-      "reported_at": null,
+      "reported_at": "2026-09-15T03:43:06+00:00",
       "satisfies": [
         "R1"
       ],
-      "status": "pending",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P2-CA-A001",
       "title": "Admin UI: search bar, results grid, full-screen viewer"
     }
   ],
   "plan": "/home/miftah/run-insights/.workflows/orchestration/admin-album-semantic-search/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "admin-album-semantic-search",
-  "updated": "2026-09-15T03:29:36+00:00",
+  "updated": "2026-09-15T03:43:06+00:00",
   "verified_at": "2026-09-15T03:29:36+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/admin-album-semantic-search"
 }
