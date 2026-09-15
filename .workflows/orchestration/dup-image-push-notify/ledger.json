@@ -24,21 +24,21 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "5289807",
       "depends_on": [
         1
       ],
       "difficulty": "NORMAL",
       "n": 2,
-      "note": null,
+      "note": "phase2 landed 5289807; concurrent phase4 session's git commit mistakenly captured phase2's staged files under its own message (unpushed), amended message-only to 5289807; phase4's 11 files remain uncommitted in its own session",
       "package": "app`, `components/photo`, `lib/db/queries",
       "plan": ".workflows/plan/dup-image-push-notify/phase-2.md",
-      "reported_at": null,
+      "reported_at": "2026-09-15T03:23:06+00:00",
       "satisfies": [
         "R2"
       ],
-      "status": "pending",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-APP-M4TZ",
       "title": "Full-screen deep-link viewer route"
     },
     {
@@ -83,7 +83,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/dup-image-push-notify/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "dup-image-push-notify",
-  "updated": "2026-09-15T03:16:01+00:00",
+  "updated": "2026-09-15T03:23:06+00:00",
   "verified_at": "2026-09-15T03:16:01+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/dup-image-push-notify"
 }
