@@ -1,0 +1,93 @@
+{
+  "branch": "feature/admin-album-semantic-search",
+  "coordinator": "orch-admin-album-semantic-search",
+  "coordinator_session_id": "a241f536-e6ea-4e2d-b3c6-19498fc1f033",
+  "created": "2026-09-15T02:41:46+00:00",
+  "phases": [
+    {
+      "card": null,
+      "commit": "5d1ad67",
+      "depends_on": [],
+      "difficulty": "NORMAL",
+      "n": 1,
+      "note": "embeddings probe hit openai/text-embedding-3-small on first try (1536-dim), no branch deviation",
+      "package": "lib/db/schema`, `lib/nina",
+      "plan": ".workflows/plan/admin-album-semantic-search/phase-1.md",
+      "reported_at": "2026-09-15T03:02:17+00:00",
+      "satisfies": [
+        "R2",
+        "R3",
+        "R4"
+      ],
+      "status": "done",
+      "task_id": "P2-DB-A001",
+      "title": "Schema + embedding client"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [
+        1
+      ],
+      "difficulty": "NORMAL",
+      "n": 2,
+      "note": null,
+      "package": "lib/admin`, `lib/nina/queries",
+      "plan": ".workflows/plan/admin-album-semantic-search/phase-2.md",
+      "reported_at": null,
+      "satisfies": [
+        "R2",
+        "R3",
+        "R4"
+      ],
+      "status": "spawned",
+      "task_id": null,
+      "title": "Description coverage: deferred describe+embed wiring + backfill"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [
+        1
+      ],
+      "difficulty": "HARD",
+      "n": 3,
+      "note": null,
+      "package": "lib/nina/queries`, `lib/admin",
+      "plan": ".workflows/plan/admin-album-semantic-search/phase-3.md",
+      "reported_at": null,
+      "satisfies": [
+        "R2",
+        "R3",
+        "R4"
+      ],
+      "status": "spawned",
+      "task_id": null,
+      "title": "Search query layer + Server Action"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [
+        3
+      ],
+      "difficulty": "NORMAL",
+      "n": 4,
+      "note": null,
+      "package": "components/admin",
+      "plan": ".workflows/plan/admin-album-semantic-search/phase-4.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Admin UI: search bar, results grid, full-screen viewer"
+    }
+  ],
+  "plan": "/home/miftah/run-insights/.workflows/orchestration/admin-album-semantic-search/PLAN.md",
+  "repo": "/home/miftah/run-insights",
+  "slug": "admin-album-semantic-search",
+  "updated": "2026-09-15T03:02:44+00:00",
+  "worktree": "/home/miftah/.worktrees/run-insights/admin-album-semantic-search"
+}
