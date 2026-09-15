@@ -396,6 +396,8 @@ const insertNinaMessageImages = vi.fn()
 const setNinaMessageImageDescription = vi.fn()
 const updateNinaChatPhotoBlob = vi.fn()
 const updateNinaChatPhotoDescription = vi.fn()
+const updateNinaChatPhotoPerceptualSignature = vi.fn()
+const fetchAndSignImage = vi.fn()
 const updateNinaMessage = vi.fn()
 const readNinaTuning = vi.fn()
 const describeNinaImages = vi.fn()
@@ -444,9 +446,20 @@ vi.mock('@/lib/nina/queries', () => ({
   setNinaMessageImageDescription: (...args: unknown[]) => setNinaMessageImageDescription(...args),
   updateNinaChatPhotoBlob: (...args: unknown[]) => updateNinaChatPhotoBlob(...args),
   updateNinaChatPhotoDescription: (...args: unknown[]) => updateNinaChatPhotoDescription(...args),
+  updateNinaChatPhotoPerceptualSignature: (...args: unknown[]) =>
+    updateNinaChatPhotoPerceptualSignature(...args),
   updateNinaMessage: (...args: unknown[]) => updateNinaMessage(...args),
 }))
 vi.mock('@/lib/nina/blobRelease', () => ({ releaseBlobIfUnreferenced: vi.fn() }))
+
+/**
+ * The ONE signer's fetch half, mocked so no test GETs a blob or loads `sharp`. `scheduleChatPhotoResign`
+ * (the ghost-signature fix) is its only caller in this action module.
+ */
+vi.mock('@/lib/nina/perceptualSign', () => ({
+  fetchAndSignImage: (...args: unknown[]) => fetchAndSignImage(...args),
+  signImageBytes: vi.fn(),
+}))
 
 /**
  * The push seam. Mocked WHOLESALE rather than spied, for two reasons that both matter here: the
@@ -528,6 +541,8 @@ beforeEach(async () => {
   updateNinaMessage.mockResolvedValue({ id: MESSAGE_ID })
   updateNinaChatPhotoBlob.mockResolvedValue({ id: IMAGE_ID })
   updateNinaChatPhotoDescription.mockResolvedValue({ id: IMAGE_ID })
+  updateNinaChatPhotoPerceptualSignature.mockResolvedValue(true)
+  fetchAndSignImage.mockResolvedValue(null)
   notifyNinaPush.mockResolvedValue(undefined)
   findGlobalDuplicatePhoto.mockResolvedValue(null)
   notifyDuplicateImagePush.mockResolvedValue(undefined)
@@ -696,6 +711,115 @@ describe('replaceChatPhotoAction schedules the same captioner', () => {
     await runTheAfterCallback()
 
     expect(describeNinaImages).toHaveBeenCalledWith(expect.anything(), { subject: 'runner' })
+  })
+})
+
+/* ── scheduleChatPhotoResign — the ghost-signature fix (2026-09-15) ─────────────────────────────
+ * Production measured 49/71 signed originals carrying a signature 23-42/64 bits from their own
+ * live bytes: the Replace flow swapped bytes and left the OLD perceptual pair standing, so the
+ * write-time twin scan compared every re-upload against a ghost and matched nothing — the exact
+ * "no push, still two rows" report that started the day. The fix has two halves and both are
+ * asserted here: the byte swap RETRACTS the pair (`updateNinaChatPhotoBlob`, asserted through the
+ * action's calls below) and the new bytes are re-signed in `after()`, pathname-guarded so a
+ * racing second replace cannot mint a fresh ghost. */
+describe('scheduleChatPhotoResign — re-sign the bytes a row now serves', () => {
+  const SIGNATURE = {
+    dhashHex: 'd02ccc730848f884',
+    sig16Base64: 'QUJDRA==',
+    width: 768,
+    height: 1024,
+  }
+  const HASH = 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'
+  const KEEPER_ID = 'keep123XYZ_9'
+
+  async function runTheResignCallback(): Promise<void> {
+    const cb = afterCallbacks[0]
+    if (cb == null) throw new Error('no re-sign callback was scheduled')
+    return cb()
+  }
+
+  it('replace schedules the re-sign FIRST (the captioner stays the last after() task)', async () => {
+    fetchAndSignImage.mockResolvedValue(SIGNATURE)
+    const result = await actions.replaceChatPhotoAction({ id: IMAGE_ID, ...goodBlob })
+    expect(result).toEqual({ ok: true, id: IMAGE_ID })
+    expect(afterCallbacks).toHaveLength(2)
+
+    await runTheResignCallback()
+    expect(fetchAndSignImage).toHaveBeenCalledWith(storedUrl)
+    expect(updateNinaChatPhotoPerceptualSignature).toHaveBeenCalledWith(
+      USER,
+      IMAGE_ID,
+      storedPathname,
+      {
+        dhashHex: SIGNATURE.dhashHex,
+        sig16Base64: SIGNATURE.sig16Base64,
+      },
+    )
+  })
+
+  it('add signs a FRESH original the same way', async () => {
+    fetchAndSignImage.mockResolvedValue(SIGNATURE)
+    await actions.addChatPhotoAction(goodBlob)
+    expect(afterCallbacks).toHaveLength(2)
+
+    await runTheResignCallback()
+    expect(updateNinaChatPhotoPerceptualSignature).toHaveBeenCalledWith(
+      USER,
+      IMAGE_ID,
+      storedPathname,
+      {
+        dhashHex: SIGNATURE.dhashHex,
+        sig16Base64: SIGNATURE.sig16Base64,
+      },
+    )
+  })
+
+  it('a duplicate add is a REFERENCE — the pass skips it before any GET, no signature on bytes the row does not own', async () => {
+    // The skip path: the payload echoes the keeper's object and the plan writes a reference.
+    insertNinaMessageImages.mockResolvedValue([{ id: IMAGE_ID, sourceImageId: KEEPER_ID }])
+    getNinaMessageImage.mockResolvedValue({ ...imageRow, sourceImageId: KEEPER_ID })
+
+    await actions.addChatPhotoAction({
+      blobUrl: storedUrl,
+      pathname: storedPathname,
+      width: 768,
+      height: 1024,
+      bytes: 240_000,
+      contentHash: HASH,
+      duplicateOfId: KEEPER_ID,
+    })
+    await runTheResignCallback()
+
+    expect(fetchAndSignImage).not.toHaveBeenCalled()
+    expect(updateNinaChatPhotoPerceptualSignature).not.toHaveBeenCalled()
+  })
+
+  it('a failed measure leaves the row unsigned — dedup-inactive is the honest state, never an error', async () => {
+    fetchAndSignImage.mockResolvedValue(null)
+    await actions.replaceChatPhotoAction({ id: IMAGE_ID, ...goodBlob })
+    await runTheResignCallback()
+
+    expect(updateNinaChatPhotoPerceptualSignature).not.toHaveBeenCalled()
+  })
+
+  it('a lost race — the guard answers false (the row was replaced again mid-flight) — is silence, not a thrown pass', async () => {
+    fetchAndSignImage.mockResolvedValue(SIGNATURE)
+    updateNinaChatPhotoPerceptualSignature.mockResolvedValue(false)
+    await actions.replaceChatPhotoAction({ id: IMAGE_ID, ...goodBlob })
+    await runTheResignCallback()
+
+    // The write was attempted with the pathname the pass READ; the query's own WHERE made it a
+    // no-op. The pass logs and moves on — nothing rejects out of `after()`.
+    expect(updateNinaChatPhotoPerceptualSignature).toHaveBeenCalledTimes(1)
+  })
+
+  it('a row gone between the click and the callback is a miss, not a failure', async () => {
+    await actions.replaceChatPhotoAction({ id: IMAGE_ID, ...goodBlob })
+    getNinaMessageImage.mockResolvedValue(null)
+    await runTheResignCallback()
+
+    expect(fetchAndSignImage).not.toHaveBeenCalled()
+    expect(updateNinaChatPhotoPerceptualSignature).not.toHaveBeenCalled()
   })
 })
 

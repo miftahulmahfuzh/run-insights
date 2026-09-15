@@ -36,15 +36,18 @@
  *      `IGwGhWzPNmaR`, same gates). A signature measured THIS RUN gets a `fill-perceptual` op —
  *      the measurement is persisted, not left in the console: the first landing computed fills
  *      and wrote nothing, and this script has been down that road before.
- *  3d. PERCEPTUAL VERIFY GATE: every stored signature that shares (user, width, height) with
- *      another original is re-fetched and re-signed. A stored value a fresh GET contradicts is a
- *      `perceptual-repair` op — measured 2026-09-11 on production `I1v6qeHJBMwv`: its stored dHash
- *      was 26/64 from its true re-upload twin `YnIGDDwYH4HT`, while a fresh sign of the same live
- *      blob measured 1/64 (inside the gate). A stored signature was never re-verified before this
- *      pass, so a value that was wrong from the moment it was written — an old buggy run, a
- *      partial fetch, anything — stayed wrong forever and silently defeated STEP 1b for that
- *      photograph. Only rows sharing dimensions with another original are checked: a row with no
- *      candidate twin cannot have missed one, so re-verifying it buys nothing.
+ *  3d. PERCEPTUAL VERIFY GATE: every stored signature on an original is re-fetched and re-signed.
+ *      A stored value a fresh GET contradicts is a `perceptual-repair` op — measured 2026-09-11 on
+ *      production `I1v6qeHJBMwv`: its stored dHash was 26/64 from its true re-upload twin
+ *      `YnIGDDwYH4HT`, while a fresh sign of the same live blob measured 1/64 (inside the gate).
+ *      A stored signature was never re-verified before this pass, so a value that was wrong from
+ *      the moment it was written — an old buggy run, a partial fetch, anything — stayed wrong
+ *      forever and silently defeated STEP 1b for that photograph. WIDENED 2026-09-15 from
+ *      "shares dimensions with another original" to EVERY stored-signed original: that day
+ *      measured 49 of 71 signed originals 23-42/64 from their OWN live bytes (the Replace flow's
+ *      byte swaps left the perceptual pair standing — fixed in `updateNinaChatPhotoBlob`), and a
+ *      singleton's stale signature defeats every FUTURE match with no group required. See the
+ *      plan module's `perceptualVerifyCandidates` header for the full argument.
  *  4. PASS 2 (merge): `buildMergePlan` groups by (user_id, content_hash), elects keepers among
  *      originals, and returns the ordered ops; `buildPerceptualMergePlan` then clusters the
  *      remaining originals at conservative gates (same dimensions, dHash ≤ 1, mean-abs ≤ 2 —
@@ -271,10 +274,10 @@ async function main() {
     }
   }
 
-  /* ── 3d. PERCEPTUAL VERIFY GATE — re-sign every stored signature that shares dims with another
-   * original (measured 2026-09-11: `I1v6qeHJBMwv`'s stored dHash was 26/64 from its true twin;
-   * the row's own live bytes measured 1/64. A stored signature is not proof it was ever correct —
-   * only a group where it would actually matter is worth the GET; see the plan module's header. */
+  /* ── 3d. PERCEPTUAL VERIFY GATE — re-sign EVERY stored signature (widened 2026-09-15: a stale
+   * signature on a singleton row defeats every future match with no group required — 49/71
+   * production originals were ghosted that day; see the plan module's header for the argument
+   * and the 2026-09-11 `I1v6qeHJBMwv` measurement for the origin of the gate). */
   const verifyCandidates = perceptualVerifyCandidates(rows)
   let verifyFailed = 0
   for (const row of verifyCandidates) {

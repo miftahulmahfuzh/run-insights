@@ -516,33 +516,31 @@ export function isPerceptualTwin(a, b) {
  * protects a value from being CLOBBERED, it does not protect against one that was wrong from the
  * moment it was written (an old buggy run, a partial fetch, anything).
  *
- * `perceptualVerifyCandidates` names the population worth a re-GET: a row sharing (user, width,
- * height) with another original has a same-dimensions candidate twin it may have silently missed.
- * NARROWED 2026-09-11: `isPerceptualTwin` now also matches CROSS-RESOLUTION pairs, so this
- * shortlist no longer covers every possible twin — a stale signature on a cross-resolution pair
- * is not surfaced here. That is a known, separate gap (aspect-ratio bucketing would close it),
- * deliberately out of scope for the cross-resolution fix: neither production row involved carries
- * a stale signature. What this pass DOES cover is unchanged. Only a row that
- * shares dimensions with another original, AND whose signature came from storage rather than this
- * run's own measurement (`perceptualSource === 'stored'` — a value `fill-perceptual` just wrote
- * cannot yet be stale), is a candidate. The ops script GETs and re-signs each candidate into
- * `row.verifiedSig`; `buildPerceptualMergePlan` below is what acts on the comparison.
+ * `perceptualVerifyCandidates` names the population worth a re-GET. WIDENED 2026-09-15: EVERY
+ * original whose signature came from storage rather than this run's own measurement
+ * (`perceptualSource === 'stored'` — a value `fill-perceptual` just wrote cannot yet be stale).
+ *
+ * The 2026-09-11 narrowing ("only a row sharing dimensions with another original is worth the
+ * GET") rested on a premise that day's measurement made look safe and today's falsified: that a
+ * signature only goes stale relative to a TWIN. It also goes stale relative to the ROW ITSELF —
+ * production measured 2026-09-15: 49 of 71 signed originals carried a signature 23-42/64 bits
+ * from their own live bytes (the Replace flow's byte swaps left the perceptual pair standing —
+ * fixed in `updateNinaChatPhotoBlob` the same day), and the defect class the whole media-dedupe
+ * line exists for — download → re-upload — matched nothing, because the twin scan compares
+ * against the stored ghost, not the photograph. A singleton row's stale signature is therefore a
+ * finding in its own right: it defeats every FUTURE match, no group required. The same widening
+ * closes the already-documented cross-resolution gap (a stale signature on an aspect-adjacent
+ * pair was never surfaced here either).
+ *
+ * The cost is one GET per stored-signed original per run — 71 at the 2026-09-15 repair, a few
+ * hundred at any plausible collection size. `buildPerceptualMergePlan` acts on the comparison:
+ * a contradicted row becomes a `perceptual-repair` op whether or not it has a twin, and twins
+ * are re-clustered on the corrected values.
  */
 export function perceptualVerifyCandidates(rows) {
-  const byDims = new Map()
-  for (const row of rows) {
-    if (!isOriginalRow(row) || row.width == null || row.height == null) continue
-    const key = `${row.userId}|${row.width}x${row.height}`
-    const members = byDims.get(key)
-    if (members) members.push(row)
-    else byDims.set(key, [row])
-  }
   const candidates = []
-  for (const members of byDims.values()) {
-    if (members.length < 2) continue
-    for (const row of members) {
-      if (row.perceptualSource === 'stored') candidates.push(row)
-    }
+  for (const row of rows) {
+    if (isOriginalRow(row) && row.perceptualSource === 'stored') candidates.push(row)
   }
   return candidates
 }

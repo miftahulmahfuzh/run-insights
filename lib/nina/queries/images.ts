@@ -784,6 +784,20 @@ export async function updateNinaChatPhotoBlob(
        * the caller sticks; its absence retracts. See `NinaChatPhotoBlobPatch.contentHash`.
        */
       contentHash: patch.contentHash ?? null,
+      /*
+       * media-dedupe follow-up, ghost-signature fix (2026-09-15). The perceptual pair describes
+       * "the bytes a row OWNS" (the column header's own doctrine) and this statement just swapped
+       * them — so a pair left standing is a GHOST: the send-time twin scan would compare every
+       * future re-upload against a signature of the OLD photograph. Measured on production that
+       * day: 49 of 71 signed originals carried a signature 23-42/64 bits from their own live
+       * bytes, and a pixel-identical re-upload of `ymKp8lDU_Br6` matched nothing — its twin gate
+       * saw the ghost, not the photograph. NULL retracts to the same honest "unsigned =
+       * dedup-inactive" the column header defines, and `replaceChatPhotoAction` re-signs the NEW
+       * bytes in `after()` (`scheduleChatPhotoResign`), so the row is unsigned for seconds, not
+       * until the next sweep run.
+       */
+      perceptualHash: null,
+      perceptualSig: null,
     })
     .where(
       and(eq(ninaMessageImages.userId, userId), eq(ninaMessageImages.id, id), isOriginalPhoto()),
@@ -791,6 +805,51 @@ export async function updateNinaChatPhotoBlob(
     .returning(imageColumns)
 
   return updated[0] ?? null
+}
+
+/**
+ * **The guarded re-sign write** — one row's perceptual pair, written only while the row still
+ * serves the exact bytes that were signed.
+ *
+ * `replaceChatPhotoAction` nulls the pair at byte-swap time (`updateNinaChatPhotoBlob`, the
+ * ghost-signature fix) and re-signs the NEW bytes in `after()`. The gap between "read the row"
+ * and "write the signature" is a real race: the operator can replace the photograph AGAIN while
+ * the first pass's GET is in flight, and writing bytes-1's signature onto a bytes-2 row would
+ * mint exactly the ghost this whole fix exists to bury. So `pathname` is part of the WHERE: the
+ * write lands only if the row still serves the object that was fetched and signed. A second
+ * replace makes this statement a 0-row no-op, and the second replace's own pass owns the row.
+ *
+ * Everything else is the door rule every other writer here applies: owner-scoped (`user_id` in
+ * the WHERE — an id from a client is a claim), originals only (`isOriginalPhoto()` — a reference
+ * binds NULL by the column header's doctrine and can never carry a signature), and the values
+ * normalize through the one parsers (`lib/nina/perceptual.ts`) so a malformed pair is a refusal,
+ * not a poisoned column. `false` means "not written" — stale guard, reference, malformed pair,
+ * or gone row — and every caller treats it as the quiet nothing it is.
+ */
+export async function updateNinaChatPhotoPerceptualSignature(
+  userId: string,
+  id: string,
+  pathname: string,
+  signature: { dhashHex: string; sig16Base64: string },
+): Promise<boolean> {
+  const perceptualHash = normalizeClaimedPerceptualHash(signature.dhashHex)
+  const perceptualSig = normalizeClaimedPerceptualSig(signature.sig16Base64)
+  if (perceptualHash == null || perceptualSig == null) return false
+
+  const updated = await db
+    .update(ninaMessageImages)
+    .set({ perceptualHash, perceptualSig })
+    .where(
+      and(
+        eq(ninaMessageImages.userId, userId),
+        eq(ninaMessageImages.id, id),
+        eq(ninaMessageImages.pathname, pathname),
+        isOriginalPhoto(),
+      ),
+    )
+    .returning({ id: ninaMessageImages.id })
+
+  return updated.length > 0
 }
 
 /**

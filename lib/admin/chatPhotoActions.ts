@@ -38,11 +38,13 @@ import {
   setNinaMessageImageDescription,
   updateNinaChatPhotoBlob,
   updateNinaChatPhotoDescription,
+  updateNinaChatPhotoPerceptualSignature,
   updateNinaMessage,
   type NinaImageRow,
   type NinaMessageRow,
 } from '@/lib/nina/queries'
 import { resolveNinaWriteSession } from '@/lib/nina/sessionResolve'
+import { fetchAndSignImage } from '@/lib/nina/perceptualSign'
 import { NinaVisionTokenFloorError, describeNinaImages } from '@/lib/nina/vision'
 import { isValidContentHash } from '@/lib/photos/contentHash'
 import { findGlobalDuplicatePhoto } from '@/lib/photos/globalDuplicate'
@@ -207,6 +209,12 @@ export async function replaceChatPhotoAction(input: unknown): Promise<ChatPhotoA
    * too — which cannot be done, because `nina_messages.text` is NOT NULL and an empty bubble is not
    * a message. Deciding what a replaced photograph's bubble should say in the gap is its own card.
    */
+  /* The byte swap retracted the perceptual pair (see `updateNinaChatPhotoBlob`'s ghost-signature
+   * fix); this re-signs the NEW bytes so the row is dedup-active again in seconds rather than at
+   * the next sweep run. Scheduled BEFORE the captioner so the caption pass stays the last
+   * `after()` task this action hands over — the two passes are independent, and the cheap GET is
+   * the one that should finish first. */
+  scheduleChatPhotoResign(userId, id)
   scheduleChatPhotoCaption(userId, id)
 
   /* ── THE NEW BYTES MAY ALREADY BE IN THE COLLECTION (dup-image-push-notify R1) ──────────────
@@ -415,6 +423,12 @@ export async function addChatPhotoAction(input: unknown): Promise<ChatPhotoActio
     }
   }
 
+  /* Sign the fresh row's own bytes now rather than leaving it dedup-inactive until the next sweep
+   * run — the same reason the send path signs every claim it lands. On the duplicate branches the
+   * row is a REFERENCE and `scheduleChatPhotoResign` skips it (a reference binds NULL by
+   * doctrine), so one unconditional call covers both shapes. Scheduled BEFORE the captioner so
+   * the caption pass stays the last `after()` task, same as the replace site. */
+  scheduleChatPhotoResign(userId, image.id)
   scheduleChatPhotoCaption(userId, image.id)
 
   /* ── IS THIS PHOTOGRAPH ALREADY IN THE COLLECTION? (dup-image-push-notify R1) ───────────────
@@ -1039,6 +1053,73 @@ function scheduleChatPhotoCaption(userId: string, id: string): void {
        * a photograph wearing a scene-agnostic canned caption is a cosmetic state with a true
        * sentence on it. */
       console.warn('[f36] chat photo caption pass failed', { id, error: String(cause) })
+    }
+  })
+}
+
+/**
+ * **The perceptual re-sign pass** — `after()` work that gives a freshly-landed or freshly-swapped
+ * chat photograph its own signature, so the write-time twin scan can recognize its re-download.
+ *
+ * The ghost-signature defect (2026-09-15) had two halves and this is the second. The first — a
+ * byte swap leaving the OLD signature standing — is fixed in `updateNinaChatPhotoBlob` (both
+ * callers of this pass). The second was the gap behind it: an admin row landed UNSIGNED and
+ * stayed that way until the next manual sweep run, dedup-inactive the whole time. Signing HERE
+ * closes the gap the same way the send path does for its own claims ("every claim, twin or not,
+ * carries its own signature onto the row it becomes"): the operator's bytes were PUT to Blob
+ * before this action ran, so the only way the server can hold them is a GET of the URL it just
+ * wrote — `fetchAndSignImage`, the ONE signer's fetch half.
+ *
+ * ── THE GUARD IS THE WHOLE POINT ─────────────────────────────────────────────────────────────
+ * Between this pass's row read and its write, the operator can replace the photograph again —
+ * two replaces in a minute is exactly what happened on production. Writing bytes-1's signature
+ * onto a bytes-2 row would mint the very ghost this fix buries, so the write is
+ * pathname-guarded: `updateNinaChatPhotoPerceptualSignature` lands only while the row still
+ * serves the object that was fetched and signed. A racing replace makes this pass a no-op and
+ * the racing pass owns the row.
+ *
+ * ── A REFERENCE IS SKIPPED, AND A FAILURE IS SILENT ─────────────────────────────────────────
+ * The add path reaches this pass on its duplicate branches too (one unconditional call covers
+ * both shapes), and a reference binds NULL by the column header's doctrine — its `blobUrl` is
+ * the KEEPER's object, and a signature written here would be a fact about bytes the row does not
+ * own. A failed GET or an undecodable body leaves the row unsigned — the same honest
+ * dedup-inactive the sweep's `fill-perceptual` op owns later — and never fails the action that
+ * scheduled it: the row is already committed, and `after()` turns a rejection into a log line.
+ */
+function scheduleChatPhotoResign(userId: string, id: string): void {
+  after(async () => {
+    try {
+      const row = await getNinaMessageImage(userId, id)
+      /* Gone between the click and the callback. A miss, not a failure. */
+      if (row == null) return
+      /* A reference renders the KEEPER's object and binds NULL by doctrine — see
+       * `NinaImageInsert.perceptualHash`'s header. Nothing about this pass may change that. */
+      if (row.sourceAvatarId != null || row.sourceImageId != null) return
+
+      const signature = await fetchAndSignImage(row.blobUrl)
+      /* `null` is the fetch ladder's "cannot sign" — bad URL, failed GET, undecodable body. The
+       * row stays unsigned and dedup-inactive, which is the degradation the column header
+       * defines; the sweep's fill-perceptual op owns filling it eventually. */
+      if (signature == null) {
+        console.warn('[admin] chat photo re-sign could not measure the new bytes', {
+          id,
+          pathname: row.pathname,
+        })
+        return
+      }
+
+      /* Pathname-guarded: a no-op unless the row still serves what was just signed. */
+      const written = await updateNinaChatPhotoPerceptualSignature(userId, id, row.pathname, {
+        dhashHex: signature.dhashHex,
+        sig16Base64: signature.sig16Base64,
+      })
+      if (written) {
+        console.log('[admin] signed a chat photo for the twin scan', { id })
+      }
+    } catch (cause) {
+      /* The outer net, `scheduleChatPhotoCaption`'s shape: the bytes are committed whatever this
+       * pass does, and an unsigned row is one sweep run from correct. */
+      console.warn('[admin] chat photo re-sign pass failed', { id, error: String(cause) })
     }
   })
 }

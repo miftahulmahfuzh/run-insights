@@ -698,7 +698,7 @@ describe('buildPerceptualMergePlan', () => {
  * wrong; nothing before this pass ever re-measured a signature once it was decoded from storage.
  */
 describe('perceptualVerifyCandidates — which stored signatures get re-verified', () => {
-  it('selects rows sharing (user, width, height) with another original, only when stored', () => {
+  it('selects EVERY original with a stored signature — dimensions no longer matter', () => {
     const a = prow({ id: 'a', perceptualSource: 'stored' })
     const b = prow({ id: 'b', perceptualSource: 'stored' })
     expect(
@@ -707,12 +707,17 @@ describe('perceptualVerifyCandidates — which stored signatures get re-verified
         .sort(),
     ).toEqual(['a', 'b'])
   })
-  it("excludes a row whose dimensions are unique among its user's originals", () => {
+  it('selects a dimension-unique singleton — a stale signature defeats FUTURE matches with no group required (2026-09-15: 49/71 production originals were ghosted this way)', () => {
     const a = prow({ id: 'a', perceptualSource: 'stored' })
+    expect(perceptualVerifyCandidates([a]).map((r) => r.id)).toEqual(['a'])
     const b = prow({ id: 'b', width: 768, perceptualSource: 'stored' })
-    expect(perceptualVerifyCandidates([a, b])).toEqual([])
+    expect(
+      perceptualVerifyCandidates([a, b])
+        .map((r) => r.id)
+        .sort(),
+    ).toEqual(['a', 'b'])
   })
-  it('excludes a row this run already measured fresh — nothing could have written it since', () => {
+  it('excludes a row whose signature this run already measured fresh — nothing could have written it since', () => {
     const a = prow({ id: 'a', perceptualSource: 'measured' })
     const b = prow({ id: 'b', perceptualSource: 'stored' })
     expect(perceptualVerifyCandidates([a, b]).map((r) => r.id)).toEqual(['b'])
@@ -720,12 +725,9 @@ describe('perceptualVerifyCandidates — which stored signatures get re-verified
   it('excludes a reference — only originals participate', () => {
     const a = prow({ id: 'a', perceptualSource: 'stored' })
     const ref = prow({ id: 'ref', sourceImageId: 'a', perceptualSource: 'stored' })
-    expect(perceptualVerifyCandidates([a, ref])).toEqual([])
-  })
-  it('never crosses users', () => {
-    const a = prow({ id: 'a', perceptualSource: 'stored' })
-    const b = prow({ id: 'b', userId: 'another-user', perceptualSource: 'stored' })
-    expect(perceptualVerifyCandidates([a, b])).toEqual([])
+    // Under the widening `a` is a candidate on its own merits; the assertion is that the
+    // reference — bytes it does not own — never rides along.
+    expect(perceptualVerifyCandidates([a, ref]).map((r) => r.id)).toEqual(['a'])
   })
 })
 

@@ -123,6 +123,9 @@ const BARREL_VALUE_EXPORTS = [
   'updateNinaAvatarCrop',
   'updateNinaChatPhotoBlob',
   'updateNinaChatPhotoDescription',
+  // ghost-signature fix (2026-09-15): the pathname-guarded re-sign write behind
+  // `scheduleChatPhotoResign` — documented growth, argued at the function's own header.
+  'updateNinaChatPhotoPerceptualSignature',
   'updateNinaMemoryFact',
   'updateNinaMessage',
   'updateNinaShortcut',
