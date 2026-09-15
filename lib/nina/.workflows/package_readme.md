@@ -33,7 +33,11 @@ P1-NIN-A049 (NINA_PUSH_EVERY_MESSAGE phase 3): the image path now knocks — `fi
 P1-NIN-A048 (the same set's phase 2): the reply knocks too — `runNinaBackgroundTurn` sends ONE
 `'chat_reply'` push per committed reply, after the claim is closed and before the distillation,
 through a defaulted `notify` seam (`NinaTurnDeps` / `NinaTurnNotifier`), which is how all four
-entry points into the turn are covered by a single call site — see The chat turn.
+entry points into the turn are covered by a single call site — see The chat turn. Restated
+2026-09-15 for P2-DB-A001 (ADMIN_ALBUM_SEMANTIC_SEARCH phase 1 of 4): `embedding.ts` added —
+one string in, one 1536-wide `number[]` out, one `fetch`, no fallback ladder and no retry, the
+first OpenRouter path in this package with no z.ai primary in front of it; `openrouter.ts` gained
+`OPENROUTER_EMBEDDINGS_URL` and `NINA_EMBEDDING_MODEL` — see Embeddings.
 **Documentation Created**: 2026-09-05 (`NINA_CHARACTER_TUNING_PLAN.md` phase 2)
 
 ## Overview
@@ -56,6 +60,9 @@ modules into `'use client'` components.
 - **Proactive speech** — whether she opens a conversation, and on what.
 - **Images** — her selfies and avatars, prompt → job row → Blob, plus the caption she writes
   under a photograph of hers from what is actually in it.
+- **Embeddings** — one string to one 1536-wide vector (`embedding.ts`, since 2026-09-15), the
+  vendor seam the album's semantic search will read and write through. No caller yet: phases 2 and
+  3 of that set are the consumers.
 - **Chat UI logic** — the pure, node-testable decisions the chat screen makes (grouping, reveal
   timing, idempotent appends, scroll, gestures, chrome geometry), kept out of the components.
 - **Persistence** — the `queries/` directory is the single home for every `nina_*` table access
@@ -625,15 +632,80 @@ contracts:
   design — the describe seam has no user id, and the option exists so a caller that has one can
   hand it over without another signature change.
 
-**`openrouter.ts` is the constants' single home** — `OPENROUTER_CHAT_URL` and
-`NINA_FALLBACK_TEXT_MODEL`, zero imports like the rest of the roster. The vision fallback is its
-sole owner no longer: the text-chat client (`llmFallbackText.ts`) imports the same two constants,
-and neither module redeclares — `imagerecipe.ts`' standing rule for
-`OPENROUTER_IMAGE_URL`/`NINA_IMAGE_MODEL`, now package-wide. The `OPENROUTER_API_KEY` read stays
-inside `lib/nina/` (`ninaEnv()`, inside the function and inside a try, so a missing key costs the
-fallback and never an import-time crash of the working z.ai path);
+**`openrouter.ts` is the constants' single home** — every OpenRouter URL and every model id this
+package names, zero imports like the rest of the roster. The vision fallback is its sole owner no
+longer: the text-chat client (`llmFallbackText.ts`) and, since 2026-09-15, `embedding.ts` read from
+the same file, and no module redeclares — `imagerecipe.ts`' standing rule for
+`OPENROUTER_IMAGE_URL`/`NINA_IMAGE_MODEL`, now package-wide. Two URLs (`OPENROUTER_CHAT_URL`,
+`OPENROUTER_EMBEDDINGS_URL`) and three model vocabularies, each with a different mutability rule:
+`NINA_VISION_FALLBACK_MODEL` is hardcoded (the describe path sends an `image_url` part, so a
+text-only id would 400 every photo); `NINA_CHAT_FALLBACK_MODEL_IDS` /
+`NINA_CHAT_FALLBACK_MODEL_SPECS` / `NINA_CHAT_FALLBACK_DEFAULT_MODEL` are a CLOSED dropdown
+vocabulary the operator moves with no redeploy (swapping a chat model changes only prose);
+`NINA_EMBEDDING_MODEL` is the least movable of the three — see Embeddings. The `OPENROUTER_API_KEY`
+read stays inside `lib/nina/` (`ninaEnv()`, inside the function and inside a try, so a missing key
+costs the one call and never an import-time crash of the path that still works);
 `scripts/check-openrouter-boundary.mjs` (`ci:openrouter-guard`) enforces that boundary on source
 files.
+
+## Embeddings
+
+**`embedding.ts` (server-only, since 2026-09-15, P2-DB-A001) is one string in, one `number[]` out.**
+`embedNinaText(text, opts)` → `embedNinaTextWithFetch(fetch, text, opts)`; the DI seam is the same
+one `describeNinaImagesWithFetch` has and for the same reason — the module is `server-only` and
+reads `@/lib/env`, so a fake `fetch` is the only honest way to test the validation. One `fetch`, no
+SDK: `@anthropic-ai/sdk` cannot be pointed at an OpenAI-shaped embeddings endpoint, and a second
+vendor SDK to send one JSON object would be more dependency than request. The album's semantic
+search has exactly two jobs for a vendor — a photo's stored `description` at write time, an
+operator's query at read time — and both are this one call.
+
+- **No fallback ladder, and that is not an omission.** `vision.ts` and `llmFallbackText.ts` each try
+  z.ai then OpenRouter because both vendors serve chat/completions. Neither configured z.ai base URL
+  (`LLM_VISION_BASE_URL`, `LLM_BASE_URL`) exposes an embeddings surface this repo has confirmed, so
+  there is nothing to fall back FROM: one attempt, one `nina_error_logs` row, one throw. No retry
+  either. If a second vendor is ever confirmed, this module gains a `…WithFallback` SIBLING in
+  `describeNinaImagesWithFallback`'s shape — never a branch inside the core.
+- **The width check is this module's token floor.** `vision.ts` refuses a response whose
+  `prompt_tokens` says the image never arrived; the analogue here is length. The return is GATED on
+  `embedding.length === NINA_EMBEDDING_DIMENSIONS` (`lib/db/schema`, 1536) and on every element
+  being a finite `number`, because a wrong-width vector is not a worse ranking — it is a failed
+  INSERT thrown from deep inside an `after()` callback, where pgvector's own message surfaces as an
+  unattributable warning hours after the model was swapped. The error names both numbers.
+- **The model and the dimension move together or not at all.** `NINA_EMBEDDING_MODEL` =
+  `openai/text-embedding-3-small`, PROBED LIVE 2026-09-15 (200 OK on the first candidate,
+  `data[0].embedding.length` 1536, every element finite) rather than assumed — the plan set's own
+  exit criterion. It is deliberately NOT admin-configurable, unlike the chat fallback: its id fixes
+  the width of `nina_avatars.description_embedding`, two embedding models do not share a vector
+  space, and a mixed column ranks nonsense. Changing it is a new dimension constant, a new
+  migration and a full re-embed, in one commit. pgvector's HNSW ceiling is 2000 dimensions, which is
+  why "a bigger model" is not simply better here.
+- **One error class, not two.** `NinaEmbeddingError(message, detail?)` covers empty input, a missing
+  credential, transport/timeout, non-2xx, non-JSON, a missing or non-numeric vector and a wrong
+  width — because no caller needs to branch on which (phase 2 logs and moves on, phase 3 returns
+  `{ ok: false }`). The distinguishing detail rides in `message`/`detail`, and `embedErrorText`
+  (pure, exported) is what keeps `detail` out of `String(cause)`'s blind spot.
+- **A row before every throw but one.** `recordEmbedFailure` writes `nina_error_logs` with
+  `category: 'text'` — an embedding IS a text-model call, and a fourth `NinaErrorCategory` would be
+  a four-file edit reaching into an admin UI model for a tab nobody asked for — `provider`
+  `'openrouter'` as a constant, `imageUrl` always NULL (this path never holds a photo), and the
+  doubled best-effort guard `recordDescribeFailure` has. The one silent throw is the EMPTY-input
+  check, hoisted above everything that could log: nothing reached a vendor, so a programmer error is
+  one throw and zero rows.
+- **Ceilings are its own.** `NINA_EMBEDDING_TIMEOUT_MS` 15 s — deliberately shorter than the
+  describe path's 25/30 s, because an embedding is a single forward pass with no autoregressive
+  decode, and phase 2 embeds every row of a folder upload inside one `after()` budget.
+  `NINA_EMBEDDING_MAX_CHARS` 8 000 is a STORAGE-SHAPED GUARD, not a contract (`NINA_ERROR_LOG_TEXT_MAX`'s
+  posture): a real description is ~900 characters, so nothing legitimate truncates; what it stops is
+  a caller handing over a `data:` URI or a whole file. `clampEmbedInput` (pure, exported) appends NO
+  truncation marker, unlike `clampNinaErrorText` — this string is EMBEDDED, and a sentence about
+  truncation would put words in the vector the photograph does not contain. `encoding_format:
+  'float'` is named explicitly: several providers behind this broker default to a base64-packed
+  vector, which arrives as a string and fails the array check with a confusing message.
+- **`embedNinaText` is an unused export today, and that is plan-documented — do not delete it and do
+  not suppress the finding.** `npm run knip` flags it (measured 2026-09-15). Phase 2 (the deferred
+  describe pass, embedding the description it just wrote) and phase 3 (the search action, embedding
+  the operator's query) are its callers; this phase ships the vendor seam and the migration ahead of
+  them on purpose, so the width guard and the failure row exist before anything writes a vector.
 
 ## Memory, promises, patterns, proactive
 
@@ -670,14 +742,17 @@ files.
 | Memory/behaviour | `memory.ts`, `distill.ts`, `promise.ts`(T)/`promises.ts`, `nags.ts`, `patterns.ts`, `shortcuts.ts`(T), `title.ts`/`autotitle.ts` |
 | Images | `imagerecipe.ts`, `imagegen.ts`, `imageprefs.ts`, `imagejobs.ts`, `imagecall.ts`, `imageDedupe.ts`, `perceptual.ts`/`perceptualSign.ts`, `imagerun.ts`, `imagefail.ts`, `caption.ts`, `imagetools.ts`/`avatartools.ts`, `selfiegen.ts`/`avatargen.ts`/`imagetest.ts`, `jobview.ts`(T) |
 | Vision/intake | `vision.ts`(T), `imageTicket.ts`(T) (HMAC carrier, `node:crypto`), `images.ts`(T), `crop.ts`(T) |
-| Provider constants | `openrouter.ts` (zero imports; the ONE home of `OPENROUTER_CHAT_URL` + `NINA_FALLBACK_TEXT_MODEL` — the vision fallback and the text-chat fallback client both read it) |
+| Provider constants | `openrouter.ts` (zero imports; the ONE home of `OPENROUTER_CHAT_URL` + `OPENROUTER_EMBEDDINGS_URL` and of all three model vocabularies — `NINA_VISION_FALLBACK_MODEL` hardcoded, `NINA_CHAT_FALLBACK_MODEL_IDS`/`_SPECS`/`_DEFAULT_MODEL` operator-picked, `NINA_EMBEDDING_MODEL` migration-locked; read by the vision fallback, the text-chat fallback client and `embedding.ts`) |
+| Embeddings | `embedding.ts`*(T) (one `fetch` to `OPENROUTER_EMBEDDINGS_URL`, no fallback ladder, no retry; the width guard gates the return against `NINA_EMBEDDING_DIMENSIONS`) |
 | Album/attachments | `album.ts`(T), `albumActions.ts`, `attach.ts`(T) |
 | Chat UI logic | `chatview.ts`(T), `reply.ts`(T), `reveal.ts`(T), `scroll.ts`(T), `live.ts`(T), `edit.ts`(T), `chrome.ts`(T) |
 | Persistence | `queries/` — 12 domain modules + module-internal `columns.ts` behind the `queries.ts` barrel (`export *` per module, zero imports; every `nina_*` access; `tuningFromRow`/`tuningToColumns` in `queries/tuning.ts` are the one place the flat row and the nested model meet), `errorlogs.ts` (`nina_error_logs` write/read — the deliberate unscoped exception, server-side db-touching; its writers are `vision.ts`'s fallback orchestrator, category `multimodal`, `imagerun.ts`'s `recordImageCallFailure`, category `image_generation`, and `llmFallbackText.ts`'s `ninaFallbackTextClient`, category `text` — all three 2026-09-12) |
 
-\* server-only, not Server Actions. (T) = colocated `*.test.ts` (28 of them, all over the pure
-modules; integration lives in 51 `tests/nina.*.test.ts` files; 28 + 51 re-counted 2026-09-12
-after the queries split — unchanged. `lib/nina/queries.test.ts` also sits at this level but is
+\* server-only, not Server Actions. (T) = colocated `*.test.ts` (29 as of 2026-09-15 —
+`embedding.test.ts` is the newest and the one exception to "all over the pure modules": the module
+is `server-only`, and its suite reaches it through the `fetchImpl` seam; integration lives in 51
+`tests/nina.*.test.ts` files; 28 + 51 re-counted 2026-09-12 after the queries split — unchanged.
+`lib/nina/queries.test.ts` also sits at this level but is
 not a (T): it is the barrel contract test, not a pure module's suite.
 
 ## Dataflow
@@ -707,7 +782,7 @@ not a (T): it is the barrel contract test, not a pure module's suite.
 
 **External:** `@anthropic-ai/sdk` (type-only; the client is `@/lib/llm/client`), `zod`, `drizzle-orm`,
 `next/server`'s `after()`, `next/cache`'s `revalidatePath` (jobActions only), `server-only`
-(25 modules as of this rewrite — `llmFallbackText.ts` is the newest), `node:crypto`.
+(26 modules as of 2026-09-15 — `embedding.ts` is the newest), `node:crypto`.
 **Internal:** `@/lib/db` + `@/lib/db/schema`
 (heaviest), `@/lib/photos/contentHash` (the sha-256 hex format the whole dedupe set answers
 from), `@/lib/date/ranges` (the Jakarta day model behind nags/patterns/promises/proactive),
@@ -756,6 +831,10 @@ attempt has already written its best-effort `nina_error_logs` row (see Vision); 
 image-generation call has already written its own (see Images); a failed TEXT call has written one
 row per attempt (see The chat turn, whose wrapper rethrows the OPENROUTER cause instead —
 `turn.ts`'s catch branches on nothing, so the asymmetry costs no caller its classification);
+`embedding.ts` has ONE class (`NinaEmbeddingError`) rather than two, because it has no ladder to
+classify and no caller that branches — everything from an empty input to a wrong-width vector
+throws it, with the diagnosis in `message`/`detail` and a `nina_error_logs` row already written
+for every case except the empty input (see Embeddings);
 `imagefail.ts` classifies failures
 and picks what she says — a failure is a message from Nina, never a stack trace.
 
@@ -836,11 +915,30 @@ and picks what she says — a failure is a message from Nina, never a stack trac
   accepted on a plain non-empty check and returns `floor: 0`. Porting the floor to a new provider
   repeats the 2026-09-09 false trip in the worst place — a path that only runs when the primary
   has already failed.
-- **`openrouter.ts` is the ONE home of the OpenRouter chat constants.** Import
-  `OPENROUTER_CHAT_URL`/`NINA_FALLBACK_TEXT_MODEL`, never redeclare them (the rule
-  `imagerecipe.ts` already applies to the image constants), and read `OPENROUTER_API_KEY` through
-  `ninaEnv()` inside `lib/nina/` only — `ci:openrouter-guard`
-  (`scripts/check-openrouter-boundary.mjs`) enforces that boundary on source files.
+- **`openrouter.ts` is the ONE home of every OpenRouter URL and model id.** Import
+  `OPENROUTER_CHAT_URL`/`OPENROUTER_EMBEDDINGS_URL` and the model constants, never redeclare them
+  (the rule `imagerecipe.ts` already applies to the image constants), and read `OPENROUTER_API_KEY`
+  through `ninaEnv()` inside `lib/nina/` only — `ci:openrouter-guard`
+  (`scripts/check-openrouter-boundary.mjs`) enforces that boundary on source files. Reading
+  `process.env.OPENROUTER_API_KEY` directly passes the grep and breaks the invariant it stands for.
+- **`NINA_EMBEDDING_MODEL` and `NINA_EMBEDDING_DIMENSIONS` are one decision spelled in two files.**
+  Never move one alone, and never give the embedding model a dropdown the way the chat fallback has
+  one: the id fixes the width of `nina_avatars.description_embedding`, and two embedding models do
+  not share a vector space, so a mixed column ranks nonsense rather than failing. Changing it is a
+  new constant, a new migration and a full re-embed, in one commit. The width guard in
+  `embedding.ts` exists so that mistake surfaces at the call with both numbers named, not as an
+  opaque pgvector INSERT error inside an `after()` hours later.
+- **`embedNinaText` is an unused export on purpose** (knip flags it, measured 2026-09-15). It is the
+  seam phases 2 and 3 of the semantic-search set consume. Do not delete it, and do not annotate or
+  suppress the finding — the phase that adds the first caller is what clears it.
+- **The embedding path has no fallback and no retry, and adding one inline would be the wrong
+  shape.** There is no confirmed second vendor for this endpoint; if one appears, it becomes a
+  `…WithFallback` sibling in `describeNinaImagesWithFallback`'s shape, because that split is what
+  keeps a fake `fetch` from answering both providers with the same body and going green for the
+  wrong reason.
+- **Never append a truncation marker to text being embedded.** `clampEmbedInput` deliberately does
+  not do what `clampNinaErrorText` does: one string is stored for a human, the other goes into a
+  vector, and a sentence about truncation puts words in it the photograph does not contain.
 - **The describe fallback rethrows the PRIMARY error, never the fallback's** — every caller
   branches on the original class (`dropped` vs `transport`), and the fallback only ever raises
   transport errors.
@@ -858,7 +956,8 @@ and picks what she says — a failure is a message from Nina, never a stack trac
 
 ## Tests
 
-28 colocated suites over the pure modules; 51 repo-level `tests/nina.*.test.ts` (re-counted
+29 colocated suites as of 2026-09-15 (28 over the pure modules, plus `embedding.test.ts` over a
+`server-only` one it reaches through the `fetchImpl` seam); 51 repo-level `tests/nina.*.test.ts` (re-counted
 2026-09-12 after the queries split — unchanged; phase 4 added `nina.imagelog.test.ts`, phase 2
 `nina.llmFallbackText.test.ts`; plus the barrel contract test `lib/nina/queries.test.ts`, which
 freezes the barrel's 85 runtime value exports and is not a (T): the barrel is not a pure
@@ -945,6 +1044,19 @@ recursive — a new module under `queries/` does not automatically join the walk
   case is the one that needs the module mock: `@/lib/push/send` is mocked so the DEFAULT seam can be
   observed when no `deps` are passed, instead of resting on an unset `VAPID_*` making the real
   sender inert.
+- **The embedding seam is pinned by a fake `fetch` and never touches the network**
+  (`lib/nina/embedding.test.ts`, 15 cases as of 2026-09-15 — colocated, not repo-level, because the
+  injectable core is exported). Four groups: the pure `clampEmbedInput` (trims, clamps, appends NO
+  marker); the REQUEST (the probed shape on the wire — url, model, `encoding_format: 'float'`, the
+  bearer, the ceiling — a caller-supplied `timeoutMs`, and empty text refused BEFORE the vendor with
+  zero log rows); the WIDTH GUARD (the exact width returned; a wrong width naming BOTH numbers; a
+  right-width vector carrying a non-finite element; a base64-packed vector refused as a shape rather
+  than as a confusing length); and the FAILURES, each asserted against the row it writes (a thrown
+  fetch logged under category `text`, a non-2xx carrying the raw body snippet a `res.json()` would
+  have thrown away, a non-JSON body not pretending it parsed, a rejecting `logNinaError` changing no
+  outcome, and `embedErrorText` keeping the `detail` that `String(cause)` drops). The `res.text()`-
+  then-parse order is what makes the snippet assertable at all — copy it rather than "simplifying"
+  to `res.json()`.
 - **Known-answer vectors** pin the perceptual gates in BOTH copies of the predicate
   (`tests/nina.perceptual.test.ts`, `tests/nina.dedupeMedia.test.ts`), so the two cannot drift.
 - **Real-module integration**: `tests/nina.resend.test.ts` and `tests/nina.burstCancel.test.ts`

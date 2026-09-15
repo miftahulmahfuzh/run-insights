@@ -2,13 +2,13 @@
 
 **Package Path**: `lib/nina`
 **Package Code**: NIN
-**Last Updated**: 2026-09-14
-**Total Active Tasks**: 0
+**Last Updated**: 2026-09-15
+**Total Active Tasks**: 1
 
 ## Quick Stats
 - P0 Critical: 0
 - P1 High: 0
-- P2 Medium: 0
+- P2 Medium: 1
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
@@ -22,6 +22,16 @@
 ### [P1] High
 
 ### [P2] Medium
+
+- [ ] **P2-NIN-A001** Phase 3: Search query layer + Server Action
+  - **Difficulty**: HARD
+  - **Type**: Feature
+  - **Context**: Owns a new query module under `lib/nina/queries/` implementing text-only, image-caption-only and combined-weighted cosine-similarity search over `nina_avatars` (user_id-scoped, same row/total shape as `listNinaAvatarsInFolder`), plus `lib/admin/ninaAlbumSearchActions.ts`'s `requireAdmin()`-gated `searchNinaAvatarsAction`, the `AdminSearchHit`/`AdminSearchResult`/`AdminSearchMode` types declared on the `lib/admin/ninaAlbumActions.ts` barrel, and the `NINA_SEARCH_LIMIT = 48` cap. Exit: the Server Action returns ranked, user_id-scoped results for text-only, image-only and combined queries; the generated SQL for all three carries `user_id = $n` and `description_embedding is not null`, orders by raw cosine distance ascending, and the combined read carries both vectors/weights in one statement; an empty query image or empty text is rejected by the Zod schema with zero vendor calls.
+  - **Status**: open
+  - **Plan Set**: `ADMIN_ALBUM_SEMANTIC_SEARCH_PLAN.md` (phase 3 of 4)
+  - **Satisfies**: R2, R3, R4 — the query/ranking layer answering text-only, image-only and combined-weighted search
+  - **Depends on**: `P2-DB-A001`
+  - **Plan**: `.workflows/plan/P2-NIN-A001.md`
 
 ### [P3] Low
 

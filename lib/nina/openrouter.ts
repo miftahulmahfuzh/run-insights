@@ -34,6 +34,45 @@
 export const OPENROUTER_CHAT_URL = 'https://openrouter.ai/api/v1/chat/completions'
 
 /**
+ * **OpenRouter's embeddings surface.** Sibling of `OPENROUTER_CHAT_URL` above, and declared here
+ * for the same reason that one is: an endpoint spelled in two files is an endpoint that drifts
+ * apart from itself. `lib/nina/embedding.ts` is its only reader today; the search query layer
+ * reaches it through that module and never spells the URL.
+ *
+ * Unlike the chat and vision paths, this endpoint has **no z.ai primary in front of it**. Neither
+ * configured z.ai base URL (`LLM_VISION_BASE_URL`, `LLM_BASE_URL`) exposes an embeddings surface
+ * that this repo has confirmed, so there is nothing to fall back FROM. A failure here is a single
+ * failed attempt and one `nina_error_logs` row, not a two-provider ladder.
+ */
+export const OPENROUTER_EMBEDDINGS_URL = 'https://openrouter.ai/api/v1/embeddings'
+
+/**
+ * **The album's text-embedding model, and the ONE thing that fixes the vector column's width.**
+ *
+ * PROBED LIVE on 2026-09-15, not assumed — the plan set's own exit criterion, and the same posture
+ * `NINA_CHAT_FALLBACK_MODEL_IDS` records for `nvidia/nemotron-3.5-lightning`. The probe's raw
+ * reading:
+ *
+ *     POST https://openrouter.ai/api/v1/embeddings
+ *     { model: 'openai/text-embedding-3-small', input: 'A woman in a red jacket standing on a
+ *       mountain trail at sunrise.', encoding_format: 'float' }
+ *     -> 200, data[0].embedding.length = 1536, every element finite,
+ *        usage = {"prompt_tokens":14,"total_tokens":14,"cost":2.8e-7}
+ *
+ * **Not admin-configurable, and it cannot become so without a migration.** The chat fallback got a
+ * dropdown (see the header) because swapping a chat model changes only the prose. Swapping THIS
+ * model changes the width of `nina_avatars.description_embedding` and invalidates every vector
+ * already stored — two different models do not share an embedding space, so a mixed column ranks
+ * nonsense. Changing it is: a new dimension constant, a new migration, and a full re-embed of the
+ * album. A dropdown would be a control that silently corrupts a ranking.
+ *
+ * **Bounded above at 2000 dimensions by pgvector**, which is why a bigger model is not simply
+ * better here: HNSW refuses to index a wider column, and the index is declared in
+ * `lib/db/schema/nina/avatars.ts`. See `NINA_EMBEDDING_DIMENSIONS` there.
+ */
+export const NINA_EMBEDDING_MODEL = 'openai/text-embedding-3-small'
+
+/**
  * **The photo-description fallback, and the ONLY model this file still hardcodes.**
  *
  * Chosen because it is natively multimodal — text, image and video in, text out, per

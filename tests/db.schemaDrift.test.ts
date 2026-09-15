@@ -84,6 +84,7 @@ describe('type normalisation', () => {
     ['smallserial', { dataType: 'smallint' }],
     ['numeric(5, 3)', { dataType: 'numeric', numericPrecision: 5, numericScale: 3 }],
     ['numeric(4, 1)', { dataType: 'numeric', numericPrecision: 4, numericScale: 1 }],
+    ['vector(1536)', { dataType: 'USER-DEFINED', udtName: 'vector' }],
     ['varchar(255)', { dataType: 'character varying', charMaxLength: 255 }],
     ['text', { dataType: 'text' }],
     ['jsonb', { dataType: 'jsonb' }],
@@ -106,6 +107,16 @@ describe('type normalisation', () => {
       normalizePgType({ dataType: 'numeric', numericPrecision: 5, numericScale: 3 } as never),
     ).not.toBe(
       normalizePgType({ dataType: 'numeric', numericPrecision: 4, numericScale: 1 } as never),
+    )
+    // The vector fold drops the DIMENSION (information_schema cannot report it) — it must not
+    // also drop the TYPE. `halfvec` is half-precision and `sparsevec` is a different storage
+    // shape; neither is interchangeable with `vector`, and folding them would hide a real
+    // migration mistake behind a rule written for a reporting gap.
+    expect(normalizeSnapshotType('vector(1536)')).not.toBe(
+      normalizePgType({ dataType: 'USER-DEFINED', udtName: 'halfvec' } as never),
+    )
+    expect(normalizeSnapshotType('vector(1536)')).toBe(
+      normalizePgType({ dataType: 'USER-DEFINED', udtName: 'vector' } as never),
     )
   })
 

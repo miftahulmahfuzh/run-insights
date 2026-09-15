@@ -264,7 +264,7 @@ describe('memory: the slots, the ledger, and R26 hand-editing', () => {
 })
 
 describe('nina_avatars', () => {
-  it('carries exactly the twenty columns phases 12-15 and F34 were written against', () => {
+  it('carries exactly the twenty-one columns phases 12-15, F34 and the album search were written against', () => {
     expect(names(schema.ninaAvatars)).toEqual(
       [
         'id',
@@ -286,6 +286,9 @@ describe('nina_avatars', () => {
         'crop_x',
         'crop_y',
         'description',
+        // 2026-09-15: the vector form of `description`, and the only thing the album's semantic
+        // search ranks by. Derived and nullable — `description` stays the source of truth.
+        'description_embedding',
         'is_current',
         'announced_at',
         'created_at',
@@ -313,6 +316,7 @@ describe('nina_avatars', () => {
 
   it('has the folder page index and the dedupe-key unique index beside the two it already had', () => {
     expect(indexNames(schema.ninaAvatars)).toEqual([
+      'nina_avatars_description_embedding_hnsw_idx',
       'nina_avatars_user_created_idx',
       'nina_avatars_user_current_unq',
       'nina_avatars_user_folder_created_idx',
@@ -350,6 +354,32 @@ describe('nina_avatars', () => {
     expect(sqlType(schema.ninaAvatars, 'crop_scale')).toBe('numeric(5, 3)')
     expect(sqlType(schema.ninaAvatars, 'crop_x')).toBe('integer')
     expect(sqlType(schema.ninaAvatars, 'crop_y')).toBe('integer')
+  })
+
+  it('description_embedding is a nullable vector of exactly NINA_EMBEDDING_DIMENSIONS', () => {
+    // The dimension is pinned HERE and not by `ci:schema-drift-guard`, on purpose: a vector's
+    // width lives in `pg_attribute.atttypmod`, which `information_schema.columns` does not carry,
+    // so the live guard folds both spellings to bare `vector` and says nothing about the number.
+    // That narrowing is declared in scripts/check-schema-drift.mjs; this is the assertion it
+    // hands the question to. If the model is ever swapped, this line is the one that goes red.
+    expect(sqlType(schema.ninaAvatars, 'description_embedding')).toBe(
+      `vector(${schema.NINA_EMBEDDING_DIMENSIONS})`,
+    )
+    // Nullable and no default: every row in the album today has no embedding, which is what
+    // makes the ADD COLUMN a no-rewrite migration and no backfill a legal end state.
+    expect(columns(schema.ninaAvatars).get('description_embedding')?.notNull).toBe(false)
+    expect(columns(schema.ninaAvatars).get('description_embedding')?.hasDefault).toBe(false)
+  })
+
+  it('the HNSW index names the cosine operator class the search query will use', () => {
+    // An `l2` index under a `<=>` query does not error — it silently falls back to a seq scan,
+    // which is the worst kind of wrong because nothing reports it. One operator class, both ends.
+    const hnsw = cfg(schema.ninaAvatars).indexes.find(
+      (i) => i.config.name === 'nina_avatars_description_embedding_hnsw_idx',
+    )
+    expect(hnsw?.config.method).toBe('hnsw')
+    expect(hnsw?.config.unique).toBe(false)
+    expect(hnsw?.config.where).toBeUndefined()
   })
 })
 

@@ -2,13 +2,13 @@
 
 **Package Path**: `lib/admin`
 **Package Code**: ADM
-**Last Updated**: 2026-09-14
-**Total Active Tasks**: 0
+**Last Updated**: 2026-09-15
+**Total Active Tasks**: 1
 
 ## Quick Stats
 - P0 Critical: 0
 - P1 High: 0
-- P2 Medium: 0
+- P2 Medium: 1
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
@@ -24,6 +24,16 @@
 ### [P1] High
 
 ### [P2] Medium
+
+- [ ] **P2-ADM-A001** Phase 2: Description coverage: deferred describe+embed wiring + backfill
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns extending the deferred describe pipeline (`lib/admin/ninaAlbumDeferredDescribe.ts`) to also compute and store the embedding right after a description is written, for every inserted row in a batch (not only `rows[0]`); keeps every other write site (`ninaAlbumDescribeActions.ts`, `ninaAlbumAvatarActions.ts`) in sync; a one-time `requireAdminApi()`-gated backfill route for existing NULL rows; the four narrow embedding reads/writes in `lib/nina/queries/avatarEmbeddings.ts`; and `app/admin/nina/page.tsx`'s `maxDuration = 300` since `after()` inherits the route's budget. Exit: every code path writing `description` also writes `description_embedding` in the same non-blocking step with no added upload latency; a fresh multi-file folder upload fills every row within a bounded time window; the backfill runs once against existing data and reports how many rows it filled.
+  - **Status**: open
+  - **Plan Set**: `ADMIN_ALBUM_SEMANTIC_SEARCH_PLAN.md` (phase 2 of 4)
+  - **Satisfies**: R2, R3, R4 — description coverage is what lets text-only, image-only and combined search actually cover the whole album, not just promoted/shared/described rows
+  - **Depends on**: `P2-DB-A001`
+  - **Plan**: `.workflows/plan/P2-ADM-A001.md`
 
 ### [P3] Low
 

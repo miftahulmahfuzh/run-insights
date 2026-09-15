@@ -9,6 +9,7 @@ import {
   text,
   timestamp,
   uniqueIndex,
+  vector,
 } from 'drizzle-orm/pg-core'
 import { users } from '../auth'
 /** 'seed' is the committed first avatar, 'generated' phase 12, 'operator' phase 14, 'admin' 15. */
@@ -146,7 +147,42 @@ export type NinaAvatarSource = 'seed' | 'generated' | 'operator' | 'admin'
  * `user_id` scan with a filter. Accepted deliberately: the subtree read runs once per dropped
  * folder over a table sized in hundreds, and a second index for it would be a second index to
  * maintain on every insert for a query that runs when a human drags something.
+ *
+ * ── `description_embedding` (2026-09-15, the album's semantic search) ─────────────────────────
+ * The vector form of `description` above, and the ONLY thing the album's search ranks by. Text
+ * queries and image queries both become a vector in the SAME space — an image query is captioned
+ * by the existing `glm-4.6v` describe pass first and then embedded as text, so there is one
+ * column and not two, and a combined text+image score is a weighted average of two comparable
+ * cosine similarities rather than a rank fusion of two incomparable ones.
+ *
+ * Nullable, derived, and never authoritative: `description` remains the single source of truth
+ * that Nina's prompt reads, and this column is a read-only-by-search projection of it. See the
+ * column's own note for why NULL is a legal state forever, and `NINA_EMBEDDING_DIMENSIONS` just
+ * below this block for why the width cannot change without a re-embed.
  */
+
+/**
+ * **How wide `description_embedding` is, declared once.**
+ *
+ * It lives here and not beside `NINA_EMBEDDING_MODEL` in `lib/nina/openrouter.ts` because it is a
+ * property of the COLUMN — the client has to agree with the column, not the other way round — and
+ * because every module under `lib/db/schema/` imports only its own siblings today. `drizzle-kit`
+ * loads this tree outside Next.js; a `@/lib/nina/...` edge would be the first path alias in its
+ * resolution path, bought for nothing. `lib/nina/embedding.ts` imports THIS, through the
+ * `@/lib/db/schema` barrel, exactly as `lib/nina/errorlogs.ts` already imports `ninaErrorLogs`.
+ *
+ * **It is pinned to whatever `NINA_EMBEDDING_MODEL` returned when it was probed.** Two embedding
+ * models do not share a vector space, so changing either one without the other does not degrade
+ * the ranking — it randomises it, silently, with no error anywhere. Change them together, in one
+ * migration, with a full re-embed.
+ *
+ * **2000 is pgvector's hard ceiling for an HNSW index** (the `vector` type itself allows 16000).
+ * A model wider than that would store fine and then fail at `CREATE INDEX` — at migration time,
+ * against production. The probe's candidate order in the phase plan is sorted by this constraint
+ * for that reason.
+ */
+export const NINA_EMBEDDING_DIMENSIONS = 1536
+
 export const ninaAvatars = pgTable(
   'nina_avatars',
   {
@@ -196,6 +232,29 @@ export const ninaAvatars = pgTable(
     cropY: integer('crop_y'),
     /** What the picture shows, in prose (R25). See the header for its three writers. */
     description: text('description'),
+    /**
+     * **`description`, as a vector** — the album's semantic search ranks against this and nothing
+     * else (2026-09-15). Derived, read-only-by-search, and never a second source of truth: the
+     * prose in `description` above stays the one thing Nina's prompt reads.
+     *
+     * NULLABLE, and nullable is the entire migration story — the same argument `source_key` makes
+     * in the header. Every row in the album today has no embedding, most have no `description`
+     * either, and an `ADD COLUMN` of a nullable vector rewrites nothing and backfills nothing.
+     * NULL means "not embedded yet", it is the value every pre-search row carries, and it is a
+     * legal state forever: a photo whose describe pass failed is simply not in the search index.
+     * A cosine-distance predicate skips NULL rows on its own, and the HNSW index below does not
+     * index them, so "unsearchable" costs nothing at read time.
+     *
+     * **Nothing in THIS phase writes it.** The write sites — the deferred describe pass, the three
+     * other `description` writers, and the one-time backfill — are the next phase's, and the
+     * invariant they must keep is that every path that writes `description` writes this in the
+     * same step. A row with a description and a NULL embedding is invisible to search while
+     * looking perfectly healthy in the explorer, which is the one failure mode here that has no
+     * symptom.
+     */
+    descriptionEmbedding: vector('description_embedding', {
+      dimensions: NINA_EMBEDDING_DIMENSIONS,
+    }),
     isCurrent: boolean('is_current').notNull().default(false),
     /** NULL = she has not mentioned this one yet. See the header. */
     announcedAt: timestamp('announced_at', { withTimezone: true, mode: 'date' }),
@@ -220,6 +279,27 @@ export const ninaAvatars = pgTable(
      * header — this is the `nina_avatars_user_current_unq` argument applied to a second fact.
      */
     uniqueIndex('nina_avatars_user_source_key_unq').on(t.userId, t.sourceKey),
+    /**
+     * **The cosine-similarity index, and it is insurance rather than a requirement.**
+     *
+     * An album of hundreds of rows would rank fine on a sequential scan — a few hundred
+     * 1536-float dot products is sub-millisecond, and `nina_avatars` is per-user and small.
+     * The index is here because it is free to declare now and costs a migration later, and
+     * because the F34 header's own premise is "hundreds of profile pics" growing.
+     *
+     * `vector_cosine_ops`, matching the `<=>` operator the search query uses. An HNSW index built
+     * for one operator class does not serve another: an `l2` index and a cosine query silently
+     * fall back to a seq scan, which is correct and slow — the worst kind of wrong, because
+     * nothing reports it. One operator class, named at both ends.
+     *
+     * NOT partial. `WHERE description_embedding IS NOT NULL` would be redundant — pgvector's HNSW
+     * does not index NULL rows anyway — and a partial index is one more predicate the planner has
+     * to prove a query matches before it can use it.
+     */
+    index('nina_avatars_description_embedding_hnsw_idx').using(
+      'hnsw',
+      t.descriptionEmbedding.op('vector_cosine_ops'),
+    ),
   ],
 )
 
