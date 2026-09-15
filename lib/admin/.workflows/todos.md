@@ -2,12 +2,12 @@
 
 **Package Path**: `lib/admin`
 **Package Code**: ADM
-**Last Updated**: 2026-09-14
-**Total Active Tasks**: 0
+**Last Updated**: 2026-09-15
+**Total Active Tasks**: 1
 
 ## Quick Stats
 - P0 Critical: 0
-- P1 High: 0
+- P1 High: 1
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
@@ -22,6 +22,15 @@
 ### [P0] Critical
 
 ### [P1] High
+- [ ] **P1-ADM-L2VN** Phase 4: Wire admin-side upload routes (chat photo add/replace, avatar batch)
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns `addChatPhotoAction` (suppresses the generic `admin_chat_photo` push in favor of `duplicate_image` on a plan-detected or cross-table hit), `replaceChatPhotoAction` (adds the lookup after commit, purely informational), and the avatar folder batch (`useFolderUpload.ts` hashes picked files, `insertNinaAvatars` writes the column, `registerNinaAvatarsAction` schedules an `after()` scan over rows that actually landed, one push per chunk). No existing dedup decision changes.
+  - **Status**: pending
+  - **Plan Set**: `DUP_IMAGE_PUSH_NOTIFY_PLAN.md` (phase 4 of 4)
+  - **Satisfies**: R1 — Push notification on any upload route when the image already exists in the whole app image collection
+  - **Depends on**: `P1-PHO-Q7XK`
+  - **Plan**: `.workflows/plan/P1-ADM-L2VN.md`
 
 ### [P2] Medium
 

@@ -300,11 +300,23 @@ describe('run_photos — R-1 and R-11', () => {
     expect(column?.default).toBe(false)
   })
 
-  it('is indexed by both of its parents', () => {
+  it('is indexed by both of its parents, and by the content hash', () => {
     expect(indexNames(schema.runPhotos).sort()).toEqual([
+      'run_photos_content_hash_idx',
       'run_photos_extraction_idx',
       'run_photos_run_idx',
     ])
+  })
+
+  it('content_hash is nullable with no default — NULL means dedup is inactive for the row', () => {
+    /* dup-image-push-notify phase 1. The whole migration story, asserted: an additive nullable
+     * column and no backfill, so every pre-existing screenshot stays NULL forever and can never
+     * match. A NOT NULL or a DEFAULT here would be the bug — SQL `=` against NULL never matches,
+     * which is exactly the property that makes "no consumer needs a special case" true. */
+    const column = columnMap(schema.runPhotos).get('content_hash')
+    expect(column?.getSQLType()).toBe('text')
+    expect(column?.notNull).toBe(false)
+    expect(column?.hasDefault).toBe(false)
   })
 
   it('has a free-standing id, because kind is not a natural key', () => {

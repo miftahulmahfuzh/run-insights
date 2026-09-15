@@ -1,4 +1,15 @@
-import { and, asc, desc, eq, inArray, isNotNull, isNull, sql, type SQL } from 'drizzle-orm'
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  notInArray,
+  sql,
+  type SQL,
+} from 'drizzle-orm'
 import type { PgColumn } from 'drizzle-orm/pg-core'
 
 import { db } from '@/lib/db'
@@ -232,6 +243,55 @@ export async function getNinaAvatarBySourceKey(
     .select(avatarColumns)
     .from(ninaAvatars)
     .where(and(eq(ninaAvatars.userId, userId), eq(ninaAvatars.sourceKey, sourceKey)))
+    .limit(1)
+  return rows[0] ?? null
+}
+
+/**
+ * **"Does this user's album already store these bytes?"** — the `nina_avatars` arm of the
+ * cross-table duplicate lookup (`lib/photos/globalDuplicate.ts`).
+ *
+ * ── IT IS NOT `getNinaAvatarBySourceKey` AND DOES NOT REPLACE IT ─────────────────────────────
+ * `source_key` is `(relative path, size, lastModified)` — a MECHANICAL key that makes a
+ * re-dropped folder cheap, enforced by `nina_avatars_user_source_key_unq` and consumed by the
+ * batch register's `ON CONFLICT DO NOTHING`. That mechanism is untouched. This asks the other
+ * question: are these BYTES already in the collection, under any name, in any folder. The two
+ * disagree constantly and both answers are correct about their own question.
+ *
+ * `(user_id, content_hash)` with a `content_hash is not null` partial index serves this exactly —
+ * `nina_avatars_user_content_hash_idx`, the shape `nina_message_images` already had.
+ *
+ * The list form, the `excludeIds` list, the newest-first order and the `null`-for-everything rule
+ * are `findRunPhotoByContentHash`'s and `findNinaImageByContentHash`'s, argued in full at the
+ * former and not restated here — including why the exclusion is a LIST: one folder drop registers
+ * up to fifty album rows in a single gesture and two of them can hold identical bytes under two
+ * folder paths, which is a deliberate pair of rows and not a duplicate of anything that came
+ * before.
+ *
+ * The projection is two columns rather than `avatarColumns`: the one caller needs an id to point
+ * at and a URL to render, and `description` is `glm-4.6v`'s private text whose only consumer is
+ * Nina's prompt (invariant 5). A narrower select is the cheapest way to not hand it to a
+ * notification.
+ */
+export async function findNinaAvatarByContentHash(
+  userId: string,
+  contentHash: string | readonly string[],
+  excludeIds?: readonly string[],
+): Promise<{ id: string; blobUrl: string } | null> {
+  const hashes = Array.isArray(contentHash) ? [...contentHash] : [contentHash as string]
+  if (hashes.length === 0) return null
+  const excluded = excludeIds ?? []
+  const rows = await db
+    .select({ id: ninaAvatars.id, blobUrl: ninaAvatars.blobUrl })
+    .from(ninaAvatars)
+    .where(
+      and(
+        eq(ninaAvatars.userId, userId),
+        inArray(ninaAvatars.contentHash, hashes),
+        excluded.length > 0 ? notInArray(ninaAvatars.id, [...excluded]) : undefined,
+      ),
+    )
+    .orderBy(desc(ninaAvatars.createdAt), desc(ninaAvatars.id))
     .limit(1)
   return rows[0] ?? null
 }

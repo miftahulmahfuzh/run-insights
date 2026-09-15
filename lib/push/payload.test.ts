@@ -151,6 +151,29 @@ describe('buildNinaPushPayload', () => {
     })
   })
 
+  it('defaults url to /nina and lets a caller override it with a same-origin path', () => {
+    /* The override is what the duplicate-image notification needs and what nothing before it did.
+     * The DEFAULT is the load-bearing half of this assertion: `sendNinaPush`, the worker's push
+     * and every proactive trigger pass no url at all and must keep landing on `/nina`. */
+    expect(buildNinaPushPayload({ messages: FOUR, kind: 'chat_reply' })?.url).toBe('/nina')
+    expect(
+      buildNinaPushPayload({
+        messages: FOUR,
+        kind: 'duplicate_image',
+        url: '/photo/shot/aB3_xYz01234',
+      })?.url,
+    ).toBe('/photo/shot/aB3_xYz01234')
+  })
+
+  it('does not bump the wire version for the added field', () => {
+    /* `NinaPushPayload`'s header: bump `v` when a field's MEANING changes, never when one is
+     * added. A registered service worker can be a week older than the server pushing to it, and
+     * it already reads `url` defensively. */
+    expect(
+      buildNinaPushPayload({ messages: FOUR, kind: 'duplicate_image', url: '/photo/image/x' })?.v,
+    ).toBe(1)
+  })
+
   it('returns null for an empty turn and for an all-blank one', () => {
     expect(buildNinaPushPayload({ messages: [], kind: 'silence' })).toBeNull()
     expect(
@@ -223,6 +246,12 @@ describe('NINA_PUSH_KINDS', () => {
     expect(NINA_PUSH_KINDS).toContain('admin_chat_photo')
     expect(NINA_PUSH_KINDS).toContain('worker_photo_delivered')
     expect(NINA_PUSH_KINDS).toContain('worker_photo_apology')
+  })
+
+  it('carries the one kind that is about an upload rather than a bubble', () => {
+    /* dup-image-push-notify R1. Five upload routes import this literal through
+     * `DUPLICATE_IMAGE_PUSH_KIND`; a rename that missed one stops here. */
+    expect(NINA_PUSH_KINDS).toContain('duplicate_image')
   })
 
   it('gives the two hosts DIFFERENT kinds for the same event, on purpose', () => {

@@ -180,6 +180,27 @@ export const ninaAvatars = pgTable(
      * See the header.
      */
     sourceKey: text('source_key'),
+    /**
+     * ── THE CONTENT-ADDRESSED TWIN OF `source_key` ────────────────────────────────────────────
+     *
+     * sha-256 over the bytes this row's Blob object stores, 64 lowercase hex, produced only by
+     * `lib/photos/contentHash.ts`. `nina_message_images.content_hash`'s header
+     * (`lib/db/schema/nina/chat.ts`) states the semantics once and they are not restated here:
+     * equal hash ⟺ equal stored bytes, NULL is permanently dedup-INACTIVE, never "unique".
+     *
+     * **It does NOT replace `source_key` and must not.** `source_key` is
+     * `(relative path, size, lastModified)` — a MECHANICAL key that lets a double-submitted
+     * folder drop cost a string comparison instead of a hash over hundreds of megabytes, and it
+     * keeps its unique index and its `ON CONFLICT DO NOTHING`. This column answers a different
+     * question — "are these BYTES already somewhere in the collection?" — for the
+     * duplicate-image notification, and it is deliberately NOT unique: a second album row with
+     * the same bytes is still a real row in a real folder, and turning that into a thrown INSERT
+     * would change what the uploader does.
+     *
+     * **No backfill.** Pre-existing rows store NULL forever; see the column's twin in
+     * `run_photos` for why that matches this codebase's own precedent.
+     */
+    contentHash: text('content_hash'),
     /** The derived grid thumbnail's Blob URL. NULL = none; a renderer falls back to `blob_url`. */
     thumbUrl: text('thumb_url'),
     /** The thumbnail's STORED Blob pathname — the only thing that lets a delete remove it too. */
@@ -220,6 +241,17 @@ export const ninaAvatars = pgTable(
      * header — this is the `nina_avatars_user_current_unq` argument applied to a second fact.
      */
     uniqueIndex('nina_avatars_user_source_key_unq').on(t.userId, t.sourceKey),
+    /**
+     * "Does this user already store these bytes in the album?" — the same indexed shape
+     * `nina_message_images_user_content_hash_idx` serves, `(user_id, content_hash)`, and partial
+     * for the same reason: a NULL row can never match, so it does not belong in the index.
+     *
+     * Non-unique, unlike `nina_avatars_user_source_key_unq` two lines up. That one enforces a
+     * mechanical fact about a batch; this one only makes a lookup cheap. See the column header.
+     */
+    index('nina_avatars_user_content_hash_idx')
+      .on(t.userId, t.contentHash)
+      .where(sql`${t.contentHash} is not null`),
   ],
 )
 
