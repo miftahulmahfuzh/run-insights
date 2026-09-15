@@ -6,7 +6,7 @@
 **Worktree:** `/home/miftah/.worktrees/run-insights/dup-image-push-notify`
 **Branch:** `feature/dup-image-push-notify` (base: `origin/main` @ `c1a3d9e`)
 **Phases:** 4
-**Status:** reconciled
+**Status:** phase 4/4 complete — all four phases landed (phase 1 @ 5effec6 — P1-PHO-Q7XK; phase 2 — P1-APP-M4TZ; phase 3 — P1-EXT-R9WD; phase 4 — P1-ADM-L2VN). Set is ready to review and merge as a whole.
 **Coordinator:** —
 
 ---
@@ -77,10 +77,10 @@ meets the bar for this section.
 
 | # | Title | Satisfies | Package | Files | Depends on | Difficulty | Plan | TaskID | Card |
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
-| 1 | Schema + cross-table dedup detection + push kind | R1, R2 | `lib/db/schema`, `lib/photos`, `lib/push`, `lib/db/queries`, `lib/nina/queries` | 18 | — | HARD | `.workflows/plan/dup-image-push-notify/phase-1.md` | — | — |
-| 2 | Full-screen deep-link viewer route | R2 | `app`, `components/photo`, `lib/db/queries` | 4 | 1 | NORMAL | `.workflows/plan/dup-image-push-notify/phase-2.md` | — | — |
-| 3 | Wire runner-side upload routes (shots, chat) | R1 | `app/api/extract`, `components/extract`, `lib/db/queries`, `lib/nina/actions`, `lib/schema` | 9 | 1 | NORMAL | `.workflows/plan/dup-image-push-notify/phase-3.md` | — | — |
-| 4 | Wire admin-side upload routes (chat photo add/replace, avatar batch) | R1 | `lib/admin`, `components/admin/explorer`, `lib/nina/queries` | 9 | 1 | NORMAL | `.workflows/plan/dup-image-push-notify/phase-4.md` | — | — |
+| 1 ✅ | Schema + cross-table dedup detection + push kind | R1, R2 | `lib/db/schema`, `lib/photos`, `lib/push`, `lib/db/queries`, `lib/nina/queries` | 18 | — | HARD | `.workflows/plan/dup-image-push-notify/phase-1.md` | P1-PHO-Q7XK | — |
+| 2 ✅ | Full-screen deep-link viewer route | R2 | `app`, `components/photo`, `lib/db/queries` | 4 | 1 | NORMAL | `.workflows/plan/dup-image-push-notify/phase-2.md` | P1-APP-M4TZ | — |
+| 3 ✅ | Wire runner-side upload routes (shots, chat) | R1 | `app/api/extract`, `components/extract`, `lib/db/queries`, `lib/nina/actions`, `lib/schema` | 9 | 1 | NORMAL | `.workflows/plan/dup-image-push-notify/phase-3.md` | P1-EXT-R9WD | — |
+| 4 ✅ | Wire admin-side upload routes (chat photo add/replace, avatar batch) | R1 | `lib/admin`, `components/admin/explorer`, `lib/nina/queries` | 9 | 1 | NORMAL | `.workflows/plan/dup-image-push-notify/phase-4.md` | P1-ADM-L2VN | — |
 
 File counts are the phase plans' own, not the draft's estimates (the draft said ~6/~5/~5/~5). Phase 1
 is large because five of its files are the closed-list tests this repo uses to freeze schema shape

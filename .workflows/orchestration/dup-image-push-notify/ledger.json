@@ -3,6 +3,12 @@
   "coordinator": "orch-dup-image-push-notify",
   "coordinator_session_id": "018ad7a5-b9db-4f59-a17c-37a31c56c87b",
   "created": "2026-09-15T02:38:23+00:00",
+  "landed": {
+    "at": "2026-09-15T03:30:31+00:00",
+    "base": "main",
+    "commit": "d4073bfe03477760a53818965a7344305b460dd4",
+    "machine": "pc"
+  },
   "phases": [
     {
       "card": null,
@@ -83,7 +89,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/dup-image-push-notify/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "dup-image-push-notify",
-  "updated": "2026-09-15T03:24:16+00:00",
+  "updated": "2026-09-15T03:30:31+00:00",
   "verified_at": "2026-09-15T03:16:01+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/dup-image-push-notify"
 }
