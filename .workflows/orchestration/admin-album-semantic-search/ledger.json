@@ -40,29 +40,29 @@
         "R3",
         "R4"
       ],
-      "status": "spawned",
+      "status": "pending",
       "task_id": null,
       "title": "Description coverage: deferred describe+embed wiring + backfill"
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "ab93b16",
       "depends_on": [
         1
       ],
       "difficulty": "HARD",
       "n": 3,
-      "note": null,
+      "note": "Search query layer + Server Action; text/image/combined cosine-similarity search, NINA_SEARCH_LIMIT=48",
       "package": "lib/nina/queries`, `lib/admin",
       "plan": ".workflows/plan/admin-album-semantic-search/phase-3.md",
-      "reported_at": null,
+      "reported_at": "2026-09-15T03:22:29+00:00",
       "satisfies": [
         "R2",
         "R3",
         "R4"
       ],
-      "status": "spawned",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P2-NIN-A001",
       "title": "Search query layer + Server Action"
     },
     {
@@ -80,7 +80,7 @@
       "satisfies": [
         "R1"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": null,
       "title": "Admin UI: search bar, results grid, full-screen viewer"
     }
@@ -88,6 +88,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/admin-album-semantic-search/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "admin-album-semantic-search",
-  "updated": "2026-09-15T03:02:44+00:00",
+  "updated": "2026-09-15T03:22:46+00:00",
+  "verified_at": "2026-09-15T03:21:12+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/admin-album-semantic-search"
 }
