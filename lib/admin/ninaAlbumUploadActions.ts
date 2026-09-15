@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 
 import type { AdminActionResult } from '@/lib/admin/ninaAlbumActions'
-import { scheduleDescribe } from '@/lib/admin/ninaAlbumDeferredDescribe'
+import { scheduleDescribeAll } from '@/lib/admin/ninaAlbumDeferredDescribe'
 import { requireAdmin } from '@/lib/admin/requireAdmin'
 import {
   albumManifestSchema,
@@ -179,8 +179,29 @@ export async function registerNinaAvatarsAction(input: unknown): Promise<AdminBa
   const first = rows[0]
   if (!hadCurrent && first != null) {
     await setCurrentNinaAvatar(userId, first.id)
-    scheduleDescribe(userId, first.id)
   }
+
+  /*
+   * EVERY ROW, NOT `rows[0]` — and this is the one line of this action that
+   * `admin-album-semantic-search` changed.
+   *
+   * The promotion above is unchanged and stays exactly where it was: it is about `is_current` and
+   * invariant 7, and it has never been about descriptions. What used to ride inside it was a
+   * `scheduleDescribe(userId, first.id)` — so a batch of fifty photographs earned ONE description
+   * and only when the album happened to have been empty. Under R2 ("semantic search to every image
+   * description we have") that is the whole feature missing: the analysis measured it as a search
+   * covering the handful of promoted/shared/hand-described rows out of hundreds.
+   *
+   * ONE `after()` PER BATCH, not one per row. `scheduleDescribeAll` reads all fifty rows in one
+   * statement and runs them through four lanes against a wall-clock budget — see that module's
+   * header for the three bounds and for why the "descriptions Nina may never be shown" half of the
+   * old argument is repealed while the latency half is not. Nothing on this action's clock changed:
+   * the response goes out first, as it always did.
+   */
+  scheduleDescribeAll(
+    userId,
+    rows.map((row) => row.id),
+  )
 
   revalidatePath('/admin/nina')
 

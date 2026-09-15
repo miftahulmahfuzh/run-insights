@@ -152,7 +152,20 @@ export async function setChatPhotoAsAvatarAction(input: unknown): Promise<AdminA
   }
 
   await setCurrentNinaAvatar(userId, avatar.id)
-  if (avatar.description == null) scheduleDescribe(userId, avatar.id)
+  /*
+   * UNCONDITIONAL, since `admin-album-semantic-search`. The `if (avatar.description == null)`
+   * guard that used to be here was a caller's guess at whether work was needed, and the seeding
+   * two paragraphs up is exactly what made it wrong: `copyChatPhotoIntoAlbum` writes the CHAT
+   * row's description into the album row, and a chat row has never carried a
+   * `description_embedding`. Guarded, that photograph would be described (it already is) and never
+   * embedded — permanently invisible to R2's search, with nothing in the album to indicate it.
+   *
+   * `scheduleDescribe` re-reads the row inside its `after()` and decides for itself: prose and
+   * vector both present is an authoritative skip with no vendor call, which is the property its
+   * own docstring has always claimed ("the skip is authoritative at the moment the work would
+   * actually run"). Deleting the guard restores that claim rather than weakening it.
+   */
+  scheduleDescribe(userId, avatar.id)
 
   revalidatePath(ADMIN_CHAT_PHOTOS_PATH)
   return { ok: true, id: avatar.id }

@@ -79,6 +79,33 @@ import { shareOrigin } from '@/lib/share/origin'
 
 export const dynamic = 'force-dynamic'
 
+/**
+ * **300, and it must be a literal.** Segment config exports are statically analysed at build time,
+ * so a computed expression is not a value the analyser can see — it would compile, ship, and leave
+ * this route on the platform default. `app/nina/page.tsx`, `app/nina/jobs/page.tsx`,
+ * `app/admin/image-generation/page.tsx` and `app/api/cron/nina/route.ts` spell the same number the
+ * same way for the same reason.
+ *
+ * ── WHY THE ALBUM SCREEN NEEDS A FIVE-MINUTE CEILING ────────────────────────────────────────
+ * `registerNinaAvatarsAction` is POSTed to this segment, and since `admin-album-semantic-search`
+ * phase 2 it schedules a describe-and-embed pass over EVERY row a batch inserted (up to
+ * `NINA_ADMIN_BATCH_MAX = 50`) rather than over `rows[0]` alone. That pass runs in `after()` — and
+ * **`after()` inherits the ROUTE SEGMENT's `maxDuration`, not the action's own wishes**
+ * (`app/admin/image-generation/page.tsx` states it for the same reason). At the platform default
+ * the pass would be killed after the first row or two, every upload batch would leave forty-eight
+ * undescribed photographs, and nothing would say so: the response was already 200 and the rows
+ * already exist. The album would simply be unsearchable and look fine.
+ *
+ * 300 is `NINA_HOST_MAX_DURATION_MS`, the number every other long segment in this repo declares.
+ * `lib/admin/ninaAlbumDeferredDescribe.ts` reserves 60 s under it
+ * (`NINA_DEFERRED_DESCRIBE_BUDGET_MS = 240_000` is a START gate) so an in-flight describe at its
+ * own 25 s + 30 s fallback ceiling gets to finish and write its row rather than being cut off
+ * between the vendor answering and the UPDATE landing.
+ *
+ * It is declared BESIDE `dynamic`, not instead of it: they answer different questions.
+ */
+export const maxDuration = 300
+
 /** A hand-typed `?page=` cannot ask for an offset no album will ever reach. */
 const PAGE_CEILING = 1000
 

@@ -1,7 +1,8 @@
 # Package: admin
 
 **Location**: `lib/admin`
-**Last Updated**: 2026-09-14 (media add's push notification, P1-ADM-A003). Baseline:
+**Last Updated**: 2026-09-15 (the album's describe-and-embed write side + the backfill route,
+P2-ADM-A001). Previously: 2026-09-14 (media add's push notification, P1-ADM-A003). Baseline:
 2026-09-12 — full rewrite/compaction against the current tree (every export
 block, signature, constant and reverse dependency re-verified mechanically; the per-task changelog
 this file used to carry inline now lives in `git log -- lib/admin`, see *Recent Changes*).
@@ -34,6 +35,9 @@ exactly one definition — `schema.ts` imports every bound it enforces rather th
 - Own the album's write side: register a dropped folder, promote, crop, describe (by model or by
   hand), adopt a chat photo, delete, and maintain folders (create/rename/move/delete, bulk
   move/remove).
+- Since 2026-09-15, own the rule that **`description` and `description_embedding` move together**:
+  every path in this package that writes an album row's prose also writes (or deliberately NULLs)
+  its vector, in one statement, and the backlog is drained by a route this package owns.
 - Own the media collection's write side: add (with write-time dedupe, and the push notification
   that tells his phone the bubble exists), replace, remove (with blob release), describe, and the
   hand-written description edit.
@@ -57,6 +61,7 @@ exactly one definition — `schema.ts` imports every bound it enforces rather th
 | `folderOps.ts` | pure (zod) | Folder *maintenance*: the six operations' schemas and the planners that refuse without a database. |
 | `schema.ts` | pure | Every Zod schema `/admin/**` accepts. Imports every bound; declares none. |
 | `ninaAlbumActions.ts` | `'use server'` | The album's write side: 15 actions — describe/edit prose, face, crop, delete, folder register/manifest, folder maintenance. |
+| `ninaAlbumDeferredDescribe.ts` | plain server module (no `'use server'`, no pill) | The deferred describe-**and-embed** pre-pass: the three `after()` schedulers, the lane worker, the wall-clock budget, and the in-band `embedNinaAvatarDescription`. A synchronous scheduler cannot be exported from a `'use server'` module, which is why it has a file of its own. |
 | `ninaAlbumSearchSchema.ts` | pure (zod) | The album search's payload: the typed-query ceiling, the data-URI ceiling and allow-list, and the one cross-field rule (a search with neither arm is not a search). Its own file, like `chatPhotoSchema.ts`. |
 | `ninaAlbumSearchActions.ts` | `'use server'` | The album's READ side, and the layer's only read action: one `searchNinaAvatarsAction` covering text, image and both. Writes nothing, stores nothing, revalidates nothing. |
 | `chatPhotos.ts` | pure | The media collection's vocabulary: pathname shapes, ceilings, id regexes, the carrier-message rule, `planChatPhotoAddWrite`'s types. |
@@ -373,15 +378,19 @@ Every action opens with `requireAdmin()` and is scoped to the ids it returns. `A
 2026-09-11); callers consume them structurally off the actions' return types — prefer
 `Awaited<ReturnType<typeof …>>` over re-exporting.
 
-**Where a description is earned.** `describeNinaImages` is OFF every upload path. It runs at
-exactly the moments `nina_avatars.description` is read by anyone: promotion (`setCurrentNinaAvatarAction`
-and the batch's empty-album promotion, both via the `after()`-based private `scheduleDescribe`,
-which skips an already-described row), the share path (`ensureNinaAvatarDescriptionAction`), and
-on demand (`describeNinaAvatarAction` — also the manual re-describe, which OVERWRITES hand-written
-prose). A describe call is ~8–11 s and Server Actions dispatch one at a time per client, so
-awaiting it per upload would add three hundred latencies instead of overlapping them. The album
-describe uses the `'self'` subject (via `describeSubjectForSide('hers')`) — every album row is a
-photograph of HER; the runner-default prompt went looking for a man who is not in the frame.
+**Where a description is earned.** `describeNinaImages` is off every upload path's CLOCK, and
+since 2026-09-15 that is the only half of the old rule that survives. It runs on the share path
+(`ensureNinaAvatarDescriptionAction`), on demand (`describeNinaAvatarAction` — also the manual
+re-describe, which OVERWRITES hand-written prose), on promotion, and — this is what changed —
+inside `after()` for **every row a batch inserted**, not for `rows[0]` alone. A describe call is
+~8–11 s and Server Actions dispatch one at a time per client, so awaiting it per upload would add
+three hundred latencies instead of overlapping them; that argument is untouched. What was repealed
+is the *"for descriptions of photographs Nina may never be shown"* clause: the description is now
+the album's search index, so every photograph is shown — to the search — the moment the operator
+types. `ninaAlbumDeferredDescribe.ts` below carries the three bounds that make per-row describing
+safe. The album describe uses the `'self'` subject (via `describeSubjectForSide('hers')`) — every
+album row is a photograph of HER; the runner-default prompt went looking for a man who is not in
+the frame.
 
 Since 2026-09-15 this module also DECLARES the album search's three result types
 (`AdminSearchMode`, `AdminSearchHit`, `AdminSearchResult`) and re-exports
@@ -390,14 +399,24 @@ async functions, so any type the browser needs by name lands on this plain barre
 imports it back. Its own file's behaviour is documented under the read side below.
 
 **`editNinaAvatarDescriptionAction`** is the album twin of the media collection's hand-written
-edit: no model call, no `after()`, empty box clears to NULL (D1), and it revalidates
-`/admin/nina`. An empty description degrades honestly — her context's avatar block omits it.
+edit: no VISION call, empty box clears to NULL (D1), and it revalidates `/admin/nina`. An empty
+description degrades honestly — her context's avatar block omits it. Since 2026-09-15 it does have
+an `after()`, and only one: the new prose is written with a **NULL vector in the same UPDATE**
+(`setNinaAvatarDescriptionAndEmbedding(userId, id, next, null)`) and `scheduleEmbed` re-earns the
+vector afterwards. "No model call" was never the invariant — *no re-describe* was; an embedding of
+the operator's own sentence is not a rewrite of it. A cleared box schedules nothing at all.
 
 **`setChatPhotoAsAvatarAction`** adopts a media-collection photograph as her face: it refuses
 reference rows (`source_avatar_id`/`source_image_id` — make the original hers instead), clamps
 the framing against the row's REAL dimensions server-side, copies the row into the album under
 the stable `sourceKey` `` `chat-photo:<id>` `` (idempotent — a second adoption finds the existing
-row via `getNinaAvatarBySourceKey`), and schedules a describe only if the copied row has none.
+row via `getNinaAvatarBySourceKey`), and schedules the describe-and-embed pass **unconditionally**.
+The `if (avatar.description == null)` guard came off on 2026-09-15 and the reason is worth keeping:
+`copyChatPhotoIntoAlbum` seeds the album row with the CHAT row's description, and a chat row has
+never carried a `description_embedding` — so the guarded form described the photograph (already
+done) and never embedded it, leaving it permanently invisible to the album search with nothing on
+screen to say so. `scheduleDescribe` re-reads the row inside its own `after()` and skips a
+prose-plus-vector row with zero vendor calls, so the caller has no business guessing.
 Since 2026-09-12 (P1-NIN-A039) that key has a second reader: the admin image-reference picker's
 chat side (`lib/nina/queries.ts`'s `generatedChatPhotoScope`) reads it in a correlated
 `NOT EXISTS` to exclude the adopted original, so the picker offers the photograph once — as its
@@ -413,6 +432,9 @@ folder after a throw is a harmless leftover; the reverse order leaves photograph
 nothing declared); `insertNinaAvatars` is `ON CONFLICT (user_id, source_key) DO NOTHING …
 RETURNING` so idempotence is a constraint, not a convention — `skipped = submitted - rows.length`;
 the result joins on `pathname` because `sourceKey` is deliberately not on `NinaAvatarRow`.
+Since 2026-09-15 it closes with **one** `scheduleDescribeAll(userId, rows.map(r => r.id))` — one
+`after()` per BATCH, not one per row, and separate from the empty-album promotion above it, which
+is about `is_current` and has never been about descriptions.
 
 **`deleteNinaAvatarAction`** — row first, blob second, TWO `del()` targets in one call: the row
 is the only record that the thumbnail object exists (its stored pathname carries Blob's random
@@ -427,6 +449,105 @@ surface. `truncated` is `>=` and not `>`: a subtree holding exactly `NINA_ADMIN_
 (2000) reports truncated when it was not — the error is in the safe direction, and truncation is
 survivable because a short manifest OVER-reports, the extra files are re-PUT, and their inserts
 are discarded by `ON CONFLICT DO NOTHING`. Slower, never wrong.
+
+### `ninaAlbumDeferredDescribe.ts` — the deferred describe-and-embed pre-pass
+
+```ts
+export const NINA_DEFERRED_DESCRIBE_CONCURRENCY = 4
+export const NINA_DEFERRED_DESCRIBE_BUDGET_MS = 240_000
+export const NINA_ALBUM_BACKFILL_BUDGET_MS = 240_000
+export const NINA_ALBUM_BACKFILL_SLICE = 200
+export interface NinaDescribeFillOutcome {
+  described; embedded; failed; ranOutOfTime; alreadyDone   // every field counts ROWS, not calls
+}
+export async function embedNinaAvatarDescription(description: string, userId: string): Promise<number[] | null>
+export async function fillNinaAvatarDescribeTargets(userId, targets, budgetMs): Promise<NinaDescribeFillOutcome>
+export function scheduleDescribeAll(userId: string, ids: readonly string[]): void
+export function scheduleDescribe(userId: string, id: string): void
+export function scheduleEmbed(userId: string, id: string): void
+```
+
+Not a `'use server'` module and it must not become one: a `'use server'` module may export only
+async functions, and all three schedulers are synchronous. Its importers are the action modules
+behind the `ninaAlbumActions.ts` barrel plus
+`app/api/admin/nina/backfill-descriptions/route.ts`, which reuses the worker WITHOUT the `after()`
+because it is already off a render path and wants the outcome in its own response.
+
+**Three schedulers, one worker, and the difference between them is a single boolean.**
+`scheduleDescribeAll` / `scheduleDescribe` pass `describe: true`; `scheduleEmbed` passes `false`,
+which means "a human wrote this prose — embed it and never summon the vision model". A row with a
+NULL description under `describe: false` is left alone: an operator who CLEARED the box asked for
+silence, and the empty-box-is-the-clear rule (D1) does not license inventing a replacement.
+
+**The three bounds that make describing EVERY row safe** (the header of the file argues each; they
+are rules, not tuning knobs):
+
+1. **It is still `after()`.** The operator's upload response is unchanged, to the millisecond.
+   Nothing moved onto the request path.
+2. **Lanes, not `Promise.all`.** `NINA_DEFERRED_DESCRIBE_CONCURRENCY` = 4 — the same number
+   `EXPLORER_UPLOAD_CONCURRENCY` chose for the same vendor exposure on the blob side, spelled here
+   rather than imported because that hook is a client module and this is a server one. Fifty
+   simultaneous vision calls is a rate-limit incident. The lane loop's shared `next++` needs no
+   lock: JS is single-threaded and lanes only yield at an `await`.
+3. **A wall-clock deadline, and it is a START gate.** `after()` inherits the **route segment's**
+   `maxDuration`, not the action's — which is why `app/admin/nina/page.tsx` now declares
+   `export const maxDuration = 300` (a literal; segment config is statically analysed, so a
+   computed expression compiles, ships, and silently leaves the route on the platform default).
+   `NINA_DEFERRED_DESCRIBE_BUDGET_MS` (240 s) reserves 60 s under it, enough for an in-flight
+   describe at its own 25 s + 30 s fallback ceiling to finish and write its row. A row that has
+   BEGUN always finishes — cancelling mid-describe spends the money and keeps none of the answer.
+   Past the deadline the lanes keep draining the array without working, so `ranOutOfTime` is a
+   truthful count rather than "the rest, probably".
+
+**Every write goes through `setNinaAvatarDescriptionAndEmbedding`** (`lib/nina/queries/avatarEmbeddings.ts`,
+new in this phase alongside `listNinaAvatarDescribeTargets`, `listNinaAvatarDescribeBacklog` and
+`countNinaAvatarDescribeBacklog`). One `SET` of two columns has no window in which the row is a
+lie; two statements always do, in one direction or the other. `setNinaAvatarDescription` is
+untouched and still correct for a write that is deliberately NOT accompanied by a vector.
+
+**An embedding failure never costs the prose.** `embedNinaAvatarDescription` catches and answers
+`null`, and `null` is a real argument rather than a degenerate one: it writes a NULL vector, which
+is exactly the state the backlog read picks up next sweep. The failure degrades into "not
+searchable yet" — which is what it is — and never into "the model's words were thrown away".
+Per-row failures are non-fatal and leave the card's "Describe it" button as the recovery, exactly
+as the old register-path pre-pass did; that property is inherited, not re-litigated.
+
+**Per-row, not per-batch, state.** A worker killed mid-flight leaves the same state as one that
+never started, because each row is written as it completes. That is what makes the backfill route
+below safe to re-POST, and what makes a short run visible instead of silent.
+
+**`describeNinaAvatarAction` embeds IN BAND, not in `after()`** — the one deliberate asymmetry.
+The operator is already waiting ~8–11 s for the vision call they clicked; one small text request
+on top of that is not worth a second moving part, and `ensureNinaAvatarDescriptionAction`
+delegates to it precisely because it needs the answer in its own return value. Its fast path
+deliberately does NOT check `description_embedding`: sharing a photo to Nina is about the prose
+reaching her prompt, and making a share tab wait on an embedding call would answer the search
+question in the most expensive possible place.
+
+### `app/api/admin/nina/backfill-descriptions/route.ts` — the one-time sweep (outside the package, owned by it)
+
+`GET` reports the backlog and spends nothing; `POST` does one slice and reports what is left. It
+lives under `app/api/` but every decision in it is this package's, and `requireAdminApi()` is line
+1 of both handlers — `proxy.ts` matches neither `/admin` nor `/api/*`, so that call is the only
+thing between the open internet and a route that spends vendor money per request. Non-admin gets
+the pages' 404, signed-out gets a 401 (a `fetch()` deserves a status, not a redirect to HTML), and
+`userId` comes from the session and is never read from the request.
+
+- **Why a route and not a script**: the sweep needs `describeNinaImages` and `embedNinaText`, both
+  `import 'server-only'` and both behind `@/` aliases, so a plain node process cannot load them —
+  and a script-local second spelling of the same two vendor calls is what
+  `ensureNinaAvatarDescriptionAction`'s docstring refuses outright. **Why not a Server Action**: an
+  action with no importer is a dead export; `app/**/route.ts` is an entry point by convention.
+- **It is a slice and the operator loops it.** One POST does what fits in
+  `NINA_ALBUM_BACKFILL_BUDGET_MS` and reports `remaining`. Safe to re-POST immediately and safe to
+  POST twice by accident: the backlog read is `description IS NULL OR description_embedding IS
+  NULL`, oldest-first, so a finished row leaves the backlog and a raced row is written twice with
+  equal values. Nothing here is a transaction and nothing needs to be.
+- **`NINA_ALBUM_BACKFILL_SLICE` (200) deliberately over-reads the budget.** The read is one
+  indexed statement; idling four lanes because a 20-row slice ran dry with two minutes left is the
+  expensive mistake, not the extra rows.
+- **`remaining` is RE-READ, never derived** from `targets.length - done`: an upload's `after()`
+  may have filled rows in parallel, and `remaining` is the operator's loop condition.
 
 ### `ninaAlbumSearchSchema.ts` / `ninaAlbumSearchActions.ts` — the album's read side
 
@@ -854,14 +975,17 @@ browser: drop / picker
              3. one read: does a current avatar exist?
              4. declareNinaFolders(uid, [...new Set(folders)])   ← BEFORE the insert
              5. insertNinaAvatars — ON CONFLICT (user_id, source_key) DO NOTHING
-             6. if there was no current row, promote one + scheduleDescribe (after())
-             7. revalidatePath('/admin/nina')
+             6. if there was no current row, promote one (is_current only)
+             7. scheduleDescribeAll(uid, every inserted id)   ← ONE after() for the batch
+             8. revalidatePath('/admin/nina')
              → { inserted: [{ sourceKey, id }], skipped }
 ```
 
-The vision model appears nowhere on that path. It runs when a photo becomes her face, is handed
-to her, is described on demand — and then either in-band (the two describe actions) or inside
-`after()` (the two private schedulers).
+The vision model appears nowhere on that path's CLOCK. Step 7 runs after the response is finished,
+on the `/admin/nina` segment's `maxDuration` (300 s), four lanes wide, against a 240 s start gate;
+whatever it does not reach stays NULL and visible in `countNinaAvatarDescribeBacklog` for the
+backfill route to finish. The other describes are in-band (the two describe actions) or inside
+`after()` (the schedulers in `ninaAlbumDeferredDescribe.ts` and `scheduleChatPhotoCaption`).
 
 ### Where each check lives, and why it lives there
 
@@ -899,6 +1023,11 @@ to her, is described on demand — and then either in-band (the two describe act
   and manifest caps, the blob prefix, the two model-call families (`describeNinaImages`,
   `captionNinaPhoto`), the slot vocabulary read, the trigger caps and normaliser, the
   photo-param grammar.
+- `@/lib/nina/embedding` — `embedNinaText`, the only embedding seam this package touches, reached
+  from `ninaAlbumDeferredDescribe.ts` alone. It writes its own `nina_error_logs` row, so the
+  wrapper here logs a console line and nothing else — and it is passed `userId` deliberately:
+  `nina_error_logs.user_id` is nullable, and a row that cannot say whose album it came from is a
+  row nobody can act on.
 - `@/lib/nina/{imageprefs,imagerecipe,imagetest,imagejobs,imagefail,jobview,sessionResolve,blobRelease}`
   — the image-generation row's bounds and template validator, the daily cap, the test dispatch,
   job reads, the failure-kind vocabulary the test view looks up, the carrier/orphan rules, the
@@ -944,6 +1073,10 @@ Named primary consumers:
   move/remove, and the share link (`shareToNina.ts`).
 - `app/api/admin/nina/upload/route.ts` — the whole `avatars.ts` surface plus `requireAdminApi`,
   `forbiddenJson`, `AdminIdentity`, and the `chatPhotos` pathname/ceiling vocabulary.
+- `app/api/admin/nina/backfill-descriptions/route.ts` (new 2026-09-15) — `requireAdminApi`,
+  `AdminForbiddenError`, `forbiddenJson`, and `ninaAlbumDeferredDescribe`'s
+  `fillNinaAvatarDescribeTargets` + the two backfill constants. The second `/api/admin` consumer
+  of the boundary, and the only importer of the worker that is not an action module.
 - `app/admin/nina/page.tsx` — `requireAdmin`, `filetree` (`readExplorerView`), `ninaAlbumActions`.
 - `app/admin/{memory,shortcuts,personality,image-generation}/page.tsx` — their module groups as
   in the map above, plus `users.ts`' pickers.
@@ -982,9 +1115,19 @@ No thread primitives; the relevant facts are the runtime's:
 - **Server Actions are dispatched one at a time per client.** That is why the folder register
   batches instead of calling per file, and why the parallel work (blob PUTs) goes through a Route
   Handler.
-- **`after()`** defers both private schedulers (`scheduleDescribe`, `scheduleChatPhotoCaption`)
-  until the response is finished. Nothing awaits them, nothing in them revalidates, every failure
-  is swallowed and logged.
+- **`after()`** defers the describe-and-embed schedulers (`scheduleDescribeAll`,
+  `scheduleDescribe`, `scheduleEmbed`) and `scheduleChatPhotoCaption` until the response is
+  finished. Nothing awaits them, nothing in them revalidates, every failure is swallowed and
+  logged.
+- **`after()` runs on the ROUTE SEGMENT's `maxDuration`, not the action's.** That is a runtime
+  fact with a cost: `/admin/nina` declares 300 and the deferred worker stops STARTING rows at 240
+  so an in-flight describe can land its UPDATE. Deferred work is bounded by a start gate, never
+  cancelled mid-call.
+- **Four lanes over a shared index, not `Promise.all`.** The batch worker's `next++` is safe
+  without a lock (single-threaded, yields only at `await`); the bound exists so a 50-row batch is
+  not 50 simultaneous vendor requests.
+- **Two backfill workers racing one row is harmless by construction.** The UPDATE is idempotent
+  and the backlog read is oldest-first, so a re-POST re-does work, never the wrong work.
 - **Races are settled by Postgres, not by application code.** `(user_id, source_key)` unique +
   `ON CONFLICT DO NOTHING` makes two tabs submitting the same batch idempotent;
   `nina_avatars_user_current_unq` (partial unique) means the un-current/current ordering is owned
@@ -1018,9 +1161,15 @@ No thread primitives; the relevant facts are the runtime's:
 
 ## Performance
 
-- **The describe pre-pass is off the hot path** (~8–11 s per call; promotion, share, or on demand
-  only). The image TEST is the one long operation on a response path, and it is split into
-  dispatch (returns immediately) and poll.
+- **The describe pre-pass is off the hot path** (~8–11 s per call), and since 2026-09-15 it covers
+  EVERY inserted row rather than one per batch — the cost moved from "one description per upload
+  batch" to "one per photograph", all of it inside `after()` and none of it on the operator's
+  clock. The bounds are `NINA_DEFERRED_DESCRIBE_CONCURRENCY` (4) and
+  `NINA_DEFERRED_DESCRIBE_BUDGET_MS` (240 s under the segment's 300). The image TEST is the one
+  long operation on a response path, and it is split into dispatch (returns immediately) and poll.
+- **The backlog is a number, not a guess.** `countNinaAvatarDescribeBacklog` is one statement with
+  two `FILTER` counts, so "how much is left" costs a single round trip and splits by which half of
+  the work (prose, or vector only) is missing.
 - **One read per batch, not one per file** (current-row lookup, folder declaration).
 - **The thumbnail is the grid's whole performance story** (a derived 256 px blob beside each
   original; `next/image` transforms on Blob cost paid quota).
@@ -1052,9 +1201,31 @@ export default async function Page() {
   rewrite is the invisible-corruption failure the identity check exists to prevent.
 - **Do not re-spell a bound in `schema.ts`.** Every one is imported.
 - **Do not put a describe call on a register path.** It was there, it was measured, it was moved.
+  Scheduling one inside `after()` for every inserted row is not the same thing and is what the
+  album's search requires — the latency argument is about the response, not about the count.
+- **Do not write `description` without deciding about `description_embedding`.** Use
+  `setNinaAvatarDescriptionAndEmbedding` and pass the vector or an explicit `null`; a stale vector
+  is the one failure mode a derived column has, and it is invisible until a search returns the
+  wrong photograph. `setNinaAvatarDescription` is still correct only where no vector is meant.
 - **Do not re-caption after a hand-written edit** — `editChatPhotoDescriptionAction`,
   `editNinaAvatarDescriptionAction`. A hand-written description exists to override the vision
-  pass; re-captioning the bubble rewrites a sentence Nina already said.
+  pass; re-captioning the bubble rewrites a sentence Nina already said. Re-EMBEDDING it is the
+  opposite of that and is required: `scheduleEmbed`, never `scheduleDescribe`, and never for a
+  cleared box.
+- **Do not re-add the `if (avatar.description == null)` guard before a `scheduleDescribe`.** The
+  scheduler's own re-read is the authoritative skip (prose + vector = zero vendor calls); a
+  caller-side guard cannot see the vector and silently strands adopted chat photos out of the
+  search.
+- **Do not let `app/admin/nina/page.tsx`'s `maxDuration = 300` become a computed expression, and
+  do not delete it.** Segment config is statically analysed: a computed value compiles, ships, and
+  leaves the route on the platform default, where the deferred pass is killed after a row or two
+  with a 200 already sent and nothing on screen to say so. If that number moves,
+  `NINA_DEFERRED_DESCRIBE_BUDGET_MS` moves with it — the 60 s gap is one describe's 25 s plus the
+  fallback's 30 s.
+- **Do not turn the deadline into a cancellation.** It gates which rows START; a describe that is
+  already in flight spends the money whether or not its answer is kept.
+- **Do not derive the backfill's `remaining` from its own arithmetic.** Re-read it: an upload's
+  `after()` fills rows in parallel, and `remaining` is the operator's loop condition.
 - **Keep `.max()` ahead of `.transform()`** in `chatPhotoDescriptionField`, and do not add
   `.min(1)` — the empty box is the clear (D1).
 - **Do not draw the media add's caption twice.** One `const body = ninaImageCaption(newId())`
@@ -1112,6 +1283,30 @@ registered) is real and belongs to the reaper, not to this package.
 
 ## Recent Changes
 
+- **2026-09-15** — `admin-album-semantic-search` phase 2 (P2-ADM-A001), satisfying R2's other half
+  (*"semantic search over EVERY image description we have"*): the album's write side now keeps
+  `description` and `description_embedding` in step. `ninaAlbumDeferredDescribe.ts` was rewritten
+  from a one-row scheduler into a describe-**and-embed** worker — three schedulers
+  (`scheduleDescribeAll`, `scheduleDescribe`, `scheduleEmbed`), a four-lane runner
+  (`NINA_DEFERRED_DESCRIBE_CONCURRENCY`), a 240 s START gate under the segment's new 300 s
+  `maxDuration` (`NINA_DEFERRED_DESCRIBE_BUDGET_MS`), a never-throwing
+  `embedNinaAvatarDescription`, and `fillNinaAvatarDescribeTargets` for a caller already off the
+  request path. `registerNinaAvatarsAction` now schedules **every inserted row** in one `after()`
+  instead of `rows[0]` only; `setChatPhotoAsAvatarAction` dropped its `description == null` guard
+  (an adopted chat photo arrives with prose and never a vector, so the guard stranded it out of
+  the search); `describeNinaAvatarAction` embeds in band; `editNinaAvatarDescriptionAction` writes
+  the new prose with a NULL vector in ONE statement and re-earns the vector in `after()`. Every
+  write goes through the new `setNinaAvatarDescriptionAndEmbedding` (`lib/nina/queries/avatarEmbeddings.ts`,
+  with `listNinaAvatarDescribeTargets`, `listNinaAvatarDescribeBacklog` and
+  `countNinaAvatarDescribeBacklog`, re-exported from the `lib/nina/queries` barrel).
+  `app/api/admin/nina/backfill-descriptions/route.ts` is new: a `requireAdminApi()`-gated
+  `GET` (count) / `POST` (one slice, re-read `remaining`) the operator loops once over the album
+  that existed before this feature. `app/admin/nina/page.tsx` gained `export const maxDuration =
+  300`, because `after()` inherits the route segment's budget and not the action's. Covered by
+  `tests/admin.albumDescribeEmbed.test.ts` (16 tests, measured 2026-09-15) plus updates to
+  `tests/admin.albumAvatarActions.test.ts` and `tests/admin.chatPhotoAdoption.test.ts`. Phases 3
+  and 4 of that plan set are peer phases in flight in the same worktree (the read side, and the
+  `/admin/nina` UI); phase 3's own entry is below.
 - **2026-09-15** — `admin-album-semantic-search` phase 3 (P2-NIN-A001), satisfying R2/R3/R4
   (*"semantic search over every image description"*, *"search using image only"*, *"resolve the
   scoring between these 2"*): the album gained a read side. `lib/admin/ninaAlbumSearchSchema.ts`
