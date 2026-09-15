@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import { PhotoDescription, type DescribeOutcome } from './PhotoDescription'
+import { ADMIN_AVATAR_MAX_SEARCH_KEYWORDS_CHARS } from '@/lib/admin/avatars'
 import { ADMIN_CHAT_PHOTO_MAX_DESCRIPTION_CHARS } from '@/lib/admin/chatPhotos'
 
 const OK: DescribeOutcome = { ok: true }
@@ -362,5 +363,128 @@ describe('PhotoDescription', () => {
     await user.click(saveButton())
     expect(describeButton()).toBeDisabled()
     saveGate.resolve(OK)
+  })
+})
+
+function keywordsBox() {
+  return screen.getByLabelText('Search keywords') as HTMLTextAreaElement
+}
+function keywordsButton() {
+  return screen.getByRole('button', {
+    name: /save the search keywords|clear the search keywords/i,
+  })
+}
+
+describe('PhotoDescription — search keywords', () => {
+  it('renders no keyword block when the host supplies no keyword save', () => {
+    render(
+      <PhotoDescription
+        description="stored"
+        emptyNote="empty"
+        onSave={vi.fn(async () => OK)}
+        onRedescribe={vi.fn(async () => OK)}
+      />,
+    )
+    expect(screen.queryByLabelText('Search keywords')).not.toBeInTheDocument()
+  })
+
+  it('shows the stored keywords and saves the box text', async () => {
+    const user = userEvent.setup()
+    const onSaveKeywords = vi.fn(async () => OK)
+    render(
+      <PhotoDescription
+        description="stored"
+        emptyNote="empty"
+        onSave={vi.fn(async () => OK)}
+        onRedescribe={vi.fn(async () => OK)}
+        searchKeywords="tete"
+        onSaveKeywords={onSaveKeywords}
+      />,
+    )
+    expect(keywordsBox().value).toBe('tete')
+    expect(keywordsButton()).toBeDisabled()
+
+    await user.type(keywordsBox(), ', putih')
+    expect(keywordsButton()).toBeEnabled()
+    await user.click(keywordsButton())
+
+    expect(onSaveKeywords).toHaveBeenCalledWith('tete, putih')
+  })
+
+  it('labels the keyword save as Clear once an emptied box would null stored keywords', async () => {
+    const user = userEvent.setup()
+    render(
+      <PhotoDescription
+        description="stored"
+        emptyNote="empty"
+        onSave={vi.fn(async () => OK)}
+        onRedescribe={vi.fn(async () => OK)}
+        searchKeywords="tete"
+        onSaveKeywords={vi.fn(async () => OK)}
+      />,
+    )
+    await user.clear(keywordsBox())
+    expect(screen.getByRole('button', { name: 'Clear the search keywords' })).toBeInTheDocument()
+  })
+
+  it('caps the keyword box at the album ceiling', () => {
+    render(
+      <PhotoDescription
+        description="stored"
+        emptyNote="empty"
+        onSave={vi.fn(async () => OK)}
+        onRedescribe={vi.fn(async () => OK)}
+        searchKeywords={null}
+        onSaveKeywords={vi.fn(async () => OK)}
+      />,
+    )
+    expect(keywordsBox().maxLength).toBe(ADMIN_AVATAR_MAX_SEARCH_KEYWORDS_CHARS)
+  })
+
+  it('a keyword save in flight locks the description save and the describe button', async () => {
+    const user = userEvent.setup()
+    const gate = deferred<DescribeOutcome>()
+    render(
+      <PhotoDescription
+        description="stored"
+        emptyNote="empty"
+        onSave={vi.fn(async () => OK)}
+        onRedescribe={vi.fn(async () => OK)}
+        searchKeywords="tete"
+        onSaveKeywords={() => gate.promise}
+      />,
+    )
+    await user.type(textarea(), ' x')
+    await user.type(keywordsBox(), ', putih')
+    await user.click(keywordsButton())
+
+    expect(saveButton()).toBeDisabled()
+    expect(describeButton()).toBeDisabled()
+    expect(keywordsBox()).toBeDisabled()
+    /* The prose box stays editable — only the box being written is locked. */
+    expect(textarea()).toBeEnabled()
+
+    gate.resolve(OK)
+  })
+
+  it('a keyword save leaves an unsaved description draft alone', async () => {
+    const user = userEvent.setup()
+    render(
+      <PhotoDescription
+        description="stored"
+        emptyNote="empty"
+        onSave={vi.fn(async () => OK)}
+        onRedescribe={vi.fn(async () => OK)}
+        searchKeywords="tete"
+        onSaveKeywords={vi.fn(async () => OK)}
+      />,
+    )
+    await user.type(textarea(), ' unsaved edit')
+    await user.type(keywordsBox(), ', putih')
+    await user.click(keywordsButton())
+    await screen.findByRole('button', { name: /save the search keywords/i })
+
+    expect(textarea().value).toBe('stored unsaved edit')
+    expect(screen.getByText('unsaved')).toBeInTheDocument()
   })
 })

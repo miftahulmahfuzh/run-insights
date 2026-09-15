@@ -126,6 +126,10 @@ const BARREL_VALUE_EXPORTS = [
   'setNinaAvatarDescription',
   // admin-album-semantic-search phase 2: writes prose and vector in one UPDATE.
   'setNinaAvatarDescriptionAndEmbedding',
+  // nina-album-search-relevance-tools phase 2: the search_keywords writer, documented growth under
+  // this file's "a name was ADDED" rule. Its twin one line up writes the other input to the same
+  // derived column; see `lib/nina/queries/avatarEmbeddings.ts`'s header for why both exist.
+  'setNinaAvatarSearchKeywordsAndEmbedding',
   'setNinaMessageImageDescription',
   'setNinaSessionPinned',
   'setNinaSessionTitleIfUntitled',

@@ -3,16 +3,16 @@
 **Package Path**: `lib/admin`
 **Package Code**: ADM
 **Last Updated**: 2026-09-15
-**Total Active Tasks**: 1
+**Total Active Tasks**: 0
 
 ## Quick Stats
 - P0 Critical: 0
-- P1 High: 1
+- P1 High: 0
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 8
+- Completed: 9
 - Archived: 4
 
 ---
@@ -22,15 +22,6 @@
 ### [P0] Critical
 
 ### [P1] High
-
-- [ ] **P1-ADM-T8RM** `search_keywords` field, embedding combine, and backfill
-  - **Difficulty**: HARD
-  - **Type**: Feature
-  - **Context**: Owns `lib/db/schema/nina/avatars.ts` + its generated migration, the new zero-import `lib/nina/avatarEmbedText.ts` (the one combine function), `lib/admin/avatars.ts` (the 500-char bound), `lib/nina/queries/columns.ts` and `avatarEmbeddings.ts`, the `embedNinaAvatarDescription` choke point in `lib/admin/ninaAlbumDeferredDescribe.ts`, `lib/admin/ninaAlbumDescribeActions.ts`, `lib/admin/schema.ts`, `components/admin/explorer/model.ts` (`AlbumExplorerPhoto.searchKeywords`), the one additive row→prop line at `app/admin/nina/page.tsx:241`, the `PhotoDescription.tsx`/`SelectionPane.tsx` UI, and `scripts/backfill-avatar-embeddings.mjs`. Exit: `nina_avatars.search_keywords` exists and `ci:schema-drift-guard` is green; keywords save/persist independently of `description` (an emptied box stores NULL); saving either column nulls `description_embedding` in the same UPDATE and re-earns it from the combined text; `describeNinaAvatarAction` reads the keywords into the new vector and never writes the column; `npm run nina:backfill-embeddings` re-embeds every described row; `npm run typecheck` and `npm test` green.
-  - **Status**: active
-  - **Plan Set**: `NINA_ALBUM_SEARCH_RELEVANCE_TOOLS_PLAN.md` (phase 2 of 3)
-  - **Satisfies**: R2 — New `search_keywords` field (comma-separated), editable, feeds search relevance
-  - **Plan**: `.workflows/plan/P1-ADM-T8RM.md`
 
 ### [P2] Medium
 
@@ -47,6 +38,24 @@
 (all four completed tasks were archived on 2026-09-12 — see Archive; full
 per-task detail — Context, Drift, Decided, Files — survives in git history and
 in `.workflows/package_readme.md`)
+
+- [x] **P1-ADM-T8RM** `search_keywords` field, embedding combine, and backfill
+  - **Difficulty**: HARD
+  - **Type**: Feature
+  - **Context**: Owns `lib/db/schema/nina/avatars.ts` + its generated migration, the new zero-import `lib/nina/avatarEmbedText.ts` (the one combine function), `lib/admin/avatars.ts` (the 500-char bound), `lib/nina/queries/columns.ts` and `avatarEmbeddings.ts`, the `embedNinaAvatarDescription` choke point in `lib/admin/ninaAlbumDeferredDescribe.ts`, `lib/admin/ninaAlbumDescribeActions.ts`, `lib/admin/schema.ts`, `components/admin/explorer/model.ts` (`AlbumExplorerPhoto.searchKeywords`), the one additive row→prop line at `app/admin/nina/page.tsx:241`, the `PhotoDescription.tsx`/`SelectionPane.tsx` UI, and `scripts/backfill-avatar-embeddings.mjs`. Exit: `nina_avatars.search_keywords` exists and `ci:schema-drift-guard` is green; keywords save/persist independently of `description` (an emptied box stores NULL); saving either column nulls `description_embedding` in the same UPDATE and re-earns it from the combined text; `describeNinaAvatarAction` reads the keywords into the new vector and never writes the column; `npm run nina:backfill-embeddings` re-embeds every described row; `npm run typecheck` and `npm test` green.
+  - **Status**: completed
+  - **Plan Set**: `NINA_ALBUM_SEARCH_RELEVANCE_TOOLS_PLAN.md` (phase 2 of 3)
+  - **Satisfies**: R2 — New `search_keywords` field (comma-separated), editable, feeds search relevance
+  - **Plan**: `.workflows/plan/P1-ADM-T8RM.md`
+  - **Completed**: 2026-09-15 15:23
+  - **Method**: /do
+  - **Files**: lib/db/schema/nina/avatars.ts, drizzle/0024_nina_avatar_search_keywords.sql, drizzle/meta/_journal.json, drizzle/meta/0024_snapshot.json, lib/nina/avatarEmbedText.ts, lib/admin/avatars.ts, lib/nina/queries/columns.ts, lib/nina/queries/avatarEmbeddings.ts, lib/nina/queries/shapes.ts, lib/admin/ninaAlbumDeferredDescribe.ts, lib/admin/schema.ts, lib/admin/ninaAlbumDescribeActions.ts, lib/admin/ninaAlbumActions.ts, components/admin/explorer/model.ts, app/admin/nina/page.tsx, components/admin/explorer/PhotoDescription.tsx, components/admin/explorer/SelectionPane.tsx, scripts/backfill-avatar-embeddings.mjs, package.json, lib/nina/queries.test.ts, tests/admin.albumActionsBarrel.test.ts, tests/admin.albumDescribeEmbed.test.ts, tests/admin.albumAvatarActions.test.ts, tests/nina.avatarSearch.test.ts, tests/db.schema.nina.test.ts, tests/admin.chatPhotoAdoption.test.ts, components/admin/explorer/PhotoDescription.test.tsx, components/admin/explorer/SelectionPane.test.tsx, components/admin/FileExplorer.test.tsx, components/admin/explorer/PhotoGrid.test.tsx
+  - **Drift**: Every step in the phase plan applied at the exact quoted old_string/line numbers with no manual adaptation.
+    Real gap the phase plan's own Files list omitted (found via tsc, not guessed): `lib/nina/queries/shapes.ts`'s hand-declared `NinaAvatarRow` interface also needed `searchKeywords: string | null` added after `description` — this is the type `getNinaAvatar` returns and two call sites read `row.searchKeywords` from it. Phase 1's OWN plan file had actually already flagged this ("Phase 2's `NinaAvatarRow` edit"), it just never made it into phase 2's own step list. Fixed.
+    Two more real gaps found via the full `npm test` sweep (not the targeted list, which the plan itself warned might not reach far enough): (1) `tests/db.schema.nina.test.ts`'s frozen `nina_avatars` column-list test (21→22 columns) needed `search_keywords` added and its title's count updated. (2) `tests/admin.chatPhotoAdoption.test.ts` has its own independent `avatarRow`/`describeTargetRow` positional-projection helpers (18→19 and 5→6 values) that the plan's Step 15 never named — a third copy of the same positional-shape problem Step 15c/15d fixed elsewhere in the codebase. Fixed both; all 6083 tests green afterward.
+  - **Decided**: Did not duplicate the phase 1 + phase 2 header paragraphs in `lib/nina/queries.test.ts` → both phases' plans independently wrote a full paragraph naming both new barrel names; phase 1 landed first and its paragraph already named phase 2's addition, so I added only phase 2's one sorted array entry rather than a second, redundant header paragraph (rung 6: surrounding convention — the file's own rule is one paragraph per plan set, not per phase).
+  - **Verified**: Live production migration and backfill both executed and verified this session, not merely planned. `npm run db:generate -- --name nina_avatar_search_keywords` produced exactly the one expected statement (`ALTER TABLE "nina_avatars" ADD COLUMN "search_keywords" text;`), checked against `git log origin/main -- drizzle/` first (origin/main had advanced but only touched `lib/nina/imagegen.ts` — no migration collision). `npm run db:migrate` applied successfully and `npm run ci:schema-drift-guard` confirmed zero drift (29 tables, 312 columns). `npm run nina:backfill-embeddings -- --dry-run` then the real run: 53/53 rows re-embedded, 0 failed, 0 skipped. Also green: full `npm test` (6083/6083), `npm run typecheck`, `npm run lint`, `npm run ci:data-layer-guard`, `npm run ci:openrouter-guard`.
+  - **Note**: A full authenticated-browser click-through of the new "Search keywords" box was not performed — no local admin auth session is configured, the same gap phase 1's report flagged.
 
 - [x] **P1-ADM-L2VN** Phase 4: Wire admin-side upload routes (chat photo add/replace, avatar batch)
   - **Difficulty**: NORMAL

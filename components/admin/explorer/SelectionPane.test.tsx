@@ -45,12 +45,14 @@ const {
   deleteNinaAvatarAction,
   describeNinaAvatarAction,
   editNinaAvatarDescriptionAction,
+  editNinaAvatarSearchKeywordsAction,
   saveNinaAvatarCropAction,
   setCurrentNinaAvatarAction,
 } = vi.hoisted(() => ({
   deleteNinaAvatarAction: vi.fn(),
   describeNinaAvatarAction: vi.fn(),
   editNinaAvatarDescriptionAction: vi.fn(),
+  editNinaAvatarSearchKeywordsAction: vi.fn(),
   saveNinaAvatarCropAction: vi.fn(),
   setCurrentNinaAvatarAction: vi.fn(),
 }))
@@ -58,6 +60,7 @@ vi.mock('@/lib/admin/ninaAlbumActions', () => ({
   deleteNinaAvatarAction,
   describeNinaAvatarAction,
   editNinaAvatarDescriptionAction,
+  editNinaAvatarSearchKeywordsAction,
   saveNinaAvatarCropAction,
   setCurrentNinaAvatarAction,
 }))
@@ -89,6 +92,7 @@ function albumPhoto(overrides?: Partial<AlbumExplorerPhoto>): AlbumExplorerPhoto
     source: 'upload',
     isCurrent: false,
     description: null,
+    searchKeywords: null,
     crop: { scale: 1, x: 0, y: 0 },
     createdAt: '2026-09-01T00:00:00.000Z',
     folder: 'bali',
@@ -150,6 +154,7 @@ describe('AlbumSelectionPane (via SelectionPane)', () => {
     deleteNinaAvatarAction.mockReset().mockResolvedValue({ ok: true })
     describeNinaAvatarAction.mockReset().mockResolvedValue({ ok: true })
     editNinaAvatarDescriptionAction.mockReset().mockResolvedValue({ ok: true })
+    editNinaAvatarSearchKeywordsAction.mockReset().mockResolvedValue({ ok: true })
     saveNinaAvatarCropAction.mockReset().mockResolvedValue({ ok: true })
     setCurrentNinaAvatarAction.mockReset().mockResolvedValue({ ok: true })
     saver.busy = false
@@ -297,6 +302,20 @@ describe('AlbumSelectionPane (via SelectionPane)', () => {
         description: 'old text more',
       }),
     )
+  })
+
+  it('wires the keyword box to the album keyword action with the row id', async () => {
+    const user = userEvent.setup()
+    render(<SelectionPane {...baseProps()} photo={albumPhoto({ searchKeywords: 'tete' })} />)
+
+    const box = screen.getByLabelText('Search keywords')
+    await user.type(box, ', putih')
+    await user.click(screen.getByRole('button', { name: /save the search keywords/i }))
+
+    expect(editNinaAvatarSearchKeywordsAction).toHaveBeenCalledWith({
+      id: 'p1',
+      searchKeywords: 'tete, putih',
+    })
   })
 
   it('shows the source, pixel dimensions and thumbnail-presence facts', () => {

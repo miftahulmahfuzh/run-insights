@@ -136,6 +136,7 @@ export interface AdminSearchResult extends AdminActionResult {
 export {
   describeNinaAvatarAction,
   editNinaAvatarDescriptionAction,
+  editNinaAvatarSearchKeywordsAction,
   ensureNinaAvatarDescriptionAction,
 } from '@/lib/admin/ninaAlbumDescribeActions'
 

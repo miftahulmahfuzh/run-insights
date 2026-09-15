@@ -19,6 +19,7 @@ import {
   deleteNinaAvatarAction,
   describeNinaAvatarAction,
   editNinaAvatarDescriptionAction,
+  editNinaAvatarSearchKeywordsAction,
   saveNinaAvatarCropAction,
   setCurrentNinaAvatarAction,
 } from '@/lib/admin/ninaAlbumActions'
@@ -398,12 +399,22 @@ function AlbumSelectionPane({
        * spelled here because this component already knows its table: `AlbumSelectionPane` receives
        * an `AlbumExplorerPhoto` (Phase 2's dispatcher narrowed it), so no `origin` read and no
        * branch is needed — the media arm's twin mount lives in `MediaPane.tsx`.
+       *
+       * R2 adds the keyword box to THIS arm only, and the same fact is what decides it: an album
+       * row has `search_keywords`, a media row's table does not.
        */}
       <PhotoDescription
         description={photo.description}
         emptyNote="She cannot talk about this photo until it is described — it fills in on its own once the photo is hers, or write it yourself."
         onSave={(text) => editNinaAvatarDescriptionAction({ id: photo.id, description: text })}
         onRedescribe={() => describeNinaAvatarAction(photo.id)}
+        /* R2, 2026-09-15. The album arm supplies these; the media arm's twin mount in
+         * `MediaPane.tsx` does not, because `nina_message_images` has no keywords column — absent,
+         * not disabled. The two props travel together by the component's own contract. */
+        searchKeywords={photo.searchKeywords}
+        onSaveKeywords={(text) =>
+          editNinaAvatarSearchKeywordsAction({ id: photo.id, searchKeywords: text })
+        }
       />
     </aside>
   )

@@ -61,7 +61,7 @@ let deferred: Deferred
 let route: Route
 let fake: FakeDb
 
-/** `avatarColumns` in projection order — 18 values, `getNinaAvatar`'s own shape. */
+/** `avatarColumns` in projection order — 19 values, `getNinaAvatar`'s own shape. */
 function avatarRow(overrides: Record<string, unknown> = {}): unknown[] {
   return projectedRow(
     'id' in overrides ? overrides.id : ID,
@@ -79,19 +79,21 @@ function avatarRow(overrides: Record<string, unknown> = {}): unknown[] {
     'cropX' in overrides ? overrides.cropX : null,
     'cropY' in overrides ? overrides.cropY : null,
     'description' in overrides ? overrides.description : null,
+    'searchKeywords' in overrides ? overrides.searchKeywords : null,
     'isCurrent' in overrides ? overrides.isCurrent : false,
     'announcedAt' in overrides ? overrides.announcedAt : null,
     '2026-09-01 09:00:00+00',
   )
 }
 
-/** `describeTargetColumns` in projection order — five values. */
+/** `describeTargetColumns` in projection order — six values. */
 function describeTargetRow(overrides: Record<string, unknown> = {}): unknown[] {
   return projectedRow(
     'id' in overrides ? overrides.id : ID,
     'blobUrl' in overrides ? overrides.blobUrl : BLOB_URL,
     'pathname' in overrides ? overrides.pathname : PATHNAME,
     'description' in overrides ? overrides.description : null,
+    'searchKeywords' in overrides ? overrides.searchKeywords : null,
     'embedded' in overrides ? overrides.embedded : 0,
   )
 }
@@ -163,6 +165,7 @@ describe('fillNinaAvatarDescribeTargets', () => {
       blobUrl: BLOB_URL,
       pathname: PATHNAME,
       description: null,
+      searchKeywords: null,
       hasEmbedding: false,
     }))
 
@@ -185,6 +188,7 @@ describe('fillNinaAvatarDescribeTargets', () => {
       blobUrl: BLOB_URL,
       pathname: PATHNAME,
       description: null,
+      searchKeywords: null,
       hasEmbedding: false,
     }))
 
@@ -203,6 +207,7 @@ describe('fillNinaAvatarDescribeTargets', () => {
         blobUrl: BLOB_URL,
         pathname: PATHNAME,
         description: 'already written',
+        searchKeywords: null,
         hasEmbedding: false,
       },
     ]
@@ -222,6 +227,7 @@ describe('fillNinaAvatarDescribeTargets', () => {
         blobUrl: BLOB_URL,
         pathname: PATHNAME,
         description: 'already written',
+        searchKeywords: null,
         hasEmbedding: true,
       },
     ]
@@ -241,6 +247,7 @@ describe('fillNinaAvatarDescribeTargets', () => {
         blobUrl: BLOB_URL,
         pathname: PATHNAME,
         description: 'already written',
+        searchKeywords: null,
         hasEmbedding: false,
       },
     ]
@@ -270,6 +277,7 @@ describe('fillNinaAvatarDescribeTargets', () => {
       blobUrl: BLOB_URL,
       pathname: PATHNAME,
       description: null,
+      searchKeywords: null,
       hasEmbedding: false,
     }))
 
@@ -405,5 +413,110 @@ describe('/api/admin/nina/backfill-descriptions', () => {
     expect(body.remaining).toBe(1)
     expect(fake.queries[0]?.sql).toContain('from "nina_avatars"') // the backlog read, first
     expect(fake.queries.at(-1)?.sql).toContain('count(*)') // the re-read count, last
+  })
+})
+
+/* ── R2: the combine, the preservation, and the keywords writer ────────────────────────────── */
+
+describe('search_keywords feed the embedding', () => {
+  it('embeds description + the labelled keyword line when the row is tagged', async () => {
+    const targets = [
+      {
+        id: ID,
+        blobUrl: BLOB_URL,
+        pathname: PATHNAME,
+        description: 'she is on a beach',
+        searchKeywords: 'tete, putih',
+        hasEmbedding: false,
+      },
+    ]
+
+    await deferred.fillNinaAvatarDescribeTargets(USER, targets, 60_000)
+
+    expect(embedNinaText).toHaveBeenCalledWith('she is on a beach\n\nKeywords: tete, putih', {
+      userId: USER,
+    })
+  })
+
+  it('embeds the description ALONE when there are no keywords — the pre-existing vector stays valid', async () => {
+    const targets = [
+      {
+        id: ID,
+        blobUrl: BLOB_URL,
+        pathname: PATHNAME,
+        description: 'she is on a beach',
+        searchKeywords: null,
+        hasEmbedding: false,
+      },
+    ]
+
+    await deferred.fillNinaAvatarDescribeTargets(USER, targets, 60_000)
+
+    expect(embedNinaText).toHaveBeenCalledWith('she is on a beach', { userId: USER })
+  })
+
+  it('a re-describe reads the keywords, embeds with them, and never writes the column', async () => {
+    fake.enqueue([avatarRow({ description: 'old prose', searchKeywords: 'tete, putih' })])
+    fake.enqueue([{ id: ID }])
+
+    const result = await actions.describeNinaAvatarAction(ID)
+
+    expect(result.ok).toBe(true)
+    expect(embedNinaText).toHaveBeenCalledWith('fresh prose\n\nKeywords: tete, putih', {
+      userId: USER,
+    })
+    const update = fake.last()
+    /* Two columns and only two: the operator's tags are structurally out of reach here. */
+    expect(update.sql).not.toContain('search_keywords')
+    expect(update.params).toEqual(['fresh prose', JSON.stringify(EMBEDDING), USER, ID])
+  })
+})
+
+describe('editNinaAvatarSearchKeywordsAction', () => {
+  it('writes the keywords and a NULL vector in ONE statement, then re-earns it', async () => {
+    fake.enqueue([avatarRow({ description: 'she is on a beach', searchKeywords: null })])
+    fake.enqueue([{ id: ID }])
+
+    const result = await actions.editNinaAvatarSearchKeywordsAction({
+      id: ID,
+      searchKeywords: 'tete, putih',
+    })
+
+    expect(result.ok).toBe(true)
+    const update = fake.last()
+    expect(update.sql).toContain('update "nina_avatars"')
+    expect(update.sql).toContain('search_keywords')
+    expect(update.sql).not.toContain('"description" =')
+    expect(update.params).toEqual(['tete, putih', null, USER, ID])
+    expect(afterCallbacks).toHaveLength(1)
+  })
+
+  it('clearing the box writes NULL keywords and a NULL vector', async () => {
+    fake.enqueue([avatarRow({ description: 'she is on a beach', searchKeywords: 'tete' })])
+    fake.enqueue([{ id: ID }])
+
+    const result = await actions.editNinaAvatarSearchKeywordsAction({ id: ID, searchKeywords: '  ' })
+
+    expect(result.ok).toBe(true)
+    expect(fake.last().params).toEqual([null, null, USER, ID])
+  })
+
+  it('a row with no prose schedules nothing — there is no keywords-only vector', async () => {
+    fake.enqueue([avatarRow({ description: null, searchKeywords: null })])
+    fake.enqueue([{ id: ID }])
+
+    await actions.editNinaAvatarSearchKeywordsAction({ id: ID, searchKeywords: 'tete' })
+
+    expect(afterCallbacks).toHaveLength(0)
+  })
+
+  it('refuses a keyword line past the ceiling without touching the row', async () => {
+    const result = await actions.editNinaAvatarSearchKeywordsAction({
+      id: ID,
+      searchKeywords: 'x'.repeat(501),
+    })
+
+    expect(result.ok).toBe(false)
+    expect(fake.queries).toHaveLength(0)
   })
 })

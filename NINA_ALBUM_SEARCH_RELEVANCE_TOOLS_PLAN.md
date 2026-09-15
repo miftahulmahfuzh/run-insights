@@ -6,7 +6,7 @@
 **Worktree:** `/home/miftah/.worktrees/run-insights/nina-album-search-relevance-tools`
 **Branch:** `feature/nina-album-search-relevance-tools` (base: `origin/main` @ `751e034`)
 **Phases:** 3
-**Status:** phase 1/3 complete (phase 1 landed on this branch; phase 2 `P1-ADM-T8RM` is independent and runnable now; phase 3 `P1-SC-V2XN` stays blocked on phase 2). Not yet merged — a plan set is reviewed and merged as a whole.
+**Status:** phase 2/3 complete (phases 1 and 2 landed on this branch; phase 2's migration is applied to the production database and its backfill has run; phase 3 `P1-SC-V2XN` is now unblocked and runnable). Not yet merged — a plan set is reviewed and merged as a whole.
 **Coordinator:** —
 
 ---
@@ -127,7 +127,7 @@ phases each — see the Reconciliation Log).
 | # | Title | Satisfies | Package | Files | Depends on | Difficulty | Plan | TaskID | Card |
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
 | 1 | [x] Viewer button + cross-folder navigation to the description panel | R1 | `components/ui`, `components/admin`, `app/admin/nina`, `lib/nina/queries`, `lib/admin` | 12 | — | HARD | `.workflows/plan/nina-album-search-relevance-tools/phase-1.md` | P1-RI-K3JQ | — |
-| 2 | `search_keywords` field, embedding combine, and backfill | R2 | `lib/db/schema`, `drizzle`, `lib/nina`, `lib/admin`, `components/admin/explorer`, `app/admin/nina`, `scripts` | 26 | — | HARD | `.workflows/plan/nina-album-search-relevance-tools/phase-2.md` | P1-ADM-T8RM | — |
+| 2 | [x] `search_keywords` field, embedding combine, and backfill | R2 | `lib/db/schema`, `drizzle`, `lib/nina`, `lib/admin`, `components/admin/explorer`, `app/admin/nina`, `scripts` | 26 | — | HARD | `.workflows/plan/nina-album-search-relevance-tools/phase-2.md` | P1-ADM-T8RM | — |
 | 3 | `/search-analysis` skill and its diagnostic script | R3 | `scripts`, `.claude/skills` | 3 | 2 | NORMAL | `.workflows/plan/nina-album-search-relevance-tools/phase-3.md` | P1-SC-V2XN | — |
 
 Phases 1 and 2 are concurrent (`depends_on: []` both). Phase 3 waits on 2. Phase 2's difficulty was

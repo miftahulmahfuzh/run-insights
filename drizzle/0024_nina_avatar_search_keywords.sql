@@ -1,0 +1,20 @@
+-- nina-album-search-relevance-tools R2. Additive only: ONE nullable text column, no default, no
+-- index, no backfill.
+--
+-- Nullable is the entire migration story, and it is `source_key`'s argument applied to a third
+-- fact: Postgres adds a nullable column without rewriting the table, every existing row gets NULL,
+-- and NULL is a legal state forever ("this photograph has not been tagged"). It is also why the
+-- already-computed `description_embedding` values stay CORRECT rather than merely tolerable —
+-- `buildNinaAvatarEmbedText` returns the description unchanged when keywords are NULL, so a
+-- re-embed of an untagged row produces the identical vector. The one-off backfill
+-- (`npm run nina:backfill-embeddings`) re-embeds them anyway, to prove the path is uniform.
+--
+-- No index: nothing ranks by this column, queries it, or joins on it. It is an INPUT to the text
+-- that becomes the vector, and the vector already has its HNSW index (0023).
+--
+-- BEFORE RUNNING: check `git log origin/main -- drizzle/` for a migration numbered 0024 that landed
+-- while this branch was in flight. If one has, REGENERATE from the merged schema — never renumber
+-- this file by hand. `drizzle/0023_dry_kabuki.sql`'s own header records that exact repair, and
+-- `scripts/check-schema-drift.mjs` explains why a renamed file strands itself below the ledger
+-- watermark permanently.
+ALTER TABLE "nina_avatars" ADD COLUMN "search_keywords" text;

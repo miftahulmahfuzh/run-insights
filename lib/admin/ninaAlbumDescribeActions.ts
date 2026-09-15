@@ -3,12 +3,21 @@
 import { revalidatePath } from 'next/cache'
 
 import { ADMIN_CHAT_PHOTO_MAX_DESCRIPTION_CHARS } from '@/lib/admin/chatPhotos'
+import { ADMIN_AVATAR_MAX_SEARCH_KEYWORDS_CHARS } from '@/lib/admin/avatars'
 import type { AdminActionResult } from '@/lib/admin/ninaAlbumActions'
 import { embedNinaAvatarDescription, scheduleEmbed } from '@/lib/admin/ninaAlbumDeferredDescribe'
 import { requireAdmin } from '@/lib/admin/requireAdmin'
-import { avatarDescriptionSchema, avatarIdSchema } from '@/lib/admin/schema'
+import {
+  avatarDescriptionSchema,
+  avatarIdSchema,
+  avatarSearchKeywordsSchema,
+} from '@/lib/admin/schema'
 import { describeSubjectForSide } from '@/lib/nina/album'
-import { getNinaAvatar, setNinaAvatarDescriptionAndEmbedding } from '@/lib/nina/queries'
+import {
+  getNinaAvatar,
+  setNinaAvatarDescriptionAndEmbedding,
+  setNinaAvatarSearchKeywordsAndEmbedding,
+} from '@/lib/nina/queries'
 import { describeNinaImages } from '@/lib/nina/vision'
 
 /**
@@ -17,6 +26,7 @@ import { describeNinaImages } from '@/lib/nina/vision'
  *
  *   · `describeNinaAvatarAction` is the button: the vendor call and the write.
  *   · `editNinaAvatarDescriptionAction` is the hand: prose without a model call.
+ *   · `editNinaAvatarSearchKeywordsAction` is the tag: the other free-text input to the vector.
  *   · `ensureNinaAvatarDescriptionAction` is the pre-share gate: describe only if empty, in band.
  *
  * The DEFERRED trigger is not here. `scheduleDescribe`, the `after()` pre-pass, lives in
@@ -74,8 +84,17 @@ export async function describeNinaAvatarAction(rawId: string): Promise<AdminActi
      * `embedNinaAvatarDescription` never throws: an embedding outage must not turn a successful
      * describe into a failed one. It answers `null`, the row is written prose-with-no-vector, and
      * `listNinaAvatarDescribeBacklog` picks it up on the next sweep.
+     *
+     * ── AND IT READS `search_keywords` WITHOUT WRITING IT ───────────────────────────────────
+     * R2, 2026-09-15, and it is an invariant rather than a convenience: this action OVERWRITES the
+     * prose, and the keywords are the operator's correction of exactly this model's opinion. A
+     * pass that cleared them would erase the correction every single time it was needed. So the
+     * row's stored value is read here, handed to `embedNinaAvatarDescription` so the new vector
+     * still carries the tags, and never appears in the UPDATE —
+     * `setNinaAvatarDescriptionAndEmbedding` sets two columns and `search_keywords` is not one of
+     * them, so the omission is structural and not a thing to remember.
      */
-    const embedding = await embedNinaAvatarDescription(description, userId)
+    const embedding = await embedNinaAvatarDescription(description, row.searchKeywords, userId)
     await setNinaAvatarDescriptionAndEmbedding(userId, row.id, description, embedding)
     revalidatePath('/admin/nina')
     return { ok: true, description }
@@ -150,6 +169,68 @@ export async function editNinaAvatarDescriptionAction(input: unknown): Promise<A
     ...(next === null
       ? { note: 'Cleared. While it is empty she has no words about this photo.' }
       : {}),
+  }
+}
+
+/**
+ * **"Tag this photograph with the words it should be findable by."** R2, 2026-09-15, from the
+ * user's own framing: *"kalo selain image description, kita tambah satu field baru,
+ * search_keywords (contoh value string: 'tete', 'putih')."*
+ *
+ * ── WHY IT IS A SECOND ACTION AND NOT A SECOND FIELD ON THE ONE ABOVE ───────────────────────
+ * Three reasons, and the second is the one that would have bitten. (1) The panel has two
+ * independent boxes with two independent drafts, so a merged action would make saving the
+ * description overwrite keywords the operator had typed but not saved. (2) The re-describe path
+ * must be STRUCTURALLY unable to write this column — see `describeNinaAvatarAction` — and a merged
+ * writer would put a `searchKeywords` parameter within reach of it. (3) `shortcutCellSchema`'s
+ * header already rules for this shape on this repo's own ground: one control, one field, one
+ * action, because the fields have different caps and different meanings.
+ *
+ * ── SAME POLICY AS THE DESCRIPTION EDIT, LINE FOR LINE ──────────────────────────────────────
+ *   · NO model call, NO `after()` vision pass — these are the human's words.
+ *   · AN EMPTY BOX CLEARS THE FIELD, and `NULL` is what every untagged row already carries.
+ *   · THE VECTOR IS NULLED IN THE SAME UPDATE and re-earned afterwards, because it is derived from
+ *     these words too: leaving the old one would keep the photo findable under tags the operator
+ *     just deleted, which is the invisible-until-a-search-returns-the-wrong-photo failure
+ *     `setNinaAvatarDescriptionAndEmbedding`'s docstring argues about.
+ *
+ * ── THE ONE ASYMMETRY: A ROW WITH NO PROSE SCHEDULES NOTHING ────────────────────────────────
+ * The embedded text is anchored on the description (`buildNinaAvatarEmbedText` returns the
+ * description, plus a labelled keyword line). There is no keywords-only vector, deliberately: the
+ * embed-only worker refuses to describe a NULL description, so a `scheduleEmbed` here would be a
+ * read that finds nothing to do. That row is already in `listNinaAvatarDescribeBacklog` (no
+ * description), and the describe sweep will write prose and then embed the pair — so the state
+ * heals through the path that already exists rather than through a new branch in the worker.
+ */
+export async function editNinaAvatarSearchKeywordsAction(
+  input: unknown,
+): Promise<AdminActionResult> {
+  const { userId } = await requireAdmin()
+
+  const parsed = avatarSearchKeywordsSchema.safeParse(input)
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: `Those keywords did not fit the field — ${ADMIN_AVATAR_MAX_SEARCH_KEYWORDS_CHARS} characters at most.`,
+    }
+  }
+  const { id, searchKeywords } = parsed.data
+
+  const row = await getNinaAvatar(userId, id)
+  if (row == null) return { ok: false, error: 'That photo is not in the album.' }
+
+  /* The empty box IS the clear — the same policy line the description edit runs. */
+  const next = searchKeywords.length === 0 ? null : searchKeywords
+
+  await setNinaAvatarSearchKeywordsAndEmbedding(userId, id, next, null)
+  /* Only a row that HAS prose has a vector to re-earn. See the docstring's last block. */
+  if (row.description != null) scheduleEmbed(userId, id)
+
+  revalidatePath('/admin/nina')
+  return {
+    ok: true,
+    id,
+    ...(next === null ? { note: 'Cleared. The photo is findable by its description alone.' } : {}),
   }
 }
 

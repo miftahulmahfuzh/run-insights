@@ -85,6 +85,11 @@ export const avatarColumns = {
   cropX: ninaAvatars.cropX,
   cropY: ninaAvatars.cropY,
   description: ninaAvatars.description,
+  /* R2, 2026-09-15. Read by the album rail (to edit) and by `describeNinaAvatarAction` (to
+   * PRESERVE across a re-describe). Not by search — nothing ranks by this column; it is an input
+   * to the text that becomes `description_embedding`. Placed beside `description` because the two
+   * are read together everywhere they are read at all. */
+  searchKeywords: ninaAvatars.searchKeywords,
   isCurrent: ninaAvatars.isCurrent,
   announcedAt: ninaAvatars.announcedAt,
   createdAt: ninaAvatars.createdAt,

@@ -68,6 +68,19 @@ interface ExplorerPhotoBase {
 /** One row of the album: an `nina_avatars` row, narrowed to what a browser needs. */
 export interface AlbumExplorerPhoto extends ExplorerPhotoBase {
   origin: 'album'
+  /**
+   * The operator's hand-written search phrases, or `null`. R2, 2026-09-15.
+   *
+   * ALBUM-ONLY, and on the arm rather than on `ExplorerPhotoBase` for the reason `prompt` and
+   * `kind` sit on the media arm: `nina_message_images` has no such column, so a media row cannot
+   * carry the value and code that reads it must narrow on `origin` first. That is the compiler
+   * refusing to let the shared rail assume an album row.
+   *
+   * Unlike `description` this IS rendered — the rail's keyword box shows and edits it. Invariant 5
+   * is untouched: it is an ADMIN surface, nothing runner-facing reads it, and it never reaches a
+   * model except as part of the text this row's vector is computed from, server-side.
+   */
+  searchKeywords: string | null
 }
 
 /**

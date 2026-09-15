@@ -38,6 +38,13 @@ export interface NinaAvatarDescribeTarget {
   pathname: string
   /** NULL means the vision model has never been asked about this photograph. */
   description: string | null
+  /**
+   * The operator's hand-written phrases, or NULL. R2, 2026-09-15. Carried here because the worker
+   * embeds `description` COMBINED with these (`buildNinaAvatarEmbedText`), and reading them in the
+   * same statement is what keeps that one statement per batch. The worker never WRITES this column
+   * — only `editNinaAvatarSearchKeywordsAction` does.
+   */
+  searchKeywords: string | null
   /** `description_embedding IS NOT NULL` — the vector itself is deliberately not selected. */
   hasEmbedding: boolean
 }
@@ -58,6 +65,7 @@ const describeTargetColumns = {
   blobUrl: ninaAvatars.blobUrl,
   pathname: ninaAvatars.pathname,
   description: ninaAvatars.description,
+  searchKeywords: ninaAvatars.searchKeywords,
   embedded: hasEmbeddingExpr,
 }
 
@@ -66,6 +74,7 @@ function toTarget(row: {
   blobUrl: string
   pathname: string
   description: string | null
+  searchKeywords: string | null
   embedded: number
 }): NinaAvatarDescribeTarget {
   return {
@@ -73,6 +82,7 @@ function toTarget(row: {
     blobUrl: row.blobUrl,
     pathname: row.pathname,
     description: row.description,
+    searchKeywords: row.searchKeywords,
     hasEmbedding: row.embedded === 1,
   }
 }
@@ -189,6 +199,40 @@ export async function setNinaAvatarDescriptionAndEmbedding(
   const updated = await db
     .update(ninaAvatars)
     .set({ description, descriptionEmbedding: embedding })
+    .where(and(eq(ninaAvatars.userId, userId), eq(ninaAvatars.id, id)))
+    .returning({ id: ninaAvatars.id })
+  return updated.length > 0
+}
+
+/**
+ * Write the hand-written keywords and the vector in ONE UPDATE. The twin of
+ * `setNinaAvatarDescriptionAndEmbedding`, for the other input to the same derived column.
+ *
+ * ── WHY A SECOND FUNCTION AND NOT A THIRD PARAMETER ON THE FIRST ────────────────────────────
+ * Because the two callers write DIFFERENT columns and must not write each other's. A merged
+ * `set({ description, searchKeywords, descriptionEmbedding })` would make the re-describe path
+ * carry a `searchKeywords` argument it has no business having — and the first time someone passed
+ * the wrong thing there, a vision pass would erase the operator's correction, silently, with the
+ * row still looking healthy. Two functions cannot make that mistake: `describeNinaAvatarAction`
+ * has no way to spell it.
+ *
+ * ── WHY THE VECTOR IS A PARAMETER AND NOT ALWAYS NULL ───────────────────────────────────────
+ * Symmetry with its twin, and the same reason: `null` is what the hand-edit path writes (the
+ * keywords changed, so the stored vector describes a text this row no longer has), and a real
+ * vector is what a caller that already computed one would write. Both are legal, both are one
+ * statement, and neither leaves a window in which the columns disagree.
+ *
+ * `searchKeywords: null` is the CLEAR, exactly as `description: null` is on the twin.
+ */
+export async function setNinaAvatarSearchKeywordsAndEmbedding(
+  userId: string,
+  id: string,
+  searchKeywords: string | null,
+  embedding: number[] | null,
+): Promise<boolean> {
+  const updated = await db
+    .update(ninaAvatars)
+    .set({ searchKeywords, descriptionEmbedding: embedding })
     .where(and(eq(ninaAvatars.userId, userId), eq(ninaAvatars.id, id)))
     .returning({ id: ninaAvatars.id })
   return updated.length > 0

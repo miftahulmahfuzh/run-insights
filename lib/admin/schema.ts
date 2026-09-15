@@ -28,6 +28,7 @@ import {
   ADMIN_AVATAR_CONTENT_TYPES,
   ADMIN_AVATAR_ID_RE,
   ADMIN_AVATAR_MAX_EDGE_PX,
+  ADMIN_AVATAR_MAX_SEARCH_KEYWORDS_CHARS,
   ADMIN_AVATAR_MAX_UPLOAD_BYTES,
   ADMIN_AVATAR_MIN_EDGE_PX,
 } from './avatars'
@@ -98,6 +99,48 @@ export const cropWriteSchema = z.object({
 export const avatarDescriptionSchema = z.object({
   id: avatarIdSchema,
   description: chatPhotoDescriptionField,
+})
+
+/**
+ * **The hand-written search phrases, as a field** — `nina-album-search-relevance-tools` R2.
+ * `"tete, putih"`.
+ *
+ * ── WHY IT IS NOT `chatPhotoDescriptionField` WITH A DIFFERENT MAX ──────────────────────────
+ * Because it normalises differently, and the difference is the point. A description is a
+ * PARAGRAPH: its internal newlines are its formatting, so that field preserves them and only
+ * collapses runs of three or more. This is a LINE — a comma-separated list — and it is about to be
+ * joined into embedded text under a `"Keywords: "` label. A newline inside it would put a second
+ * unlabelled block into the vector's input and read to the model as a new paragraph, so every run
+ * of whitespace (newlines included) folds to one space. One line in, one line stored, one line
+ * embedded.
+ *
+ * Nothing else is done to it. No splitting on commas, no sorting, no de-duplication, no case
+ * folding: the user's requirement is free text in a human's convention, and
+ * `lib/nina/avatarEmbedText.ts` embeds it verbatim. A validator that re-punctuated it would be
+ * storing something the operator did not type, which is the `folderPathSchema` refuse-don't-repair
+ * argument in a field where there is nothing to refuse.
+ *
+ * ── AN EMPTY RESULT IS LEGAL AND MEANS SOMETHING TO THE ACTION ──────────────────────────────
+ * No `.min(1)`, exactly as `chatPhotoDescriptionField`: an all-whitespace box normalises to `''`,
+ * this accepts it, and the action turns it into `NULL`. The schema knows shapes; the action owns
+ * policy.
+ *
+ * `.max()` before the transform, also that field's rule: an over-long paste is REFUSED and
+ * reported inline, never silently truncated into range.
+ */
+export const avatarSearchKeywordsField = z
+  .string()
+  .max(ADMIN_AVATAR_MAX_SEARCH_KEYWORDS_CHARS)
+  .transform((value) => value.replace(/\s+/g, ' ').trim())
+
+/**
+ * The hand-edit write. Shaped exactly like `avatarDescriptionSchema` one block up — the same id
+ * check, one prose field, existence and ownership left to the action — because it IS that action's
+ * twin for the album's other free-text column. See `editNinaAvatarSearchKeywordsAction`.
+ */
+export const avatarSearchKeywordsSchema = z.object({
+  id: avatarIdSchema,
+  searchKeywords: avatarSearchKeywordsField,
 })
 
 /**

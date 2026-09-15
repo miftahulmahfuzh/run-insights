@@ -270,6 +270,9 @@ export default async function AdminNinaPage(props: PageProps<'/admin/nina'>) {
       source: row.source,
       isCurrent: row.isCurrent,
       description: row.description,
+      /* R2, 2026-09-15. Rendered and edited by the rail's keyword box; `avatarColumns` carries it
+       * now, and the Media arm has no counterpart because that table has no such column. */
+      searchKeywords: row.searchKeywords,
       crop: { scale: row.cropScale, x: row.cropX, y: row.cropY },
       createdAt: row.createdAt.toISOString(),
     }))

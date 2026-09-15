@@ -68,7 +68,7 @@ let actions: Actions
 let fake: FakeDb
 
 /**
- * The `avatarColumns` projection in order — 18 values, the same discipline as
+ * The `avatarColumns` projection in order — 19 values, the same discipline as
  * `admin.chatPhotoAdoption.test.ts`'s `pick()`: `overrides.key ?? fallback` would read a
  * deliberate `{ description: null }` as "no opinion", which is exactly the bug that once made a
  * describe test pass for the wrong reason. `in` is the only honest test.
@@ -90,6 +90,7 @@ function avatarRow(overrides: Record<string, unknown> = {}): unknown[] {
     'cropX' in overrides ? overrides.cropX : null,
     'cropY' in overrides ? overrides.cropY : null,
     'description' in overrides ? overrides.description : null,
+    'searchKeywords' in overrides ? overrides.searchKeywords : null,
     'isCurrent' in overrides ? overrides.isCurrent : false,
     'announcedAt' in overrides ? overrides.announcedAt : null,
     '2026-09-01 09:00:00+00',
@@ -97,7 +98,7 @@ function avatarRow(overrides: Record<string, unknown> = {}): unknown[] {
 }
 
 /**
- * The `describeTargetColumns` projection in order — five values. Same `in`-not-`??` discipline as
+ * The `describeTargetColumns` projection in order — six values. Same `in`-not-`??` discipline as
  * `avatarRow()` above, for the same reason: a deliberate `{ description: null }` must not read as
  * "no opinion".
  */
@@ -107,6 +108,7 @@ function describeTargetRow(overrides: Record<string, unknown> = {}): unknown[] {
     'blobUrl' in overrides ? overrides.blobUrl : BLOB_URL,
     'pathname' in overrides ? overrides.pathname : PATHNAME,
     'description' in overrides ? overrides.description : null,
+    'searchKeywords' in overrides ? overrides.searchKeywords : null,
     'embedded' in overrides ? overrides.embedded : 0,
   )
 }
