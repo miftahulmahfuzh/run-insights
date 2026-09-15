@@ -417,7 +417,9 @@ describe('ninaFallbackTextClient', () => {
         model: NINA_CHAT_FALLBACK_DEFAULT_MODEL,
       })
       /* The OpenRouter row's `fullInput` is the TRANSLATED payload, not the Anthropic one. */
-      expect(String(logNinaError.mock.calls[1]?.[0]?.fullInput)).toContain(NINA_CHAT_FALLBACK_DEFAULT_MODEL)
+      expect(String(logNinaError.mock.calls[1]?.[0]?.fullInput)).toContain(
+        NINA_CHAT_FALLBACK_DEFAULT_MODEL,
+      )
     })
 
     it('skips the fallback, and rethrows z.ai’s own error, with no budget left', async () => {

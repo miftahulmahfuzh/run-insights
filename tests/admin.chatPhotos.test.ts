@@ -870,7 +870,10 @@ describe('addChatPhotoAction tells his phone (R2)', () => {
 
     const result = await actions.addChatPhotoAction(goodBlob)
 
-    expect(result).toEqual({ ok: false, error: 'Could not open a place in the conversation for it.' })
+    expect(result).toEqual({
+      ok: false,
+      error: 'Could not open a place in the conversation for it.',
+    })
     expect(notifyNinaPush).not.toHaveBeenCalled()
   })
 

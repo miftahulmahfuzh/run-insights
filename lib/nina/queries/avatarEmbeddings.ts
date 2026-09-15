@@ -50,9 +50,8 @@ export interface NinaAvatarDescribeTarget {
  * `Number` is one this layer decides. A `sql<boolean>` that arrives as the STRING `'f'` is truthy,
  * and the bug it would cause — "already embedded, skip" for every unembedded row — is silent.
  */
-const hasEmbeddingExpr = sql<number>`(${ninaAvatars.descriptionEmbedding} is not null)::int`.mapWith(
-  Number,
-)
+const hasEmbeddingExpr =
+  sql<number>`(${ninaAvatars.descriptionEmbedding} is not null)::int`.mapWith(Number)
 
 const describeTargetColumns = {
   id: ninaAvatars.id,
@@ -150,12 +149,12 @@ export async function countNinaAvatarDescribeBacklog(
 ): Promise<NinaAvatarDescribeBacklogCount> {
   const counted = await db
     .select({
-      missingDescription: sql<number>`count(*) filter (where ${ninaAvatars.description} is null)`.mapWith(
-        Number,
-      ),
-      missingEmbedding: sql<number>`count(*) filter (where ${ninaAvatars.description} is not null and ${ninaAvatars.descriptionEmbedding} is null)`.mapWith(
-        Number,
-      ),
+      missingDescription:
+        sql<number>`count(*) filter (where ${ninaAvatars.description} is null)`.mapWith(Number),
+      missingEmbedding:
+        sql<number>`count(*) filter (where ${ninaAvatars.description} is not null and ${ninaAvatars.descriptionEmbedding} is null)`.mapWith(
+          Number,
+        ),
     })
     .from(ninaAvatars)
     .where(eq(ninaAvatars.userId, userId))

@@ -4,10 +4,7 @@ import { revalidatePath } from 'next/cache'
 
 import { ADMIN_CHAT_PHOTO_MAX_DESCRIPTION_CHARS } from '@/lib/admin/chatPhotos'
 import type { AdminActionResult } from '@/lib/admin/ninaAlbumActions'
-import {
-  embedNinaAvatarDescription,
-  scheduleEmbed,
-} from '@/lib/admin/ninaAlbumDeferredDescribe'
+import { embedNinaAvatarDescription, scheduleEmbed } from '@/lib/admin/ninaAlbumDeferredDescribe'
 import { requireAdmin } from '@/lib/admin/requireAdmin'
 import { avatarDescriptionSchema, avatarIdSchema } from '@/lib/admin/schema'
 import { describeSubjectForSide } from '@/lib/nina/album'

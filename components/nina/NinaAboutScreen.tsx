@@ -385,7 +385,11 @@ export function NinaAboutScreen({
         wants; the `bg-ink` slab is the same "chosen" look `Chip` and `Button`'s primary already
         use elsewhere on this screen.
       */}
-      <div role="tablist" aria-label="Bagian Nina" className="mb-4 flex gap-1 rounded-pill bg-paper-2 p-1">
+      <div
+        role="tablist"
+        aria-label="Bagian Nina"
+        className="mb-4 flex gap-1 rounded-pill bg-paper-2 p-1"
+      >
         <button
           type="button"
           role="tab"

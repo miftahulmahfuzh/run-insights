@@ -198,7 +198,13 @@ describe('fillNinaAvatarDescribeTargets', () => {
   it('an embedding failure keeps the prose — the UPDATE writes it with a NULL vector', async () => {
     embedNinaText.mockRejectedValue(new Error('embeddings endpoint down'))
     const targets = [
-      { id: ID, blobUrl: BLOB_URL, pathname: PATHNAME, description: 'already written', hasEmbedding: false },
+      {
+        id: ID,
+        blobUrl: BLOB_URL,
+        pathname: PATHNAME,
+        description: 'already written',
+        hasEmbedding: false,
+      },
     ]
 
     const outcome = await deferred.fillNinaAvatarDescribeTargets(USER, targets, 60_000)
@@ -211,7 +217,13 @@ describe('fillNinaAvatarDescribeTargets', () => {
 
   it('prose + vector is a zero-vendor-call skip', async () => {
     const targets = [
-      { id: ID, blobUrl: BLOB_URL, pathname: PATHNAME, description: 'already written', hasEmbedding: true },
+      {
+        id: ID,
+        blobUrl: BLOB_URL,
+        pathname: PATHNAME,
+        description: 'already written',
+        hasEmbedding: true,
+      },
     ]
 
     const outcome = await deferred.fillNinaAvatarDescribeTargets(USER, targets, 60_000)
@@ -224,7 +236,13 @@ describe('fillNinaAvatarDescribeTargets', () => {
 
   it('prose without a vector embeds and does not re-describe', async () => {
     const targets = [
-      { id: ID, blobUrl: BLOB_URL, pathname: PATHNAME, description: 'already written', hasEmbedding: false },
+      {
+        id: ID,
+        blobUrl: BLOB_URL,
+        pathname: PATHNAME,
+        description: 'already written',
+        hasEmbedding: false,
+      },
     ]
 
     const outcome = await deferred.fillNinaAvatarDescribeTargets(USER, targets, 60_000)
@@ -301,7 +319,10 @@ describe('editNinaAvatarDescriptionAction', () => {
     fake.enqueue([avatarRow({ description: 'old words' })]) // getNinaAvatar
     fake.enqueue([{ id: ID }]) // setNinaAvatarDescriptionAndEmbedding RETURNING
 
-    const result = await actions.editNinaAvatarDescriptionAction({ id: ID, description: 'new words' })
+    const result = await actions.editNinaAvatarDescriptionAction({
+      id: ID,
+      description: 'new words',
+    })
 
     expect(result.ok).toBe(true)
     expect(fake.queries).toHaveLength(2)
