@@ -141,15 +141,15 @@ function ninaPhotoPresence(purpose: NinaImagePurpose, tuning: NinaTuning | null)
 
   if (purpose === 'selfie' && isDialHigh(tuning.traits.steamy)) {
     clauses.push(
-      'She is fully aware of the camera and playing to it: weight on one hip, body turned toward ' +
+      'She is fully aware of the camera and commanding it: weight on one hip, body turned toward ' +
         'the lens, chin down, the phone held close.',
     )
   }
 
   if (isDialHigh(tuning.traits.flirty)) {
     clauses.push(
-      'She is looking straight down the lens and half-smiling, like she knows exactly what she is ' +
-        'doing.',
+      'She is looking straight down the lens with a sensual, serious expression, her lips just ' +
+        'barely parted, like she knows exactly what she is doing. She is not smiling.',
     )
   }
 
