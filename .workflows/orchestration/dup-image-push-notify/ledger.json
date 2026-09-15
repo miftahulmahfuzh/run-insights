@@ -37,27 +37,27 @@
       "satisfies": [
         "R2"
       ],
-      "status": "spawned",
+      "status": "pending",
       "task_id": null,
       "title": "Full-screen deep-link viewer route"
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "db74dcd",
       "depends_on": [
         1
       ],
       "difficulty": "NORMAL",
       "n": 3,
-      "note": null,
+      "note": "shots+chat routes wired; photos.ts patched with hunk-filtered git apply to avoid sweeping phase 2's still-uncommitted getRunPhoto block",
       "package": "app/api/extract`, `components/extract`, `lib/db/queries`, `lib/nina/actions`, `lib/schema",
       "plan": ".workflows/plan/dup-image-push-notify/phase-3.md",
-      "reported_at": null,
+      "reported_at": "2026-09-15T03:15:43+00:00",
       "satisfies": [
         "R1"
       ],
-      "status": "spawned",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-EXT-R9WD",
       "title": "Wire runner-side upload routes (shots, chat)"
     },
     {
@@ -75,7 +75,7 @@
       "satisfies": [
         "R1"
       ],
-      "status": "spawned",
+      "status": "pending",
       "task_id": null,
       "title": "Wire admin-side upload routes (chat photo add/replace, avatar batch)"
     }
@@ -83,6 +83,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/dup-image-push-notify/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "dup-image-push-notify",
-  "updated": "2026-09-15T03:02:13+00:00",
+  "updated": "2026-09-15T03:16:01+00:00",
+  "verified_at": "2026-09-15T03:16:01+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/dup-image-push-notify"
 }
