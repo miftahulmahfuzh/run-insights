@@ -90,9 +90,9 @@ see Test consumers under Reverse Dependencies.
 | File | Kind | Purpose |
 |---|---|---|
 | `touch.ts` | **no directive** | The 44 px rule spelled once: `TOUCH_TARGET`, `TOUCH_ICON`. Zero imports. |
-| `FileExplorer.tsx` | `'use client'` | The `/admin/nina` screen. Layout, toolbar, breadcrumb, drop target, the two-arm URL grammar (`hrefForFolder` / `hrefForMediaView` / `hrefForPage`), the removal-`notice` line. Toolbar buttons are icon-only (private Lucide glyphs, `aria-label` is the name). Below `lg`: two-row toolbar, folder rail behind the `treeOpen` drawer (`id="admin-folder-rail"`). `?view=media` swaps the content pane to the Media view inside the same chrome; re-exports the `explorer/model.ts` types. Holds the landed `search` (client state, `null` = browsing) and branches the content pane between `PhotoGrid` and `SearchResultsGrid`. |
+| `FileExplorer.tsx` | `'use client'` | The `/admin/nina` screen. Layout, toolbar, breadcrumb, drop target, the two-arm URL grammar (`hrefForFolder` / `hrefForMediaView` / `hrefForPage`), the removal-`notice` line. Toolbar buttons are icon-only (private Lucide glyphs, `aria-label` is the name). Below `lg`: two-row toolbar, folder rail behind the `treeOpen` drawer (`id="admin-folder-rail"`). `?view=media` swaps the content pane to the Media view inside the same chrome; re-exports the `explorer/model.ts` types. Holds the landed `search` (client state, `null` = browsing) and branches the content pane between `PhotoGrid` and `SearchResultsGrid`. Takes `deepLinkId` and owns the `?avatar=` **landing effect** — select, clear the search, spend the parameter — guarded by a `spentDeepLink` ref. |
 | `explorer/PhotoSearchBar.tsx` | `'use client'` | The album search row, rendered FIRST so it sits above every printing of the word "Album". Owns only the DRAFT (words, picked photograph, in-flight, the one sentence under the row) and hands a landed search UP through `onResults`; `Clear` resets it and calls `onClear`. Calls `searchNinaAvatarsAction` as a black box. Album arm only — absent on Media, not disabled. Shows neither the caption nor the score. |
-| `explorer/SearchResultsGrid.tsx` | `'use client'` | The ranked answer as one sheet, `PhotoGrid`'s borderless recipe mirrored with three deliberate differences: no pager (a ranked list has no page 2), no selection and no `SelectionPane` (a tile opens `components/ui/PhotoViewer` instead, scoped to the result set via a local `viewerIndex` + `useMemo`'d `ViewerPhoto[]`), and the folder in the accessible name (`<filename> in 2026/bali`, root as `NINA_FOLDER_ROOT_LABEL`). |
+| `explorer/SearchResultsGrid.tsx` | `'use client'` | The ranked answer as one sheet, `PhotoGrid`'s borderless recipe mirrored with three deliberate differences: no pager (a ranked list has no page 2), no selection and no `SelectionPane` (a tile opens `components/ui/PhotoViewer` instead, scoped to the result set via a local `viewerIndex` + `useMemo`'d `ViewerPhoto[]`), and the folder in the accessible name (`<filename> in 2026/bali`, root as `NINA_FOLDER_ROOT_LABEL`). Fills `PhotoViewer`'s `headerAction` slot with the `hrefForAvatar` jump link (a private `FileTextIcon`, a `<Link>` so middle-click opens a second tab), the one route from an irrelevant-looking hit to its description. |
 | `explorer/searchQueryImage.ts` | browser APIs | The one encode in this folder that does **not** PUT: one decode → `SEARCH_QUERY_SHORT_EDGE_PX = 768` on the SHORT edge (`longEdgeTargetFor`), `SEARCH_QUERY_QUALITY = 0.75` JPEG, out as a data URI, capped at `SEARCH_QUERY_MAX_DATA_URI_CHARS = 700_000`. The four constants stay `export`ed with a symbol-level note because knip cannot see their reader — see Test consumers. |
 | `explorer/model.ts` | **types only** | The Server→client props contract and the row union: `ExplorerPhoto` is `AlbumExplorerPhoto \| MediaExplorerPhoto`, discriminated by `origin`. The media arm types `thumbUrl` as the literal `null` (no thumbnail column) and `isCurrent` as `false` (adoption copies bytes into `nina_avatars`; the copy carries the flag). `QueueItem` / `QueueReport` — `report.already` is the number the upload exists to show. No runtime export. |
 | `explorer/dropWalk.ts` | browser APIs | `webkitGetAsEntry()` capture, the `readEntries` pump (`EXPLORER_WALK_MAX_FILES = 2000`, `EXPLORER_WALK_MAX_DEPTH = 12`), the `webkitdirectory` picker. Decides nothing. |
@@ -141,11 +141,15 @@ at `lg` via `lg:contents` on the control group.
 
 ### What lives in the URL and what lives in state
 
-- **`?folder=`, `?page=` and `?view=` are in the URL** because they decide *which rows exist*:
+- **`?folder=`, `?page=`, `?view=` and `?avatar=` are in the URL** because they decide *which rows exist*:
   the page re-runs its list query for them. `app/admin/nina/page.tsx` parses `?view=` once with
   `readExplorerView` (`lib/admin/filetree.ts`) and hands `view` down as a prop; anything that is
   not `media` reads as the album, so a stale bookmark degrades instead of erroring. Folder clicks
   are real `<Link>` navigations — deep-linkable, back-button-able.
+- **`?avatar=` is the one TRANSIENT parameter.** It names a *row*, not a location: the server
+  resolves it into a folder and a page (`locateNinaAvatar`) and the client then **spends** it. So it
+  is the only parameter this screen rewrites out of its own URL, and the only one no `<Link>` inside
+  the explorer ever mints — `SearchResultsGrid`'s header link is its sole writer.
 - **The selected photo is `useState`** — putting it in the URL would re-run a Server Component
   that just did two database reads, on every click, for state that never leaves the client. The
   consequence is by design: `selectedId` may name a photo no longer on the page, and
@@ -161,13 +165,18 @@ at `lg` via `lg:contents` on the control group.
   `null` on the Media arm — so switching views and back does not throw a search away, and there is
   no effect to reason about.
 
-The URL grammar has one home in `FileExplorer.tsx` and is a two-arm family: `hrefForFolder`
+The BROWSING grammar has one home in `FileExplorer.tsx` and is a two-arm family: `hrefForFolder`
 spells `?folder=&page=`, `hrefForMediaView` spells `?view=media&page=N` (name and value from
 `lib/admin/filetree.ts` — writer and reader cannot disagree), and `hrefForPage` branches on the
 view so media page 2 cannot drop the operator into the album. Root folder is the **absence** of
 `?folder=`, page 1 the **absence** of `?page=`. There are two ways out of the grammar, not two
 spellings: `hrefFor` *builds* (for `<Link>`), `navigateToFolder` *goes* (`router.push`) for
 folder operations that only learn their destination from the server's answer.
+
+The deep link is the exception that proves the rule and is spelled **outside this package**, in
+`lib/admin/albumDeepLink.ts` (`NINA_AVATAR_PARAM`, `hrefForAvatar`), for `NINA_MEDIA_VIEW_PARAM`'s
+reason: its writer is a `'use client'` module here and its reader is `app/admin/nina/page.tsx`, so
+a spelling kept in `FileExplorer.tsx` would be a spelling the Server Component cannot import.
 
 ### Semantic search over the album
 
@@ -199,6 +208,44 @@ about to leave the screen — which also leaves `PhotoMoveBar` in its nothing-se
 branch of its own. The two grids are siblings rather than one component with a mode, because they
 differ in the three things a grid is: where the rows come from, whether there is a page after this
 one, and what a click does.
+
+### From a bad-looking hit to its description — the `?avatar=` deep link
+
+A ranked sheet's failure mode is a hit the operator cannot explain, and the fix is always the same:
+read the description the ranking was computed from. But the sheet ranks across EVERY folder while
+the explorer holds one folder and one page, so the row a hit names is usually not in the array the
+client can select from. That gap is the whole reason this path exists, and it dictates the shape:
+
+1. **The link carries the id and nothing else.** `hrefForAvatar(id)` deliberately appends no
+   `folder`/`page`. Both are DERIVED server-side; a pair travelling beside the id would be two
+   opinions about where the row is filed, and the one that loses is the id — the operator lands in
+   the wrong folder with nothing selected.
+2. **Only the server can answer it.** `locateNinaAvatar` (`lib/nina/queries/avatars.ts`) returns
+   `{ id, folder, offset }`, the offset being a row COUNT under the explorer's own
+   `(created_at desc, id desc)` order. The page divides it into a page number, because the page size
+   is the page's policy. A resolved link OVERRIDES `?folder=`/`?page=`; an unresolved one changes
+   nothing — a well-formed id naming no row (deleted, or someone else's) lands on the album root
+   with nothing selected, silently, because distinguishing "gone" from "not yours" would tell a
+   stranger which ids exist.
+3. **The landing does three things, and needs all three** (`FileExplorer`'s effect): select the row
+   — which is what mounts `SelectionPane` and its description editor, the point of the feature;
+   clear the landed search — so the ranked sheet is not left covering the folder the link just
+   opened, and so the landing is identical whether React preserved this component across the
+   navigation or remounted it; and spend the parameter via `history.replaceState` to the canonical
+   `hrefForFolder(...)`, so a reload, a copied link and the back button all describe where the
+   operator actually is.
+
+The effect is idempotent through a `spentDeepLink` ref, and that is load-bearing rather than tidy:
+`history.replaceState` re-runs parameter watchers synchronously, so the effect can be re-entered for
+the same id, and a second pass must not re-open a pane the operator has since closed. For the same
+reason it has **no cleanup** — a cleanup that cleared the selection would cancel the landing on that
+second pass.
+
+The link is a `<Link>` and not a `router.push` button, which is the split this package already
+keeps: a folder OPERATION needs a navigator because it learns its destination only from the server's
+answer, and this one knows its destination up front. The dividend is middle-click and
+open-in-new-tab, which on this screen is worth having — a second tab fixes the description while
+this one keeps the ranked set alive.
 
 ### The two gestures produce one shape
 
@@ -859,6 +906,11 @@ counts stay MEMORY counts: still true of the account, just not of this page.
 - `@/lib/admin/folderOps` — **not imported, deliberately.** It holds every folder refusal and
   the Zod schemas behind them; the components call actions and render sentences. (There is no
   `lib/admin/folderPath.ts`; reconciliation deleted it.)
+- `@/lib/admin/albumDeepLink` — `NINA_AVATAR_PARAM` + `hrefForAvatar(id)`, the `?avatar=` grammar,
+  imported by `SearchResultsGrid` (the writer) while `app/admin/nina/page.tsx` imports the reader
+  half. A grammar and not a validator: the id's SHAPE is checked by the page against
+  `ADMIN_AVATAR_ID_RE`. Zero-import, so a client file may name it; it is a module of its own rather
+  than a 36th name in `lib/admin/filetree`, whose barrel surface is frozen by a test.
 - `@/lib/admin/shareToNina` — `ninaPhotoShareUrl(origin, avatarId)`, the only writer of the
   `/nina?photo=avatar:<id>` link. Near-zero-import, so client files may import it.
 - `@/lib/admin/avatars` — `adminAvatarPathname`, `adminAvatarThumbPathname`, `extForContentType`,
@@ -913,7 +965,10 @@ counts stay MEMORY counts: still true of the account, just not of this page.
   `pointerdown`.
 - `@/components/ui/PhotoViewer` — `PhotoViewer` + `ViewerPhoto`, the app's ONE full-screen overlay.
   `SearchResultsGrid` is its second caller under `components/admin/` (`ErrorLogList.tsx` is the
-  first, and the newer file follows its shape); there is no second overlay here.
+  first, and the newer file follows its shape); there is no second overlay here. Two of that
+  component's props exist for this package: `ViewerPhoto.id` (optional — the review surfaces have no
+  row id, so this file checks rather than asserts) and the `headerAction` render slot, which is how
+  a caller puts a control in the overlay header without the overlay learning what it links to.
 - `@/lib/cn` — `cn()`.
 
 **No runtime import in this directory reaches `zod`, `server-only`, or the database.** The three
@@ -935,7 +990,10 @@ calling bundle. `lib/share/origin.ts` is the mirror: it opens with `import 'serv
   feeds the tree badge on both arms, media rows are mapped down server-side (`kind` as `source`,
   `side` via `photoSideOf`, display filename derived from date + id), and `shareOrigin()` is
   read HERE — the only place that can — and passed down as a string. `announcedAt`, `pathname`,
-  `sourceKey` and `thumbPathname` never cross the boundary.
+  `sourceKey` and `thumbPathname` never cross the boundary. It also OWNS the `?avatar=` read:
+  shape-checked against `ADMIN_AVATAR_ID_RE`, resolved by `locateNinaAvatar`, divided into a page by
+  the page's own `NINA_ADMIN_PAGE_SIZE`, and handed back down as `deepLinkId` — so this package
+  never sees an id it cannot select.
 - `app/admin/personality/page.tsx` — `CharacterPanel` (ONLY mount site) **and
   `TextModelSelect`**. Reads the tuning, assembles the prompt preview as a pure string,
   resolves the effective narrative model server-side.
@@ -1016,6 +1074,8 @@ Three layers, none of them an accident:
 ```
 app/admin/nina/page.tsx  (Server Component, force-dynamic, requireAdmin() on line 1)
   │  validateFolderPath(?folder) · readExplorerView(?view) · parallel reads
+  │  readAvatarId(?avatar) ─► locateNinaAvatar(userId,id) ─► { folder, offset } | null
+  │       resolved: OVERRIDES ?folder=/?page= (pageOfOffset) · null: ordinary params, no selection
   │  shareOrigin()   ← server-only, resolved HERE, handed down as a string
   ▼
 FileExplorer ─── PhotoSearchBar ─────► encodeSearchQueryImage(file) → data URI (NO PUT)
@@ -1024,6 +1084,12 @@ FileExplorer ─── PhotoSearchBar ─────► encodeSearchQueryImage(
      │      ── activeSearch = isMediaView ? null : search ── branches the content pane ──┐
      │      ─── SearchResultsGrid ────► tile click → viewerIndex → <PhotoViewer>   ◄─────┘
      │             (no pager, no pane, overlay scoped to the result set)
+     │             └─ headerAction ──► <Link href={hrefForAvatar(photo.id)}>  (album arm only)
+     │                                        │
+     │      ─── deepLinkId (prop) ◄───────────┘  the page resolved it; effect runs ONCE per id
+     │             1. setSelectedId(id)  → SelectionPane + PhotoDescription mount
+     │             2. setSearch(null)    → the sheet never covers the folder just opened
+     │             3. history.replaceState(hrefForFolder(...))  ← spend it; REPLACE, never push
      │      ─── FolderTree ───────────► <Link href="?folder=…">  (server re-read)
      │             └── Row/FolderMenu ► create/rename/move/delete folder
      │                    │             └─► AdminActionResult.folder ──► navigateToFolder()
@@ -1182,12 +1248,16 @@ check in the upload path, because only a decode knows the pixels.
   view={readExplorerView(params.view)}
   mediaCount={mediaTotal}       // the tree badge, both arms
   shareOrigin={shareOrigin()}   // server-only origin, resolved here
+  deepLinkId={located?.id ?? null}   // the RESOLVED ?avatar= id, or null
 />
 ```
 
 `userId` is threaded from the session because blob pathnames interpolate it (invariant 3); it
 is never read from a request. `shareOrigin` is threaded for the mirror-image reason: the module
-that knows the answer cannot be imported by a Client Component.
+that knows the answer cannot be imported by a Client Component. `deepLinkId` is the id the page
+RESOLVED, never the raw `?avatar=` value — the prop's contract is "this row exists, is yours, and is
+on the page you were just handed", which is what lets the landing effect be three lines with no
+failure branch.
 
 ### Mounting the panels
 
@@ -1228,6 +1298,17 @@ be a second definition that one day disagrees (or a canon leak into the bundle).
 - **Do not build the share URL with a template literal.** `ninaPhotoShareUrl` is the only
   writer, `formatNinaPhotoParam` the only formatter; a second place that knows the grammar is a
   place that can disagree about it.
+- **Do not hang `?folder=`/`?page=` off the `?avatar=` link.** They are derived from the id
+  server-side; a pair carried alongside is a stale opinion that wins over the id and drops the
+  operator in the wrong folder. `hrefForAvatar` takes an id and nothing else, on purpose.
+- **Spend the deep-link parameter with `history.replaceState`, never `router.replace` and never a
+  push.** `router.replace` re-runs the page's two database reads to rewrite a URL nothing else
+  changed; a push makes the spent parameter a history entry, costing the operator a back press to
+  get past a URL that no longer means anything.
+- **Keep the landing effect idempotent and give it no cleanup.** `replaceState` re-runs parameter
+  watchers synchronously, so the effect can be entered twice for one id — the `spentDeepLink` ref is
+  what stops the second pass re-opening a pane the operator closed, and a cleanup that undid the
+  selection would cancel the landing outright.
 - **Do not call `readEntries()` once.** 100-entry ceiling, empty array ends it.
 - **Do not add a decision to a `setState` updater.** Strict mode double-invokes it; on the
   upload path that was two blobs for one file. Decide, then set.
@@ -1374,7 +1455,9 @@ never get thumbnails (48/page originals); multi-select is not built (the actions
 plural, so it is a client-only change when it comes); internal drag-to-move is not built (the
 `<select>` is the gesture). Search ranks only photographs that already carry a description and an
 embedding — the empty state says so in words rather than letting the operator conclude the photo is
-not there — and the sheet offers none of the pane's verbs, by design. The character panel has no
+not there — and the sheet still offers none of the pane's verbs inline, by design; the `?avatar=`
+header link is the one way to them, and it goes to the pane rather than bringing the pane to the
+sheet. The character panel has no
 live bubble preview — a sample reply is a
 model call and Rule 2 puts that off a render; seeing a dial's effect means moving it and talking
 to her.
@@ -1430,4 +1513,14 @@ to her.
   Phases 1–3 (the embedding column, the write path, the query layer and its Server Action) are
   `db/`, `lib/nina/` and `lib/admin/`'s and are documented in those packages; this phase touches no
   `lib/` file and calls `searchNinaAvatarsAction` as a black box. Folder browsing is byte-identical
-  — the two grids are siblings, not a mode. Colocated component-suite count restamped 27 → 32.
+  — the two grids are siblings, not a mode. Colocated component-suite count restamped 27 → 32
+  (measured 2026-09-15).
+- **2026-09-15** — `NINA_ALBUM_SEARCH_RELEVANCE_TOOLS` phase 1 (`P1-RI-K3JQ`): the `?avatar=` deep
+  link from a search result's full-screen viewer to that photograph's description panel. In this
+  package: `SearchResultsGrid` fills `PhotoViewer`'s new `headerAction` slot with the jump link and
+  its private `FileTextIcon`, and `FileExplorer` gains `deepLinkId` plus the landing effect
+  (select · clear the search · spend the parameter). The `?avatar=` grammar
+  (`lib/admin/albumDeepLink.ts`) and the resolver (`locateNinaAvatar` in `lib/nina/queries/`) belong
+  to those packages and are documented there; `PhotoViewer`'s `ViewerPhoto.id` + `headerAction`
+  widening is `components/ui`'s. No existing behaviour here changed — browsing, the two grids and
+  every folder verb are untouched.

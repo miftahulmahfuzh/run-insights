@@ -135,3 +135,38 @@ describe('a click opens the full-screen view over the RESULT SET (R1 addendum)',
     expect(tile.getAttribute('title')).toBe('DSC_0031.jpg · 2026/bali · #a1')
   })
 })
+
+describe('R1 — the open result links to its own description panel', () => {
+  it('offers the link only while the overlay is open, pointing at /admin/nina?avatar=<id>', () => {
+    render(<SearchResultsGrid hits={[HIT, SECOND]} />)
+    expect(screen.queryByRole('link', { name: "Open this photo's description" })).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'DSC_0031.jpg in 2026/bali' }))
+
+    expect(screen.getByRole('link', { name: "Open this photo's description" })).toHaveAttribute(
+      'href',
+      '/admin/nina?avatar=a1',
+    )
+  })
+
+  it('follows the paging — the link always names the photo on screen', () => {
+    render(<SearchResultsGrid hits={[HIT, SECOND]} />)
+    fireEvent.click(screen.getByRole('button', { name: 'DSC_0031.jpg in 2026/bali' }))
+
+    fireEvent.keyDown(document, { key: 'ArrowRight' })
+    expect(screen.getByRole('link', { name: "Open this photo's description" })).toHaveAttribute(
+      'href',
+      '/admin/nina?avatar=a2',
+    )
+  })
+
+  it('carries no folder and no page: the server resolves both from the id', () => {
+    render(<SearchResultsGrid hits={[HIT]} />)
+    fireEvent.click(screen.getByRole('button', { name: 'DSC_0031.jpg in 2026/bali' }))
+
+    const href =
+      screen.getByRole('link', { name: "Open this photo's description" }).getAttribute('href') ?? ''
+    expect(href).not.toContain('folder=')
+    expect(href).not.toContain('page=')
+  })
+})

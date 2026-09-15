@@ -90,6 +90,7 @@ export function FileExplorer({
   userId,
   folders,
   photos,
+  deepLinkId,
   page,
   view,
   mediaCount,
@@ -98,6 +99,18 @@ export function FileExplorer({
   userId: string
   folders: readonly ExplorerFolder[]
   photos: readonly ExplorerPhoto[]
+  /**
+   * R1. The id of a photograph the URL asked to have SELECTED — already resolved by the server to
+   * the folder and page this render is showing (`app/admin/nina/page.tsx`'s `?avatar=` arm) — or
+   * `null` on an ordinary visit.
+   *
+   * A RESOLVED id and not the raw parameter, on purpose. The client cannot select a row it does
+   * not hold (`selected` below is a `photos.find(...)` over ONE folder-page), and which folder that
+   * is, is a database read. So the page resolves and this component selects — the same division
+   * `view` already keeps: the parameter is parsed once, upstream, and this component never has a
+   * second opinion about the URL.
+   */
+  deepLinkId: string | null
   page: ExplorerPageInfo
   /**
    * Which collection the URL has open — the tree's active row, the pager's target and the
@@ -194,6 +207,48 @@ export function FileExplorer({
   const upload = useFolderUpload({ userId, destination: folder, onFinished })
 
   const selected = photos.find((photo) => photo.id === selectedId) ?? null
+
+  /*
+   * ── R1: THE DEEP LINK LANDS HERE ────────────────────────────────────────────────────────────
+   * The viewer over a search result links to `/admin/nina?avatar=<id>`; the page resolved that id
+   * to the folder and page this render is already showing, and handed the id back as `deepLinkId`.
+   * Three things happen on arrival and all three are needed:
+   *
+   *   1. **The photograph is selected**, which is what mounts `SelectionPane` and its description
+   *      editor — the requirement, in one line.
+   *   2. **The search is cleared.** A landed search is what the content pane draws (`activeSearch`
+   *      above), so leaving it up would put the operator's ranked sheet over the folder the link
+   *      just opened, and would break this file's standing pairing that a selection and a result
+   *      set are never on screen together (`onSearchResults`, and the reason `PhotoMoveBar` needs
+   *      no branch of its own). It is also what makes the landing IDENTICAL whether or not React
+   *      preserved this component's state across the navigation — a soft navigation to the same
+   *      route keeps it, a remount does not, and a feature must not depend on which.
+   *   3. **The parameter is spent**, replaced with the canonical URL of where we actually are, so a
+   *      reload, a copied link and the back button all describe this folder and this page rather
+   *      than re-running a resolution that has already happened. `history.replaceState` and not
+   *      `router.replace` for `components/ui/usePanelParam.ts`'s measured reason: the page is two
+   *      database reads, and rewriting its own URL must not re-run them. REPLACE and never push —
+   *      a spent parameter that became a history entry would cost the operator a back press to get
+   *      past a URL that no longer means anything.
+   *
+   * The ref is what makes this idempotent, and that is load-bearing rather than tidy: a
+   * `history.replaceState` re-runs parameter watchers synchronously, so this effect can be entered
+   * a second time for the same id — and a second entry must not re-open a pane the operator has
+   * since closed. For the same reason there is **no cleanup here that undoes anything**: a cleanup
+   * that cleared the selection would cancel the landing on that second pass.
+   *
+   * `hrefForFolder` and not `hrefForMediaView`: the page resolves `?avatar=` on the ALBUM arm only
+   * (a message image is not an album row), so `deepLinkId` is never non-null under `?view=media`.
+   */
+  const spentDeepLink = useRef<string | null>(null)
+  useEffect(() => {
+    if (deepLinkId === null) return
+    if (spentDeepLink.current === deepLinkId) return
+    spentDeepLink.current = deepLinkId
+    setSelectedId(deepLinkId)
+    setSearch(null)
+    window.history.replaceState(null, '', hrefForFolder(page.folder, page.page))
+  }, [deepLinkId, page.folder, page.page])
 
   /*
    * Focus restoration for the details pane (the 2026-09-12 a11y pass). Every close — the pane's

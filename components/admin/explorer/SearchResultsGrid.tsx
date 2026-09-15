@@ -1,9 +1,11 @@
 'use client'
 
+import Link from 'next/link'
 import { useMemo, useState } from 'react'
 
 import { EmptyState } from '@/components/ui'
 import { PhotoViewer, type ViewerPhoto } from '@/components/ui/PhotoViewer'
+import { hrefForAvatar } from '@/lib/admin/albumDeepLink'
 import { NINA_FOLDER_ROOT_LABEL } from '@/lib/admin/filetree'
 
 import type { AdminSearchHit } from '@/lib/admin/ninaAlbumActions'
@@ -64,6 +66,10 @@ export function SearchResultsGrid({ hits }: { hits: readonly AdminSearchHit[] })
   const photos = useMemo<ViewerPhoto[]>(
     () =>
       hits.map((hit) => ({
+        /* The row id as a FIELD, beside the printed `meta` line below that also carries it. The
+         * header control builds a link out of this one; parsing the id back out of `#id · score`
+         * would make a display format load-bearing (`PhotoViewer.tsx`'s `id` note). */
+        id: hit.id,
         url: hit.url,
         kind: hit.source,
         label: hit.filename,
@@ -132,8 +138,74 @@ export function SearchResultsGrid({ hits }: { hits: readonly AdminSearchHit[] })
           onIndex={setViewerIndex}
           onClose={() => setViewerIndex(null)}
           subject="foto"
+          /*
+           * R1. The way out of *"saya liat search result irrelevant, saya bisa langsung ke
+           * deskripsinya"*: a link, in the header, to the panel where this photograph's
+           * description is read and edited.
+           *
+           * A `<Link>` and not a `router.push` button, which is the split `FileExplorer` already
+           * keeps: a folder OPERATION needs a navigator because it learns where to go only once
+           * the server answers, and this one knows its destination up front. So the operator also
+           * gets middle-click and open-in-new-tab — which on this screen is worth having, because
+           * a new tab keeps the ranked result set alive in this one while the description gets
+           * fixed in the other.
+           *
+           * `photo.id == null` is unreachable from this file (every hit has one) and is still
+           * checked, because `ViewerPhoto.id` is optional for the review surfaces and a `!` here
+           * would be an assertion about a shared type this file does not own.
+           *
+           * The overlay is closed on the way out for IMMEDIATE feedback. It is not the guarantee:
+           * the landing clears the search (`FileExplorer`'s deep-link effect), which unmounts this
+           * whole component and the overlay with it. Both, so the lightbox is never left hanging
+           * over the page the link just opened during the navigation.
+           */
+          headerAction={(photo) =>
+            photo.id == null ? null : (
+              <Link
+                href={hrefForAvatar(photo.id)}
+                onClick={() => setViewerIndex(null)}
+                aria-label="Open this photo's description"
+                title="Open this photo's description"
+                className="grid size-11 place-items-center rounded-pill text-card"
+              >
+                <FileTextIcon className="size-5" />
+              </Link>
+            )
+          }
         />
       )}
     </>
+  )
+}
+
+/*
+ * The header control's glyph, inlined rather than imported — `FileExplorer.tsx:640-649`'s standing
+ * ruling for this screen's icons, which `PhotoSearchBar.tsx` and `ErrorLogList.tsx` both follow:
+ * **Lucide** (lucide-static, ISC), `file-text`, copied verbatim with Lucide's `class`/`width`/
+ * `height` dropped and `stroke-width` normalised to `strokeWidth` on the root `svg`, where the
+ * `stroke*` presentation attributes inherit to every child. `aria-hidden`, because the accessible
+ * name is the link's `aria-label` and never the picture.
+ *
+ * A document with lines on it, and not a pencil: the destination is the panel where the
+ * description is READ as well as edited, and the operator goes there to look before they type.
+ */
+function FileTextIcon({ className }: { className: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" />
+      <path d="M14 2v4a2 2 0 0 0 2 2h4" />
+      <path d="M10 9H8" />
+      <path d="M16 13H8" />
+      <path d="M16 17H8" />
+    </svg>
   )
 }

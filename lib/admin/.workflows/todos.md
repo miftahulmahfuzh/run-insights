@@ -3,11 +3,11 @@
 **Package Path**: `lib/admin`
 **Package Code**: ADM
 **Last Updated**: 2026-09-15
-**Total Active Tasks**: 0
+**Total Active Tasks**: 1
 
 ## Quick Stats
 - P0 Critical: 0
-- P1 High: 0
+- P1 High: 1
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
@@ -22,6 +22,15 @@
 ### [P0] Critical
 
 ### [P1] High
+
+- [ ] **P1-ADM-T8RM** `search_keywords` field, embedding combine, and backfill
+  - **Difficulty**: HARD
+  - **Type**: Feature
+  - **Context**: Owns `lib/db/schema/nina/avatars.ts` + its generated migration, the new zero-import `lib/nina/avatarEmbedText.ts` (the one combine function), `lib/admin/avatars.ts` (the 500-char bound), `lib/nina/queries/columns.ts` and `avatarEmbeddings.ts`, the `embedNinaAvatarDescription` choke point in `lib/admin/ninaAlbumDeferredDescribe.ts`, `lib/admin/ninaAlbumDescribeActions.ts`, `lib/admin/schema.ts`, `components/admin/explorer/model.ts` (`AlbumExplorerPhoto.searchKeywords`), the one additive row→prop line at `app/admin/nina/page.tsx:241`, the `PhotoDescription.tsx`/`SelectionPane.tsx` UI, and `scripts/backfill-avatar-embeddings.mjs`. Exit: `nina_avatars.search_keywords` exists and `ci:schema-drift-guard` is green; keywords save/persist independently of `description` (an emptied box stores NULL); saving either column nulls `description_embedding` in the same UPDATE and re-earns it from the combined text; `describeNinaAvatarAction` reads the keywords into the new vector and never writes the column; `npm run nina:backfill-embeddings` re-embeds every described row; `npm run typecheck` and `npm test` green.
+  - **Status**: active
+  - **Plan Set**: `NINA_ALBUM_SEARCH_RELEVANCE_TOOLS_PLAN.md` (phase 2 of 3)
+  - **Satisfies**: R2 — New `search_keywords` field (comma-separated), editable, feeds search relevance
+  - **Plan**: `.workflows/plan/P1-ADM-T8RM.md`
 
 ### [P2] Medium
 

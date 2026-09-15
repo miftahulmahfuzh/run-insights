@@ -476,6 +476,76 @@ export async function listNinaAvatarsInFolder(
 }
 
 /**
+ * Where one photograph sits in the explorer — the answer `?avatar=<id>` needs before a page can be
+ * rendered. See `locateNinaAvatar`.
+ */
+export interface NinaAvatarLocation {
+  /** Echoed back, so a caller holds an id proven to exist rather than the string it asked with. */
+  id: string
+  /** `''` is the album root, exactly as the column stores it. */
+  folder: string
+  /** 0-based position within `folder`, under `(created_at desc, id desc)`. A row count, not a page. */
+  offset: number
+}
+
+/**
+ * Which folder a photograph is filed in, and how many rows of that folder sort before it.
+ *
+ * ── WHY THIS READ HAS TO EXIST AT ALL ───────────────────────────────────────────────────────
+ * `/admin/nina` holds ONE folder and ONE page of photographs at a time, and the explorer's
+ * selection is a `photos.find(...)` over that array (`components/admin/FileExplorer.tsx:196`). The
+ * album search, by contrast, ranks across EVERY folder (`queries/avatarsearch.ts`'s header) — so
+ * "open this search result's description panel" names a row the client cannot select, because the
+ * row is not in the array the client has. Only the server can turn an id into the folder and the
+ * page that hold it, and that is the whole of what this answers.
+ *
+ * ── THE OFFSET IS COUNTED, NOT PAGED ────────────────────────────────────────────────────────
+ * `listNinaAvatarsInFolder` orders `(created_at desc, id desc)`, so a row's position inside its
+ * folder is exactly how many rows of the same folder sort BEFORE it — which under a DESCENDING
+ * order is how many compare GREATER as the tuple `(created_at, id)`. Postgres compares row values
+ * left to right, so `(earlier.created_at, earlier.id) > (a.created_at, a.id)` is that predicate in
+ * one expression, and it cannot drift from the `ORDER BY` the way a hand-expanded
+ * `created_at > … OR (created_at = … AND id > …)` could.
+ *
+ * ── ONE STATEMENT, AND NO BOUND PARAMETER IN THE COMPARISON ─────────────────────────────────
+ * The correlated subquery reads the target's own columns rather than values fetched by a first
+ * round trip. That saves a round trip, and — the reason it is written this way rather than as a
+ * read-then-count — it leaves Postgres comparing `timestamptz` to `timestamptz` and `text` to
+ * `text` with no parameter whose type it has to infer, so there is no cast to get right and no
+ * driver-side `Date` serialisation anywhere in the path. Both halves are served by
+ * `nina_avatars_user_folder_created_idx` (`user_id`, `folder`, `created_at desc`).
+ *
+ * **The page SIZE is the caller's policy, not this module's.** `NINA_ADMIN_PAGE_SIZE` is the
+ * `limit` `app/admin/nina/page.tsx` spends, and asserting it here would be a second opinion about
+ * it — so the division lives at that call site, beside the `offset` it is about to compute.
+ *
+ * `null` for "not yours" and for "no such row" alike, per `lib/nina/queries.ts`'s rule 1: a deleted
+ * photograph and a stranger's photograph are the same answer, and the caller's handling is the same
+ * either way.
+ */
+export async function locateNinaAvatar(
+  userId: string,
+  id: string,
+): Promise<NinaAvatarLocation | null> {
+  const rows = await db
+    .select({
+      id: ninaAvatars.id,
+      folder: ninaAvatars.folder,
+      offset: sql<number>`(
+        select count(*)
+        from ${ninaAvatars} as earlier
+        where earlier.user_id = ${ninaAvatars.userId}
+          and earlier.folder = ${ninaAvatars.folder}
+          and (earlier.created_at, earlier.id) > (${ninaAvatars.createdAt}, ${ninaAvatars.id})
+      )`.mapWith(Number),
+    })
+    .from(ninaAvatars)
+    .where(and(eq(ninaAvatars.userId, userId), eq(ninaAvatars.id, id)))
+    .limit(1)
+  return rows[0] ?? null
+}
+
+/**
  * Every dedupe key already stored under a folder and its descendants — the manifest side of F34
  * R1's *"it automatically upload only the new folders and files as optimization."*
  *

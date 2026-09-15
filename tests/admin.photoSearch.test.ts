@@ -153,3 +153,33 @@ describe('normal folder browsing is untouched', () => {
     expect(codeLines(bar)).not.toContain('.description')
   })
 })
+
+describe('R1 — the viewer links a result to its own description panel', () => {
+  it('mints the deep link through the one grammar module, never a hand-built string', () => {
+    expect(grid).toContain("from '@/lib/admin/albumDeepLink'")
+    expect(codeLines(grid)).toContain('hrefForAvatar(photo.id)')
+    // The route is spelled in `lib/admin/albumDeepLink.ts` and nowhere on this screen.
+    expect(codeLines(grid)).not.toContain('/admin/nina?')
+  })
+
+  it('hands the control the photo on screen, so paging cannot leave it pointing at the last one', () => {
+    expect(codeLines(grid)).toContain('headerAction={')
+  })
+
+  it('closes the overlay on the way out, so no lightbox is left over the landing page', () => {
+    const slot = codeLines(grid.slice(grid.indexOf('headerAction=')))
+    expect(slot).toContain('onClick={() => setViewerIndex(null)}')
+  })
+
+  it('the explorer spends the parameter: selects, drops the search, and REPLACES the URL', () => {
+    const body = codeLines(explorer)
+    const effect = body.slice(body.indexOf('const spentDeepLink'), body.indexOf('[deepLinkId,'))
+    expect(effect).toContain('setSelectedId(deepLinkId)')
+    // A landed search over the folder the link just opened would break the pairing
+    // `onSearchResults` keeps: a selection and a result set are never on screen together.
+    expect(effect).toContain('setSearch(null)')
+    expect(effect).toContain('window.history.replaceState')
+    // A spent parameter that became its own history entry would cost a back press to get past.
+    expect(body).not.toContain('window.history.pushState')
+  })
+})

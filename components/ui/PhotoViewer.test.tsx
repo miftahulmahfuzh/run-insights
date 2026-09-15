@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -182,6 +182,58 @@ describe('PhotoViewer', () => {
       renderViewer({ photos: [PHOTOS[0]!] })
 
       expect(screen.queryByText(/·/)).not.toBeInTheDocument()
+    })
+  })
+
+  describe('the header action slot', () => {
+    it('renders the caller’s control beside Close, and hands it the photo on screen', () => {
+      const seen: (string | undefined)[] = []
+      renderViewer({
+        index: 1,
+        photos: [
+          { url: 'blob:photo-a', kind: 'avatar', label: 'One', id: 'id-a' },
+          { url: 'blob:photo-b', kind: 'avatar', label: 'Two', id: 'id-b' },
+        ],
+        headerAction: (photo) => {
+          seen.push(photo.id)
+          return (
+            <button type="button" aria-label={`Inspect ${photo.id}`}>
+              i
+            </button>
+          )
+        },
+      })
+
+      expect(screen.getByRole('button', { name: 'Inspect id-b' })).toBeInTheDocument()
+      expect(seen).toContain('id-b')
+      expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument()
+    })
+
+    it('follows the paging, so the control never acts on the photo that just left', () => {
+      const photos: ViewerPhoto[] = [
+        { url: 'blob:photo-a', kind: 'avatar', label: 'One', id: 'id-a' },
+        { url: 'blob:photo-b', kind: 'avatar', label: 'Two', id: 'id-b' },
+      ]
+      const headerAction = (photo: ViewerPhoto) => (
+        <button type="button" aria-label={`Inspect ${photo.id}`}>
+          i
+        </button>
+      )
+      renderViewer({ photos, index: 0, headerAction })
+      expect(screen.getByRole('button', { name: 'Inspect id-a' })).toBeInTheDocument()
+
+      cleanup()
+      renderViewer({ photos, index: 1, headerAction })
+      expect(screen.getByRole('button', { name: 'Inspect id-b' })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Inspect id-a' })).toBeNull()
+    })
+
+    it('absent renders nothing — the review surfaces keep the header they have always drawn', () => {
+      // One photo, so there is no dot row either: the close button is the only control in the DOM.
+      renderViewer({ photos: [PHOTOS[0]!] })
+
+      expect(screen.getAllByRole('button')).toHaveLength(1)
+      expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument()
     })
   })
 

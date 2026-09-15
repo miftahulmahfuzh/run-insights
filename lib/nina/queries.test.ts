@@ -25,6 +25,12 @@ import * as barrel from '@/lib/nina/queries'
  *
  * admin-album-semantic-search takes it 85 → 92: four names in phase 2 (the
  * description_embedding writers) and three in phase 3 (the album's semantic search).
+ *
+ * nina-album-search-relevance-tools phase 1 adds `locateNinaAvatar`, the id → folder(+offset) read
+ * R1's `?avatar=` deep link needs: the explorer holds one folder-page and selects by
+ * `photos.find(...)`, so a search hit from another folder cannot be selected without the server
+ * saying where it lives first. (Phase 2 of the same set adds
+ * `setNinaAvatarSearchKeywordsAndEmbedding`; the two are independent and land in either order.)
  */
 const BARREL_VALUE_EXPORTS = [
   'adoptNinaMessageImage',
@@ -98,6 +104,9 @@ const BARREL_VALUE_EXPORTS = [
   'listNinaSelfieJobIdsSince',
   'listNinaSessions',
   'listNinaShortcuts',
+  // nina-album-search-relevance-tools phase 1 (R1): the id -> folder(+offset) read the album's
+  // `?avatar=` deep link resolves through. Documented growth, one name.
+  'locateNinaAvatar',
   'markNinaAvatarAnnounced',
   'markNinaMessagesRead',
   'moveNinaAvatarsToFolder',

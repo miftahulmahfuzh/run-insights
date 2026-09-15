@@ -2,8 +2,8 @@
 
 **Package Path**: `scripts`
 **Package Code**: SC
-**Last Updated**: 2026-09-14
-**Total Active Tasks**: 0
+**Last Updated**: 2026-09-15
+**Total Active Tasks**: 1
 
 ## Quick Stats
 - P0 Critical: 0
@@ -11,7 +11,7 @@
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
-- Blocked: 0
+- Blocked: 1
 - Completed: 3
 - Archived: 2
 
@@ -30,6 +30,17 @@
 ### [P4] Backlog
 
 ### 🚫 Blocked
+
+- [ ] **P1-SC-V2XN** `/search-analysis` skill and its diagnostic script
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns `scripts/search-analysis.mjs`, `.claude/skills/search-analysis/SKILL.md`, and one additive `nina:search-analysis` line in `package.json`'s `scripts` block. Exit: a `/search-analysis <query> <part-of-id>`-shaped invocation resolves the partial id by substring (`strpos`), refusing zero matches (exit 3) and ambiguous matches (exit 4, listing the candidates) — never guessing; runs the unfiltered ranking query (no 48-row cap, no 0.2 floor, scoped to the target row's owner) and emits one JSON document on stdout carrying the target's true rank/score, `description`, `searchKeywords`, `embeddedText`, `hasEmbedding`, a `wouldAppearInApp` verdict with `cutBy` reasons, the candidate count and the top 10 competing rows; diagnosis and reporting only — the session makes zero write calls; `git diff --stat` shows exactly three paths.
+  - **Status**: blocked
+  - **Blocked by**: `P1-ADM-T8RM` (phase 2) — needs the `search_keywords` column with its migration applied, and `lib/nina/avatarEmbedText.ts` existing and staying zero-import
+  - **Plan Set**: `NINA_ALBUM_SEARCH_RELEVANCE_TOOLS_PLAN.md` (phase 3 of 3)
+  - **Satisfies**: R3 — `/search-analysis <text-query> <part-of-image-id>` skill — diagnose, never auto-edit
+  - **Depends on**: `P1-ADM-T8RM`
+  - **Plan**: `.workflows/plan/P1-SC-V2XN.md`
 
 ---
 
