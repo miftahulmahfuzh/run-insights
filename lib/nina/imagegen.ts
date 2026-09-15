@@ -316,7 +316,7 @@ const NINA_FOCUS_EMPHASIS: Readonly<
   }),
   skin: Object.freeze({
     term: 'her skin',
-    sentence: `Her bare skin is what the photograph is about: olive, faintly sweat-sheened, with visible pores and fine texture rather than a retouched surface.`,
+    sentence: `Her bare skin is what the photograph is about: fair, faintly sweat-sheened, with visible pores and fine texture rather than a retouched surface.`,
   }),
   boobs: Object.freeze({
     term: 'her big boobs',

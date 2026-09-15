@@ -228,11 +228,16 @@ export const GENERATE_IMAGE_TOOL: Anthropic.Tool = {
       scene: {
         type: 'string',
         description:
-          'REQUIRED. What is happening in the photo, in a sentence or two. Not your face.',
+          'REQUIRED. What is happening in the photo, in a sentence or two. Not your face — never ' +
+          'state your own ethnicity or nationality here (never "Indonesian", never any other ' +
+          'nationality); you are already a white, beautiful, caucasian woman. Never write yourself ' +
+          'smiling or laughing.',
       },
       mood: {
         type: 'string',
-        description: 'Your expression and energy, e.g. "smug, out of breath".',
+        description:
+          'Your expression and energy, e.g. "smug, out of breath". Never smiling or laughing — she ' +
+          'reads serious, like a magazine cover model, lips just barely parted.',
       },
     },
   },
@@ -249,7 +254,11 @@ export const SET_AVATAR_TOOL: Anthropic.Tool = {
     properties: {
       scene: {
         type: 'string',
-        description: 'REQUIRED. What the new picture shows, in a sentence or two. Not your face.',
+        description:
+          'REQUIRED. What the new picture shows, in a sentence or two. Not your face — never state ' +
+          'your own ethnicity or nationality here (never "Indonesian", never any other nationality); ' +
+          'you are already a white, beautiful, caucasian woman. Never write yourself smiling or ' +
+          'laughing.',
       },
       because: {
         type: 'string',
