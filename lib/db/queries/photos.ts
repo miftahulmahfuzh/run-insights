@@ -147,6 +147,51 @@ export async function findRunPhotoByContentHash(
   return rows[0] ?? null
 }
 
+/** What the `/photo/shot/<id>` deep link needs off a screenshot row, and nothing more. */
+export interface RunPhotoPoint {
+  id: string
+  blobUrl: string
+  kind: PhotoKind
+  /**
+   * NULL until the review commit backfills it (R-1's two-parent lifecycle, `attachExtractionPhotos`
+   * above). The deep-link route reads it to decide where CLOSING the viewer lands: a committed
+   * photo closes onto its run, an uncommitted one onto the runs list.
+   */
+  runId: string | null
+}
+
+/**
+ * One screenshot by id, ownership-scoped — the `/photo/shot/<id>` deep-link read (R2).
+ *
+ * The mirror of `getNinaAvatar` (`lib/nina/queries/avatars.ts:211`) and `getNinaMessageImage`
+ * (`lib/nina/queries/images.ts:272`) for the third image table, and it keeps their rule: `null` for
+ * "not yours" and for "does not exist" alike. The caller has no legitimate use for the difference,
+ * and a surface that distinguishes them is a surface that tells a stranger which ids exist.
+ *
+ * Ownership goes through `runPhotoOwnedBy` (`./ownership.ts:40`) rather than a `user_id` column,
+ * because `run_photos` has none by design — the correlated EXISTS covers BOTH parents, so a photo
+ * uploaded minutes ago (extraction only, `run_id` still NULL) is as reachable as one on a committed
+ * run. A `runs`-only check would have made every pre-commit screenshot a silent 404.
+ *
+ * An EXPLICIT PROJECTION, not `select()`: drizzle expands a bare `select().from(t)` into every
+ * column it knows about, so the shape of this read would otherwise change under a schema edit it
+ * has no opinion about — phase 1 adds `content_hash` to this very table. Four columns are what the
+ * viewer needs; `blob_url` is the photograph and `kind` is its label.
+ */
+export async function getRunPhoto(userId: string, photoId: string): Promise<RunPhotoPoint | null> {
+  const rows = await db
+    .select({
+      id: runPhotos.id,
+      blobUrl: runPhotos.blobUrl,
+      kind: runPhotos.kind,
+      runId: runPhotos.runId,
+    })
+    .from(runPhotos)
+    .where(and(eq(runPhotos.id, photoId), runPhotoOwnedBy(userId)))
+    .limit(1)
+  return rows[0] ?? null
+}
+
 /** R-11 / F11's per-photo opt-out. */
 export async function setPhotoExcludedFromShare(
   userId: string,
