@@ -147,7 +147,9 @@ describe('registerNinaAvatarsAction — the cross-table duplicate scan', () => {
   it('a record with no hash at all still registers', async () => {
     const record = batchRecord({ id: 'noHash123XY' })
     delete record.contentHash
-    insertNinaAvatars.mockResolvedValue([avatarRow({ id: 'noHash123XY', pathname: record.pathname })])
+    insertNinaAvatars.mockResolvedValue([
+      avatarRow({ id: 'noHash123XY', pathname: record.pathname }),
+    ])
 
     const result = await actions.registerNinaAvatarsAction({ records: [record] })
 
@@ -255,7 +257,9 @@ describe('registerNinaAvatarsAction — the cross-table duplicate scan', () => {
   it('a row that landed without a hash is never scanned', async () => {
     const record = batchRecord({ id: 'noHashRow1X' })
     delete record.contentHash
-    insertNinaAvatars.mockResolvedValue([avatarRow({ id: 'noHashRow1X', pathname: record.pathname })])
+    insertNinaAvatars.mockResolvedValue([
+      avatarRow({ id: 'noHashRow1X', pathname: record.pathname }),
+    ])
 
     await actions.registerNinaAvatarsAction({ records: [record] })
 
