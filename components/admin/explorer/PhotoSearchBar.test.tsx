@@ -96,4 +96,27 @@ describe('the search row', () => {
     expect(onClear).toHaveBeenCalledTimes(1)
     await waitFor(() => expect(screen.getByRole('searchbox')).toHaveValue(''))
   })
+
+  it('offers the in-field Kosongkan only once there are words to clear', () => {
+    render(<PhotoSearchBar active={false} onResults={vi.fn()} onClear={vi.fn()} />)
+    expect(screen.queryByRole('button', { name: 'Kosongkan pencarian' })).not.toBeInTheDocument()
+
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'bali' } })
+    expect(screen.getByRole('button', { name: 'Kosongkan pencarian' })).toBeInTheDocument()
+  })
+
+  it('Kosongkan empties the words in place and leaves the landed search alone', async () => {
+    const onClear = vi.fn()
+    render(<PhotoSearchBar active={false} onResults={vi.fn()} onClear={onClear} />)
+
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'bali' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Kosongkan pencarian' }))
+
+    await waitFor(() => expect(screen.getByRole('searchbox')).toHaveValue(''))
+    // The keyboard stays up: the tap never leaves the field — `SessionRow`'s Kosongkan rule.
+    expect(screen.getByRole('searchbox')).toHaveFocus()
+    // The words are not the search: clearing them is not "resume browsing".
+    expect(onClear).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: 'Kosongkan pencarian' })).not.toBeInTheDocument()
+  })
 })

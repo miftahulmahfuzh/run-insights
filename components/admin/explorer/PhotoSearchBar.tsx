@@ -67,6 +67,7 @@ export function PhotoSearchBar({
   const [error, setError] = useState<string | null>(null)
   const [summary, setSummary] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  const fieldRef = useRef<HTMLInputElement>(null)
 
   const trimmed = text.trim()
   const canSearch = !busy && (trimmed !== '' || queryImage !== null)
@@ -135,9 +136,14 @@ export function PhotoSearchBar({
         {/* The field gives; the buttons do not. `min-w-0` on the wrapper is what lets the row wrap
             on a narrow screen instead of blowing the track out — `FileExplorer`'s own rule for its
             breadcrumb. `Input` carries `w-full` from `CONTROL_CLASS`, so the wrapper owns the
-            flexing and no two width utilities land on one element. */}
-        <div className="min-w-0 flex-1 basis-[16rem]">
+            flexing and no two width utilities land on one element. `relative` hosts the in-field
+            Kosongkan below — `ImageGenPanel`/`SessionRow`'s idiom verbatim: the input pays `pr-11`
+            only while there are words, the tap never moves focus out of the field, and the
+            `::-webkit-search-cancel-button` is hidden because this is a `type="search"` input and
+            the browser's own ✕ would otherwise sit beside ours. */}
+        <div className="relative min-w-0 flex-1 basis-[16rem]">
           <Input
+            ref={fieldRef}
             type="search"
             name="album-search"
             value={text}
@@ -145,7 +151,22 @@ export function PhotoSearchBar({
             onChange={(event) => setText(event.target.value)}
             placeholder="Describe the photo you are looking for"
             aria-label="Describe the photo you are looking for"
+            className={cn('[&::-webkit-search-cancel-button]:hidden', text !== '' && 'pr-11')}
           />
+          {text !== '' && (
+            <button
+              type="button"
+              aria-label="Kosongkan pencarian"
+              onPointerDown={(event) => event.preventDefault()}
+              onClick={() => {
+                setText('')
+                fieldRef.current?.focus()
+              }}
+              className="absolute inset-y-0 right-0 grid w-11 place-items-center rounded-pill text-[19px] font-semibold text-ink-3 active:opacity-70"
+            >
+              &#10005;
+            </button>
+          )}
         </div>
 
         <input
