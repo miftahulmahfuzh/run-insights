@@ -115,7 +115,7 @@ describe('text only (R2)', () => {
     // `{ userId }` is not decoration — it is the `user_id` on the `nina_error_logs` row
     // `embedNinaText` writes before it throws. Phase 1's contract asks for it; pin it.
     expect(embedNinaText).toHaveBeenCalledExactlyOnceWith('red dress', { userId: USER })
-    expect(searchNinaAvatarsByText).toHaveBeenCalledExactlyOnceWith(USER, [0.1, 0.2])
+    expect(searchNinaAvatarsByText).toHaveBeenCalledExactlyOnceWith(USER, [0.1, 0.2], 'red dress')
     expect(result.ok).toBe(true)
     expect(result.mode).toBe('text')
     expect(result.searched).toBe(342)
@@ -184,6 +184,7 @@ describe('both (R4)', () => {
       USER,
       [0.1, 0.2],
       [0.3, 0.4],
+      'red dress',
     )
     expect(searchNinaAvatarsByText).not.toHaveBeenCalled()
     expect(searchNinaAvatarsByImageCaption).not.toHaveBeenCalled()

@@ -4,7 +4,10 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import { PhotoDescription, type DescribeOutcome } from './PhotoDescription'
-import { ADMIN_AVATAR_MAX_SEARCH_KEYWORDS_CHARS } from '@/lib/admin/avatars'
+import {
+  ADMIN_AVATAR_MAX_NEGATIVE_SEARCH_KEYWORDS_CHARS,
+  ADMIN_AVATAR_MAX_SEARCH_KEYWORDS_CHARS,
+} from '@/lib/admin/avatars'
 import { ADMIN_CHAT_PHOTO_MAX_DESCRIPTION_CHARS } from '@/lib/admin/chatPhotos'
 
 const OK: DescribeOutcome = { ok: true }
@@ -483,6 +486,144 @@ describe('PhotoDescription — search keywords', () => {
     await user.type(keywordsBox(), ', putih')
     await user.click(keywordsButton())
     await screen.findByRole('button', { name: /save the search keywords/i })
+
+    expect(textarea().value).toBe('stored unsaved edit')
+    expect(screen.getByText('unsaved')).toBeInTheDocument()
+  })
+})
+
+function negativeKeywordsBox() {
+  return screen.getByLabelText('Negative keywords') as HTMLTextAreaElement
+}
+function negativeKeywordsButton() {
+  return screen.getByRole('button', {
+    name: /save the negative keywords|clear the negative keywords/i,
+  })
+}
+
+describe('PhotoDescription — negative keywords', () => {
+  it('renders no negative-keyword block when the host supplies no save', () => {
+    render(
+      <PhotoDescription
+        description="stored"
+        emptyNote="empty"
+        onSave={vi.fn(async () => OK)}
+        onRedescribe={vi.fn(async () => OK)}
+      />,
+    )
+    expect(screen.queryByLabelText('Negative keywords')).not.toBeInTheDocument()
+  })
+
+  it('renders independently of the search-keywords block', () => {
+    render(
+      <PhotoDescription
+        description="stored"
+        emptyNote="empty"
+        onSave={vi.fn(async () => OK)}
+        onRedescribe={vi.fn(async () => OK)}
+        onSaveNegativeKeywords={vi.fn(async () => OK)}
+      />,
+    )
+    expect(screen.getByLabelText('Negative keywords')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Search keywords')).not.toBeInTheDocument()
+  })
+
+  it('shows the stored value and saves the box text', async () => {
+    const user = userEvent.setup()
+    const onSaveNegativeKeywords = vi.fn(async () => OK)
+    render(
+      <PhotoDescription
+        description="stored"
+        emptyNote="empty"
+        onSave={vi.fn(async () => OK)}
+        onRedescribe={vi.fn(async () => OK)}
+        negativeSearchKeywords="tete"
+        onSaveNegativeKeywords={onSaveNegativeKeywords}
+      />,
+    )
+    expect(negativeKeywordsBox().value).toBe('tete')
+    expect(negativeKeywordsButton()).toBeDisabled()
+
+    await user.type(negativeKeywordsBox(), ', payudara')
+    expect(negativeKeywordsButton()).toBeEnabled()
+    await user.click(negativeKeywordsButton())
+
+    expect(onSaveNegativeKeywords).toHaveBeenCalledWith('tete, payudara')
+  })
+
+  it('labels the save as Clear once an emptied box would null the stored value', async () => {
+    const user = userEvent.setup()
+    render(
+      <PhotoDescription
+        description="stored"
+        emptyNote="empty"
+        onSave={vi.fn(async () => OK)}
+        onRedescribe={vi.fn(async () => OK)}
+        negativeSearchKeywords="tete"
+        onSaveNegativeKeywords={vi.fn(async () => OK)}
+      />,
+    )
+    await user.clear(negativeKeywordsBox())
+    expect(
+      screen.getByRole('button', { name: 'Clear the negative keywords' }),
+    ).toBeInTheDocument()
+  })
+
+  it('caps the box at the negative-keyword ceiling', () => {
+    render(
+      <PhotoDescription
+        description="stored"
+        emptyNote="empty"
+        onSave={vi.fn(async () => OK)}
+        onRedescribe={vi.fn(async () => OK)}
+        negativeSearchKeywords={null}
+        onSaveNegativeKeywords={vi.fn(async () => OK)}
+      />,
+    )
+    expect(negativeKeywordsBox().maxLength).toBe(ADMIN_AVATAR_MAX_NEGATIVE_SEARCH_KEYWORDS_CHARS)
+  })
+
+  it('a negative-keyword save in flight locks the description save and the describe button', async () => {
+    const user = userEvent.setup()
+    const gate = deferred<DescribeOutcome>()
+    render(
+      <PhotoDescription
+        description="stored"
+        emptyNote="empty"
+        onSave={vi.fn(async () => OK)}
+        onRedescribe={vi.fn(async () => OK)}
+        negativeSearchKeywords="tete"
+        onSaveNegativeKeywords={() => gate.promise}
+      />,
+    )
+    await user.type(textarea(), ' x')
+    await user.type(negativeKeywordsBox(), ', payudara')
+    await user.click(negativeKeywordsButton())
+
+    expect(saveButton()).toBeDisabled()
+    expect(describeButton()).toBeDisabled()
+    expect(negativeKeywordsBox()).toBeDisabled()
+    expect(textarea()).toBeEnabled()
+
+    gate.resolve(OK)
+  })
+
+  it('a negative-keyword save leaves an unsaved description draft alone', async () => {
+    const user = userEvent.setup()
+    render(
+      <PhotoDescription
+        description="stored"
+        emptyNote="empty"
+        onSave={vi.fn(async () => OK)}
+        onRedescribe={vi.fn(async () => OK)}
+        negativeSearchKeywords="tete"
+        onSaveNegativeKeywords={vi.fn(async () => OK)}
+      />,
+    )
+    await user.type(textarea(), ' unsaved edit')
+    await user.type(negativeKeywordsBox(), ', payudara')
+    await user.click(negativeKeywordsButton())
+    await screen.findByRole('button', { name: /save the negative keywords/i })
 
     expect(textarea().value).toBe('stored unsaved edit')
     expect(screen.getByText('unsaved')).toBeInTheDocument()

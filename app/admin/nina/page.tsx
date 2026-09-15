@@ -273,6 +273,10 @@ export default async function AdminNinaPage(props: PageProps<'/admin/nina'>) {
       /* R2, 2026-09-15. Rendered and edited by the rail's keyword box; `avatarColumns` carries it
        * now, and the Media arm has no counterpart because that table has no such column. */
       searchKeywords: row.searchKeywords,
+      /* R2 follow-up, 2026-09-15. Rendered and edited by the rail's negative-keyword box;
+       * `avatarColumns` carries it now, and the Media arm has no counterpart because that table
+       * has no such column. */
+      negativeSearchKeywords: row.negativeSearchKeywords,
       crop: { scale: row.cropScale, x: row.cropX, y: row.cropY },
       createdAt: row.createdAt.toISOString(),
     }))

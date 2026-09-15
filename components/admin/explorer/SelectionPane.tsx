@@ -19,6 +19,7 @@ import {
   deleteNinaAvatarAction,
   describeNinaAvatarAction,
   editNinaAvatarDescriptionAction,
+  editNinaAvatarNegativeSearchKeywordsAction,
   editNinaAvatarSearchKeywordsAction,
   saveNinaAvatarCropAction,
   setCurrentNinaAvatarAction,
@@ -400,8 +401,9 @@ function AlbumSelectionPane({
        * an `AlbumExplorerPhoto` (Phase 2's dispatcher narrowed it), so no `origin` read and no
        * branch is needed — the media arm's twin mount lives in `MediaPane.tsx`.
        *
-       * R2 adds the keyword box to THIS arm only, and the same fact is what decides it: an album
-       * row has `search_keywords`, a media row's table does not.
+       * R2 adds the keyword box to THIS arm only, and R2's follow-up adds the negative-keyword
+       * box beside it for the same fact: an album row has `search_keywords` and
+       * `negative_search_keywords`, a media row's table has neither.
        */}
       <PhotoDescription
         description={photo.description}
@@ -414,6 +416,11 @@ function AlbumSelectionPane({
         searchKeywords={photo.searchKeywords}
         onSaveKeywords={(text) =>
           editNinaAvatarSearchKeywordsAction({ id: photo.id, searchKeywords: text })
+        }
+        /* R2 follow-up, 2026-09-15. Same album-only reasoning as the pair above. */
+        negativeSearchKeywords={photo.negativeSearchKeywords}
+        onSaveNegativeKeywords={(text) =>
+          editNinaAvatarNegativeSearchKeywordsAction({ id: photo.id, negativeSearchKeywords: text })
         }
       />
     </aside>

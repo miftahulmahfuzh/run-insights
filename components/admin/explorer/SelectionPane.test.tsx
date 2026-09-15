@@ -45,6 +45,7 @@ const {
   deleteNinaAvatarAction,
   describeNinaAvatarAction,
   editNinaAvatarDescriptionAction,
+  editNinaAvatarNegativeSearchKeywordsAction,
   editNinaAvatarSearchKeywordsAction,
   saveNinaAvatarCropAction,
   setCurrentNinaAvatarAction,
@@ -52,6 +53,7 @@ const {
   deleteNinaAvatarAction: vi.fn(),
   describeNinaAvatarAction: vi.fn(),
   editNinaAvatarDescriptionAction: vi.fn(),
+  editNinaAvatarNegativeSearchKeywordsAction: vi.fn(),
   editNinaAvatarSearchKeywordsAction: vi.fn(),
   saveNinaAvatarCropAction: vi.fn(),
   setCurrentNinaAvatarAction: vi.fn(),
@@ -60,6 +62,7 @@ vi.mock('@/lib/admin/ninaAlbumActions', () => ({
   deleteNinaAvatarAction,
   describeNinaAvatarAction,
   editNinaAvatarDescriptionAction,
+  editNinaAvatarNegativeSearchKeywordsAction,
   editNinaAvatarSearchKeywordsAction,
   saveNinaAvatarCropAction,
   setCurrentNinaAvatarAction,
@@ -93,6 +96,7 @@ function albumPhoto(overrides?: Partial<AlbumExplorerPhoto>): AlbumExplorerPhoto
     isCurrent: false,
     description: null,
     searchKeywords: null,
+    negativeSearchKeywords: null,
     crop: { scale: 1, x: 0, y: 0 },
     createdAt: '2026-09-01T00:00:00.000Z',
     folder: 'bali',
@@ -155,6 +159,7 @@ describe('AlbumSelectionPane (via SelectionPane)', () => {
     describeNinaAvatarAction.mockReset().mockResolvedValue({ ok: true })
     editNinaAvatarDescriptionAction.mockReset().mockResolvedValue({ ok: true })
     editNinaAvatarSearchKeywordsAction.mockReset().mockResolvedValue({ ok: true })
+    editNinaAvatarNegativeSearchKeywordsAction.mockReset().mockResolvedValue({ ok: true })
     saveNinaAvatarCropAction.mockReset().mockResolvedValue({ ok: true })
     setCurrentNinaAvatarAction.mockReset().mockResolvedValue({ ok: true })
     saver.busy = false
@@ -315,6 +320,22 @@ describe('AlbumSelectionPane (via SelectionPane)', () => {
     expect(editNinaAvatarSearchKeywordsAction).toHaveBeenCalledWith({
       id: 'p1',
       searchKeywords: 'tete, putih',
+    })
+  })
+
+  it('wires the negative-keyword box to its own album action with the row id', async () => {
+    const user = userEvent.setup()
+    render(
+      <SelectionPane {...baseProps()} photo={albumPhoto({ negativeSearchKeywords: 'tete' })} />,
+    )
+
+    const box = screen.getByLabelText('Negative keywords')
+    await user.type(box, ', payudara')
+    await user.click(screen.getByRole('button', { name: /save the negative keywords/i }))
+
+    expect(editNinaAvatarNegativeSearchKeywordsAction).toHaveBeenCalledWith({
+      id: 'p1',
+      negativeSearchKeywords: 'tete, payudara',
     })
   })
 

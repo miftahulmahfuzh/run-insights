@@ -61,7 +61,7 @@ let deferred: Deferred
 let route: Route
 let fake: FakeDb
 
-/** `avatarColumns` in projection order — 19 values, `getNinaAvatar`'s own shape. */
+/** `avatarColumns` in projection order — 20 values, `getNinaAvatar`'s own shape. */
 function avatarRow(overrides: Record<string, unknown> = {}): unknown[] {
   return projectedRow(
     'id' in overrides ? overrides.id : ID,
@@ -80,6 +80,7 @@ function avatarRow(overrides: Record<string, unknown> = {}): unknown[] {
     'cropY' in overrides ? overrides.cropY : null,
     'description' in overrides ? overrides.description : null,
     'searchKeywords' in overrides ? overrides.searchKeywords : null,
+    'negativeSearchKeywords' in overrides ? overrides.negativeSearchKeywords : null,
     'isCurrent' in overrides ? overrides.isCurrent : false,
     'announcedAt' in overrides ? overrides.announcedAt : null,
     '2026-09-01 09:00:00+00',

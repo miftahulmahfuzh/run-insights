@@ -176,6 +176,13 @@
       "when": 1789460463110,
       "tag": "0024_nina_avatar_search_keywords",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1789463035953,
+      "tag": "0025_handy_santa_claus",
+      "breakpoints": true
     }
   ]
 }

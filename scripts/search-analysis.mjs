@@ -43,6 +43,12 @@
 // function), so they cannot be imported, and without them "rank 61, score 0.1842" is a number
 // rather than a diagnosis. They are echoed into the report so a reader can check the copy against
 // the source in one glance. They are NEVER applied to the query.
+//
+// `matchesNegativeKeyword` below is the THIRD such duplicate, added with
+// `nina-album-search-relevance-tools` R2's follow-up (2026-09-15): `negative_search_keywords` is a
+// third gate the app applies and this report must account for, or `wouldAppearInApp` would read
+// `true` for a row the app is actually hiding. It is copied rather than imported for the same
+// module-private reason and kept byte-for-byte in step with `avatarsearch.ts`'s own copy.
 import { buildNinaAvatarEmbedText } from '../lib/nina/avatarEmbedText.ts'
 
 const EMBEDDINGS_URL = 'https://openrouter.ai/api/v1/embeddings'
@@ -51,6 +57,22 @@ const EMBEDDING_MODEL = 'openai/text-embedding-3-small'
 /* Mirrors of `lib/nina/queries/avatarsearch.ts:64` and `:100`. Reported, never applied. */
 const NINA_SEARCH_LIMIT = 48
 const NINA_SEARCH_MIN_SCORE = 0.2
+
+/* Mirror of `matchesNegativeKeyword` in `lib/nina/queries/avatarsearch.ts` — whole-word,
+ * case-insensitive, comma-split. Reported, never applied differently than the app applies it: the
+ * point here is not to skip the gate, it is to know whether it fired. */
+function matchesNegativeKeyword(queryText, negativeSearchKeywords) {
+  if (negativeSearchKeywords == null) return false
+  const query = queryText.toLowerCase()
+  return negativeSearchKeywords
+    .split(',')
+    .map((phrase) => phrase.trim())
+    .filter((phrase) => phrase.length > 0)
+    .some((phrase) => {
+      const escaped = phrase.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      return new RegExp(`\\b${escaped}\\b`, 'i').test(query)
+    })
+}
 
 /* `lib/id.ts`'s alphabet, 1..12 symbols. A fragment outside it cannot be part of any id we mint, so
  * it is a typo and is refused before a round trip. */
@@ -132,7 +154,7 @@ const sql = neon(url)
  * NOT scoped to a user: the operator names a photograph, not an owner. The user scope is applied to
  * the RANKING below, taken from whichever row this resolves to. */
 const matches = await sql`
-  select id, user_id, folder, filename, description, search_keywords,
+  select id, user_id, folder, filename, description, search_keywords, negative_search_keywords,
          (description_embedding is not null) as has_embedding
   from nina_avatars
   where strpos(id, ${fragment}::text) > 0
@@ -236,6 +258,12 @@ if (!target.has_embedding) {
       `relevance floor: score ${score.toFixed(4)} is under NINA_SEARCH_MIN_SCORE (${NINA_SEARCH_MIN_SCORE})`,
     )
   }
+  if (matchesNegativeKeyword(query, target.negative_search_keywords)) {
+    cutBy.push(
+      `negative keyword: negative_search_keywords ${JSON.stringify(target.negative_search_keywords)} ` +
+        `matches a whole word in the query ${JSON.stringify(query)}`,
+    )
+  }
 }
 
 const snippet = (text) =>
@@ -288,6 +316,7 @@ emit(
       filename: target.filename,
       description: target.description,
       searchKeywords: target.search_keywords,
+      negativeSearchKeywords: target.negative_search_keywords,
       /* The exact text this row's vector was computed from — Phase 2's one combine function, not a
        * second spelling of it. `null` when the row has no description to anchor on. */
       embeddedText:

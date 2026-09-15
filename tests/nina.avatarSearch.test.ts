@@ -79,7 +79,7 @@ describe('the ranking is index-shaped', () => {
   it('caps the limit at 48 however much a caller asks for', async () => {
     // 48 is also the length of PhotoViewer's dot row once phase 4 opens the overlay over the
     // whole result set — see NINA_SEARCH_LIMIT's note. Raising it is a UI change, not a tuning.
-    await queries.searchNinaAvatarsByText(USER, TEXT_VECTOR, { limit: 5000 })
+    await queries.searchNinaAvatarsByText(USER, TEXT_VECTOR, null, { limit: 5000 })
 
     expect(fake.queries[0]?.params).toContain(48)
   })
@@ -141,6 +141,7 @@ describe('the rows come back scored', () => {
           null, // cropY
           'she is on a beach', // description
           null, // searchKeywords
+          null, // negativeSearchKeywords
           false, // isCurrent
           null, // announcedAt
           '2026-09-01 10:00:00+00', // createdAt
@@ -180,6 +181,7 @@ describe('the relevance threshold cuts the ranked tail', () => {
           null, // cropY
           'she is on a beach', // description
           null, // searchKeywords
+          null, // negativeSearchKeywords
           false, // isCurrent
           null, // announcedAt
           '2026-09-01 10:00:00+00', // createdAt
@@ -202,6 +204,7 @@ describe('the relevance threshold cuts the ranked tail', () => {
           null, // cropY
           'she is in a pool', // description
           null, // searchKeywords
+          null, // negativeSearchKeywords
           false, // isCurrent
           null, // announcedAt
           '2026-09-02 10:00:00+00', // createdAt
@@ -221,6 +224,92 @@ describe('the relevance threshold cuts the ranked tail', () => {
      * retuning — and a threshold moved past either fixture breaks this test on purpose, forcing
      * the fixtures to be re-read against the new value. */
     expect(page.rows.map((row) => row.id)).toEqual(['avtAAAAAAAAA'])
+  })
+})
+
+describe('negative keywords exclude a row from the query that names them', () => {
+  const rowWithNegativeKeywords = (negativeSearchKeywords: string | null, score = 0.82) =>
+    projectedRow(
+      'avtAAAAAAAAA', // id
+      'https://blob/x.jpg', // blobUrl
+      'nina/u/x.jpg', // pathname
+      '2026/bali', // folder
+      'x.jpg', // filename
+      null, // thumbUrl
+      null, // thumbPathname
+      1024, // width
+      768, // height
+      200_000, // bytes
+      'upload', // source
+      null, // cropScale
+      null, // cropX
+      null, // cropY
+      'she is on a horse', // description
+      null, // searchKeywords
+      negativeSearchKeywords,
+      false, // isCurrent
+      null, // announcedAt
+      '2026-09-01 10:00:00+00', // createdAt
+      score,
+    )
+
+  it('drops a row whose negative keyword is a whole word in the typed query', async () => {
+    fake.enqueue([rowWithNegativeKeywords('tete')], [projectedRow(1)])
+
+    const page = await queries.searchNinaAvatarsByText(USER, TEXT_VECTOR, 'tete gede nina')
+
+    expect(page.rows).toHaveLength(0)
+    /* `total` is the candidate count, untouched by either filter — the same rule the relevance
+     * floor already follows. */
+    expect(page.total).toBe(1)
+  })
+
+  it('keeps a row when the negative keyword is only a SUBSTRING of a query word', async () => {
+    fake.enqueue([rowWithNegativeKeywords('tete')], [projectedRow(1)])
+
+    const page = await queries.searchNinaAvatarsByText(USER, TEXT_VECTOR, 'tetesan air')
+
+    expect(page.rows.map((row) => row.id)).toEqual(['avtAAAAAAAAA'])
+  })
+
+  it('matches case-insensitively and honours a comma-separated list', async () => {
+    fake.enqueue([rowWithNegativeKeywords('Tete, payudara')], [projectedRow(1)])
+
+    const page = await queries.searchNinaAvatarsByText(USER, TEXT_VECTOR, 'PAYUDARA besar')
+
+    expect(page.rows).toHaveLength(0)
+  })
+
+  it('does not exclude anything when no query text is given (no caller passes one today)', async () => {
+    fake.enqueue([rowWithNegativeKeywords('tete')], [projectedRow(1)])
+
+    const page = await queries.searchNinaAvatarsByText(USER, TEXT_VECTOR)
+
+    expect(page.rows.map((row) => row.id)).toEqual(['avtAAAAAAAAA'])
+  })
+
+  it('never applies to image-caption search — a caption is not something the operator typed', async () => {
+    fake.enqueue([rowWithNegativeKeywords('tete')], [projectedRow(1)])
+
+    /* The caption happens to contain the exact word "tete" — the vision model's own words — and
+     * it must not be checked against the row's negative keywords: R2's whole point is excluding a
+     * TYPED query, and there is no typed query on this arm. */
+    const page = await queries.searchNinaAvatarsByImageCaption(USER, TEXT_VECTOR)
+
+    expect(page.rows.map((row) => row.id)).toEqual(['avtAAAAAAAAA'])
+  })
+
+  it('applies to the combined search, checked against the TYPED half only', async () => {
+    fake.enqueue([rowWithNegativeKeywords('tete')], [projectedRow(1)])
+
+    const page = await queries.searchNinaAvatarsByTextAndCaption(
+      USER,
+      TEXT_VECTOR,
+      CAPTION_VECTOR,
+      'tete',
+    )
+
+    expect(page.rows).toHaveLength(0)
   })
 })
 

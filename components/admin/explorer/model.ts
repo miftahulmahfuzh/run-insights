@@ -81,6 +81,16 @@ export interface AlbumExplorerPhoto extends ExplorerPhotoBase {
    * model except as part of the text this row's vector is computed from, server-side.
    */
   searchKeywords: string | null
+  /**
+   * The operator's hand-written EXCLUSION phrases, or `null`. R2 follow-up, 2026-09-15.
+   *
+   * ALBUM-ONLY for the same reason `searchKeywords` above is: `nina_message_images` has no such
+   * column. Unlike `searchKeywords` this value is never folded into the vector — it is read only
+   * by the ranker, against the operator's typed query — but it IS rendered and edited here for the
+   * identical reason: the rail is where the operator looks at the photo while deciding what it
+   * should never answer to.
+   */
+  negativeSearchKeywords: string | null
 }
 
 /**

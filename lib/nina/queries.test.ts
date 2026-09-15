@@ -8,7 +8,7 @@ import * as barrel from '@/lib/nina/queries'
  * Every consumer of the Nina layer imports from `@/lib/nina/queries`, and the split into
  * `lib/nina/queries/*` must not change what that import exposes: the 14 source importers and
  * `NinaUnreadBadge.test.tsx`'s `vi.mock` keep working untouched. This test freezes the exact
- * RUNTIME surface — the 92 exported functions below, sorted — derived mechanically from
+ * RUNTIME surface — the 93 exported functions below, sorted — derived mechanically from
  * `queries.ts` by a TypeScript-AST walk BEFORE any section moved. Type-only exports (the
  * file's 30 — 27 of them §1 interfaces, three riding in §5b/§12) are invisible here by
  * nature and are covered by `npm run typecheck` against the live importers.
@@ -31,6 +31,9 @@ import * as barrel from '@/lib/nina/queries'
  * `photos.find(...)`, so a search hit from another folder cannot be selected without the server
  * saying where it lives first. (Phase 2 of the same set adds
  * `setNinaAvatarSearchKeywordsAndEmbedding`; the two are independent and land in either order.)
+ *
+ * The same set's R2 follow-up (2026-09-15) takes it 92 → 93: `setNinaAvatarNegativeSearchKeywords`,
+ * the plain writer for the new `negative_search_keywords` exclusion column.
  */
 const BARREL_VALUE_EXPORTS = [
   'adoptNinaMessageImage',
@@ -126,6 +129,11 @@ const BARREL_VALUE_EXPORTS = [
   'setNinaAvatarDescription',
   // admin-album-semantic-search phase 2: writes prose and vector in one UPDATE.
   'setNinaAvatarDescriptionAndEmbedding',
+  // nina-album-search-relevance-tools R2 follow-up (2026-09-15): the negative_search_keywords
+  // writer, documented growth under this file's "a name was ADDED" rule. A PLAIN setter, unlike
+  // its two neighbours — this column never touches description_embedding, so there is no second
+  // column to write in the same statement (see `lib/nina/queries/avatars.ts`'s header).
+  'setNinaAvatarNegativeSearchKeywords',
   // nina-album-search-relevance-tools phase 2: the search_keywords writer, documented growth under
   // this file's "a name was ADDED" rule. Its twin one line up writes the other input to the same
   // derived column; see `lib/nina/queries/avatarEmbeddings.ts`'s header for why both exist.

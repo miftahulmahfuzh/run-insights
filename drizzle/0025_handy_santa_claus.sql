@@ -1,0 +1,16 @@
+-- nina-album-search-relevance-tools R2 follow-up, 2026-09-15. Additive only: ONE nullable text
+-- column, no default, no index, no backfill — the same shape 0024 already used for
+-- `search_keywords`, for the same reasons.
+--
+-- This column is the mirror image of that one rather than a second copy of it: `search_keywords`
+-- is an INPUT to `description_embedding` (folded into the vector); this column is READ, alone, by
+-- the ranker (`lib/nina/queries/avatarsearch.ts`'s `matchesNegativeKeyword`), against the
+-- operator's typed query text, and never touches the vector at all. NULL means no exclusion is
+-- configured — the value every existing row carries — and it is a legal state forever.
+--
+-- BEFORE RUNNING: check `git log origin/main -- drizzle/` for a migration numbered 0025 that
+-- landed while this branch was in flight. If one has, REGENERATE from the merged schema — never
+-- renumber this file by hand. `drizzle/0024_nina_avatar_search_keywords.sql`'s own header records
+-- that exact repair, and `scripts/check-schema-drift.mjs` explains why a renamed file strands
+-- itself below the ledger watermark permanently.
+ALTER TABLE "nina_avatars" ADD COLUMN "negative_search_keywords" text;

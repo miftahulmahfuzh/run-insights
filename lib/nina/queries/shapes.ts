@@ -387,6 +387,9 @@ export interface NinaAvatarRow {
   /** The operator's hand-written search phrases, or `null`. R2, 2026-09-15 — see the column's own
    * header in `lib/db/schema/nina/avatars.ts` for why it exists and what it feeds. */
   searchKeywords: string | null
+  /** The operator's hand-written exclusion phrases, or `null`. R2 follow-up, 2026-09-15 — see the
+   * column's own header in `lib/db/schema/nina/avatars.ts` for why it exists and what it feeds. */
+  negativeSearchKeywords: string | null
   isCurrent: boolean
   announcedAt: Date | null
   createdAt: Date

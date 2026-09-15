@@ -111,7 +111,7 @@ function imageRow(overrides: Record<string, unknown> = {}): unknown[] {
   )
 }
 
-/** `avatarColumns` in projection order — 19 values. */
+/** `avatarColumns` in projection order — 20 values. */
 function avatarRow(overrides: Record<string, unknown> = {}): unknown[] {
   return projectedRow(
     pick(overrides, 'id', AVATAR_ID),
@@ -130,6 +130,7 @@ function avatarRow(overrides: Record<string, unknown> = {}): unknown[] {
     pick(overrides, 'cropY', null),
     pick(overrides, 'description', SOURCE_DESCRIPTION),
     pick(overrides, 'searchKeywords', null),
+    pick(overrides, 'negativeSearchKeywords', null),
     pick(overrides, 'isCurrent', false),
     pick(overrides, 'announcedAt', null),
     '2026-09-01 09:00:00+00',

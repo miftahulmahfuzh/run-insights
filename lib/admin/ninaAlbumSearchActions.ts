@@ -69,16 +69,23 @@ import {
  * The throw is unreachable: `ninaAlbumSearchSchema`'s refine guarantees at least one arm. It is a
  * throw rather than an empty page because a silent empty result here would look exactly like "the
  * album has nothing like that", which is the one wrong answer this function could give.
+ *
+ * `typed` rides along beside the embeddings — `nina-album-search-relevance-tools` R2 follow-up —
+ * so the data layer can check a row's hand-written negative keywords against the actual words the
+ * operator typed, not the vector they became. It is `null` on the image-only arm for the same
+ * reason `searchNinaAvatarsByImageCaption` never receives it: a vision-model caption is not
+ * something the operator typed.
  */
 async function runSearch(
   userId: string,
   textEmbedding: number[] | null,
   captionEmbedding: number[] | null,
+  typed: string | null,
 ) {
   if (textEmbedding !== null && captionEmbedding !== null) {
-    return searchNinaAvatarsByTextAndCaption(userId, textEmbedding, captionEmbedding)
+    return searchNinaAvatarsByTextAndCaption(userId, textEmbedding, captionEmbedding, typed)
   }
-  if (textEmbedding !== null) return searchNinaAvatarsByText(userId, textEmbedding)
+  if (textEmbedding !== null) return searchNinaAvatarsByText(userId, textEmbedding, typed)
   if (captionEmbedding !== null) return searchNinaAvatarsByImageCaption(userId, captionEmbedding)
   throw new Error('searchNinaAvatarsAction: no query arm — the schema should have refused this')
 }
@@ -176,7 +183,7 @@ export async function searchNinaAvatarsAction(input: unknown): Promise<AdminSear
       caption === null ? null : embedNinaText(caption, { userId }),
     ])
 
-    const page = await runSearch(userId, textEmbedding, captionEmbedding)
+    const page = await runSearch(userId, textEmbedding, captionEmbedding, typed)
 
     return {
       ok: true,

@@ -28,6 +28,7 @@ import {
   ADMIN_AVATAR_CONTENT_TYPES,
   ADMIN_AVATAR_ID_RE,
   ADMIN_AVATAR_MAX_EDGE_PX,
+  ADMIN_AVATAR_MAX_NEGATIVE_SEARCH_KEYWORDS_CHARS,
   ADMIN_AVATAR_MAX_SEARCH_KEYWORDS_CHARS,
   ADMIN_AVATAR_MAX_UPLOAD_BYTES,
   ADMIN_AVATAR_MIN_EDGE_PX,
@@ -141,6 +142,31 @@ export const avatarSearchKeywordsField = z
 export const avatarSearchKeywordsSchema = z.object({
   id: avatarIdSchema,
   searchKeywords: avatarSearchKeywordsField,
+})
+
+/**
+ * **The hand-written EXCLUSION phrases, as a field** — `nina-album-search-relevance-tools` R2
+ * follow-up, 2026-09-15. `"tete"`.
+ *
+ * The same normalisation as `avatarSearchKeywordsField` and for the identical reason: this is a
+ * LINE, not a paragraph, and it is about to be checked word-for-word against a typed query, so
+ * every run of whitespace folds to one space rather than being preserved as paragraph formatting.
+ * No splitting, no sorting, no de-duplication, no case folding — `matchesNegativeKeyword`
+ * (`lib/nina/queries/avatarsearch.ts`) owns the comma split and the case-insensitive compare; this
+ * schema only bounds the shape.
+ */
+export const avatarNegativeSearchKeywordsField = z
+  .string()
+  .max(ADMIN_AVATAR_MAX_NEGATIVE_SEARCH_KEYWORDS_CHARS)
+  .transform((value) => value.replace(/\s+/g, ' ').trim())
+
+/**
+ * The hand-edit write. `avatarSearchKeywordsSchema`'s exact twin for the other free-text column —
+ * see `editNinaAvatarNegativeSearchKeywordsAction`.
+ */
+export const avatarNegativeSearchKeywordsSchema = z.object({
+  id: avatarIdSchema,
+  negativeSearchKeywords: avatarNegativeSearchKeywordsField,
 })
 
 /**

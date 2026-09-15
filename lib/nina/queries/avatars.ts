@@ -214,6 +214,29 @@ export async function setNinaAvatarDescription(
 }
 
 /**
+ * Write the hand-written EXCLUSION phrases. `nina-album-search-relevance-tools` R2 follow-up,
+ * 2026-09-15.
+ *
+ * A PLAIN setter, unlike `setNinaAvatarSearchKeywordsAndEmbedding` — deliberately, because this
+ * column never touches `description_embedding`. It is read only by the ranker, against the typed
+ * query, and never joined into the text a vector is computed from; there is no derived value to
+ * keep in step, so there is no second column to write in the same statement and no re-embed to
+ * schedule afterwards.
+ */
+export async function setNinaAvatarNegativeSearchKeywords(
+  userId: string,
+  id: string,
+  negativeSearchKeywords: string | null,
+): Promise<boolean> {
+  const updated = await db
+    .update(ninaAvatars)
+    .set({ negativeSearchKeywords })
+    .where(and(eq(ninaAvatars.userId, userId), eq(ninaAvatars.id, id)))
+    .returning({ id: ninaAvatars.id })
+  return updated.length > 0
+}
+
+/**
  * One album row by id, ownership-scoped. Phase 15's `/admin/nina` uses it to validate an id
  * arriving from a form before it changes anything, and to read `width`/`height` back for the crop
  * clamp. Returns `null` for "not yours" and for "does not exist" alike — the caller has no

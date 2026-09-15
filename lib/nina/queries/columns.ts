@@ -90,6 +90,10 @@ export const avatarColumns = {
    * to the text that becomes `description_embedding`. Placed beside `description` because the two
    * are read together everywhere they are read at all. */
   searchKeywords: ninaAvatars.searchKeywords,
+  /* nina-album-search-relevance-tools R2 follow-up, 2026-09-15. Read by the album rail (to edit)
+   * and by `searchNinaAvatarsByText`/`searchNinaAvatarsByTextAndCaption` (to exclude a row from a
+   * query it names). Never folded into the embedded text — see the column's own header. */
+  negativeSearchKeywords: ninaAvatars.negativeSearchKeywords,
   isCurrent: ninaAvatars.isCurrent,
   announcedAt: ninaAvatars.announcedAt,
   createdAt: ninaAvatars.createdAt,

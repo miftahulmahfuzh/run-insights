@@ -4,7 +4,10 @@ import { useState } from 'react'
 
 import { CheckIcon, SparklesIcon } from '@/components/admin/photoIcons'
 import { Button, CONTROL_CLASS } from '@/components/ui'
-import { ADMIN_AVATAR_MAX_SEARCH_KEYWORDS_CHARS } from '@/lib/admin/avatars'
+import {
+  ADMIN_AVATAR_MAX_NEGATIVE_SEARCH_KEYWORDS_CHARS,
+  ADMIN_AVATAR_MAX_SEARCH_KEYWORDS_CHARS,
+} from '@/lib/admin/avatars'
 import { ADMIN_CHAT_PHOTO_MAX_DESCRIPTION_CHARS } from '@/lib/admin/chatPhotos'
 import { cn } from '@/lib/cn'
 
@@ -90,6 +93,8 @@ export function PhotoDescription({
   onRedescribe,
   searchKeywords = null,
   onSaveKeywords,
+  negativeSearchKeywords = null,
+  onSaveNegativeKeywords,
 }: {
   /** The row's stored prose, straight from the server. `null` is "not described yet". */
   description: string | null
@@ -114,12 +119,27 @@ export function PhotoDescription({
    * block is not rendered; see the docstring. An empty string clears the field.
    */
   onSaveKeywords?: (text: string) => Promise<DescribeOutcome>
+  /**
+   * R2 follow-up, 2026-09-15. The row's stored EXCLUSION line, or `null`. Same travel-together
+   * rule as `searchKeywords`: read only when `onSaveNegativeKeywords` is given.
+   */
+  negativeSearchKeywords?: string | null
+  /**
+   * R2 follow-up. The exclusion write, or ABSENT for a table with no such column. An empty string
+   * clears the field. Unlike `onSaveKeywords`, saving this does NOT re-embed the row — see the
+   * component's own note below, beside the box.
+   */
+  onSaveNegativeKeywords?: (text: string) => Promise<DescribeOutcome>
 }) {
   const stored = description ?? ''
   const storedKeywords = searchKeywords ?? ''
+  const storedNegativeKeywords = negativeSearchKeywords ?? ''
   const [draft, setDraft] = useState<string | null>(null)
   const [keywordsDraft, setKeywordsDraft] = useState<string | null>(null)
-  const [busy, setBusy] = useState<'save' | 'describe' | 'keywords' | null>(null)
+  const [negativeKeywordsDraft, setNegativeKeywordsDraft] = useState<string | null>(null)
+  const [busy, setBusy] = useState<'save' | 'describe' | 'keywords' | 'negativeKeywords' | null>(
+    null,
+  )
   const [error, setError] = useState<string | null>(null)
   const [note, setNote] = useState<string | null>(null)
 
@@ -131,6 +151,11 @@ export function PhotoDescription({
   const keywordsText = keywordsDraft ?? storedKeywords
   const keywordsDirty = keywordsDraft !== null && keywordsDraft !== storedKeywords
   const keywordsWillClear = keywordsText.trim().length === 0
+
+  const negativeKeywordsText = negativeKeywordsDraft ?? storedNegativeKeywords
+  const negativeKeywordsDirty =
+    negativeKeywordsDraft !== null && negativeKeywordsDraft !== storedNegativeKeywords
+  const negativeKeywordsWillClear = negativeKeywordsText.trim().length === 0
 
   const save = async () => {
     if (busy !== null || !dirty) return
@@ -176,6 +201,34 @@ export function PhotoDescription({
       } else {
         setNote(result.note ?? null)
         setKeywordsDraft(null)
+      }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'That save failed.')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  /**
+   * The negative-keyword save. `saveKeywords`'s body verbatim, its own draft, its own busy value —
+   * same reason: two independent columns, two independent drafts, and this one does not share the
+   * "all three verbs write `description_embedding`" lock argument `saveKeywords` makes, because
+   * this column never touches the vector. It still joins the ONE `busy` state rather than getting
+   * a fully separate lock, so a description save, a re-describe and either keyword save still
+   * cannot run concurrently against the same row.
+   */
+  const saveNegativeKeywords = async () => {
+    if (busy !== null || !negativeKeywordsDirty || onSaveNegativeKeywords == null) return
+    setBusy('negativeKeywords')
+    setError(null)
+    setNote(null)
+    try {
+      const result = await onSaveNegativeKeywords(negativeKeywordsText)
+      if (!result.ok) {
+        setError(result.error ?? 'That exclusion did not stick.')
+      } else {
+        setNote(result.note ?? null)
+        setNegativeKeywordsDraft(null)
       }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'That save failed.')
@@ -348,6 +401,70 @@ export function PhotoDescription({
           <p className="mt-1.5 text-[12px] leading-relaxed font-medium text-ink-3">
             Phrases, comma-separated. They are embedded with the description, so search can find the
             photo by them — saving re-embeds the row.
+          </p>
+        </div>
+      )}
+
+      {/*
+       * ── R2 FOLLOW-UP: THE NEGATIVE KEYWORDS ───────────────────────────────────────────────
+       * Rendered only for a table that HAS the column — same absent-not-disabled rule as the
+       * search keywords block. No re-describe twin, for the same reason: these are the
+       * operator's own words, naming a query this photo should never answer to.
+       */}
+      {onSaveNegativeKeywords != null && (
+        <div className="mt-4 border-t border-rule pt-3">
+          <p className="mb-1.5 text-[11px] font-semibold tracking-wide text-ink-3 uppercase">
+            Negative keywords
+          </p>
+
+          <textarea
+            aria-label="Negative keywords"
+            className={cn(CONTROL_CLASS, 'min-h-[56px] resize-y py-2 leading-relaxed')}
+            value={negativeKeywordsText}
+            maxLength={ADMIN_AVATAR_MAX_NEGATIVE_SEARCH_KEYWORDS_CHARS}
+            disabled={busy === 'negativeKeywords'}
+            placeholder="tete"
+            onChange={(event) => {
+              setNegativeKeywordsDraft(event.target.value)
+              setError(null)
+              setNote(null)
+            }}
+          />
+
+          <div className="mt-1.5 flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              size="md"
+              variant="secondary"
+              className="w-11 px-0"
+              aria-label={
+                negativeKeywordsWillClear && negativeSearchKeywords !== null
+                  ? 'Clear the negative keywords'
+                  : 'Save the negative keywords'
+              }
+              title={
+                negativeKeywordsWillClear && negativeSearchKeywords !== null
+                  ? 'Clear the negative keywords'
+                  : 'Save the negative keywords'
+              }
+              loading={busy === 'negativeKeywords'}
+              disabled={busy !== null || !negativeKeywordsDirty}
+              onClick={() => void saveNegativeKeywords()}
+            >
+              <CheckIcon className="size-4" />
+            </Button>
+
+            <span className="text-[11px] font-medium text-ink-3 tabular-nums">
+              {negativeKeywordsText.length}/{ADMIN_AVATAR_MAX_NEGATIVE_SEARCH_KEYWORDS_CHARS}
+            </span>
+            {negativeKeywordsDirty && (
+              <span className="text-[11px] font-semibold text-accent">unsaved</span>
+            )}
+          </div>
+
+          <p className="mt-1.5 text-[12px] leading-relaxed font-medium text-ink-3">
+            Words, comma-separated. A search containing one of them as a whole word never shows
+            this photo — the description is not re-embedded, and nothing else changes.
           </p>
         </div>
       )}

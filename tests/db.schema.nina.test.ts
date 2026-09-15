@@ -264,7 +264,7 @@ describe('memory: the slots, the ledger, and R26 hand-editing', () => {
 })
 
 describe('nina_avatars', () => {
-  it('carries exactly the twenty-two columns phases 12-15, F34, the duplicate push, the album search and R2 were written against', () => {
+  it('carries exactly the twenty-three columns phases 12-15, F34, the duplicate push, the album search and R2 were written against', () => {
     expect(names(schema.ninaAvatars)).toEqual(
       [
         'id',
@@ -293,6 +293,9 @@ describe('nina_avatars', () => {
         // R2, 2026-09-15: the operator's hand-written phrases, folded into the text that becomes
         // `description_embedding` — never a second thing to rank by. See the column's own header.
         'search_keywords',
+        // R2 follow-up, 2026-09-15: the mirror image of `search_keywords` — read alone by the
+        // ranker against the typed query, never folded into the vector. See the column's header.
+        'negative_search_keywords',
         // 2026-09-15: the vector form of `description`, and the only thing the album's semantic
         // search ranks by. Derived and nullable — `description` stays the source of truth.
         'description_embedding',

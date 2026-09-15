@@ -3,19 +3,24 @@
 import { revalidatePath } from 'next/cache'
 
 import { ADMIN_CHAT_PHOTO_MAX_DESCRIPTION_CHARS } from '@/lib/admin/chatPhotos'
-import { ADMIN_AVATAR_MAX_SEARCH_KEYWORDS_CHARS } from '@/lib/admin/avatars'
+import {
+  ADMIN_AVATAR_MAX_NEGATIVE_SEARCH_KEYWORDS_CHARS,
+  ADMIN_AVATAR_MAX_SEARCH_KEYWORDS_CHARS,
+} from '@/lib/admin/avatars'
 import type { AdminActionResult } from '@/lib/admin/ninaAlbumActions'
 import { embedNinaAvatarDescription, scheduleEmbed } from '@/lib/admin/ninaAlbumDeferredDescribe'
 import { requireAdmin } from '@/lib/admin/requireAdmin'
 import {
   avatarDescriptionSchema,
   avatarIdSchema,
+  avatarNegativeSearchKeywordsSchema,
   avatarSearchKeywordsSchema,
 } from '@/lib/admin/schema'
 import { describeSubjectForSide } from '@/lib/nina/album'
 import {
   getNinaAvatar,
   setNinaAvatarDescriptionAndEmbedding,
+  setNinaAvatarNegativeSearchKeywords,
   setNinaAvatarSearchKeywordsAndEmbedding,
 } from '@/lib/nina/queries'
 import { describeNinaImages } from '@/lib/nina/vision'
@@ -27,6 +32,8 @@ import { describeNinaImages } from '@/lib/nina/vision'
  *   · `describeNinaAvatarAction` is the button: the vendor call and the write.
  *   · `editNinaAvatarDescriptionAction` is the hand: prose without a model call.
  *   · `editNinaAvatarSearchKeywordsAction` is the tag: the other free-text input to the vector.
+ *   · `editNinaAvatarNegativeSearchKeywordsAction` is the muzzle: a query this photo must never
+ *     answer to, checked at read time and never folded into the vector at all.
  *   · `ensureNinaAvatarDescriptionAction` is the pre-share gate: describe only if empty, in band.
  *
  * The DEFERRED trigger is not here. `scheduleDescribe`, the `after()` pre-pass, lives in
@@ -231,6 +238,55 @@ export async function editNinaAvatarSearchKeywordsAction(
     ok: true,
     id,
     ...(next === null ? { note: 'Cleared. The photo is findable by its description alone.' } : {}),
+  }
+}
+
+/**
+ * **"Tell the search what this photograph should never match."** `nina-album-search-relevance-tools`
+ * R2 follow-up, 2026-09-15 — the mirror image of the action above, born from a real
+ * `/search-analysis` finding: a horse-photo bodysuit description that scores 0.22 against `"tete"`
+ * with no such word, or anything like it, anywhere in its prose — an incidental neighbour in
+ * embedding space that no accurate rewording of the description can fix, because the description
+ * is not wrong.
+ *
+ * ── NO MODEL CALL, NO VECTOR TOUCHED, NO `scheduleEmbed` ────────────────────────────────────
+ * The whole reason this is a plain setter rather than `editNinaAvatarSearchKeywordsAction`'s
+ * shape: `negative_search_keywords` is never folded into the text `description_embedding` is
+ * computed from (`buildNinaAvatarEmbedText` reads only `description` and `search_keywords`), so
+ * writing it changes nothing the vector describes. `setNinaAvatarNegativeSearchKeywords` sets one
+ * column and nothing else, and there is no derived value to re-earn afterwards.
+ *
+ * ── SAME BOX POLICY AS ITS NEIGHBOUR ────────────────────────────────────────────────────────
+ * AN EMPTY BOX CLEARS THE FIELD, and `NULL` is what every row without an exclusion already
+ * carries.
+ */
+export async function editNinaAvatarNegativeSearchKeywordsAction(
+  input: unknown,
+): Promise<AdminActionResult> {
+  const { userId } = await requireAdmin()
+
+  const parsed = avatarNegativeSearchKeywordsSchema.safeParse(input)
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: `Those keywords did not fit the field — ${ADMIN_AVATAR_MAX_NEGATIVE_SEARCH_KEYWORDS_CHARS} characters at most.`,
+    }
+  }
+  const { id, negativeSearchKeywords } = parsed.data
+
+  const row = await getNinaAvatar(userId, id)
+  if (row == null) return { ok: false, error: 'That photo is not in the album.' }
+
+  /* The empty box IS the clear — the same policy line the description and keyword edits run. */
+  const next = negativeSearchKeywords.length === 0 ? null : negativeSearchKeywords
+
+  await setNinaAvatarNegativeSearchKeywords(userId, id, next)
+
+  revalidatePath('/admin/nina')
+  return {
+    ok: true,
+    id,
+    ...(next === null ? { note: 'Cleared. No query is excluded for this photo any more.' } : {}),
   }
 }
 

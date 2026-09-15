@@ -295,6 +295,29 @@ export const ninaAvatars = pgTable(
      */
     searchKeywords: text('search_keywords'),
     /**
+     * **Hand-written EXCLUSION phrases, comma-separated** — `nina-album-search-relevance-tools`
+     * R2 follow-up, 2026-09-15. `"tete"`.
+     *
+     * The mirror image of `search_keywords` above rather than a second flavour of it: that column
+     * is an INPUT to `description_embedding` (folded into the vector, ranked by cosine similarity
+     * like everything else); this one is READ, alone, by the ranker itself, and never touches the
+     * vector. A row whose `description` sits in the wrong semantic neighbourhood for one query
+     * term — the horse-photo bodysuit description that scores 0.22 against `"tete"` with no such
+     * word anywhere in its prose, the case this column was built for — has no way to be pulled
+     * back out of that neighbourhood by rewriting prose the operator agrees is accurate. This
+     * column names the query word the photo should never answer to, instead.
+     *
+     * NULL means no exclusion is configured, which is the value every row carries until an
+     * operator adds one by hand — same nullable-additive shape `search_keywords` argues for
+     * itself. Matched WHOLE-WORD and case-insensititive against the operator's typed query text
+     * (`searchNinaAvatarsByText`'s `queryText` argument); a comma splits multiple phrases. See
+     * `lib/nina/queries/avatarsearch.ts`'s `matchesNegativeKeyword` for the match itself.
+     *
+     * Bounded by `ADMIN_AVATAR_MAX_NEGATIVE_SEARCH_KEYWORDS_CHARS`, the same way `search_keywords`
+     * is bounded at the boundary and not the column.
+     */
+    negativeSearchKeywords: text('negative_search_keywords'),
+    /**
      * **`description`, as a vector** — the album's semantic search ranks against this and nothing
      * else (2026-09-15). Derived, read-only-by-search, and never a second source of truth: the
      * prose in `description` above stays the one thing Nina's prompt reads.

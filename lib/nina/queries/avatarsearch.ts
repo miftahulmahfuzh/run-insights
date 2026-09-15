@@ -133,6 +133,38 @@ function cosineDistanceTo(embedding: readonly number[]): SQL {
 }
 
 /**
+ * **The other half of R2's exclusion feature: does the OPERATOR'S TYPED QUERY trip one of this
+ * row's negative keywords?** `nina-album-search-relevance-tools` R2 follow-up, 2026-09-15.
+ *
+ * Whole-word, case-insensitive, comma-split — deliberately the cheapest of the two matching
+ * strategies the design considered. `description_embedding`'s cosine ranking already answers
+ * "what is this SEMANTICALLY near"; a second, fuzzy semantic layer here (embed the negative
+ * phrase, penalize by its similarity to the query) would be a second tunable floor stacked on the
+ * one `NINA_SEARCH_MIN_SCORE` already is, for a feature whose whole point is a HARD, predictable
+ * exclusion the operator can reason about by reading the two boxes in the panel. A literal,
+ * exact-word match is that: `"tete"` excludes `"tete gede nina"` and does not touch `"tetesan
+ * air"`, and the operator can see exactly why from the two strings.
+ *
+ * `\b` is an ASCII word-boundary in a JS regex, which is a real limitation for scripts outside
+ * Latin — accepted deliberately, because every negative keyword and every query seen so far is
+ * Indonesian/English slang typed in Latin letters, the same alphabet `search_keywords` is written
+ * in. Each phrase is regex-escaped before being spliced in, so a keyword containing `.`, `(`, or
+ * any other metacharacter is matched LITERALLY rather than interpreted.
+ */
+function matchesNegativeKeyword(queryText: string, negativeSearchKeywords: string | null): boolean {
+  if (negativeSearchKeywords == null) return false
+  const query = queryText.toLowerCase()
+  return negativeSearchKeywords
+    .split(',')
+    .map((phrase) => phrase.trim())
+    .filter((phrase) => phrase.length > 0)
+    .some((phrase) => {
+      const escaped = phrase.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      return new RegExp(`\\b${escaped}\\b`, 'i').test(query)
+    })
+}
+
+/**
  * "Yours, and searchable." Both statements of every search share it, so the ranked page and the
  * coverage total can never disagree about what the candidate set was — the argument
  * `generatedChatPhotoScope` makes for the picker's page and its count.
@@ -167,6 +199,7 @@ async function rankByDistance(
   userId: string,
   distance: SQL,
   limit: number,
+  queryText: string | null,
 ): Promise<NinaAvatarSearchPage> {
   const scope = searchScope(userId)
 
@@ -185,8 +218,17 @@ async function rankByDistance(
 
   /* The relevance floor, applied to the fetched page — see `NINA_SEARCH_MIN_SCORE` for why the
    * cut lives here and not in a `WHERE`. Ordering is untouched: the rows arrive ranked and leave
-   * ranked, some of them gone. */
-  const rows = ranked.filter((row) => row.score >= NINA_SEARCH_MIN_SCORE)
+   * ranked, some of them gone.
+   *
+   * The negative-keyword exclusion rides the SAME filter, for the SAME reason: `queryText` is
+   * `null` for `searchNinaAvatarsByImageCaption` (a vision-model caption has no typed words a
+   * hand-written phrase could be checked against), so that search is untouched by construction —
+   * no branch, no flag, the `null` says it all. `total` is deliberately NOT reduced by either
+   * filter: it answers "how many rows were compared", not "how many passed", exactly as the
+   * relevance floor already does not move it. */
+  const rows = ranked
+    .filter((row) => row.score >= NINA_SEARCH_MIN_SCORE)
+    .filter((row) => queryText === null || !matchesNegativeKeyword(queryText, row.negativeSearchKeywords))
 
   return { rows, total: counted[0]?.total ?? 0 }
 }
@@ -201,9 +243,10 @@ async function rankByDistance(
 export async function searchNinaAvatarsByText(
   userId: string,
   queryEmbedding: readonly number[],
+  queryText: string | null = null,
   opts: { limit?: number } = {},
 ): Promise<NinaAvatarSearchPage> {
-  return rankByDistance(userId, cosineDistanceTo(queryEmbedding), clampLimit(opts.limit))
+  return rankByDistance(userId, cosineDistanceTo(queryEmbedding), clampLimit(opts.limit), queryText)
 }
 
 /**
@@ -222,7 +265,10 @@ export async function searchNinaAvatarsByImageCaption(
   captionEmbedding: readonly number[],
   opts: { limit?: number } = {},
 ): Promise<NinaAvatarSearchPage> {
-  return rankByDistance(userId, cosineDistanceTo(captionEmbedding), clampLimit(opts.limit))
+  /* `queryText: null` — an uploaded photo's caption is `glm-4.6v`'s prose, not a phrase the
+   * operator typed, so there is nothing a hand-written negative keyword could be checked against.
+   * See `rankByDistance`'s note. */
+  return rankByDistance(userId, cosineDistanceTo(captionEmbedding), clampLimit(opts.limit), null)
 }
 
 /**
@@ -249,8 +295,11 @@ export async function searchNinaAvatarsByTextAndCaption(
   userId: string,
   textEmbedding: readonly number[],
   captionEmbedding: readonly number[],
+  queryText: string | null = null,
   opts: { limit?: number } = {},
 ): Promise<NinaAvatarSearchPage> {
   const weighted = sql`(${NINA_SEARCH_TEXT_WEIGHT}::float8 * ${cosineDistanceTo(textEmbedding)} + ${NINA_SEARCH_CAPTION_WEIGHT}::float8 * ${cosineDistanceTo(captionEmbedding)})`
-  return rankByDistance(userId, weighted, clampLimit(opts.limit))
+  /* `queryText` here is the TYPED half only (R4's own text arm) — see the docstring's note on
+   * why the caption half is exempt: nothing the operator wrote is being checked against it. */
+  return rankByDistance(userId, weighted, clampLimit(opts.limit), queryText)
 }

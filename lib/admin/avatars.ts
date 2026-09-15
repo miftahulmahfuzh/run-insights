@@ -190,3 +190,17 @@ export function isAdminAvatarThumbRequestPathname(pathname: string, userId: stri
  * disagree."*
  */
 export const ADMIN_AVATAR_MAX_SEARCH_KEYWORDS_CHARS = 500
+
+/**
+ * **How long a hand-written EXCLUSION list may be** — `nina-album-search-relevance-tools` R2
+ * follow-up, 2026-09-15.
+ *
+ * Same 500 as `ADMIN_AVATAR_MAX_SEARCH_KEYWORDS_CHARS`, but for a different reason: this column
+ * never joins `description` into embedded text, so `NINA_EMBEDDING_MAX_CHARS`'s 8 000-character
+ * ceiling has nothing to say about it. The bound here is the same "a human types this, and 500
+ * characters is already ~30 comma-separated phrases" ceiling its twin argues for itself — a
+ * separate constant rather than a shared one, because the two columns' bounds happening to agree
+ * today is not a promise that they always will, and `avatarNegativeSearchKeywordsField`'s `.max()`
+ * must name ITS OWN reason, not borrow the search field's.
+ */
+export const ADMIN_AVATAR_MAX_NEGATIVE_SEARCH_KEYWORDS_CHARS = 500
