@@ -403,6 +403,8 @@ const captionNinaPhoto = vi.fn()
 const resolveNinaWriteSession = vi.fn()
 const revalidatePath = vi.fn()
 const notifyNinaPush = vi.fn()
+const findGlobalDuplicatePhoto = vi.fn()
+const notifyDuplicateImagePush = vi.fn()
 
 /**
  * `after()` is captured rather than executed, because the thing under test is precisely that the
@@ -462,6 +464,19 @@ vi.mock('@/lib/push/send', () => ({
   pushNotifier: vi.fn(),
 }))
 
+/**
+ * Phase 1's two seams. Mocked for the same two reasons the push module above is: the finder opens
+ * a database connection and the notifier reaches a push service, and plan invariant 7 forbids both
+ * in this suite. `findGlobalDuplicatePhoto` resolves `null` by default in `beforeEach`, so every
+ * pre-existing case in this file keeps today's behaviour exactly — a miss is a normal add.
+ */
+vi.mock('@/lib/photos/globalDuplicate', () => ({
+  findGlobalDuplicatePhoto: (...args: unknown[]) => findGlobalDuplicatePhoto(...args),
+}))
+vi.mock('@/lib/push/duplicateImage', () => ({
+  notifyDuplicateImagePush: (...args: unknown[]) => notifyDuplicateImagePush(...args),
+}))
+
 type Actions = typeof import('@/lib/admin/chatPhotoActions')
 let actions: Actions
 
@@ -514,6 +529,8 @@ beforeEach(async () => {
   updateNinaChatPhotoBlob.mockResolvedValue({ id: IMAGE_ID })
   updateNinaChatPhotoDescription.mockResolvedValue({ id: IMAGE_ID })
   notifyNinaPush.mockResolvedValue(undefined)
+  findGlobalDuplicatePhoto.mockResolvedValue(null)
+  notifyDuplicateImagePush.mockResolvedValue(undefined)
 
   actions = await import('@/lib/admin/chatPhotoActions')
 })
@@ -905,10 +922,15 @@ describe('addChatPhotoAction tells his phone (R2)', () => {
     expect(updateNinaMessage).toHaveBeenCalledWith(USER, MESSAGE_ID, CAPTION)
   })
 
-  it('the actions that mint no message announce nothing', async () => {
+  it('the actions that mint no message send no CHAT-BUBBLE push', async () => {
     // Replace swaps the bytes behind a bubble that already exists and Edit rewrites a paragraph on
-    // the photograph; neither is Nina saying anything new, so neither may buzz his phone. ADD is
-    // the only writer of a `nina_messages` row on this surface and that is why it is the only site.
+    // the photograph; neither is Nina saying anything new, so neither may announce a bubble. ADD is
+    // the only writer of a `nina_messages` row on this surface and that is why it is the only
+    // `admin_chat_photo` site.
+    //
+    // Since dup-image-push-notify, Replace CAN buzz the phone — with `duplicate_image`, which
+    // announces a photograph that was already in the collection rather than a new bubble. That is a
+    // different kind through a different module, and the case below asserts it.
     await actions.replaceChatPhotoAction({ id: IMAGE_ID, ...goodBlob })
     await actions.editChatPhotoDescriptionAction({
       id: IMAGE_ID,
@@ -916,6 +938,155 @@ describe('addChatPhotoAction tells his phone (R2)', () => {
     })
 
     expect(notifyNinaPush).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * **The cross-table duplicate push (dup-image-push-notify R1).** Three tables hold images and no
+ * admin route had ever looked past its own; these cases are the seam where that changes.
+ *
+ * The two arms are asserted as an EXCLUSIVE OR on every case, because "exactly one notification per
+ * event" is the whole ruling: an add that announces both would be the two-notification outcome the
+ * Decisions table rejected, and an add that announces neither is a silent duplicate.
+ */
+describe('the admin routes announce a photograph the collection already had', () => {
+  const HASH = 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'
+  const AVATAR_HIT = {
+    kind: 'avatar' as const,
+    id: 'ava123XYZ_-9',
+    url: `${STORE}/nina/${USER}/avatar-ava123XYZ_-9-suffix.jpg`,
+  }
+
+  it('ADD: a fresh original whose bytes live in the avatar album pushes duplicate_image, not admin_chat_photo', async () => {
+    findGlobalDuplicatePhoto.mockResolvedValue(AVATAR_HIT)
+
+    const result = await actions.addChatPhotoAction({ ...goodBlob, contentHash: HASH })
+
+    expect(result).toEqual({ ok: true, id: IMAGE_ID })
+    expect(notifyDuplicateImagePush).toHaveBeenCalledWith(USER, AVATAR_HIT)
+    expect(notifyNinaPush).not.toHaveBeenCalled()
+  })
+
+  it('ADD: the row it just inserted is EXCLUDED from the lookup, or every add is its own duplicate', async () => {
+    await actions.addChatPhotoAction({ ...goodBlob, contentHash: HASH })
+
+    expect(findGlobalDuplicatePhoto).toHaveBeenCalledWith(USER, HASH, {
+      exclude: { kind: 'image', id: IMAGE_ID },
+    })
+  })
+
+  it('ADD: an in-collection duplicate is read off the PLAN, with no second lookup, even when the keeper has no hash', async () => {
+    // The pre-check path. The keeper's own `content_hash` is NULL — the case a hash lookup cannot
+    // answer and the plan can — and it is itself a reference, so the pointer must name the ORIGINAL
+    // it re-shows rather than the row that was pinned.
+    getNinaMessageImage.mockResolvedValue({
+      ...imageRow,
+      id: 'keep123XYZ_9',
+      contentHash: null,
+      sourceImageId: 'origin12XYZ_',
+    })
+
+    const result = await actions.addChatPhotoAction({
+      ...goodBlob,
+      contentHash: HASH,
+      duplicateOfId: 'keep123XYZ_9',
+    })
+
+    expect(result).toEqual({ ok: true, id: IMAGE_ID })
+    expect(findGlobalDuplicatePhoto).not.toHaveBeenCalled()
+    expect(notifyDuplicateImagePush).toHaveBeenCalledWith(USER, {
+      kind: 'image',
+      id: 'origin12XYZ_',
+      url: imageRow.blobUrl,
+    })
+    expect(notifyNinaPush).not.toHaveBeenCalled()
+  })
+
+  it('ADD: a genuinely new photograph keeps today’s admin_chat_photo push, unchanged', async () => {
+    const result = await actions.addChatPhotoAction({ ...goodBlob, contentHash: HASH })
+
+    expect(result).toEqual({ ok: true, id: IMAGE_ID })
+    expect(notifyDuplicateImagePush).not.toHaveBeenCalled()
+    expect(notifyNinaPush).toHaveBeenCalledTimes(1)
+    const [, [inserted]] = insertNinaMessages.mock.calls[0] as [string, [{ body: string }], string]
+    expect(notifyNinaPush).toHaveBeenCalledWith(
+      USER,
+      [{ id: MESSAGE_ID, body: inserted.body }],
+      'admin_chat_photo',
+    )
+  })
+
+  it('ADD: a lookup that throws never fails the add, and the bubble still announces itself', async () => {
+    findGlobalDuplicatePhoto.mockRejectedValue(new Error('the replica is down'))
+    const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const result = await actions.addChatPhotoAction({ ...goodBlob, contentHash: HASH })
+
+    expect(result).toEqual({ ok: true, id: IMAGE_ID })
+    expect(notifyNinaPush).toHaveBeenCalledTimes(1)
+    consoleWarn.mockRestore()
+  })
+
+  it('ADD: no hash claim is no question — the finder is never asked (invariant 9)', async () => {
+    await actions.addChatPhotoAction({ ...goodBlob, contentHash: 'not-a-hash' })
+
+    expect(findGlobalDuplicatePhoto).not.toHaveBeenCalled()
+    expect(notifyNinaPush).toHaveBeenCalledTimes(1)
+  })
+
+  it('REPLACE: announces the copy that was already there, and still replaces', async () => {
+    findGlobalDuplicatePhoto.mockResolvedValue(AVATAR_HIT)
+
+    const result = await actions.replaceChatPhotoAction({
+      id: IMAGE_ID,
+      ...goodBlob,
+      contentHash: HASH,
+    })
+
+    expect(result).toMatchObject({ ok: true, id: IMAGE_ID })
+    // The replace is NOT gated on the answer: the row was repointed at the new bytes regardless.
+    expect(updateNinaChatPhotoBlob).toHaveBeenCalledWith(
+      USER,
+      IMAGE_ID,
+      expect.objectContaining({ pathname: goodBlob.pathname, contentHash: HASH }),
+    )
+    expect(findGlobalDuplicatePhoto).toHaveBeenCalledWith(USER, HASH, {
+      exclude: { kind: 'image', id: IMAGE_ID },
+    })
+    expect(notifyDuplicateImagePush).toHaveBeenCalledWith(USER, AVATAR_HIT)
+  })
+
+  it('REPLACE: a malformed hash claim is a NULL column and no lookup, never a refusal', async () => {
+    const result = await actions.replaceChatPhotoAction({
+      id: IMAGE_ID,
+      ...goodBlob,
+      contentHash: 'not-a-hash',
+    })
+
+    expect(result).toMatchObject({ ok: true, id: IMAGE_ID })
+    expect(updateNinaChatPhotoBlob).toHaveBeenCalledWith(
+      USER,
+      IMAGE_ID,
+      expect.objectContaining({ contentHash: null }),
+    )
+    expect(findGlobalDuplicatePhoto).not.toHaveBeenCalled()
+    expect(notifyDuplicateImagePush).not.toHaveBeenCalled()
+  })
+
+  it('REPLACE: a failed notification never fails the replace', async () => {
+    findGlobalDuplicatePhoto.mockResolvedValue(AVATAR_HIT)
+    notifyDuplicateImagePush.mockRejectedValue(new Error('APNs is having a day'))
+    const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const result = await actions.replaceChatPhotoAction({
+      id: IMAGE_ID,
+      ...goodBlob,
+      contentHash: HASH,
+    })
+
+    expect(result).toMatchObject({ ok: true, id: IMAGE_ID })
+    expect(revalidatePath).toHaveBeenCalledWith(ADMIN_CHAT_PHOTOS_PATH)
+    consoleWarn.mockRestore()
   })
 })
 

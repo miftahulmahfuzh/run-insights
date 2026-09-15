@@ -3,16 +3,16 @@
 **Package Path**: `lib/admin`
 **Package Code**: ADM
 **Last Updated**: 2026-09-15
-**Total Active Tasks**: 1
+**Total Active Tasks**: 0
 
 ## Quick Stats
 - P0 Critical: 0
-- P1 High: 1
+- P1 High: 0
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 6
+- Completed: 7
 - Archived: 4
 
 ---
@@ -22,15 +22,6 @@
 ### [P0] Critical
 
 ### [P1] High
-- [ ] **P1-ADM-L2VN** Phase 4: Wire admin-side upload routes (chat photo add/replace, avatar batch)
-  - **Difficulty**: NORMAL
-  - **Type**: Feature
-  - **Context**: Owns `addChatPhotoAction` (suppresses the generic `admin_chat_photo` push in favor of `duplicate_image` on a plan-detected or cross-table hit), `replaceChatPhotoAction` (adds the lookup after commit, purely informational), and the avatar folder batch (`useFolderUpload.ts` hashes picked files, `insertNinaAvatars` writes the column, `registerNinaAvatarsAction` schedules an `after()` scan over rows that actually landed, one push per chunk). No existing dedup decision changes.
-  - **Status**: pending
-  - **Plan Set**: `DUP_IMAGE_PUSH_NOTIFY_PLAN.md` (phase 4 of 4)
-  - **Satisfies**: R1 — Push notification on any upload route when the image already exists in the whole app image collection
-  - **Depends on**: `P1-PHO-Q7XK`
-  - **Plan**: `.workflows/plan/P1-ADM-L2VN.md`
 
 ### [P2] Medium
 
@@ -47,6 +38,22 @@
 (all four completed tasks were archived on 2026-09-12 — see Archive; full
 per-task detail — Context, Drift, Decided, Files — survives in git history and
 in `.workflows/package_readme.md`)
+
+- [x] **P1-ADM-L2VN** Phase 4: Wire admin-side upload routes (chat photo add/replace, avatar batch)
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns `addChatPhotoAction` (suppresses the generic `admin_chat_photo` push in favor of `duplicate_image` on a plan-detected or cross-table hit), `replaceChatPhotoAction` (adds the lookup after commit, purely informational), and the avatar folder batch (`useFolderUpload.ts` hashes picked files, `insertNinaAvatars` writes the column, `registerNinaAvatarsAction` schedules an `after()` scan over rows that actually landed, one push per chunk). No existing dedup decision changes.
+  - **Status**: completed
+  - **Plan Set**: `DUP_IMAGE_PUSH_NOTIFY_PLAN.md` (phase 4 of 4)
+  - **Satisfies**: R1 — Push notification on any upload route when the image already exists in the whole app image collection
+  - **Depends on**: `P1-PHO-Q7XK`
+  - **Plan**: `.workflows/plan/P1-ADM-L2VN.md`
+  - **Completed**: 2026-09-15 10:12
+  - **Method**: /do
+  - **Files**: lib/admin/chatPhotoActions.ts, lib/admin/schema.ts, components/admin/explorer/useFolderUpload.ts, lib/nina/queries/shapes.ts, lib/nina/queries/avatars.ts, lib/admin/ninaAlbumUploadActions.ts, tests/admin.chatPhotos.test.ts, components/admin/explorer/useFolderUpload.test.tsx, tests/admin.albumUploadActions.test.ts
+  - **Drift**: The plan's Step 7c premise ("no behavioural test exists for `registerNinaAvatarsAction`") was wrong: `tests/admin.albumAvatarActions.test.ts` already covers it end-to-end via `fakeDb`. That suite does not exercise the new duplicate-scan behavior (its `batchRecord()` fixture carries no `contentHash`, so `scheduleAvatarDuplicateScan` never schedules anything there), so the new `tests/admin.albumUploadActions.test.ts` (mocked-seam style, per the plan) adds real, non-duplicate coverage rather than being redundant. Verified the pre-existing suite still passes unmodified.
+  - **Verified**: `npx tsc --noEmit` clean; `npm run typecheck` (incl. `next typegen`) clean; full `npm test` 343 files / 5951 tests passed; `npm run lint` clean. All run in the shared swarm worktree with phases 2/3 in flight.
+  - **Note**: No decisions were forced onto a precedence-ladder rung — the plan applied cleanly against the current tree; the only drift was ordinary line-number movement in `lib/nina/queries/avatars.ts` from phase 1 landing first, exactly as the plan's multi-owner-file notes anticipated.
 
 - [x] **P1-ADM-A003** Phase 4: Push when a photo is added to her chat from `/admin`
   - **Difficulty**: EASY

@@ -1,6 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { after } from 'next/server'
 
 import type { AdminActionResult } from '@/lib/admin/ninaAlbumActions'
 import { scheduleDescribe } from '@/lib/admin/ninaAlbumDeferredDescribe'
@@ -18,6 +19,9 @@ import {
   listNinaAvatarManifest,
   setCurrentNinaAvatar,
 } from '@/lib/nina/queries'
+import { isValidContentHash } from '@/lib/photos/contentHash'
+import { findGlobalDuplicatePhoto } from '@/lib/photos/globalDuplicate'
+import { notifyDuplicateImagePush } from '@/lib/push/duplicateImage'
 
 /**
  * The folder-upload bookkeeping: register a whole chunk of a folder upload in ONE call, and read
@@ -173,6 +177,11 @@ export async function registerNinaAvatarsAction(input: unknown): Promise<AdminBa
       bytes: record.bytes,
       thumbUrl: record.thumb?.url ?? null,
       thumbPathname: record.thumb?.pathname ?? null,
+      /* dup-image-push-notify R1. The FORMAT gate is here and not in Zod — invariant 9's division,
+       * stated at `avatarBatchRecordSchema`: a malformed claim is a NULL and a proceed, never a
+       * refused batch. A record that loses its hash this way simply cannot answer the duplicate
+       * question, which is the honest outcome for a claim that is not one of ours. */
+      contentHash: isValidContentHash(record.contentHash) ? record.contentHash : null,
     })),
   )
 
@@ -185,6 +194,33 @@ export async function registerNinaAvatarsAction(input: unknown): Promise<AdminBa
   revalidatePath('/admin/nina')
 
   const keyByPathname = new Map(records.map((record) => [record.pathname, record.sourceKey]))
+
+  /*
+   * The cross-table duplicate question, asked about the rows that ACTUALLY landed.
+   *
+   * `rows` is `RETURNING` after `ON CONFLICT DO NOTHING`, so a re-dropped folder produces an empty
+   * array and this costs nothing at all — which is the common case and the reason the scan is
+   * keyed off `rows` rather than off `records`.
+   *
+   * The hash is carried across by PATHNAME, the same join `keyByPathname` above already uses and
+   * for the same stated reason: `avatarColumns` does not project `source_key` (or `content_hash`),
+   * `addRandomSuffix: true` plus `allowOverwrite: false` make the stored pathname unique per
+   * object, and array position after a conflict-skipping `RETURNING` is not a promise worth
+   * depending on.
+   */
+  const hashByPathname = new Map(
+    records.flatMap((record) =>
+      isValidContentHash(record.contentHash) ? [[record.pathname, record.contentHash]] : [],
+    ),
+  )
+  scheduleAvatarDuplicateScan(
+    userId,
+    rows.flatMap((row) => {
+      const contentHash = hashByPathname.get(row.pathname)
+      return contentHash == null ? [] : [{ id: row.id, contentHash }]
+    }),
+  )
+
   return {
     ok: true,
     inserted: rows.flatMap((row) => {
@@ -239,4 +275,94 @@ export async function listNinaAlbumManifestAction(input: unknown): Promise<Admin
     })),
     truncated: entries.length >= NINA_ADMIN_MANIFEST_MAX,
   }
+}
+
+/**
+ * **Did any of the photographs that just landed already exist somewhere else in the collection?**
+ * — asked AFTER the response has gone out. Not exported: a `'use server'` module may export only
+ * async functions, and this is a synchronous scheduler (`scheduleChatPhotoCaption` and
+ * `scheduleDescribe` are the two precedents, and this follows both).
+ *
+ * ── WHY `after()` AND NOT INLINE ────────────────────────────────────────────────────────────
+ * A chunk is up to `NINA_ADMIN_BATCH_MAX` (50) records and the finder reads three tables, so an
+ * inline scan would put up to 150 round trips on a Server Action that Next dispatches ONE AT A TIME
+ * PER CLIENT — turning a 300-file drop's bookkeeping into the stall the batching exists to prevent.
+ * Nothing downstream waits on the answer: the rows are committed, the grid is revalidated, and a
+ * notification is informational. This is the same trade `scheduleDescribe` makes two functions up.
+ *
+ * ── ONE PUSH PER BATCH, NOT ONE PER HIT ─────────────────────────────────────────────────────
+ * **RATIFIED by the reconciler in round 1**, and the plan index's Scope bullet was rewritten to
+ * match rather than this cap being removed: the index's Invariants say nothing about push
+ * cardinality, so the wording that read "exactly once per detected duplicate" was a Scope sentence
+ * and not a rule, and the surrounding convention outranked it — every notification this app sends
+ * shares one `PUSH_NOTIFICATION_TAG = 'nina'`, so N sends already collapse to ONE visible
+ * notification in the tray. Sending fifty is therefore not fifty times the signal; it is fifty
+ * web-push round trips to redraw one notification — and a phone the operator turns push off on,
+ * which would cost R1 every OTHER route as well. Phase 1's own handoff anticipated this and named
+ * this exact remedy ("notify once per batch with a count — a phase-4 decision").
+ *
+ * A folder drop is the one upload route in this app that submits FIFTY images in a single gesture,
+ * and a re-organised library (the same photographs under a new folder tree) is exactly the drop
+ * that makes every one of them a cross-table hit. The other four routes accept one image per
+ * gesture and keep one push per detected duplicate, so the index's wording and this cap agree
+ * everywhere except here.
+ *
+ * The scan still visits every row, so the log line carries the true count — the operator who wants
+ * the full list has it, and a later card could turn the count into a `/admin` panel without
+ * changing what buzzes.
+ *
+ * ── IT NEVER FAILS THE REGISTER ─────────────────────────────────────────────────────────────
+ * `after()` turns a rejection into a log line, and the rows are committed before this runs. The
+ * inner try/catch is the belt to that brace, per-row, so one unreadable row cannot cost the other
+ * forty-nine their check.
+ *
+ * An empty `candidates` array returns without scheduling anything — the common case (a re-dropped
+ * folder inserts no rows), and there is no point paying for an `after()` callback to do nothing.
+ */
+function scheduleAvatarDuplicateScan(
+  userId: string,
+  candidates: readonly { id: string; contentHash: string }[],
+): void {
+  if (candidates.length === 0) return
+
+  /*
+   * ── THE EXCLUSION IS THE WHOLE CHUNK, NOT JUST THE ROW ASKING ──────────────────────────────
+   * Reconciler ruling, round 1. Without any exclusion every new avatar is its own duplicate — it
+   * was inserted with this very hash moments ago. But excluding only the asking row is not enough
+   * either: ONE folder drop is up to fifty files and a re-organised library routinely contains the
+   * same picture twice under two paths. Both land (the `source_key`s differ, deliberately), and a
+   * per-row exclusion then makes each of them find the OTHER and report a photograph this same
+   * gesture created. "Already" means before this drop. Phase 1's `exclude` takes a list for exactly
+   * this; it is built once, outside the loop, because it is the same list for every candidate.
+   */
+  const exclude = candidates.map((candidate) => ({ kind: 'avatar' as const, id: candidate.id }))
+
+  after(async () => {
+    let hits = 0
+    for (const candidate of candidates) {
+      try {
+        const duplicate = await findGlobalDuplicatePhoto(userId, candidate.contentHash, {
+          exclude,
+        })
+        if (duplicate == null) continue
+        hits += 1
+        /* The FIRST hit buzzes; the rest are counted. See the header. */
+        if (hits === 1) await notifyDuplicateImagePush(userId, duplicate)
+      } catch (cause) {
+        console.warn('[dup] avatar duplicate check failed for one row', {
+          userId,
+          avatarId: candidate.id,
+          error: String(cause),
+        })
+      }
+    }
+    if (hits > 0) {
+      console.info('[dup] folder upload landed photos the collection already had', {
+        userId,
+        scanned: candidates.length,
+        hits,
+        notified: 1,
+      })
+    }
+  })
 }

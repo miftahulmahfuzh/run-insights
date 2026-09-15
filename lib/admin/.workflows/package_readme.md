@@ -1,7 +1,8 @@
 # Package: admin
 
 **Location**: `lib/admin`
-**Last Updated**: 2026-09-14 (media add's push notification, P1-ADM-A003). Baseline:
+**Last Updated**: 2026-09-15 (cross-table duplicate detection on the admin upload routes,
+P1-ADM-L2VN). Previous: 2026-09-14 (media add's push notification, P1-ADM-A003). Baseline:
 2026-09-12 — full rewrite/compaction against the current tree (every export
 block, signature, constant and reverse dependency re-verified mechanically; the per-task changelog
 this file used to carry inline now lives in `git log -- lib/admin`, see *Recent Changes*).
@@ -35,8 +36,14 @@ exactly one definition — `schema.ts` imports every bound it enforces rather th
   hand), adopt a chat photo, delete, and maintain folders (create/rename/move/delete, bulk
   move/remove).
 - Own the media collection's write side: add (with write-time dedupe, and the push notification
-  that tells his phone the bubble exists), replace, remove (with blob release), describe, and the
-  hand-written description edit.
+  that tells his phone either that the bubble exists or that the photograph was already in the
+  collection), replace, remove (with blob release), describe, and the hand-written description
+  edit.
+- **Tell the operator when an upload's bytes are already somewhere in the collection — and never
+  let that answer change what lands.** Every admin upload route (media add, media replace, the
+  album folder batch) asks the cross-table duplicate question AFTER its row is committed. Nothing
+  here skips a write, repoints a row or releases a blob because of the answer; the answer only
+  chooses which push is sent.
 - Own `/admin/memory`'s write side (four actions), and make it structurally impossible to write
   a memory row without the `admin` source label.
 - Own `/admin/shortcuts`'s write side, and make it structurally impossible for a caller — or a
@@ -56,10 +63,10 @@ exactly one definition — `schema.ts` imports every bound it enforces rather th
 | `filetree.ts` + `filetree/` | pure, **import-pure** (`./` siblings only) | Folder-path grammar (`pathGrammar`), file classification (`classify`), dedupe key (`sourceKey`), `planFolderUpload` (`uploadPlan`), tree building (`folderTree`), the explorer's album/Media view switch (`mediaView`), the limits (`bounds`). `filetree.ts` is the re-export barrel. |
 | `folderOps.ts` | pure (zod) | Folder *maintenance*: the six operations' schemas and the planners that refuse without a database. |
 | `schema.ts` | pure | Every Zod schema `/admin/**` accepts. Imports every bound; declares none. |
-| `ninaAlbumActions.ts` | `'use server'` | The album's write side: 15 actions — describe/edit prose, face, crop, delete, folder register/manifest, folder maintenance. |
+| `ninaAlbumActions.ts` | barrel (plain ESM) + `AdminActionResult` | The album's write side: 15 actions — describe/edit prose, face, crop, delete, folder register/manifest, folder maintenance. Since the `nina-queries-split` session the implementations live behind it in `ninaAlbumDescribeActions.ts`, `ninaAlbumAvatarActions.ts`, `ninaAlbumUploadActions.ts` (register + manifest), `ninaAlbumFolderActions.ts` and the plain `ninaAlbumDeferredDescribe.ts`; every importer still names the barrel. |
 | `chatPhotos.ts` | pure | The media collection's vocabulary: pathname shapes, ceilings, id regexes, the carrier-message rule, `planChatPhotoAddWrite`'s types. |
 | `chatPhotoSchema.ts` | pure | Every Zod schema the media collection accepts. Separate from `schema.ts` (different table, different route). `schema.ts` imports from it. |
-| `chatPhotoActions.ts` | `'use server'` | Six actions: add (the only one that mints a message — and so the only one that pushes), replace, find-duplicate, remove, describe, edit description. |
+| `chatPhotoActions.ts` | `'use server'` | Six actions: add (the only one that mints a message), replace, find-duplicate, remove, describe, edit description. Add and replace are the two that push; the other four mint nothing and notify nothing. |
 | `users.ts` | `server-only` | The unscoped account enumeration the memory page's picker (and others) need. |
 | `memoryModel.ts` | pure | Memory bounds, the seven categories, and `MemoryRow` — the one row model of `/admin/memory`. |
 | `memoryVocab.ts` | `server-only` in practice (no pill; a test imports it) | The bridge from the closed slot vocabulary to the page's rows: `buildMemoryRows`, `canonicaliseSlotValue`. |
@@ -310,7 +317,14 @@ Facts per schema worth keeping (all verified in source):
   completed PUT). The envelope is an object holding one array; `NINA_ADMIN_BATCH_MAX` (50) makes
   `insertNinaAvatars`' throw unreachable. **All-or-nothing at the boundary, on purpose**: a
   record that fails here is a client bug, and a partial-success path would let that bug write
-  half a batch invisibly.
+  half a batch invisibly. The one exception to all-or-nothing is `contentHash`, added
+  2026-09-15: `z.string().min(1).max(128).nullish()` — **shape here, format in the action**.
+  `null` is what the client sends when it could not hash, ABSENT is every record written before
+  that date, and a malformed claim is normalised to NULL by `isValidContentHash` in
+  `registerNinaAvatarsAction` — a bad hash must cost a row its duplicate check, never cost the
+  batch its upload. It is NOT the album's dedupe key and must never become one: `sourceKey` and
+  its unique index decide what lands, and two identical files under two folder paths are two
+  rows on purpose.
 - `memoryDeleteSchema` is a discriminated union on `kind` (`slot` | `promise` | `fact`) — the one
   delete control's three branches, exhaustive by construction. The four per-kind schemas it
   replaced (`slotRetire`, `promiseRemove`, `factRetract`, `factPurge`) are gone with the actions
@@ -406,6 +420,34 @@ nothing declared); `insertNinaAvatars` is `ON CONFLICT (user_id, source_key) DO 
 RETURNING` so idempotence is a constraint, not a convention — `skipped = submitted - rows.length`;
 the result joins on `pathname` because `sourceKey` is deliberately not on `NinaAvatarRow`.
 
+**The batch's duplicate scan** (2026-09-15, in `ninaAlbumUploadActions.ts`): the browser hashes
+the picked file, the record carries the claim, `insertNinaAvatars` writes it to `content_hash`,
+and a private synchronous scheduler — `scheduleAvatarDuplicateScan`, a third `after()` scheduler
+beside `scheduleDescribe` and `scheduleChatPhotoCaption` — asks phase 1's cross-table
+`findGlobalDuplicatePhoto` about it once the response has gone out. Four rules, each a rule:
+
+- **It scans the rows that ACTUALLY landed, not the records submitted.** `rows` is `RETURNING`
+  after `ON CONFLICT DO NOTHING`, so a re-dropped folder produces an empty array and schedules
+  nothing at all — the common case costs zero. Hashes reach the scan joined by `pathname`, the
+  same join the result already uses and for the same reason (`avatarColumns` projects neither
+  `source_key` nor `content_hash`, and position after a conflict-skipping `RETURNING` is not a
+  promise).
+- **The exclusion is the WHOLE chunk, not the asking row.** "Already" means *before this drop*.
+  One drop is up to fifty files and a re-organised library routinely holds the same picture twice
+  under two paths; both land (the `source_key`s differ, deliberately), so a per-row exclusion
+  would make each find the other and announce a photograph this same gesture created.
+- **One push per chunk, the true count to the log.** The first hit calls
+  `notifyDuplicateImagePush`; the rest are counted. Every push this app sends shares one
+  `PUSH_NOTIFICATION_TAG = 'nina'` with `renotify`, so N sends already collapse to ONE visible
+  notification — fifty sends would be fifty web-push round trips to redraw one tray entry, and a
+  phone the operator turns push off on. The folder drop is the only route in the app that submits
+  fifty images in one gesture; the single-image routes keep one push per detected duplicate.
+- **It is off the response path and cannot fail the register.** A chunk of 50 against a
+  three-table finder is up to 150 round trips on an action Next dispatches one at a time per
+  client. The rows are committed and the grid revalidated before it runs; `after()` turns a
+  rejection into a log line and a per-row `try`/`catch` keeps one unreadable row from costing the
+  other forty-nine their check.
+
 **`deleteNinaAvatarAction`** — row first, blob second, TWO `del()` targets in one call: the row
 is the only record that the thumbnail object exists (its stored pathname carries Blob's random
 suffix and is not derivable). The current photo cannot be removed — the query's WHERE refuses it,
@@ -475,8 +517,10 @@ the KEEPER's measured hash, even when that is NULL, never the claim's.
 
 **Add tells his phone** (`nina-push-every-message` R2, *"when Nina speaks on her own initiative,
 a push notification is sent"*): after `scheduleChatPhotoCaption` and before `revalidatePath`,
-`addChatPhotoAction` calls `notifyNinaPush(userId, [{ id: message.id, body }], 'admin_chat_photo')`.
-Three rules hold it together, and each is a rule rather than a detail:
+`addChatPhotoAction` sends **exactly one** notification — `notifyNinaPush(userId, [{ id:
+message.id, body }], 'admin_chat_photo')` for a genuinely new photograph, or
+`notifyDuplicateImagePush(userId, duplicate)` when the collection already held these bytes (see
+the next block). Three rules hold it together, and each is a rule rather than a detail:
 
 - **The caption is minted once and spent twice.** `body = ninaImageCaption(newId())` is a `const`
   read by the message insert AND by the notification. `ninaImageCaption` is `pickLine` over a
@@ -498,9 +542,42 @@ Three rules hold it together, and each is a rule rather than a detail:
 This is also what makes `scheduleChatPhotoCaption`'s own sentence — the bubble arrives "on the
 next load or service-worker refresh" — true. The service worker's `nina:new` `postMessage` fires
 only inside its `push` handler, and until this line nothing pushed for an operator-added
-photograph, so the refresh half was aspirational. The other five actions in the file mint no
-message and deliberately notify nothing: replace/describe/edit change an EXISTING bubble or a
-private note, and remove takes one away — none of them is Nina speaking.
+photograph, so the refresh half was aspirational. Of the other five actions, only replace notifies
+(and never about a bubble — see below); describe/edit change an EXISTING bubble or a private note
+and remove takes one away, so none of them is Nina speaking.
+
+**Was this photograph already in the collection?** (2026-09-15) `addChatPhotoAction` asks two
+questions, in the order that makes the second rare, and then lets the answer pick the push:
+
+- **First the PLAN, with no query at all.** `duplicateTargetFromPlan(plan)` reads the answer off
+  `planChatPhotoAddWrite`'s existing `sourceImageId`/`sourceAvatarId` branches — exactly one is
+  set on each of its two duplicate branches, and `ninaPhotoProvenance` has already flattened a
+  pinned re-share down to the photograph it re-shows, so the pointer aims at the row the operator
+  would want to see. `url` is `plan.blobUrl`, not a re-read: on both branches the plan has already
+  adopted the keeper's object. **This branch is not an optimisation** — it is the only one that
+  can answer for a keeper whose own `content_hash` is NULL, which `planChatPhotoAddWrite` says is
+  legitimate. Routing every add through the hash lookup instead would silently miss those and send
+  the generic push for a photograph the collection already held.
+- **Then, only for a genuinely fresh original**, phase 1's cross-table `findGlobalDuplicatePhoto`,
+  excluding the row just inserted (it carries the claim, so without the exclusion every add is its
+  own duplicate). `findNinaImageByContentHash` has already ruled out the chat table, so this is
+  strictly the new ground: `nina_avatars` and `run_photos`.
+- **A hit SUPPRESSES `admin_chat_photo` rather than adding a second push.** One event, one
+  notification: the `duplicate_image` push replaces it and points at the original. On a fresh add
+  nothing about the old line changed — same kind, same body, same array. Exactly one push per
+  successful add, and none on any of the four refusal paths.
+- **No hash, no question** (invariant 9): a malformed or absent claim is a NULL and a proceed. A
+  failed lookup is a `console.warn` and a proceed too — a detection failure is not an add failure.
+
+**Replace tells the phone, and changes nothing else.** `replaceChatPhotoAction` hoists the
+`isValidContentHash` normalisation into a `const claimedHash` (the column write and the lookup
+must not normalise a claim twice, in two places, to one policy) and asks the same cross-table
+question AFTER the row is committed, the blob released and the captioner scheduled, excluding
+this row. **The replace is never gated on the answer.** Replace's contract is "swap the bytes
+behind THIS row"; a deduped replace would repoint the row at another row's object and strip its
+provenance to a reference, which the collection reads then hide — the photograph the operator can
+SEE would vanish from the Media folder. So nothing skips, references or unwinds: the operator is
+merely told, and the notification opens the copy that was already there.
 
 **Remove** resolves the empty-bubble problem: when the last image on a message that exists only
 to carry it goes, the MESSAGE goes too (in the same transaction — `message_id` is `ON DELETE SET
@@ -786,6 +863,7 @@ browser: drop / picker
    │      → upload[] / existing[] / rejected[] / refused[] / folders[] / counts
    │
    ├─ for each planned file, in PARALLEL under a bounded queue:
+   │      contentHashOf(file).catch(() => null)   ← the picked file's own bytes; null is fine
    │      POST /api/admin/nina/upload   ← requireAdminApi, mints a signed token
    │        · nina/<uid>/avatar-<id>.<ext>  → 8 MB cap
    │        · nina/<uid>/thumb-<id>.<ext>   → 512 KB cap
@@ -800,8 +878,14 @@ browser: drop / picker
              5. insertNinaAvatars — ON CONFLICT (user_id, source_key) DO NOTHING
              6. if there was no current row, promote one + scheduleDescribe (after())
              7. revalidatePath('/admin/nina')
+             8. scheduleAvatarDuplicateScan(after()) over the rows that LANDED,
+                excluding the whole chunk — ≤1 duplicate_image push, count to the log
              → { inserted: [{ sourceKey, id }], skipped }
 ```
+
+Step 8 decides nothing about step 5: the hash rides along so the SERVER can ask whether these
+bytes are already in the collection and say so. What lands is still `sourceKey` and its unique
+index, because a photo's place in the tree is information the operator put there on purpose.
 
 The vision model appears nowhere on that path. It runs when a photo becomes her face, is handed
 to her, is described on demand — and then either in-band (the two describe actions) or inside
@@ -815,7 +899,8 @@ to her, is described on demand — and then either in-band (the two describe act
 | Path validity | yes | — | yes, as identity against the normaliser |
 | Filename / extension | yes | extension vs. declared content type | yes |
 | Byte cap | yes (`maxBytes` arg) | enforced by the minted token | yes (`bytes` field) |
-| Dedupe | yes, against the manifest | — | intra-batch, then the unique index |
+| Dedupe (what LANDS) | yes, against the manifest | — | intra-batch, then the unique index |
+| Cross-table duplicate (what is TOLD) | hashes the picked file, sends the claim | — | after the commit, in `after()` — never gates a write |
 | Folder-op geometry (cycle, merge, depth) | yes (`folderOps` planners) | — | re-checked with the LIVE folder list |
 | Current-photo protection | refusal text (`currentPhotoRefusal`) | — | SQL `isCurrent = false` in every delete's WHERE |
 | Authorization | — | `requireAdminApi` (401/404) | `requireAdmin` (redirect/404) |
@@ -849,9 +934,14 @@ to her, is described on demand — and then either in-band (the two describe act
   blob release on remove.
 - `@/lib/llm/{catalog,textModel}` — the narrative text model's id list and its store
   (`textModelActions.ts` only).
-- `@/lib/photos/contentHash` — the dedupe hash (`chatPhotoActions.ts`).
-- `@/lib/push/send` — `notifyNinaPush`, the one push seam under `lib/admin`, called by
-  `addChatPhotoAction` and nothing else here. A test's `vi.mock('@/lib/push/send', …)` factory
+- `@/lib/photos/{contentHash,globalDuplicate,pointer}` — the dedupe hash and its format gate
+  (`chatPhotoActions.ts`, `ninaAlbumUploadActions.ts`), phase 1's cross-table finder
+  `findGlobalDuplicatePhoto`, and the `ResolvedPhotoPointer` a hit is expressed as.
+- `@/lib/push/duplicateImage` — `notifyDuplicateImagePush`, the second push seam here
+  (2026-09-15): the media add (where it REPLACES the generic push), the media replace, and the
+  album folder batch's `after()` scan.
+- `@/lib/push/send` — `notifyNinaPush`, called by `addChatPhotoAction` and nothing else here, and
+  only when the add is not a duplicate. A test's `vi.mock('@/lib/push/send', …)` factory
   must name **all three** runtime exports (`sendNinaPush`, `notifyNinaPush`, `pushNotifier`): the
   module graph reaches it through `lib/nina/proactive.ts`, which imports `pushNotifier`, so an
   omitted key is a module-resolution error rather than a silent undefined.
@@ -903,13 +993,15 @@ Named primary consumers:
   planners); `lib/admin/schema.ts` imports `chatPhotoSchema.ts`.
 - `components/admin/{TextModelSelect,ImageGenTestPanel,ImageGenPanel,CharacterPanel,ShortcutTable,MemoryTable}.tsx` — their action/model pairs.
 
-Test consumers — every suite under `tests/` whose name starts `admin.` (24 files:
-`admin.avatars`, `admin.filetree`, `admin.folderOps`, `admin.albumAvatarActions`,
+Test consumers — every suite under `tests/` whose name starts `admin.` (27 such files counted
+2026-09-15, plus `env.admin`: `admin.avatars`, `admin.filetree`, `admin.filetreeBarrel`,
+`admin.folderOps`, `admin.folderActions`, `admin.albumActionsBarrel`,
+`admin.albumAvatarActions`, `admin.albumUploadActions`,
 `admin.chatPhotos`, `admin.chatPhotoDedupe`, `admin.chatPhotoAdoption`, `admin.memory`,
 `admin.memoryActions`, `admin.tuning`, `admin.shortcuts`, `admin.shortcutActions`,
 `admin.imagegen`, `admin.imageGenActions`, `admin.imagegenTest`, `admin.photoGrid`,
 `admin.photoReference`, `admin.mediaPane`, `admin.requireAdmin`, `admin.settingsActions`,
-`admin.shareToNina`, `admin.shell`, `admin.users`, `env.admin`), plus the co-located
+`admin.shareToNina`, `admin.shell`, `admin.users`), plus the co-located
 `components/admin/**/*.test.tsx` suites and — since 2026-09-12 — a co-located suite inside this
 package itself (`lib/admin/errorLogModel.test.ts`, beside its module; the co-located suites grew
 by three that day: it plus `ErrorLogList.test.tsx` and `LogTextDialog.test.tsx`), many of which
@@ -926,9 +1018,12 @@ No thread primitives; the relevant facts are the runtime's:
 - **Server Actions are dispatched one at a time per client.** That is why the folder register
   batches instead of calling per file, and why the parallel work (blob PUTs) goes through a Route
   Handler.
-- **`after()`** defers both private schedulers (`scheduleDescribe`, `scheduleChatPhotoCaption`)
-  until the response is finished. Nothing awaits them, nothing in them revalidates, every failure
-  is swallowed and logged.
+- **`after()`** defers all three private schedulers (`scheduleDescribe`,
+  `scheduleChatPhotoCaption`, `scheduleAvatarDuplicateScan`) until the response is finished.
+  Nothing awaits them, nothing in them revalidates, every failure is swallowed and logged. All
+  three are synchronous, which a `'use server'` module may not export — so two stay module-private
+  in the action file that uses them and `scheduleDescribe`, needed by two callers, lives in the
+  plain `ninaAlbumDeferredDescribe.ts` instead.
 - **Races are settled by Postgres, not by application code.** `(user_id, source_key)` unique +
   `ON CONFLICT DO NOTHING` makes two tabs submitting the same batch idempotent;
   `nina_avatars_user_current_unq` (partial unique) means the un-current/current ordering is owned
@@ -953,6 +1048,10 @@ No thread primitives; the relevant facts are the runtime's:
   vendor answered 200 and dropped the image" — the token floor — versus a dead socket). The
   media add's notify is wrapped even though `notifyNinaPush` already swallows its own failures:
   a phone is never allowed to decide whether a photograph was added.
+- **A duplicate LOOKUP failure is not a write failure either**, on any of the three upload routes.
+  Each cross-table check sits past its own commit inside a `try`/`catch` that only `console.warn`s
+  (the folder batch's is per row, so one unreadable row cannot cost the rest of the chunk their
+  check). The operator loses the notice, never the photograph.
 - **A failed `del` still reports success** after logging: the row is already gone, and a
   recoverable orphan beats a broken image under a live row. The orphan window is named, not
   fixed — the blob reaper owns it, deliberately out of scope here.
@@ -1009,6 +1108,28 @@ export default async function Page() {
   exists — including the refusal that writes a message row and then deletes it.
 - **Do not let a push failure change an action's result.** Every notify here is `try`/`catch` →
   `console.warn`, and the action still returns `{ ok: true }`.
+- **Do not send two pushes for one event.** A duplicate add SUPPRESSES `admin_chat_photo` and
+  sends `duplicate_image` in its place; adding the second push back would double-buzz one gesture.
+- **Do not let a duplicate answer gate a write.** Every cross-table check on these three routes
+  sits AFTER its commit and only chooses a notification. A deduped replace in particular is a
+  defect, not a feature: it would repoint the row at another row's object and strip its provenance
+  to a reference, which the collection hides — the photograph the operator can see would vanish.
+- **Do not drop `duplicateTargetFromPlan` in favour of "just call the hash lookup".** A duplicate
+  row carries the KEEPER's hash, which may legitimately be NULL; the plan's
+  `sourceImageId`/`sourceAvatarId` branches are the only answer available for that case, and they
+  cost no query.
+- **Do not make the album batch's `contentHash` decide what lands.** `sourceKey` and its unique
+  index own that; two identical files under two folder paths stay two rows on purpose. The hash
+  only feeds the report.
+- **Do not narrow the batch scan's exclusion to the asking row.** "Already" means *before this
+  drop*, and one drop routinely carries the same picture twice — a per-row exclusion makes each
+  copy report the other.
+- **Do not turn the batch scan into one push per hit.** Every push shares
+  `PUSH_NOTIFICATION_TAG = 'nina'` with `renotify`, so fifty sends redraw one tray entry; the true
+  count belongs in the log line. The single-image routes keep one push per duplicate.
+- **Do not move the batch scan inline.** Fifty records against a three-table finder is up to 150
+  round trips on an action Next dispatches one at a time per client — the stall the batching
+  exists to prevent.
 - **Do not delete a photo's row without considering both blob references and shared objects** —
   the row is the only record a thumbnail exists, and `releaseBlobIfUnreferenced` decides the
   release.
@@ -1056,6 +1177,33 @@ registered) is real and belongs to the reaper, not to this package.
 
 ## Recent Changes
 
+- **2026-09-15** — `dup-image-push-notify` phase 4 of 4 (P1-ADM-L2VN), *"wire the admin-side
+  upload routes"*, satisfying R1 on the three routes this package owns. `addChatPhotoAction` now
+  asks the duplicate question twice-in-order — `duplicateTargetFromPlan(plan)` first (free, exact,
+  and the only answer possible when the keeper's own `content_hash` is NULL), then phase 1's
+  cross-table `findGlobalDuplicatePhoto` for a genuinely fresh original, excluding the row just
+  inserted — and a hit SUPPRESSES the pre-existing unconditional `admin_chat_photo` push in favour
+  of a `duplicate_image` one: still exactly one push per successful add, still none on any of the
+  four refusal paths. `replaceChatPhotoAction` hoisted its `isValidContentHash` normalisation to a
+  `const claimedHash` (needed twice now) and asks the same question after the commit, purely
+  informationally — the byte swap is never gated on the answer. The album folder batch grew the
+  claim end to end: `useFolderUpload.ts` hashes the picked file (this path PUTs it unmodified, so
+  the file's bytes are the stored bytes), `avatarBatchRecordSchema` carries it as `nullish`
+  (shape only; the format gate is the action's), `NinaAvatarBatchInsert`/`insertNinaAvatars` write
+  the new `content_hash` column, and `registerNinaAvatarsAction` schedules an `after()` scan over
+  the rows that ACTUALLY landed (`RETURNING` after `ON CONFLICT DO NOTHING`), joined to their
+  hashes by `pathname`, with the WHOLE chunk excluded — at most one `duplicate_image` push per
+  chunk (ratified by the plan-set reconciler: every push shares one `PUSH_NOTIFICATION_TAG =
+  'nina'` with `renotify`, so N sends already collapse to one visible notification), the true hit
+  count to the log, and a re-dropped folder scheduling nothing at all. **No dedup DECISION changed
+  anywhere**: keeper choice, reference rows and blob-release timing are byte-identical. New suite
+  `tests/admin.albumUploadActions.test.ts` — the plan believed `registerNinaAvatarsAction` had no
+  behavioural test, but `tests/admin.albumAvatarActions.test.ts` already covers it end to end via
+  `fakeDb`; that suite's `batchRecord()` fixture carries no `contentHash`, so it never reaches the
+  new scan and the new file is genuine, non-redundant coverage rather than a second copy.
+  `tests/admin.chatPhotos.test.ts` and `components/admin/explorer/useFolderUpload.test.tsx` grew
+  the add/replace and hashing cases. Phases 2–3 of that plan set are peer phases in flight in the
+  same worktree and are deliberately not documented here.
 - **2026-09-14** — `nina-push-every-message` phase 4 (P1-ADM-A003), satisfying R2 *"when Nina
   speaks on her own initiative, a push notification is sent"*: `addChatPhotoAction` now calls
   `notifyNinaPush(userId, [{ id: message.id, body }], 'admin_chat_photo')` after

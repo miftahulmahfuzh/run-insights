@@ -18,6 +18,7 @@ import {
 import type { AvatarBatchRecord } from '@/lib/admin/schema'
 import { newId } from '@/lib/id'
 import { NINA_ADMIN_BATCH_MAX } from '@/lib/nina/album'
+import { contentHashOf } from '@/lib/photos/contentHash'
 
 import type { QueueItem, QueueReport } from './model'
 import { walkEntries, type WalkedFile } from './dropWalk'
@@ -174,6 +175,29 @@ export function useFolderUpload({
         )
       }
 
+      /*
+       * ── THE CONTENT HASH (dup-image-push-notify R1) ──────────────────────────────────────────
+       * Over the PICKED FILE, not over a re-encode, and that is the whole reason this is one line
+       * here and a paragraph in `chatPhotoUpload.ts`: this path PUTs `file` itself, so the file's
+       * bytes ARE the bytes the row's `blob_url` will serve — which is exactly what
+       * `content_hash`'s contract says the column means.
+       *
+       * The album's dedupe key is and stays `source_key` (path + size + mtime). This hash does NOT
+       * decide anything about whether a row lands: it is carried so the SERVER can ask phase 1's
+       * cross-table finder whether these bytes are already somewhere in the collection, and tell
+       * the operator. Two files with identical bytes under two folder paths are still two rows,
+       * deliberately (`useFolderUpload`'s own note: *"a photo's location in the tree is information
+       * the operator put there on purpose"*).
+       *
+       * ── A HASH THAT CANNOT BE COMPUTED IS `null`, NEVER A FAILED UPLOAD ─────────────────────
+       * Invariant 9, and `chatPhotoUpload.ts:174`'s `.catch(() => null)` is the precedent in this
+       * very folder. `crypto.subtle` can be absent (an insecure origin) and the read can fail (a
+       * file moved out from under the picker between the walk and this line). Neither is a reason
+       * to lose an upload that measured fine, so the record registers hash-less and the cross-table
+       * check simply goes quiet for that row. The Zod field is `nullish` for the same reason.
+       */
+      const contentHash = await contentHashOf(file).catch(() => null)
+
       patch(gesture, planned.sourceKey, { state: 'uploading' })
       const id = newId()
       let original
@@ -230,6 +254,7 @@ export function useFolderUpload({
         folder: planned.folder,
         filename: planned.filename,
         sourceKey: planned.sourceKey,
+        contentHash,
         thumb:
           thumbUrl == null || thumbPathname == null
             ? null

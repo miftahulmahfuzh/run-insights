@@ -434,6 +434,18 @@ export interface NinaAvatarBatchInsert {
   thumbUrl?: string | null
   thumbPathname?: string | null
   description?: string | null
+  /**
+   * dup-image-push-notify R1. sha-256 over the bytes `blobUrl` serves, or `null` when nobody has
+   * hashed them — which is every row written before that phase, and any row whose client could not
+   * compute one.
+   *
+   * OPTIONAL, unlike `sourceKey`, and the difference is the whole design: `sourceKey` is required
+   * because a NULL there would silently opt a row out of the unique index that protects the album,
+   * whereas this column decides nothing. It is read only by the cross-table duplicate finder, which
+   * treats a NULL as "this row cannot answer" — so the second writer of this shape,
+   * `setChatPhotoAsAvatarAction`, needs no edit and keeps writing rows without one.
+   */
+  contentHash?: string | null
 }
 
 /**

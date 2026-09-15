@@ -673,6 +673,11 @@ export async function insertNinaAvatars(
         bytes: input.bytes ?? null,
         source: input.source,
         description: input.description ?? null,
+        /* dup-image-push-notify R1, phase 1's column. `?? null` and not a conditional spread: an
+         * absent claim and an explicit null are the same fact, and the column is nullable. It takes
+         * no part in `onConflictDoNothing` below — `(user_id, source_key)` is still the only key
+         * this statement conflicts on. */
+        contentHash: input.contentHash ?? null,
         isCurrent: false,
       })),
     )
