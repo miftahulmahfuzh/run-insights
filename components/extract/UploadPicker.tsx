@@ -17,6 +17,7 @@ import { planPicked } from '@/lib/extract/planPicked'
 import { reassignKind } from '@/lib/extract/reassignKind'
 import { newId } from '@/lib/id'
 import { compressForExtraction } from '@/lib/photos/compressForExtraction'
+import { contentHashOf } from '@/lib/photos/contentHash'
 import type { ExtractAcceptedResponse, ExtractionBlobRef } from '@/lib/schema/extractionResult'
 import { KindSelector } from './KindSelector'
 
@@ -127,6 +128,25 @@ export function UploadPicker() {
           compressedBytes: compressed.compressedBytes,
         })
 
+        /*
+         * The duplicate-image push's key (R1). Hash the bytes THIS PUT CARRIES —
+         * `compressed.file`, never the picked file: `lib/photos/contentHash.ts`'s contract is
+         * "sha-256 over the bytes exactly as stored", and a different re-encode is honestly two
+         * objects. Same rule, same util, same failure policy as the chat composer
+         * (`useComposerPhotos`): a hash that cannot be computed degrades to null, the shot
+         * uploads exactly as it always has, and duplicate detection is simply inactive for it.
+         *
+         * It sits AFTER the "Uploading" patch on purpose — the patch must not be pushed a
+         * microtask further from the compressor resolving, and hashing ~55 KB is a millisecond
+         * the runner will never see.
+         */
+        let contentHash: string | null = null
+        try {
+          contentHash = await contentHashOf(compressed.file)
+        } catch {
+          contentHash = null
+        }
+
         // The client picks its own pathname; the route validates it against
         // SHOT_REQUEST_PATHNAME_RE and Vercel appends a random suffix on top.
         const requested = `${SHOT_PREFIX}${newId()}.jpg`
@@ -147,6 +167,7 @@ export function UploadPicker() {
             width: compressed.width,
             height: compressed.height,
             bytes: compressed.compressedBytes,
+            contentHash,
           },
         })
       } catch (cause) {

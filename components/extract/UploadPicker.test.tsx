@@ -29,6 +29,19 @@ vi.mock('@vercel/blob/client', () => ({ upload }))
 const { compressForExtraction } = vi.hoisted(() => ({ compressForExtraction: vi.fn() }))
 vi.mock('@/lib/photos/compressForExtraction', () => ({ compressForExtraction }))
 
+/*
+ * Mocked for the same reason `compressForExtraction` is: it is a platform capability, not a
+ * decision. `contentHashOf` needs `crypto.subtle`, which happy-dom does not reliably provide, and
+ * a fixed answer is what lets the POST-body assertion below be an equality. What is under test
+ * here is that the component HASHES THE COMPRESSED BYTES and carries the answer onto the blob
+ * ref — the hash function itself is proved in `lib/photos/contentHash`'s own suite.
+ */
+const { contentHashOf } = vi.hoisted(() => ({ contentHashOf: vi.fn() }))
+vi.mock('@/lib/photos/contentHash', () => ({ contentHashOf }))
+
+/** sha256("test") — a known-answer vector, the same one the chat-dedupe suite uses. */
+const HASH = '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08'
+
 const { routerPush } = vi.hoisted(() => ({ routerPush: vi.fn() }))
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: routerPush }) }))
 
@@ -114,6 +127,7 @@ const radioOf = (group: HTMLElement, label: string) =>
 
 beforeEach(() => {
   compressForExtraction.mockResolvedValue(shot)
+  contentHashOf.mockResolvedValue(HASH)
   upload.mockImplementation(async (pathname: string) => uploadedAt(pathname))
 })
 
@@ -432,6 +446,7 @@ describe('UploadPicker — “Read this run”', () => {
       width: 560,
       height: 1214,
       bytes: 55_000,
+      contentHash: HASH,
     })
     expect(body.images[1]!.kind).toBe('splits')
   })
@@ -463,6 +478,33 @@ describe('UploadPicker — “Read this run”', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Read this run' }))
 
     expect(await screen.findByText('The server refused this (500).')).toBeInTheDocument()
+  })
+
+  it('hashes the COMPRESSED bytes, not the picked file — the dedup key describes what is stored', async () => {
+    const { container } = renderPicker()
+    await readyPicker(container)
+
+    expect(contentHashOf).toHaveBeenCalledTimes(2)
+    expect(contentHashOf).toHaveBeenCalledWith(shot.file)
+  })
+
+  it('a hash that cannot be computed still uploads, and says so as null', async () => {
+    // Invariant: dedup may go inactive for a shot; a shot may never fail to upload because of it.
+    contentHashOf.mockRejectedValue(new Error('crypto.subtle unavailable'))
+    const { container } = renderPicker()
+    await readyPicker(container)
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(JSON.stringify({ extractionId: 'ext000000009' }), { status: 202 }),
+      )
+    vi.stubGlobal('fetch', fetchMock)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Read this run' }))
+    await waitFor(() => expect(routerPush).toHaveBeenCalledWith('/x/ext000000009'))
+
+    const body = JSON.parse(fetchMock.mock.calls[0]![1]!.body)
+    expect(body.images[0]).toMatchObject({ contentHash: null })
   })
 })
 

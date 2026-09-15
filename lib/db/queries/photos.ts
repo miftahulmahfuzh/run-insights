@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, exists, inArray, notInArray, sql } from 'drizzle-orm'
 
 import { newPhotoId } from '@/lib/id'
+import { isValidContentHash } from '@/lib/photos/contentHash'
 
 import { db } from '../index'
 import { extractions, runPhotos, type PhotoKind, type RunPhoto } from '../schema'
@@ -20,12 +21,24 @@ export interface NewPhotoInput {
   height?: number | null
   bytes?: number | null
   sortOrder?: number
+  /**
+   * **The duplicate-image push's key (R1).** `contentHashOf` over the bytes this row's blob
+   * holds, as claimed by the browser that PUT them. THIS FUNCTION IS THE INSERT DOOR: anything
+   * that is not 64 lowercase hex is written as NULL — dedup silently inactive for that row —
+   * which is the same rule, for the same reason, that `insertNinaMessageImages` applies to
+   * `nina_message_images.content_hash`. One spelling in the column, or nothing.
+   */
+  contentHash?: string | null
 }
 
 /**
  * Attaches uploaded screenshots to their extraction (R-1). `run_id` stays NULL until
  * `commitExtractedRun` backfills it, so a photo is never orphaned and no placeholder run is
  * needed to hold it.
+ *
+ * **`ids` comes back in INPUT ORDER**, and that is a contract rather than an accident: the ids
+ * are minted here, one per `photos[i]`, and `POST /api/extract` zips them back against the claims
+ * it sent to know which row carries which hash for the duplicate scan. Do not reorder the map.
  */
 export async function attachExtractionPhotos(
   userId: string,
@@ -44,6 +57,7 @@ export async function attachExtractionPhotos(
     height: photo.height ?? null,
     bytes: photo.bytes ?? null,
     sortOrder: photo.sortOrder ?? i,
+    contentHash: isValidContentHash(photo.contentHash) ? photo.contentHash : null,
   }))
   await db.insert(runPhotos).values(rows)
   return { ids: rows.map((r) => r.id) }
