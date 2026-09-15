@@ -2,7 +2,7 @@
 
 **Package Path**: `.`
 **Package Code**: RI
-**Last Updated**: 2026-09-11
+**Last Updated**: 2026-09-15
 **Total Active Tasks**: 0
 
 ## Quick Stats
@@ -12,7 +12,7 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 41
+- Completed: 42
 - Archived: 41
 
 ---
@@ -34,6 +34,21 @@
 ---
 
 ## Completed Tasks
+
+- [x] **P1-RI-K3JQ** Viewer button + cross-folder navigation to the description panel
+  - **Difficulty**: HARD
+  - **Type**: Feature
+  - **Context**: Owns `lib/admin/albumDeepLink.ts` (new — the `?avatar=` grammar), `lib/nina/queries/avatars.ts` (`locateNinaAvatar`, `NinaAvatarLocation`), `components/ui/PhotoViewer.tsx` (`ViewerPhoto.id`, the `headerAction` slot), `components/admin/explorer/SearchResultsGrid.tsx` (the link + glyph), `components/admin/FileExplorer.tsx` (`deepLinkId` prop + landing effect), and the `?avatar=` resolution region of `app/admin/nina/page.tsx`. Exit: clicking the new button in the open viewer, for a search hit from any folder, lands the operator on `/admin/nina` with that exact photo selected and its description panel open — verified across folders and pagination; the `?avatar=` param is spent (replaced, not pushed) and reload-safe; a well-formed id naming no row lands on the album root with nothing selected; `npm run typecheck` and `npm test` green.
+  - **Status**: completed
+  - **Plan Set**: `NINA_ALBUM_SEARCH_RELEVANCE_TOOLS_PLAN.md` (phase 1 of 3)
+  - **Satisfies**: R1 — Icon button in the full-screen viewer that jumps to that photo's description panel
+  - **Plan**: `.workflows/plan/P1-RI-K3JQ.md`
+  - **Completed**: 2026-09-15 15:00
+  - **Method**: /do
+  - **Files**: app/admin/nina/page.tsx, components/admin/FileExplorer.tsx, components/admin/FileExplorer.test.tsx, components/admin/explorer/SearchResultsGrid.tsx, components/admin/explorer/SearchResultsGrid.test.tsx, components/ui/PhotoViewer.tsx, components/ui/PhotoViewer.test.tsx, lib/admin/albumDeepLink.ts, lib/admin/albumDeepLink.test.ts, lib/nina/queries/avatars.ts, lib/nina/queries.test.ts, tests/admin.photoSearch.test.ts
+  - **Drift**: None from the phase plan — every step applied at the exact line numbers/old_string the plan quoted, no manual adaptation needed.
+  - **Drift**: Unrelated pre-existing issues found during verification, NOT caused by this phase (confirmed via `git status --short` / `git diff origin/main` showing zero change to these files): `npm run format:check` flags `tests/admin.albumUploadActions.test.ts` (pre-existing formatting drift from commit 81c101f), and `npm run ci:client-secret-guard` flags a raw `process.env.OPENROUTER_API_KEY` read in `lib/nina/embedding.test.ts` (pre-existing). Neither is this phase's to fix.
+  - **Verification**: `npx vitest run` on the touched set 111/111; full `npm test` 6069/6069; `npm run typecheck` clean; `npm run lint` clean. Read-only production-DB smoke confirmed `locateNinaAvatar`'s correlated-subquery offset math (3/3 sample ids matched expected offsets) and that a well-formed non-existent id returns zero rows — this retires the phase plan's own flagged "needs a real-DB smoke" risk. **Still open:** no authenticated-browser walkthrough of the click-through UX (no local `ADMIN_EMAILS`/cookie-minting setup).
 
 ---
 

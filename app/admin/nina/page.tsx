@@ -6,6 +6,8 @@ import type {
   ExplorerPhoto,
   MediaExplorerPhoto,
 } from '@/components/admin/explorer/model'
+import { NINA_AVATAR_PARAM } from '@/lib/admin/albumDeepLink'
+import { ADMIN_AVATAR_ID_RE } from '@/lib/admin/avatars'
 import { NINA_FOLDER_ROOT, readExplorerView, validateFolderPath } from '@/lib/admin/filetree'
 import { requireAdmin } from '@/lib/admin/requireAdmin'
 import {
@@ -19,6 +21,7 @@ import {
   listNinaAvatarFolders,
   listNinaAvatarsInFolder,
   listNinaMediaPhotos,
+  locateNinaAvatar,
   type NinaAvatarFolderCount,
 } from '@/lib/nina/queries'
 import { shareOrigin } from '@/lib/share/origin'
@@ -123,8 +126,36 @@ export default async function AdminNinaPage(props: PageProps<'/admin/nina'>) {
    */
   const view = readExplorerView(params.view)
   const requested = validateFolderPath(readOne(params.folder) ?? NINA_FOLDER_ROOT)
-  const folder = requested.ok ? requested.path : NINA_FOLDER_ROOT
-  const page = readPage(readOne(params.page))
+
+  /*
+   * ── R1's DEEP LINK ──────────────────────────────────────────────────────────────────────────
+   * `?avatar=<id>` says "open whichever folder and page this photograph is on, and select it", and
+   * only the server can answer it: the album search ranks across every folder
+   * (`lib/nina/queries/avatarsearch.ts`) while the explorer holds one folder and one page, so the
+   * id has to become a folder and an offset before the client has a row to select at all
+   * (`components/admin/FileExplorer.tsx:196`'s `photos.find(...)`).
+   *
+   * Validated, not trusted, exactly like the two parameters above it: a value that is not the shape
+   * `newId()` mints is not an id, and is dropped rather than handed to a query. Ignored on the
+   * MEDIA arm by construction, for the reason that arm ignores `?folder=`: a message image is not
+   * an album row and has no folder to open.
+   */
+  const wantedAvatarId = view === 'media' ? null : readAvatarId(readOne(params[NINA_AVATAR_PARAM]))
+  const located = wantedAvatarId === null ? null : await locateNinaAvatar(userId, wantedAvatarId)
+
+  /*
+   * A RESOLVED deep link wins over `?folder=` and `?page=`; a failed one changes nothing.
+   *
+   * The link carries only an id — where the row is filed is DERIVED — so any folder or page
+   * travelling beside it is a leftover from wherever the operator happened to be, and honouring it
+   * would open the wrong folder and then fail to find the photograph in it. `locateNinaAvatar`
+   * answering `null` means "not yours, or gone" (that module's rule 1): the ordinary parameters
+   * take over, nothing is selected, and the operator lands on the folder the URL names — which is
+   * what an id naming no row should look like. Silent, deliberately: a page that distinguished
+   * "deleted" from "not yours" would be telling a stranger which ids exist.
+   */
+  const folder = located?.folder ?? (requested.ok ? requested.path : NINA_FOLDER_ROOT)
+  const page = located != null ? pageOfOffset(located.offset) : readPage(readOne(params.page))
 
   /*
    * The two arms fill the same four slots and fall through to ONE render, because the header, the
@@ -239,6 +270,9 @@ export default async function AdminNinaPage(props: PageProps<'/admin/nina'>) {
       source: row.source,
       isCurrent: row.isCurrent,
       description: row.description,
+      /* R2, 2026-09-15. Rendered and edited by the rail's keyword box; `avatarColumns` carries it
+       * now, and the Media arm has no counterpart because that table has no such column. */
+      searchKeywords: row.searchKeywords,
       crop: { scale: row.cropScale, x: row.cropX, y: row.cropY },
       createdAt: row.createdAt.toISOString(),
     }))
@@ -312,6 +346,7 @@ export default async function AdminNinaPage(props: PageProps<'/admin/nina'>) {
         userId={userId}
         folders={folderList}
         photos={photos}
+        deepLinkId={located?.id ?? null}
         page={pageInfo}
         view={view}
         mediaCount={mediaTotal}
@@ -335,4 +370,29 @@ function readPage(raw: string | null): number {
   const parsed = Number.parseInt(raw ?? '', 10)
   if (!Number.isFinite(parsed) || parsed < 1) return 1
   return Math.min(parsed, PAGE_CEILING)
+}
+
+/**
+ * The `?avatar=` value if it is the SHAPE an id has, and `null` otherwise.
+ *
+ * `ADMIN_AVATAR_ID_RE` is `newId()`'s alphabet — nanoid(12) over `A-Za-z0-9_-` — and it has exactly
+ * one spelling, in `lib/admin/avatars.ts`, which is why it is imported rather than restated. A
+ * shape check and never an existence check: whether the row exists, and whether it is this user's,
+ * is `locateNinaAvatar`'s answer and nobody else's.
+ */
+function readAvatarId(raw: string | null): string | null {
+  if (raw === null) return null
+  return ADMIN_AVATAR_ID_RE.test(raw) ? raw : null
+}
+
+/**
+ * Which 1-based page of `listNinaAvatarsInFolder` holds the row at `offset` inside its folder.
+ *
+ * The page SIZE is this file's policy — it is the `limit` the album arm spends below — which is
+ * exactly why `locateNinaAvatar` returns a row count and this division happens here rather than in
+ * the query layer. Capped at `PAGE_CEILING` for `readPage`'s reason, so the two ways a page number
+ * can arrive cannot disagree about how deep a page may be.
+ */
+function pageOfOffset(offset: number): number {
+  return Math.min(Math.floor(offset / NINA_ADMIN_PAGE_SIZE) + 1, PAGE_CEILING)
 }

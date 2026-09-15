@@ -140,6 +140,7 @@ describe('the rows come back scored', () => {
           null, // cropX
           null, // cropY
           'she is on a beach', // description
+          null, // searchKeywords
           false, // isCurrent
           null, // announcedAt
           '2026-09-01 10:00:00+00', // createdAt
@@ -178,6 +179,7 @@ describe('the relevance threshold cuts the ranked tail', () => {
           null, // cropX
           null, // cropY
           'she is on a beach', // description
+          null, // searchKeywords
           false, // isCurrent
           null, // announcedAt
           '2026-09-01 10:00:00+00', // createdAt
@@ -199,6 +201,7 @@ describe('the relevance threshold cuts the ranked tail', () => {
           null, // cropX
           null, // cropY
           'she is in a pool', // description
+          null, // searchKeywords
           false, // isCurrent
           null, // announcedAt
           '2026-09-02 10:00:00+00', // createdAt

@@ -4,6 +4,7 @@ import { useState } from 'react'
 
 import { CheckIcon, SparklesIcon } from '@/components/admin/photoIcons'
 import { Button, CONTROL_CLASS } from '@/components/ui'
+import { ADMIN_AVATAR_MAX_SEARCH_KEYWORDS_CHARS } from '@/lib/admin/avatars'
 import { ADMIN_CHAT_PHOTO_MAX_DESCRIPTION_CHARS } from '@/lib/admin/chatPhotos'
 import { cn } from '@/lib/cn'
 
@@ -15,10 +16,11 @@ import { cn } from '@/lib/cn'
  *
  * ── IT IMPORTS NO SERVER ACTION ──────────────────────────────────────────────────────────────
  * `ChatPhotoDetail`'s rule for `ChatPhotoDescription`, kept because it is what makes the prop
- * renames impossible to miss: `onSave` and `onRedescribe` are handed in as closures by the arm
- * that mounts this panel — `AlbumSelectionPane` or `MediaPane`, each of which already knows which
- * table its row is backed by (Phase 2's dispatcher narrowed them). A rename in either action
- * family fails at the call site in that arm, not silently inside a component that guessed.
+ * renames impossible to miss: `onSave`, `onRedescribe` and `onSaveKeywords` are handed in as
+ * closures by the arm that mounts this panel — `AlbumSelectionPane` or `MediaPane`, each of which
+ * already knows which table its row is backed by (Phase 2's dispatcher narrowed them). A rename in
+ * either action family fails at the call site in that arm, not silently inside a component that
+ * guessed.
  *
  * ── A SAVE BUTTON, NOT COMMIT-ON-BLUR, AND NOT A CONFIRMATION ─────────────────────────────
  * R1's ruling — *"no need for all these bullshit confirmation"* — is about a SECOND click on
@@ -26,12 +28,14 @@ import { cn } from '@/lib/cn'
  * in as many words for its own `+`. Commit-on-blur is right for that file (forty cells of 400
  * characters, `Escape` to revert); it is wrong for one 2000-character paragraph, where a stray blur
  * would silently store a half-finished sentence into Nina's prompt with nothing to say it happened.
+ * **The keyword box obeys the same rule for the same reason**, and one more besides: an unsaved
+ * keyword edit that committed on blur would re-embed the row every time the operator tabbed away.
  *
  * ── NO `<form>`, NO `router.refresh()` ────────────────────────────────────────────────────
- * `ChatPhotoDescription`'s shape and its cited reason. Both actions end in `revalidatePath`, and
- * Next 16 *"re-renders the current route server-side and includes a newly rendered RSC payload in
- * the action's response"*, so the saved (or re-described) prose arrives in the same round trip and
- * the box shows it — a `<form action={…}>` would need `useActionState` to surface the inline
+ * `ChatPhotoDescription`'s shape and its cited reason. All three actions end in `revalidatePath`,
+ * and Next 16 *"re-renders the current route server-side and includes a newly rendered RSC payload
+ * in the action's response"*, so the saved (or re-described) prose arrives in the same round trip
+ * and the box shows it — a `<form action={…}>` would need `useActionState` to surface the inline
  * error, which is a second error vocabulary on a screen that already has one.
  *
  * ── `draft === null` MEANS UNTOUCHED, WHICH IS WHY THERE IS NO EFFECT ─────────────────────
@@ -41,14 +45,30 @@ import { cn } from '@/lib/cn'
  * stands — his typing is never discarded by a machine pass, and the "unsaved" marker stays honest.
  * After a successful SAVE the draft is dropped back to `null`, which is what makes the marker
  * clear itself when the saved text comes back. The host still keys the pane per selection, which
- * covers the other direction: switching tiles with unsaved text in the box.
+ * covers the other direction: switching tiles with unsaved text in the box. **`keywordsDraft` is a
+ * second, independent draft under the identical rule** — the two boxes hold two different columns
+ * and neither save may disturb the other's typing, which is also why the album has two actions and
+ * not one widened one.
  *
- * ── ONE FLIGHT AT A TIME ─────────────────────────────────────────────────────────────────────
+ * ── ONE FLIGHT AT A TIME, ACROSS ALL THREE VERBS ─────────────────────────────────────────────
  * A save and a describe running concurrently would interleave two writes to one column with no
- * meaning attached to the winner, so while either is in flight the other is disabled (the
- * in-flight one shows the pulsing dots). The textarea is disabled during a SAVE — the value being
- * written must not change under the write — and left ENABLED during a DESCRIBE: an 8-11 s vendor
- * call must not lock him out of typing, and the draft rule above protects whatever he types.
+ * meaning attached to the winner, so while any of them is in flight the others are disabled (the
+ * in-flight one shows the pulsing dots). R2's keyword save joins the SAME lock rather than getting
+ * one of its own, and the reason is sharper than symmetry: all three verbs write
+ * `description_embedding`. A keyword save nulls the vector and schedules the re-embed off the
+ * response; a re-describe computes a vector in band and writes it. Run together, the deferred
+ * re-embed can land on either side of the in-band write, and which one wins is not a thing the
+ * operator can see or reason about. One lock makes the sequence a fact.
+ *
+ * A textarea is disabled during ITS OWN save — the value being written must not change under the
+ * write — and every box is left ENABLED during a DESCRIBE: an 8-11 s vendor call must not lock him
+ * out of typing, and the draft rule above protects whatever he types.
+ *
+ * ── THE KEYWORD BOX IS OPTIONAL, AND ABSENT IS NOT DISABLED ──────────────────────────────────
+ * R2, 2026-09-15. `search_keywords` is a `nina_avatars` column and `nina_message_images` has no
+ * counterpart, so the Media arm mounts this panel WITHOUT `onSaveKeywords` and the whole block is
+ * not rendered — the same call `FileExplorer.tsx:368` makes for the search field over the Media
+ * view: *"a search field over it would be a field that cannot answer — absent, not disabled."*
  *
  * ── THE FONT SIZE IS `CONTROL_CLASS`'s AND IS NOT SHRUNK ─────────────────────────────────
  * `text-base` comes from `CONTROL_CLASS` and stays. Safari zooms the viewport when a control
@@ -68,6 +88,8 @@ export function PhotoDescription({
   emptyNote,
   onSave,
   onRedescribe,
+  searchKeywords = null,
+  onSaveKeywords,
 }: {
   /** The row's stored prose, straight from the server. `null` is "not described yet". */
   description: string | null
@@ -82,10 +104,22 @@ export function PhotoDescription({
   onSave: (text: string) => Promise<DescribeOutcome>
   /** The vision-model write. Takes nothing, overwrites everything. */
   onRedescribe: () => Promise<DescribeOutcome>
+  /**
+   * R2. The row's stored keyword line, or `null`. Read only when `onSaveKeywords` is given —
+   * the two travel together, because a box that shows a value it cannot save is worse than no box.
+   */
+  searchKeywords?: string | null
+  /**
+   * R2. The keyword write, or ABSENT for a table that has no such column. Absent means the whole
+   * block is not rendered; see the docstring. An empty string clears the field.
+   */
+  onSaveKeywords?: (text: string) => Promise<DescribeOutcome>
 }) {
   const stored = description ?? ''
+  const storedKeywords = searchKeywords ?? ''
   const [draft, setDraft] = useState<string | null>(null)
-  const [busy, setBusy] = useState<'save' | 'describe' | null>(null)
+  const [keywordsDraft, setKeywordsDraft] = useState<string | null>(null)
+  const [busy, setBusy] = useState<'save' | 'describe' | 'keywords' | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [note, setNote] = useState<string | null>(null)
 
@@ -93,6 +127,10 @@ export function PhotoDescription({
   const dirty = draft !== null && draft !== stored
   /* Mirrors the schema's transform, which trims before it decides, so the label cannot lie. */
   const willClear = text.trim().length === 0
+
+  const keywordsText = keywordsDraft ?? storedKeywords
+  const keywordsDirty = keywordsDraft !== null && keywordsDraft !== storedKeywords
+  const keywordsWillClear = keywordsText.trim().length === 0
 
   const save = async () => {
     if (busy !== null || !dirty) return
@@ -117,6 +155,35 @@ export function PhotoDescription({
     }
   }
 
+  /**
+   * The keyword save. `save()`'s body with its own draft and its own sentences — deliberately not
+   * a shared helper parameterised over four things, which would be harder to read than the twenty
+   * lines it saves and would have to explain which state each verb touches anyway.
+   *
+   * The description draft is NOT reset here. The two boxes are two columns, and a keyword save must
+   * leave unsaved prose exactly where the operator left it — the same rule a re-describe follows
+   * for the same reason.
+   */
+  const saveKeywords = async () => {
+    if (busy !== null || !keywordsDirty || onSaveKeywords == null) return
+    setBusy('keywords')
+    setError(null)
+    setNote(null)
+    try {
+      const result = await onSaveKeywords(keywordsText)
+      if (!result.ok) {
+        setError(result.error ?? 'Those keywords did not stick.')
+      } else {
+        setNote(result.note ?? null)
+        setKeywordsDraft(null)
+      }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'That save failed.')
+    } finally {
+      setBusy(null)
+    }
+  }
+
   const redescribe = async () => {
     if (busy !== null) return
     setBusy('describe')
@@ -129,7 +196,8 @@ export function PhotoDescription({
       } else {
         setNote(result.note ?? null)
         /* The draft is deliberately LEFT AS IT IS — see the docstring: his unsaved typing survives
-         * the machine pass, and the fresh prose reaches the box the moment he saves or reverts. */
+         * the machine pass, and the fresh prose reaches the box the moment he saves or reverts.
+         * `keywordsDraft` likewise: a re-describe does not touch that column at all. */
       }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'The description call failed. Try again.')
@@ -218,6 +286,70 @@ export function PhotoDescription({
        */}
       {description === null && !dirty && (
         <p className="mt-1.5 text-[12px] leading-relaxed font-medium text-ink-3">{emptyNote}</p>
+      )}
+
+      {/*
+       * ── R2: THE SEARCH KEYWORDS ───────────────────────────────────────────────────────────
+       * Rendered only for a table that HAS the column — see the docstring. No re-describe twin:
+       * these are the operator's own words by definition, and a model that guessed them would be
+       * guessing at the correction the operator came here to make.
+       */}
+      {onSaveKeywords != null && (
+        <div className="mt-4 border-t border-rule pt-3">
+          <p className="mb-1.5 text-[11px] font-semibold tracking-wide text-ink-3 uppercase">
+            Search keywords
+          </p>
+
+          <textarea
+            aria-label="Search keywords"
+            className={cn(CONTROL_CLASS, 'min-h-[56px] resize-y py-2 leading-relaxed')}
+            value={keywordsText}
+            maxLength={ADMIN_AVATAR_MAX_SEARCH_KEYWORDS_CHARS}
+            disabled={busy === 'keywords'}
+            placeholder="tete, putih"
+            onChange={(event) => {
+              setKeywordsDraft(event.target.value)
+              setError(null)
+              setNote(null)
+            }}
+          />
+
+          <div className="mt-1.5 flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              size="md"
+              variant="secondary"
+              className="w-11 px-0"
+              aria-label={
+                keywordsWillClear && searchKeywords !== null
+                  ? 'Clear the search keywords'
+                  : 'Save the search keywords'
+              }
+              title={
+                keywordsWillClear && searchKeywords !== null
+                  ? 'Clear the search keywords'
+                  : 'Save the search keywords'
+              }
+              loading={busy === 'keywords'}
+              disabled={busy !== null || !keywordsDirty}
+              onClick={() => void saveKeywords()}
+            >
+              <CheckIcon className="size-4" />
+            </Button>
+
+            <span className="text-[11px] font-medium text-ink-3 tabular-nums">
+              {keywordsText.length}/{ADMIN_AVATAR_MAX_SEARCH_KEYWORDS_CHARS}
+            </span>
+            {keywordsDirty && (
+              <span className="text-[11px] font-semibold text-accent">unsaved</span>
+            )}
+          </div>
+
+          <p className="mt-1.5 text-[12px] leading-relaxed font-medium text-ink-3">
+            Phrases, comma-separated. They are embedded with the description, so search can find the
+            photo by them — saving re-embeds the row.
+          </p>
+        </div>
       )}
 
       {/* Both lines answer an awaited write, so both are live regions — the action resolved

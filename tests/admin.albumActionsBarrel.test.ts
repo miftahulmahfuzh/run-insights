@@ -37,6 +37,7 @@ const BARREL_ACTIONS = [
   'deleteNinaAvatarAction',
   'describeNinaAvatarAction',
   'editNinaAvatarDescriptionAction',
+  'editNinaAvatarSearchKeywordsAction',
   'ensureNinaAvatarDescriptionAction',
   'listNinaAlbumManifestAction',
   'moveNinaAlbumFolderAction',
@@ -55,11 +56,12 @@ it('the barrel exports exactly the album action surface', async () => {
   expect(Object.keys(barrel).sort()).toEqual(BARREL_ACTIONS)
 })
 
-it('the describe module exports exactly its three describe actions', async () => {
+it('the describe module exports exactly its four describe actions', async () => {
   const mod = await import('@/lib/admin/ninaAlbumDescribeActions')
   expect(Object.keys(mod).sort()).toEqual([
     'describeNinaAvatarAction',
     'editNinaAvatarDescriptionAction',
+    'editNinaAvatarSearchKeywordsAction',
     'ensureNinaAvatarDescriptionAction',
   ])
 })

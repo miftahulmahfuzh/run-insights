@@ -17,6 +17,7 @@ function albumPhoto(overrides?: Partial<ExplorerPhoto>): ExplorerPhoto {
     source: 'upload',
     isCurrent: false,
     description: null,
+    searchKeywords: null,
     crop: { scale: 1, x: 0, y: 0 },
     createdAt: '2026-09-01T00:00:00.000Z',
     folder: '',

@@ -159,6 +159,34 @@ export type NinaAvatarSource = 'seed' | 'generated' | 'operator' | 'admin'
  * that Nina's prompt reads, and this column is a read-only-by-search projection of it. See the
  * column's own note for why NULL is a legal state forever, and `NINA_EMBEDDING_DIMENSIONS` just
  * below this block for why the width cannot change without a re-embed.
+ *
+ * ── `search_keywords` (2026-09-15, nina-album-search-relevance-tools R2) ─────────────────────
+ * A SECOND relevance signal, written by hand: comma-separated free-text phrases the operator adds
+ * when a photograph keeps surfacing for the wrong query, or keeps not surfacing for the right one.
+ * The user's own example is the whole specification — *"search_keywords (contoh value string:
+ * 'tete', 'putih')"* — so it is free text of the same kind as `description`, in a form a human
+ * types, and nothing here parses it into phrases. The column stores what was typed.
+ *
+ * **It is an INPUT to `description_embedding`, never a second thing to rank by.** There is no
+ * exact-match path, no keyword boost and no second vector: `embedNinaAvatarDescription`
+ * (`lib/admin/ninaAlbumDeferredDescribe.ts`) builds `description`, or
+ * `description + "\n\nKeywords: " + search_keywords`, and embeds THAT. One column, one space, one
+ * score — the same argument `description_embedding` above makes for captioning an image query into
+ * the text space rather than keeping two incomparable rankings.
+ *
+ * **The two columns are independent writers of one derived column, and that is the invariant.**
+ * `description` is rewritten by the vision model and by hand; `search_keywords` is only ever
+ * written by hand. A re-describe must NOT touch it — it is the operator's correction of the
+ * model's opinion, and a model pass that erased it would erase the correction every time it was
+ * needed. What both writers share is the obligation `setNinaAvatarDescriptionAndEmbedding`'s
+ * docstring already states for prose: whichever of them changes, the vector changes in the SAME
+ * UPDATE, so there is no window in which the row is a lie.
+ *
+ * Nullable, no default, no backfill, no index — the `source_key` argument applied to a third
+ * fact. Every existing row carries NULL, NULL means "no keywords" forever, and a NULL keyword
+ * makes the combined text exactly the description, so every already-computed vector stays
+ * numerically correct. The one-off backfill re-embeds them anyway, to prove the path is uniform
+ * rather than to change a number.
  */
 
 /**
@@ -253,6 +281,19 @@ export const ninaAvatars = pgTable(
     cropY: integer('crop_y'),
     /** What the picture shows, in prose (R25). See the header for its three writers. */
     description: text('description'),
+    /**
+     * **Hand-written search phrases, comma-separated** — R2, 2026-09-15. `"tete, putih"`.
+     *
+     * NULL means the operator has not tagged this photograph, and it is the value every row
+     * written before today carries. NOT a second ranking column: it is folded into the text that
+     * becomes `description_embedding` (`buildNinaAvatarEmbedText`, `lib/nina/avatarEmbedText.ts`),
+     * and nothing in the app SELECTs it to compare against a query. See the header.
+     *
+     * Bounded by `ADMIN_AVATAR_MAX_SEARCH_KEYWORDS_CHARS` at the boundary rather than by the
+     * column, exactly as `description` is — a `text` column with a Zod bound in front of it is
+     * this repo's shape for prose a human types.
+     */
+    searchKeywords: text('search_keywords'),
     /**
      * **`description`, as a vector** — the album's semantic search ranks against this and nothing
      * else (2026-09-15). Derived, read-only-by-search, and never a second source of truth: the

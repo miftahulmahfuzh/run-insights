@@ -48,6 +48,17 @@ export interface ViewerPhoto {
   url: string
   kind: string
   /**
+   * The row id this photograph came from, when the caller has one — the handle `headerAction`
+   * needs in order to link to the photograph's own screen.
+   *
+   * Deliberately separate from `meta` below, which is the DISPLAY string (`#<id> · <score>`) and is
+   * already formatted for a human: parsing an id back out of it would make a printed format
+   * load-bearing. Optional, because the review surfaces have no such id and never will —
+   * `ReviewPhoto` is `{url, kind, width, height}` (`lib/review/loadReview.ts:34-39`) and assigns to
+   * this type with no adapter, which is the promise this interface's header makes.
+   */
+  id?: string
+  /**
    * What to call this photo, when `kind` is not a `ScreenKind`. F33's album and chat gallery pass
    * a human phrase here; the review surfaces pass nothing and keep `SCREEN_KIND_LABEL`.
    *
@@ -73,6 +84,7 @@ export function PhotoViewer({
   onClose,
   subject = 'screenshot',
   actions,
+  headerAction,
 }: {
   photos: readonly ViewerPhoto[]
   index: number
@@ -100,6 +112,28 @@ export function PhotoViewer({
    * gets the platform's own image viewer, with real pinch-zoom, real save and real back.
    */
   actions?: React.ReactNode
+  /**
+   * A control for the HEADER, drawn immediately left of the close ✕ — R1 of
+   * nina-album-search-relevance-tools: *"tambah tombol icon di full screen image view. tombol yang
+   * mengarahkan user ke UI yang bisa melihat image description."*
+   *
+   * ── WHY A SLOT, AND WHY IT TAKES THE PHOTO ───────────────────────────────────────────────────
+   * The slot half is `actions`'s argument above, unchanged: the album's control is a `<Link>` into
+   * `/admin/nina?avatar=<id>`, and a shared overlay that six non-admin surfaces also open has no
+   * business knowing that route exists.
+   *
+   * What differs is the ARGUMENT. `actions` is mounted over one chat photograph the caller opened;
+   * this overlay PAGES across a whole result set — arrow keys, the dot row, a swipe — so a header
+   * control that acts on "the photograph on screen" has to be derived from the photograph on
+   * screen. Handing the slot `photos[index]` makes that structural instead of a discipline every
+   * caller has to keep, and it is why `ViewerPhoto.id` exists rather than the caller re-deriving
+   * the row from an index it also holds.
+   *
+   * **Absent renders NOTHING**, the same promise `label`, `meta` and `actions` make:
+   * `ScreenshotStrip`, `SheetSource`, `PhotoInclusionList`, `ChatScreen`, `NinaAboutScreen`,
+   * `ErrorLogList` and `PhotoDeepLinkScreen` draw the header they always have.
+   */
+  headerAction?: (photo: ViewerPhoto) => React.ReactNode
 }) {
   const photo = photos[index]!
   /**
@@ -227,14 +261,24 @@ export function PhotoViewer({
             </span>
           )}
         </span>
-        <button
-          type="button"
-          onClick={onClose}
-          className="grid size-11 place-items-center rounded-pill text-[19px] font-semibold text-card"
-          aria-label="Close"
-        >
-          ✕
-        </button>
+        {/*
+          The header's control cluster. `shrink-0` so a long name truncates against the controls
+          rather than squeezing them off the edge. No gap class: both controls are 44 px tap targets
+          whose glyphs are already inset, so a gap would only push ✕ away from the edge it is
+          aligned to. An absent `headerAction` renders nothing at all and this row is the single
+          close button it has always been — `components/ui/PhotoViewer.test.tsx` holds that half.
+        */}
+        <div className="flex shrink-0 items-center">
+          {headerAction?.(photo)}
+          <button
+            type="button"
+            onClick={onClose}
+            className="grid size-11 place-items-center rounded-pill text-[19px] font-semibold text-card"
+            aria-label="Close"
+          >
+            ✕
+          </button>
+        </div>
       </div>
 
       <div

@@ -1,8 +1,10 @@
 # Package: admin
 
 **Location**: `lib/admin`
-**Last Updated**: 2026-09-15 (the album's describe-and-embed write side + the backfill route,
-P2-ADM-A001; same day, cross-table duplicate detection on the admin upload routes, P1-ADM-L2VN).
+**Last Updated**: 2026-09-15 (`search_keywords` — the album's second embedding input — plus the
+`nina:backfill-embeddings` script, P1-ADM-T8RM; same day, the album's describe-and-embed write side
++ the backfill route, P2-ADM-A001, and cross-table duplicate detection on the admin upload routes,
+P1-ADM-L2VN).
 Previously: 2026-09-14 (media add's push notification, P1-ADM-A003). Baseline:
 2026-09-12 — full rewrite/compaction against the current tree (every export
 block, signature, constant and reverse dependency re-verified mechanically; the per-task changelog
@@ -36,9 +38,15 @@ exactly one definition — `schema.ts` imports every bound it enforces rather th
 - Own the album's write side: register a dropped folder, promote, crop, describe (by model or by
   hand), adopt a chat photo, delete, and maintain folders (create/rename/move/delete, bulk
   move/remove).
-- Since 2026-09-15, own the rule that **`description` and `description_embedding` move together**:
-  every path in this package that writes an album row's prose also writes (or deliberately NULLs)
-  its vector, in one statement, and the backlog is drained by a route this package owns.
+- Since 2026-09-15, own the rule that **an album row's vector and every input to it move together**:
+  `description_embedding` is derived from `description` **and** `search_keywords`, so every path in
+  this package that writes either one also writes (or deliberately NULLs) the vector, in the same
+  statement, and the backlog is drained by a route this package owns. The two inputs have two
+  writers (`editNinaAvatarDescriptionAction`, `editNinaAvatarSearchKeywordsAction`) and two
+  one-statement queries on purpose — see the gotcha; neither writer can reach the other's column.
+- Since 2026-09-15, own the rule that **a re-describe must never touch `search_keywords`**. The
+  keywords are the operator's correction of exactly the model's opinion; a pass that cleared them
+  would erase the correction every time it was needed.
 - Own the media collection's write side: add (with write-time dedupe, and the push notification
   that tells his phone either that the bubble exists or that the photograph was already in the
   collection), replace, remove (with blob release), describe, and the hand-written description
@@ -63,12 +71,12 @@ exactly one definition — `schema.ts` imports every bound it enforces rather th
 | File | Environment | Purpose |
 |---|---|---|
 | `requireAdmin.ts` | `server-only` | The boundary. Page/action flavour, Route Handler flavour, canonical refusal body. |
-| `avatars.ts` | pure | Album blob pathname shapes, content types, size caps, id regex, TTLs — original and thumbnail. |
+| `avatars.ts` | pure | Album blob pathname shapes, content types, size caps, id regex, TTLs — original and thumbnail — and the hand-written keyword field's character cap. |
 | `filetree.ts` + `filetree/` | pure, **import-pure** (`./` siblings only) | Folder-path grammar (`pathGrammar`), file classification (`classify`), dedupe key (`sourceKey`), `planFolderUpload` (`uploadPlan`), tree building (`folderTree`), the explorer's album/Media view switch (`mediaView`), the limits (`bounds`). `filetree.ts` is the re-export barrel. |
 | `folderOps.ts` | pure (zod) | Folder *maintenance*: the six operations' schemas and the planners that refuse without a database. |
 | `schema.ts` | pure | Every Zod schema `/admin/**` accepts. Imports every bound; declares none. |
-| `ninaAlbumActions.ts` | barrel (plain ESM) + `AdminActionResult`, `AdminSearchHit`, `AdminSearchResult`, `AdminSearchMode` | The album's write side: 15 actions — describe/edit prose, face, crop, delete, folder register/manifest, folder maintenance. Since the `nina-queries-split` session the implementations live behind it in `ninaAlbumDescribeActions.ts`, `ninaAlbumAvatarActions.ts`, `ninaAlbumUploadActions.ts` (register + manifest), `ninaAlbumFolderActions.ts` and the plain `ninaAlbumDeferredDescribe.ts`; every importer still names the barrel. Since 2026-09-15 it also declares the album search's result types beside `AdminActionResult` — a `'use server'` module may not export a type at all. |
-| `ninaAlbumDeferredDescribe.ts` | plain server module (no `'use server'`, no pill) | The deferred describe-**and-embed** pre-pass: the three `after()` schedulers, the lane worker, the wall-clock budget, and the in-band `embedNinaAvatarDescription`. A synchronous scheduler cannot be exported from a `'use server'` module, which is why it has a file of its own. |
+| `ninaAlbumActions.ts` | barrel (plain ESM) + `AdminActionResult`, `AdminSearchHit`, `AdminSearchResult`, `AdminSearchMode` | The album's write side: 16 actions — describe/edit prose, edit search keywords, face, crop, delete, folder register/manifest, folder maintenance. Since the `nina-queries-split` session the implementations live behind it in `ninaAlbumDescribeActions.ts`, `ninaAlbumAvatarActions.ts`, `ninaAlbumUploadActions.ts` (register + manifest), `ninaAlbumFolderActions.ts` and the plain `ninaAlbumDeferredDescribe.ts`; every importer still names the barrel. Since 2026-09-15 it also declares the album search's result types beside `AdminActionResult` — a `'use server'` module may not export a type at all. |
+| `ninaAlbumDeferredDescribe.ts` | plain server module (no `'use server'`, no pill) | The deferred describe-**and-embed** pre-pass: the three `after()` schedulers, the lane worker, the wall-clock budget, and `embedNinaAvatarDescription` — the one choke point that turns a row's `(description, searchKeywords)` pair into a vector, via `lib/nina/avatarEmbedText.ts`. A synchronous scheduler cannot be exported from a `'use server'` module, which is why it has a file of its own. |
 | `ninaAlbumSearchSchema.ts` | pure (zod) | The album search's payload: the typed-query ceiling, the data-URI ceiling and allow-list, and the one cross-field rule (a search with neither arm is not a search). Its own file, like `chatPhotoSchema.ts`. |
 | `ninaAlbumSearchActions.ts` | `'use server'` | The album's READ side, and the layer's only read action: one `searchNinaAvatarsAction` covering text, image and both. Writes nothing, stores nothing, revalidates nothing. |
 | `chatPhotos.ts` | pure | The media collection's vocabulary: pathname shapes, ceilings, id regexes, the carrier-message rule, `planChatPhotoAddWrite`'s types. |
@@ -126,6 +134,7 @@ export const ADMIN_AVATAR_MAX_EDGE_PX = 12_000
 export const ADMIN_AVATAR_ID_RE = /^[A-Za-z0-9_-]{12}$/
 export const ADMIN_AVATAR_TOKEN_TTL_MS = 10 * 60 * 1000
 export const ADMIN_AVATAR_CACHE_MAX_AGE = 60 * 60 * 24 * 365
+export const ADMIN_AVATAR_MAX_SEARCH_KEYWORDS_CHARS = 500   // 2026-09-15
 
 export function adminAvatarPathname(userId, id, ext): string
 export function adminAvatarThumbPathname(userId, id, ext): string
@@ -141,6 +150,16 @@ predicates (the caller must know WHICH shape, because the caps differ 8 MB vs 51
 request regex is a different shape from the stored pathname because `addRandomSuffix: true` means
 Blob rewrites what it was asked for. `NINA_BLOB_PREFIX` is imported from `lib/nina/images.ts` —
 the store layout has one spelling.
+
+The one non-blob constant here, `ADMIN_AVATAR_MAX_SEARCH_KEYWORDS_CHARS`, is the album's other
+bound-with-two-readers (the Zod field's `.max()` and the textarea's `maxLength`) and lives here for
+that reason alone. **It is DERIVED, not chosen**: the combined embed input is
+`description + "\n\nKeywords: " + searchKeywords`, and 2 000 (the description's own cap) + 13 + 500
+= 2 513 against `NINA_EMBEDDING_MAX_CHARS`' silent 8 000-character truncation — so the keywords can
+never be the half that gets cut. It is deliberately NOT
+`ADMIN_CHAT_PHOTO_MAX_DESCRIPTION_CHARS`: that constant is shared with the media table because both
+tables' descriptions are one kind of sentence reaching one prompt, and `nina_message_images` has no
+keywords column at all, so sharing a bound would assert a kinship that does not exist.
 
 ### `filetree.ts` (barrel) + `filetree/` — the file manager's decisions, before anything touches the network
 
@@ -265,6 +284,8 @@ The design facts worth keeping:
 export const avatarIdSchema
 export const cropWriteSchema
 export const avatarDescriptionSchema   // { id, description } — the album prose edit
+export const avatarSearchKeywordsField // 2026-09-15 — the keyword line's normaliser
+export const avatarSearchKeywordsSchema// { id, searchKeywords } — its twin, the tag edit
 export const avatarRegisterSchema      // live caller: explorer/thumbnail.ts
 // userIdSchema, slotKeySchema — module-private since 2026-09-13; no reader outside this file
 export const slotEditSchema
@@ -332,6 +353,16 @@ Facts per schema worth keeping (all verified in source):
   batch its upload. It is NOT the album's dedupe key and must never become one: `sourceKey` and
   its unique index decide what lands, and two identical files under two folder paths are two
   rows on purpose.
+- `avatarSearchKeywordsField` (2026-09-15) is **not `chatPhotoDescriptionField` with a different
+  max**, and the difference is the whole reason it exists: a description is a PARAGRAPH, so that
+  field preserves its newlines and only collapses runs of three or more; this is a LINE about to be
+  joined into embedded text under a `"Keywords: "` label, so **every** whitespace run (newlines
+  included) folds to one space — a newline inside it would put a second, unlabelled block into the
+  vector's input. Beyond that it does nothing: no splitting on commas, no sorting, no
+  de-duplication, no case folding. The operator's free text is embedded verbatim, and a validator
+  that re-punctuated it would store something nobody typed. Same two shared rules as its twin:
+  `.max()` **before** the transform (an over-long paste is refused inline, never truncated into
+  range), and no `.min(1)` (the empty box is the clear — the action turns `''` into `NULL`).
 - `memoryDeleteSchema` is a discriminated union on `kind` (`slot` | `promise` | `fact`) — the one
   delete control's three branches, exhaustive by construction. The four per-kind schemas it
   replaced (`slotRetire`, `promiseRemove`, `factRetract`, `factPurge`) are gone with the actions
@@ -368,6 +399,7 @@ export interface AdminActionResult {
 // describe / prose
 export async function describeNinaAvatarAction(rawId): Promise<AdminActionResult>
 export async function editNinaAvatarDescriptionAction(input): Promise<AdminActionResult>
+export async function editNinaAvatarSearchKeywordsAction(input): Promise<AdminActionResult>
 export async function ensureNinaAvatarDescriptionAction(rawId): Promise<AdminActionResult>
 // face
 export async function setCurrentNinaAvatarAction(rawId): Promise<AdminActionResult>
@@ -419,6 +451,34 @@ an `after()`, and only one: the new prose is written with a **NULL vector in the
 (`setNinaAvatarDescriptionAndEmbedding(userId, id, next, null)`) and `scheduleEmbed` re-earns the
 vector afterwards. "No model call" was never the invariant — *no re-describe* was; an embedding of
 the operator's own sentence is not a rewrite of it. A cleared box schedules nothing at all.
+
+**`editNinaAvatarSearchKeywordsAction`** (2026-09-15) is the album's OTHER free-text write: the
+operator's comma-separated tags (`"tete, putih"`), stored in `nina_avatars.search_keywords` and
+embedded with the description rather than searched on their own. Its policy is
+`editNinaAvatarDescriptionAction`'s, line for line — no model call, no `after()` vision pass, an
+empty box clears to `NULL`, and the vector is NULLed in the SAME UPDATE
+(`setNinaAvatarSearchKeywordsAndEmbedding`) and re-earned by `scheduleEmbed` afterwards, because it
+is derived from these words too. Three things about it are rules rather than shape:
+
+- **It is a second ACTION, not a second field on the prose edit.** The panel has two independent
+  boxes with two independent drafts, so a merged action would make saving the description overwrite
+  keywords the operator had typed but not saved. More importantly, a merged WRITER would put a
+  `searchKeywords` parameter within reach of the re-describe path — which is exactly the thing that
+  must be structurally unable to spell it. `shortcutCellSchema` already rules for this shape on this
+  repo's ground: one control, one field, one action, because the fields have different caps and
+  different meanings.
+- **A row with no prose schedules nothing.** The embedded text is ANCHORED on the description
+  (`buildNinaAvatarEmbedText` returns the description, plus a labelled keyword line); there is no
+  keywords-only vector, so `scheduleEmbed` on a description-less row would be a read that finds
+  nothing to do. That row is already in `listNinaAvatarDescribeBacklog`, and the describe sweep will
+  write prose and then embed the pair — the state heals through the path that exists rather than
+  through a new branch in the worker.
+- **`describeNinaAvatarAction` READS the column and never writes it.** It re-reads
+  `row.searchKeywords`, hands it to `embedNinaAvatarDescription` so the new vector still carries the
+  tags, and the omission from the UPDATE is structural rather than remembered:
+  `setNinaAvatarDescriptionAndEmbedding` sets two columns and `search_keywords` is not one of them.
+  That asymmetry is the point — a re-describe overwrites the model's own previous opinion, and the
+  keywords are the operator's correction OF that opinion.
 
 **`setChatPhotoAsAvatarAction`** adopts a media-collection photograph as her face: it refuses
 reference rows (`source_avatar_id`/`source_image_id` — make the original hers instead), clamps
@@ -502,7 +562,7 @@ export const NINA_ALBUM_BACKFILL_SLICE = 200
 export interface NinaDescribeFillOutcome {
   described; embedded; failed; ranOutOfTime; alreadyDone   // every field counts ROWS, not calls
 }
-export async function embedNinaAvatarDescription(description: string, userId: string): Promise<number[] | null>
+export async function embedNinaAvatarDescription(description: string, searchKeywords: string | null, userId: string): Promise<number[] | null>
 export async function fillNinaAvatarDescribeTargets(userId, targets, budgetMs): Promise<NinaDescribeFillOutcome>
 export function scheduleDescribeAll(userId: string, ids: readonly string[]): void
 export function scheduleDescribe(userId: string, id: string): void
@@ -541,11 +601,39 @@ are rules, not tuning knobs):
    Past the deadline the lanes keep draining the array without working, so `ranOutOfTime` is a
    truthful count rather than "the rest, probably".
 
+**`embedNinaAvatarDescription` is the one place that decides what an album photograph's vector is
+computed FROM** (2026-09-15), and `searchKeywords` is a positional parameter rather than an option
+bag precisely because it is as load-bearing as the description — an optional field is a field a
+caller forgets. The JOIN itself is one level further out, in the **zero-import**
+`lib/nina/avatarEmbedText.ts`: `buildNinaAvatarEmbedText(description, searchKeywords)` returns the
+description unchanged when the keywords are `null`/`''`/whitespace (which is why every vector
+computed before the column existed is still numerically correct), and otherwise appends
+`"\n\nKeywords: "` and the stored string verbatim — a blank line and a LABEL, not a comma-append,
+because appending `", tete, putih"` to the last sentence reads to the model as part of that
+sentence. Nothing is parsed, split, sorted or re-punctuated. The join lives outside Next's runtime
+because three runtimes need the identical bytes — this worker, `scripts/backfill-avatar-embeddings.mjs`
+under `node --experimental-strip-types`, and the `/search-analysis` diagnostic; a second spelling
+would put half the corpus in one space and half in another with no error anywhere. **Do not add an
+import to that module** (`lib/id.ts`'s rule): a `@/` alias or a runtime dependency breaks the script.
+
+The worker reads the keywords in the SAME statement the rest of the target came from
+(`NinaAvatarDescribeTarget.searchKeywords`, `listNinaAvatarDescribeTargets`) — one read per batch,
+still — and cannot write them: its UPDATE is `setNinaAvatarDescriptionAndEmbedding`, two columns,
+and `search_keywords` is not one of them. That is also what makes it the re-earn path for
+`editNinaAvatarSearchKeywordsAction`: the keywords are already written, the vector is NULL, and
+`describe: false` recomputes the vector from the pair with no vendor image call.
+
 **Every write goes through `setNinaAvatarDescriptionAndEmbedding`** (`lib/nina/queries/avatarEmbeddings.ts`,
 new in this phase alongside `listNinaAvatarDescribeTargets`, `listNinaAvatarDescribeBacklog` and
 `countNinaAvatarDescribeBacklog`). One `SET` of two columns has no window in which the row is a
 lie; two statements always do, in one direction or the other. `setNinaAvatarDescription` is
 untouched and still correct for a write that is deliberately NOT accompanied by a vector.
+Since 2026-09-15 it has a twin, `setNinaAvatarSearchKeywordsAndEmbedding` — the other input to the
+same derived column, written the same one-statement way. **Two functions rather than one with a
+third parameter**, because the two callers write different columns and must not be able to write
+each other's: a merged `set({ description, searchKeywords, descriptionEmbedding })` would hand the
+re-describe path an argument it has no business having, and the first time someone passed the wrong
+thing a vision pass would silently erase the operator's tags with the row still looking healthy.
 
 **An embedding failure never costs the prose.** `embedNinaAvatarDescription` catches and answers
 `null`, and `null` is a real argument rather than a degenerate one: it writes a NULL vector, which
@@ -590,6 +678,32 @@ the pages' 404, signed-out gets a 401 (a `fetch()` deserves a status, not a redi
   expensive mistake, not the extra rows.
 - **`remaining` is RE-READ, never derived** from `targets.length - done`: an upload's `after()`
   may have filled rows in parallel, and `remaining` is the operator's loop condition.
+
+### `scripts/backfill-avatar-embeddings.mjs` — the uniformity proof (outside the package, owned by it)
+
+`npm run nina:backfill-embeddings` (add `-- --dry-run` to read and report without a vendor call or a
+write; `-- --limit N` for the oldest N). It re-embeds every album row that HAS a description,
+oldest-first, sequentially, through the same combine-then-embed path the app uses. A NULL
+description is not read at all — inventing prose is the describe sweep's job.
+
+- **Why it exists is not "fill in missing vectors" — the route above does that.** Every pre-existing
+  row has `search_keywords = NULL`, and `buildNinaAvatarEmbedText` returns the description unchanged
+  for a NULL, so those rows recompute to a NUMERICALLY IDENTICAL vector. That is the point: the run
+  is the proof, taken once at the moment the second input was introduced, that ONE combine function
+  governs every vector in the table.
+- **A script and not a route, unlike the backlog sweep, because it imports the combine function
+  rather than the vendor clients.** `buildNinaAvatarEmbedText` is imported (a local copy of the join
+  would be testing its own copy); the embeddings URL, the model id, the vector width and the SQL are
+  DUPLICATED, the `album-search-probe.mjs` convention, because `lib/nina/embedding.ts` opens with
+  `import 'server-only'` and the worker opens with `import { after } from 'next/server'` — neither
+  survives a plain node run. If the model or the width migrates in `lib/nina/openrouter.ts` /
+  `lib/db/schema/nina/avatars.ts`, this copy moves with it or the run writes vectors into a space
+  the album is not stored in.
+- **Sequential on purpose.** A burst against one broker buys minutes and risks a 429 mid-run, and a
+  half-written table is exactly what this script exists to rule out. It refuses a `DATABASE_URL`
+  that is not Neon before it does anything.
+- Run for real 2026-09-15: **53/53 rows re-embedded, 0 failed** (a count of that album on that day,
+  not a property of the script).
 
 ### `ninaAlbumSearchSchema.ts` / `ninaAlbumSearchActions.ts` — the album's read side
 
@@ -1108,6 +1222,10 @@ backfill route to finish. The other describes are in-band (the two describe acti
   and manifest caps, the blob prefix, the two model-call families (`describeNinaImages`,
   `captionNinaPhoto`), the slot vocabulary read, the trigger caps and normaliser, the
   photo-param grammar.
+- `@/lib/nina/avatarEmbedText` — `buildNinaAvatarEmbedText`, the one combine function, reached from
+  `ninaAlbumDeferredDescribe.ts` alone. It is zero-import by contract so `scripts/` can load it
+  under `--experimental-strip-types`; adding an import here breaks a consumer outside this repo's
+  Next runtime.
 - `@/lib/nina/embedding` — `embedNinaText`, the only embedding seam this package touches, reached
   from `ninaAlbumDeferredDescribe.ts` alone. It writes its own `nina_error_logs` row, so the
   wrapper here logs a console line and nothing else — and it is passed `userId` deliberately:
@@ -1302,10 +1420,32 @@ export default async function Page() {
 - **Do not put a describe call on a register path.** It was there, it was measured, it was moved.
   Scheduling one inside `after()` for every inserted row is not the same thing and is what the
   album's search requires — the latency argument is about the response, not about the count.
-- **Do not write `description` without deciding about `description_embedding`.** Use
-  `setNinaAvatarDescriptionAndEmbedding` and pass the vector or an explicit `null`; a stale vector
-  is the one failure mode a derived column has, and it is invisible until a search returns the
-  wrong photograph. `setNinaAvatarDescription` is still correct only where no vector is meant.
+- **Do not write `description` — or `search_keywords` — without deciding about
+  `description_embedding`.** Both are inputs to it. Use `setNinaAvatarDescriptionAndEmbedding` /
+  `setNinaAvatarSearchKeywordsAndEmbedding` and pass the vector or an explicit `null`; a stale
+  vector is the one failure mode a derived column has, and it is invisible until a search returns
+  the wrong photograph. `setNinaAvatarDescription` is still correct only where no vector is meant.
+- **Do not merge the two edit actions, or the two one-statement writers behind them.** Two boxes
+  with two drafts means a merged action drops unsaved keywords on a description save — and a merged
+  writer puts a `searchKeywords` parameter within reach of `describeNinaAvatarAction`, which must be
+  structurally unable to spell it. The re-describe path READS the column (so the new vector keeps
+  the tags) and never writes it.
+- **Do not add an import to `lib/nina/avatarEmbedText.ts`,** and do not spell the
+  `description + "\n\nKeywords: " + keywords` join anywhere else. Zero imports is what lets
+  `scripts/backfill-avatar-embeddings.mjs` load it under `--experimental-strip-types`, and a second
+  spelling of the join puts half the album's vectors in a different space with no error anywhere.
+- **Do not `scheduleEmbed` a row with no description** after a keywords save. The embedded text is
+  anchored on the description and the embed-only worker refuses to describe a NULL one — that row is
+  already in the describe backlog, which is where it heals.
+- **A projection helper in a test is positional, and there are more copies than you think.**
+  `avatarColumns` is a column OBJECT but `fakeDb` rows are arrays, so adding one column to it (here,
+  `searchKeywords`, deliberately beside `description`) breaks every hand-written row fixture in
+  lockstep. Three independent copies had to move for one column — `lib/nina/queries.test.ts`,
+  `tests/admin.albumAvatarActions.test.ts`, and `tests/admin.chatPhotoAdoption.test.ts`'s own
+  private `avatarRow`/`describeTargetRow` — and the third was not in the phase plan's file list;
+  only the full sweep found it. Grep for the projection's *neighbouring* field names (`cropY`,
+  `announcedAt`) across `tests/` and co-located suites before touching a `*Columns` object, and
+  never trust a plan's file list as the census.
 - **Do not re-caption after a hand-written edit** — `editChatPhotoDescriptionAction`,
   `editNinaAvatarDescriptionAction`. A hand-written description exists to override the vision
   pass; re-captioning the bubble rewrites a sentence Nina already said. Re-EMBEDDING it is the
@@ -1404,6 +1544,32 @@ registered) is real and belongs to the reaper, not to this package.
 
 ## Recent Changes
 
+- **2026-09-15** — `nina-album-search-relevance-tools` phase 2 of 3 (P1-ADM-T8RM), satisfying R2
+  (*"kalo selain image description, kita tambah satu field baru, search_keywords"*): the album's
+  vector gained a SECOND input. `nina_avatars.search_keywords` is a nullable text column (migration
+  `0024_nina_avatar_search_keywords`, applied to production this session; drift guard green), and the
+  new zero-import `lib/nina/avatarEmbedText.ts` holds the single combine function
+  (`buildNinaAvatarEmbedText` + `NINA_AVATAR_KEYWORDS_PREFIX`) every runtime embeds through. In this
+  package: `ADMIN_AVATAR_MAX_SEARCH_KEYWORDS_CHARS` (500, derived from the embed ceiling) in
+  `avatars.ts`; `avatarSearchKeywordsField`/`avatarSearchKeywordsSchema` in `schema.ts` (whitespace
+  folds to one space — it is a LINE, not a paragraph); a sixteenth action
+  `editNinaAvatarSearchKeywordsAction` in `ninaAlbumDescribeActions.ts`, writing the column and a
+  NULL vector in one UPDATE (`setNinaAvatarSearchKeywordsAndEmbedding`) and re-earning the vector via
+  `scheduleEmbed`, but only for a row that has prose; `embedNinaAvatarDescription` grew a positional
+  `searchKeywords` parameter and `NinaAvatarDescribeTarget` the matching field, so the deferred
+  worker reads the keywords in its existing one-statement batch read and still cannot write them;
+  and `describeNinaAvatarAction` now READS `row.searchKeywords` into the new vector while remaining
+  structurally unable to overwrite it. `avatarColumns` gained `searchKeywords` beside `description`,
+  which moved three independent positional row fixtures in the tests (see the gotcha — the third was
+  not in the plan's file list). UI: a "Search keywords" box beside the description in
+  `PhotoDescription.tsx`/`SelectionPane.tsx`, `AlbumExplorerPhoto.searchKeywords`, and the one
+  additive row→prop line in `app/admin/nina/page.tsx`. New `npm run nina:backfill-embeddings`
+  (`scripts/backfill-avatar-embeddings.mjs`), run for real: 53/53 rows re-embedded, 0 failed (counts
+  measured 2026-09-15). Covered by `tests/admin.albumAvatarActions.test.ts`,
+  `tests/admin.albumDescribeEmbed.test.ts`, `tests/admin.albumActionsBarrel.test.ts`,
+  `tests/nina.avatarSearch.test.ts`, `tests/db.schema.nina.test.ts` and the explorer's co-located
+  suites. Phases 1 and 3 of that plan set are peer phases in the same worktree and are deliberately
+  not documented here.
 - **2026-09-15** — `admin-album-semantic-search` phase 2 (P2-ADM-A001), satisfying R2's other half
   (*"semantic search over EVERY image description we have"*): the album's write side now keeps
   `description` and `description_embedding` in step. `ninaAlbumDeferredDescribe.ts` was rewritten
@@ -1466,41 +1632,6 @@ registered) is real and belongs to the reaper, not to this package.
   `tests/admin.chatPhotos.test.ts` and `components/admin/explorer/useFolderUpload.test.tsx` grew
   the add/replace and hashing cases. Phases 2–3 of that plan set are peer phases in flight in the
   same worktree and are deliberately not documented here.
-- **2026-09-15** — `admin-album-semantic-search` phase 2 (P2-ADM-A001), satisfying R2's other half
-  (*"semantic search over EVERY image description we have"*): the album's write side now keeps
-  `description` and `description_embedding` in step. `ninaAlbumDeferredDescribe.ts` was rewritten
-  from a one-row scheduler into a describe-**and-embed** worker — three schedulers
-  (`scheduleDescribeAll`, `scheduleDescribe`, `scheduleEmbed`), a four-lane runner
-  (`NINA_DEFERRED_DESCRIBE_CONCURRENCY`), a 240 s START gate under the segment's new 300 s
-  `maxDuration` (`NINA_DEFERRED_DESCRIBE_BUDGET_MS`), a never-throwing
-  `embedNinaAvatarDescription`, and `fillNinaAvatarDescribeTargets` for a caller already off the
-  request path. `registerNinaAvatarsAction` now schedules **every inserted row** in one `after()`
-  instead of `rows[0]` only; `setChatPhotoAsAvatarAction` dropped its `description == null` guard
-  (an adopted chat photo arrives with prose and never a vector, so the guard stranded it out of
-  the search); `describeNinaAvatarAction` embeds in band; `editNinaAvatarDescriptionAction` writes
-  the new prose with a NULL vector in ONE statement and re-earns the vector in `after()`. Every
-  write goes through the new `setNinaAvatarDescriptionAndEmbedding` (`lib/nina/queries/avatarEmbeddings.ts`,
-  with `listNinaAvatarDescribeTargets`, `listNinaAvatarDescribeBacklog` and
-  `countNinaAvatarDescribeBacklog`, re-exported from the `lib/nina/queries` barrel).
-  `app/api/admin/nina/backfill-descriptions/route.ts` is new: a `requireAdminApi()`-gated
-  `GET` (count) / `POST` (one slice, re-read `remaining`) the operator loops once over the album
-  that existed before this feature. `app/admin/nina/page.tsx` gained `export const maxDuration =
-  300`, because `after()` inherits the route segment's budget and not the action's. Covered by
-  `tests/admin.albumDescribeEmbed.test.ts` (16 tests, measured 2026-09-15) plus updates to
-  `tests/admin.albumAvatarActions.test.ts` and `tests/admin.chatPhotoAdoption.test.ts`. Phases 3
-  and 4 of that plan set are peer phases in flight in the same worktree (the read side, and the
-  `/admin/nina` UI); phase 3's own entry is below.
-- **2026-09-15** — `admin-album-semantic-search` phase 3 (P2-NIN-A001), satisfying R2/R3/R4
-  (*"semantic search over every image description"*, *"search using image only"*, *"resolve the
-  scoring between these 2"*): the album gained a read side. `lib/admin/ninaAlbumSearchSchema.ts`
-  (payload shape and the two ceilings) and `lib/admin/ninaAlbumSearchActions.ts` (one
-  `requireAdmin()`-gated `searchNinaAvatarsAction`) are new; `ninaAlbumActions.ts` gained the three
-  result types (`AdminSearchMode`, `AdminSearchHit`, `AdminSearchResult`) and the action's
-  re-export, for the reason `AdminActionResult` already lives there. The ranking itself is
-  `lib/nina/queries/avatarsearch.ts` — this package captions, embeds and gates; it does not rank.
-  Covered by `tests/admin.albumSearch.test.ts` and the barrel test's added names. The other phases
-  of that plan set are peer phases in flight in the same worktree (the describe/backfill write side
-  and the `/admin/nina` UI) and are deliberately not documented here.
 - **2026-09-14** — `nina-push-every-message` phase 4 (P1-ADM-A003), satisfying R2 *"when Nina
   speaks on her own initiative, a push notification is sent"*: `addChatPhotoAction` now calls
   `notifyNinaPush(userId, [{ id: message.id, body }], 'admin_chat_photo')` after

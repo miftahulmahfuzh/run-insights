@@ -1,6 +1,7 @@
 import { after } from 'next/server'
 
 import { describeSubjectForSide } from '@/lib/nina/album'
+import { buildNinaAvatarEmbedText } from '@/lib/nina/avatarEmbedText'
 import { embedNinaText } from '@/lib/nina/embedding'
 import {
   listNinaAvatarDescribeTargets,
@@ -123,7 +124,19 @@ function emptyOutcome(): NinaDescribeFillOutcome {
 }
 
 /**
- * Embed one description, or answer `null`.
+ * Embed one description — COMBINED with its hand-written keywords — or answer `null`.
+ *
+ * **This is the only place in the repo that decides what an album photograph's vector is computed
+ * FROM.** R2, 2026-09-15, and it is one function rather than a rule at each call site for the
+ * reason the plan set's analysis measured: there are exactly two callers (`fillOne` below, and
+ * `describeNinaAvatarAction`), and the day a third arrives it must not have to remember the join.
+ * The join itself lives in `buildNinaAvatarEmbedText` (`lib/nina/avatarEmbedText.ts`) because the
+ * backfill script and the `/search-analysis` diagnostic need the identical bytes from outside
+ * Next's runtime; that module's header argues it.
+ *
+ * `searchKeywords` of `null` — and of `''`, and of whitespace — all mean "no keywords" and all
+ * embed the description unchanged, which is why every vector computed before the column existed is
+ * still numerically correct.
  *
  * **Never throws.** An embedding failure must not cost the prose: `describeNinaAvatarAction` is
  * about to return that prose to an operator who is looking at it, and the deferred worker is about
@@ -137,13 +150,16 @@ function emptyOutcome(): NinaDescribeFillOutcome {
  */
 export async function embedNinaAvatarDescription(
   description: string,
+  /* The row's `search_keywords`, verbatim. NOT an option bag: it is as load-bearing as the
+   * description for what the vector means, and an optional field is a field a caller forgets. */
+  searchKeywords: string | null,
   /* Passed through to `embedNinaText`'s failure log. Phase 1's contract asks for it in as many
    * words ("Phase 2 and 3 both have the id and should pass it") — `nina_error_logs.user_id` is
    * nullable, and a row that cannot say whose album it came from is a row nobody can act on. */
   userId: string,
 ): Promise<number[] | null> {
   try {
-    return await embedNinaText(description, { userId })
+    return await embedNinaText(buildNinaAvatarEmbedText(description, searchKeywords), { userId })
   } catch (cause) {
     console.error('[f34] embedding failed; the description is kept and stays unsearchable', cause)
     return null
@@ -157,6 +173,15 @@ export async function embedNinaAvatarDescription(
  * human's and a vision call would be both wasteful and wrong. A row that has no prose under
  * `describe: false` is simply left alone — an operator who CLEARED the box asked for silence, and
  * "the empty box IS the clear" (D1) does not mean "and now go invent something".
+ *
+ * ── IT EMBEDS THE KEYWORDS TOO, AND IT NEVER WRITES THEM ────────────────────────────────────
+ * R2, 2026-09-15. `target.searchKeywords` is read in the same statement the rest of the target
+ * came from and handed to `embedNinaAvatarDescription`, so a row tagged `"tete, putih"` is
+ * searchable under those words. The UPDATE below is still
+ * `setNinaAvatarDescriptionAndEmbedding` — two columns, prose and vector — so the worker cannot
+ * touch `search_keywords` even by accident. That is also what makes this the re-earn path for
+ * `editNinaAvatarSearchKeywordsAction`: the keywords are already written, the vector is NULL, and
+ * `describe: false` re-computes the vector from the pair without a vendor image call.
  */
 async function fillOne(
   userId: string,
@@ -183,7 +208,7 @@ async function fillOne(
       return
     }
 
-    const embedding = await embedNinaAvatarDescription(description, userId)
+    const embedding = await embedNinaAvatarDescription(description, target.searchKeywords, userId)
     if (embedding != null) outcome.embedded += 1
     await setNinaAvatarDescriptionAndEmbedding(userId, target.id, description, embedding)
   } catch (cause) {

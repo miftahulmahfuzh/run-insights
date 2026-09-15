@@ -169,3 +169,24 @@ export function isAdminAvatarThumbRequestPathname(pathname: string, userId: stri
   )
   return pattern.test(pathname)
 }
+
+/**
+ * **How long a hand-written keyword list may be** — `nina-album-search-relevance-tools` R2.
+ *
+ * 500, and it is derived rather than chosen. `NINA_EMBEDDING_MAX_CHARS` (`lib/nina/embedding.ts`)
+ * silently truncates at 8 000 characters, and the combined text is
+ * `description + "\n\nKeywords: " + searchKeywords`: 2 000 (the description's own ceiling) + 13 +
+ * 500 = 2 513, so a maximal pair still leaves two-and-a-half times of headroom and the keywords can
+ * never be the half that gets cut. 500 characters is also ~30 comma-separated phrases, which is
+ * already more than a human tags one photograph with.
+ *
+ * NOT `ADMIN_CHAT_PHOTO_MAX_DESCRIPTION_CHARS`. That constant is shared with the media table
+ * because the two tables' descriptions are one kind of sentence reaching one prompt
+ * (`chatPhotoDescriptionField`'s header says so); `nina_message_images` has no keywords column at
+ * all, so sharing a bound here would assert a kinship that does not exist.
+ *
+ * The client reads it for `maxLength` and the Zod field for `.max()`, which is this file's whole
+ * reason to exist: *"a constant that is agreed rather than shared is a constant that will one day
+ * disagree."*
+ */
+export const ADMIN_AVATAR_MAX_SEARCH_KEYWORDS_CHARS = 500

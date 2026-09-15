@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { routerPush, routerRefresh } = vi.hoisted(() => ({
   routerPush: vi.fn(),
@@ -94,7 +94,26 @@ vi.mock('./explorer/PhotoGrid', () => ({
 // scope is folder browsing, not search, which has its own suites (`PhotoSearchBar.test.tsx`,
 // `SearchResultsGrid.test.tsx`, `tests/admin.photoSearch.test.ts`).
 vi.mock('./explorer/PhotoSearchBar', () => ({
-  PhotoSearchBar: () => <div data-testid="photo-search-bar" />,
+  PhotoSearchBar: ({
+    onResults,
+  }: {
+    onResults: (state: {
+      hits: readonly { id: string }[]
+      text: string
+      withImage: boolean
+    }) => void
+  }) => (
+    <div data-testid="photo-search-bar">
+      {/* Lands a search the way the real bar does, so the deep-link tests below can prove that the
+          landing REPLACES a result set rather than opening a pane beside one. */}
+      <button
+        type="button"
+        onClick={() => onResults({ hits: [{ id: 'p1' }], text: 'tete', withImage: false })}
+      >
+        land-search
+      </button>
+    </div>
+  ),
 }))
 
 vi.mock('./explorer/SearchResultsGrid', () => ({
@@ -160,6 +179,7 @@ function photo(overrides?: Partial<ExplorerPhoto>): ExplorerPhoto {
     source: 'upload',
     isCurrent: false,
     description: null,
+    searchKeywords: null,
     crop: { scale: 1, x: 0, y: 0 },
     createdAt: '2026-09-01T00:00:00.000Z',
     folder: '',
@@ -178,6 +198,7 @@ function baseProps(overrides?: Partial<Parameters<typeof FileExplorer>[0]>) {
     userId: 'user1',
     folders: [],
     photos: [],
+    deepLinkId: null,
     page: page(),
     view: 'album' as const,
     mediaCount: 0,
@@ -437,5 +458,82 @@ describe('FileExplorer — the URL grammar (hrefFor / hrefForPage / mediaHref)',
       'data-href-page-2',
       '/admin/nina?folder=bali&page=2',
     )
+  })
+})
+
+/*
+ * R1's landing. `app/admin/nina/page.tsx` resolves `?avatar=<id>` into the folder and page that
+ * hold the row and hands the id back as `deepLinkId`; everything below is what this component owes
+ * in return — select it, get the result set out of the way, and spend the parameter.
+ */
+describe('FileExplorer — R1’s deep link (?avatar=<id>)', () => {
+  beforeEach(() => {
+    window.history.replaceState(null, '', '/admin/nina?avatar=p1')
+  })
+
+  afterEach(() => {
+    window.history.replaceState(null, '', '/')
+  })
+
+  it('selects the resolved photograph on arrival, with no click', () => {
+    render(<FileExplorer {...baseProps({ photos: [photo({ id: 'p1' })], deepLinkId: 'p1' })} />)
+    expect(screen.getByTestId('selection-pane')).toHaveAttribute('data-photo', 'p1')
+  })
+
+  it('spends the parameter: the URL becomes the canonical folder+page we actually landed on', () => {
+    render(
+      <FileExplorer
+        {...baseProps({
+          photos: [photo({ id: 'p1' })],
+          page: page({ folder: 'bali', page: 3 }),
+          deepLinkId: 'p1',
+        })}
+      />,
+    )
+    expect(window.location.search).toBe('?folder=bali&page=3')
+  })
+
+  it('drops a landed search, so the folder the link opened is what the operator sees', async () => {
+    const user = userEvent.setup()
+    const { rerender } = render(
+      <FileExplorer {...baseProps({ photos: [photo({ id: 'p1' })], deepLinkId: null })} />,
+    )
+    await user.click(screen.getByRole('button', { name: 'land-search' }))
+    expect(screen.getByTestId('search-results-grid')).toBeInTheDocument()
+    expect(screen.queryByTestId('photo-grid')).not.toBeInTheDocument()
+
+    rerender(<FileExplorer {...baseProps({ photos: [photo({ id: 'p1' })], deepLinkId: 'p1' })} />)
+
+    expect(screen.queryByTestId('search-results-grid')).not.toBeInTheDocument()
+    expect(screen.getByTestId('photo-grid')).toBeInTheDocument()
+    expect(screen.getByTestId('selection-pane')).toHaveAttribute('data-photo', 'p1')
+  })
+
+  it('a spent link stays spent — it does not re-open a pane the operator closed', async () => {
+    const user = userEvent.setup()
+    const { rerender } = render(
+      <FileExplorer {...baseProps({ photos: [photo({ id: 'p1' })], deepLinkId: 'p1' })} />,
+    )
+    await user.click(screen.getByRole('button', { name: 'close-pane' }))
+    expect(screen.queryByTestId('selection-pane')).not.toBeInTheDocument()
+
+    // A re-render carrying the same resolved id is exactly what the `replaceState` above provokes.
+    rerender(<FileExplorer {...baseProps({ photos: [photo({ id: 'p1' })], deepLinkId: 'p1' })} />)
+    expect(screen.queryByTestId('selection-pane')).not.toBeInTheDocument()
+  })
+
+  it('an ordinary visit selects nothing and leaves the URL alone', () => {
+    window.history.replaceState(null, '', '/admin/nina?folder=bali')
+    render(<FileExplorer {...baseProps({ photos: [photo({ id: 'p1' })], deepLinkId: null })} />)
+
+    expect(screen.queryByTestId('selection-pane')).not.toBeInTheDocument()
+    expect(window.location.search).toBe('?folder=bali')
+  })
+
+  it('a resolved id the loaded page does not hold opens nothing, rather than throwing', () => {
+    // The race: the row moved folder between the resolution and this render. `photos.find(...)`
+    // answers `null` and the pane simply does not mount — this file's standing handling.
+    render(<FileExplorer {...baseProps({ photos: [photo({ id: 'p1' })], deepLinkId: 'gone' })} />)
+    expect(screen.queryByTestId('selection-pane')).not.toBeInTheDocument()
   })
 })
