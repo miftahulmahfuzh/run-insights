@@ -6,10 +6,10 @@
  * `/admin` at all (ruling D3), so this line is the authorization, exactly as `requireUserId()` is
  * everywhere else in the app.
  *
- * ── ONE PATH, FIVE MODULES ──────────────────────────────────────────────────────────────────
+ * ── ONE PATH, SIX MODULES ────────────────────────────────────────────────────────────────────
  * This file is the layer's entry point: every client component, page and test imports its actions
  * from here, and the implementations live behind it in four modules split along the layer's own
- * seams, plus the one plain module the `'use server'` rule forces out of them:
+ * seams, plus the two plain modules the `'use server'` rule forces out of them:
  *
  *   · `ninaAlbumDescribeActions.ts` — earning and rewriting `nina_avatars.description`: the
  *     describe button, the hand edit, the in-band ensure.
@@ -20,6 +20,8 @@
  *   · `ninaAlbumDeferredDescribe.ts` — `scheduleDescribe`, the `after()` pre-pass, in a PLAIN
  *     module because a `'use server'` module may export only async functions
  *     (`lib/nina/album.ts:144-148`).
+ *   · `ninaAlbumSearchActions.ts` — the album's semantic search: one READ action, the layer's only
+ *     one, which stores nothing and revalidates nothing.
  *
  * The barrel carries no `'use server'` of its own: each action is a Server Action of the module
  * that defines it, and the re-exports below are plain ESM. `AdminActionResult` — the one shape
@@ -38,6 +40,8 @@
  *    consistent-face feature, and nothing reads it at runtime today.
  *  · It generates nothing. Phase 12 owns image generation.
  */
+
+import type { NinaCropInput } from '@/lib/nina/crop'
 
 /** One shape for every action, so the client has one branch and no `unknown`. */
 export interface AdminActionResult {
@@ -68,6 +72,67 @@ export interface AdminActionResult {
   note?: string
 }
 
+/** Which arms of the query actually ran. Echoed back so a results header can name it. */
+export type AdminSearchMode = 'text' | 'image' | 'both'
+
+/**
+ * One ranked photograph, narrowed to what a browser needs — the same field set
+ * `app/admin/nina/page.tsx` maps a `NinaAvatarRow` down to for the grid, plus `score`.
+ *
+ * `pathname`, `sourceKey`, `thumbPathname` and `announcedAt` are absent for that page's stated
+ * reason: a browser has no use for them, so they never cross the serialization boundary. Spelled
+ * out here rather than imported from `@/lib/nina/queries` so that a client component importing this
+ * barrel never has a module that imports `db` in its graph, not even as an erased `import type` —
+ * `lib/admin/ninaAlbumUploadActions.ts`'s `AdminManifestEntry` rule.
+ *
+ * **It is `ExplorerPhotoBase` plus `score`, and that is deliberate**: add `origin: 'album'` and this
+ * IS an `AlbumExplorerPhoto` (`components/admin/explorer/model.ts:25-66`), so a result can be fed to
+ * anything the browsing grid can draw. `description` rides along under that model's own standing
+ * rule — carried, never rendered (`model.ts:49`, invariant 5) — which is why phase 4's results grid
+ * reads only seven of these fields and prints none of the prose.
+ */
+export interface AdminSearchHit {
+  id: string
+  /** The ORIGINAL blob — what the full-screen viewer reads. */
+  url: string
+  /** The 256 px derived JPEG, or `null`; every consumer falls back to `url`. */
+  thumbUrl: string | null
+  folder: string
+  /** The file's name, or the id for a row written before the column existed. */
+  filename: string
+  width: number | null
+  height: number | null
+  bytes: number | null
+  source: string
+  isCurrent: boolean
+  /** Carried, never rendered — `components/admin/explorer/model.ts:49`, invariant 5. */
+  description: string | null
+  crop: NinaCropInput
+  /** ISO 8601. A `Date` does not survive the RSC boundary. */
+  createdAt: string
+  /** Cosine similarity against the query — relative, for ordering and for greying out the tail. */
+  score: number
+}
+
+/** `searchNinaAvatarsAction`'s result. Its own shape, because the client needs the ranked list. */
+export interface AdminSearchResult extends AdminActionResult {
+  /**
+   * Ranked best-first. **ALWAYS an array** — `[]` on a refusal, on a vendor failure and on a
+   * genuine no-match alike — so the results pane never branches on `undefined`. `ok` is what
+   * separates "nothing matched" from "the search did not run".
+   */
+  hits: AdminSearchHit[]
+  /**
+   * How many album rows carried an embedding and were therefore actually compared. The coverage
+   * number, not the album's size: while phase 2's backfill has not run, this is small and the
+   * results pane should say so rather than let the operator conclude the photo is not there.
+   */
+  searched: number
+  mode: AdminSearchMode
+  /** What the vision model saw in the uploaded query image. Present only when one was sent. */
+  caption?: string
+}
+
 export {
   describeNinaAvatarAction,
   editNinaAvatarDescriptionAction,
@@ -94,3 +159,5 @@ export {
   removeNinaAvatarsAction,
   renameNinaAlbumFolderAction,
 } from '@/lib/admin/ninaAlbumFolderActions'
+
+export { searchNinaAvatarsAction } from '@/lib/admin/ninaAlbumSearchActions'

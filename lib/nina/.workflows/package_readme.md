@@ -61,13 +61,18 @@ modules into `'use client'` components.
 - **Images** — her selfies and avatars, prompt → job row → Blob, plus the caption she writes
   under a photograph of hers from what is actually in it.
 - **Embeddings** — one string to one 1536-wide vector (`embedding.ts`, since 2026-09-15), the
-  vendor seam the album's semantic search will read and write through. No caller yet: phases 2 and
-  3 of that set are the consumers.
+  vendor seam the album's semantic search reads and writes through.
+- **Album semantic search** — the three cosine-similarity reads that rank `nina_avatars` against a
+  query vector (`queries/avatarsearch.ts`, since 2026-09-15). The package ranks; it does not embed
+  and does not caption — the vectors arrive as arguments from the Server Action
+  (`lib/admin/ninaAlbumSearchActions.ts`), which is what lets the whole ranking be asserted against
+  generated SQL with no network.
 - **Chat UI logic** — the pure, node-testable decisions the chat screen makes (grouping, reveal
   timing, idempotent appends, scroll, gestures, chrome geometry), kept out of the components.
 - **Persistence** — the `queries/` directory is the single home for every `nina_*` table access
-  — 12 domain modules + a module-internal `columns.ts` behind the `queries.ts` barrel (one
-  `export *` per module, zero imports; 12 + columns + barrel, measured 2026-09-12) — except the
+  — one module per domain area plus a module-internal `columns.ts`, behind the `queries.ts` barrel
+  (one `export *` per module, zero imports; the roster grows, so read that file's `§` map rather
+  than any count quoted here) — except the
   failure log, whose write and read sides live in `errorlogs.ts`, because that file's stated
   contract is ownership-scoped reads (every row belongs to a runner, so `userId` leads) and this
   log's one list read is an operator's diagnostic scoped by category with no per-user filter.
@@ -701,11 +706,71 @@ operator's query at read time — and both are this one call.
   truncation would put words in the vector the photograph does not contain. `encoding_format:
   'float'` is named explicitly: several providers behind this broker default to a base64-packed
   vector, which arrives as a string and fails the array check with a confusing message.
-- **`embedNinaText` is an unused export today, and that is plan-documented — do not delete it and do
-  not suppress the finding.** `npm run knip` flags it (measured 2026-09-15). Phase 2 (the deferred
-  describe pass, embedding the description it just wrote) and phase 3 (the search action, embedding
-  the operator's query) are its callers; this phase ships the vendor seam and the migration ahead of
-  them on purpose, so the width guard and the failure row exist before anything writes a vector.
+- **`embedNinaText` has a caller as of 2026-09-15 — the read side.**
+  `lib/admin/ninaAlbumSearchActions.ts` calls it once per query arm (the typed phrase, the query
+  photo's caption, or both in one `Promise.all`), which is why `npm run knip` no longer flags it.
+  The rule the seam was shipped ahead of its callers for still stands and is why it must not be
+  inlined into either caller: the width guard and the `nina_error_logs` row are the vendor's ONE
+  choke point, and a second call site that skipped them would put a wrong-width vector into a
+  ranking nobody could explain.
+
+## Album semantic search
+
+**`queries/avatarsearch.ts` (§9d, since 2026-09-15) is three reads, one predicate, one column.**
+`searchNinaAvatarsByText`, `searchNinaAvatarsByImageCaption` and `searchNinaAvatarsByTextAndCaption`
+each rank `nina_avatars` by cosine similarity between a caller-supplied query vector and the row's
+stored `description_embedding`. Like every other read in the layer they take `userId` first and put
+it in the `WHERE` (rule 1) — and they search across EVERY folder, because a search confined to the
+folder already open answers a question the operator could answer by looking.
+
+- **The vectors arrive as arguments; this module does not know what a model is.** No embed call, no
+  vision call, no `fetch`. The Server Action owns the vendor edge, which is the property that lets
+  `tests/nina.avatarSearch.test.ts` assert the whole ranking against generated SQL through
+  `tests/support/fakeDb` with nothing mocked and nothing on the network.
+- **There is ONE embedding column, and image search still works, because an image query becomes
+  text first.** No CLIP-style image embedding exists in this repo's vendor arsenal (both z.ai base
+  URLs are chat/completions-shaped), so a query photo is captioned by the same `glm-4.6v` witness
+  prompt that wrote every row's `description` — same `subject: 'self'` mapping, or cosine similarity
+  would be measuring prompt register as much as content — and the caption is then embedded as text.
+  Both query vectors therefore live in the SAME space as the column. That is not a nicety: it is the
+  precondition that makes the combined read's weighted average legitimate rather than two scores
+  from two systems that happen to be numbers.
+- **`ORDER BY <distance> ASC` is the one spelling a pgvector HNSW `vector_cosine_ops` index can
+  answer.** `ORDER BY 1 - (...) DESC` is the identical ordering and forces a sort. So the ordering
+  is on the raw distance and the PROJECTION computes `1 - distance`, because the human-facing number
+  is the similarity. The direction is pinned by a test; do not "simplify" it into the DESC form.
+- **The combined search is ONE statement, not two ranked passes merged in JS.** A weighted average
+  of the two distances is the same number as the weighted average of the two similarities (the
+  weights sum to 1), so one expression is both the ranking key and, via `1 - x`, the reported score,
+  and the weights cannot drift between them. The weights are module-private constants at an even
+  split — deliberately not operator-configurable. This one read cannot use the index (it sums over
+  two different query vectors) and is a scan of the user's embedded rows; at the requirement's scale
+  that is a few hundred 1536-float dot products, and it is stated so nobody converts it back into
+  two indexed passes and a merge.
+- **`description_embedding IS NOT NULL` is in the candidate predicate of BOTH statements** — the
+  ranked page and the count share one `searchScope`, so the page and its total can never describe
+  different sets.
+- **`NinaAvatarSearchPage.total` is a COVERAGE number, not an album size and not a pager
+  denominator.** It counts the rows that carried an embedding and were therefore compared: "48 shown,
+  out of the photos that have been described". Search returns one flat top-N list and has no pager.
+  A results pane that reads this as the album's size will tell the operator a photo is missing when
+  it is only un-embedded.
+- **The top-N cap is module-private and is a UI number.** It is both the default and the ceiling
+  (`listNinaAvatarsInFolder`'s posture — a caller may ask for fewer, never for more, so nothing can
+  turn a ranked search into an unpaginated read of the album), and its value is the length of
+  `components/ui/PhotoViewer`'s pager dot row, which the viewer draws one-per-photo. It stays
+  private because the barrel re-exports this module with `export *` and the barrel contract test
+  pins every runtime export to being a function.
+- **The query vector is bound with an explicit `::vector` cast and `JSON.stringify` encoding** —
+  byte-for-byte what drizzle's `PgVector.mapToDriverValue` writes for the column, so a stored vector
+  and a searched-for vector cannot disagree. drizzle's `cosineDistance()` does resolve in 0.45.2 and
+  is still not used: it binds without the cast, and all three reads need the distance composed into
+  something else. Two cheap guards run before the bind — an empty array and a non-finite value are
+  caller bugs that Postgres would otherwise report as a dimension mismatch or a parse error naming a
+  column the function never mentioned.
+- **The tiebreak is the album's own `(created_at desc, id desc)`.** Exact ties in a float distance
+  need two identical descriptions, which the "duplicate the folder" workflow really does produce;
+  without the tiebreak those tiles swap places between renders for no reason.
 
 ## Memory, promises, patterns, proactive
 
@@ -746,12 +811,13 @@ operator's query at read time — and both are this one call.
 | Embeddings | `embedding.ts`*(T) (one `fetch` to `OPENROUTER_EMBEDDINGS_URL`, no fallback ladder, no retry; the width guard gates the return against `NINA_EMBEDDING_DIMENSIONS`) |
 | Album/attachments | `album.ts`(T), `albumActions.ts`, `attach.ts`(T) |
 | Chat UI logic | `chatview.ts`(T), `reply.ts`(T), `reveal.ts`(T), `scroll.ts`(T), `live.ts`(T), `edit.ts`(T), `chrome.ts`(T) |
-| Persistence | `queries/` — 12 domain modules + module-internal `columns.ts` behind the `queries.ts` barrel (`export *` per module, zero imports; every `nina_*` access; `tuningFromRow`/`tuningToColumns` in `queries/tuning.ts` are the one place the flat row and the nested model meet), `errorlogs.ts` (`nina_error_logs` write/read — the deliberate unscoped exception, server-side db-touching; its writers are `vision.ts`'s fallback orchestrator, category `multimodal`, `imagerun.ts`'s `recordImageCallFailure`, category `image_generation`, and `llmFallbackText.ts`'s `ninaFallbackTextClient`, category `text` — all three 2026-09-12) |
+| Persistence | `queries/` — one module per domain area + module-internal `columns.ts` behind the `queries.ts` barrel (`export *` per module, zero imports; every `nina_*` access; `queries/avatarsearch.ts` (§9d, 2026-09-15) is the album's ranked read and the only module that hand-writes a pgvector operator; `tuningFromRow`/`tuningToColumns` in `queries/tuning.ts` are the one place the flat row and the nested model meet), `errorlogs.ts` (`nina_error_logs` write/read — the deliberate unscoped exception, server-side db-touching; its writers are `vision.ts`'s fallback orchestrator, category `multimodal`, `imagerun.ts`'s `recordImageCallFailure`, category `image_generation`, and `llmFallbackText.ts`'s `ninaFallbackTextClient`, category `text` — all three 2026-09-12) |
 
 \* server-only, not Server Actions. (T) = colocated `*.test.ts` (29 as of 2026-09-15 —
 `embedding.test.ts` is the newest and the one exception to "all over the pure modules": the module
-is `server-only`, and its suite reaches it through the `fetchImpl` seam; integration lives in 51
-`tests/nina.*.test.ts` files; 28 + 51 re-counted 2026-09-12 after the queries split — unchanged.
+is `server-only`, and its suite reaches it through the `fetchImpl` seam; integration lives in the
+`tests/nina.*.test.ts` files, whose number moves with every landing — `ls` them rather than trusting
+a count quoted here.
 `lib/nina/queries.test.ts` also sits at this level but is
 not a (T): it is the barrel contract test, not a pure module's suite.
 
@@ -777,6 +843,13 @@ not a (T): it is the barrel contract test, not a pure module's suite.
   `emitProactiveMessage` (trigger block from `system.ts`'s copy, push via `lib/push/send`).
 - **Character path**: `readNinaTuning` → `coerceNinaTuning` → `buildNinaSystemPrompt(tuning)`.
   Live every turn; no cache; no invalidation step anywhere.
+- **Album search** (read-only, since 2026-09-15): `/admin/nina` → `searchNinaAvatarsAction`
+  (`lib/admin/`) → `requireAdmin()` → schema parse → a query photo, if any, through
+  `describeNinaImagesWithFallback` (`subject: 'self'`, never stored, no Blob PUT) → `embedNinaText`
+  on each arm in one `Promise.all` → `searchNinaAvatarsByText` / `…ByImageCaption` /
+  `…ByTextAndCaption` → ranked rows + a coverage total. The path writes NOTHING and deliberately
+  does not `revalidatePath` — a search that re-rendered the grid under its own results fights the
+  screen it is on.
 
 ## Dependencies
 
@@ -801,7 +874,9 @@ dynamic import: `distill.ts` → `./gateway`.
 `lib/{admin,photos,push,review}`, `scripts/` — plus the 51 `tests/nina.*` files. Widest:
 `components/nina/ChatScreen.tsx` (ten submodules), `app/nina/page.tsx`,
 `scripts/nina-image-worker.ts`, `lib/admin/*` (memory, album, chat photos, shortcuts, image-gen
-test view). `persona.ts` and `tuning.ts` are the least-depended-upon modules — the point of the
+test view) — `lib/admin/ninaAlbumSearchActions.ts` joined that list on 2026-09-15 and is the widest
+single-purpose importer of them, reaching `queries`, `embedding`, `vision` and `album` in one file
+because a search is a caption plus an embed plus a rank. `persona.ts` and `tuning.ts` are the least-depended-upon modules — the point of the
 split: no file outside the package imports either, and `lib/db/schema.ts` keeps its own row type
 rather than importing the model type.
 
@@ -957,11 +1032,12 @@ and picks what she says — a failure is a message from Nina, never a stack trac
 ## Tests
 
 29 colocated suites as of 2026-09-15 (28 over the pure modules, plus `embedding.test.ts` over a
-`server-only` one it reaches through the `fetchImpl` seam); 51 repo-level `tests/nina.*.test.ts` (re-counted
-2026-09-12 after the queries split — unchanged; phase 4 added `nina.imagelog.test.ts`, phase 2
-`nina.llmFallbackText.test.ts`; plus the barrel contract test `lib/nina/queries.test.ts`, which
-freezes the barrel's 85 runtime value exports and is not a (T): the barrel is not a pure
-module). The guards that can actually catch a regression, by mechanism:
+`server-only` one it reaches through the `fetchImpl` seam); the repo-level `tests/nina.*.test.ts`
+files carry the integration side; plus the barrel contract test `lib/nina/queries.test.ts`, which
+freezes the barrel's exact runtime value-export LIST and is not a (T): the barrel is not a pure
+module. **That list is the contract, not its length** — every landing that adds a query moves the
+number, so the rule is that the list is re-sorted and extended in the SAME commit as the new export,
+never weakened to a `toContain`. The guards that can actually catch a regression, by mechanism:
 
 `tests/admin.memory.test.ts` asserts admin-memory isolation with a ONE-LEVEL
 `readdirSync('lib/nina')` walk: since 2026-09-12's queries split, `lib/nina/queries/` is a
@@ -979,7 +1055,12 @@ recursive — a new module under `queries/` does not automatically join the walk
   for the default character — regenerate it and invariant 2 is silently lost.
 - **SQL-shape tests** (`tests/support/fakeDb`) split emitted statements into SET/WHERE halves:
   the soft-delete predicate per function, the supersede WHERE, the claim's state machine,
-  `getNinaJobPhoto`'s two-table owner scope and `{ id }` projection.
+  `getNinaJobPhoto`'s two-table owner scope and `{ id }` projection. `tests/nina.avatarSearch.test.ts`
+  (2026-09-15) is the newest and the technique is worth copying: every property it pins is one a
+  `vi.fn()` could not see — that BOTH statements of a search carry the ownership scope AND the
+  `IS NOT NULL`, that the ORDER BY is the raw distance ASCENDING (the index-answerable spelling),
+  that the combined read carries both vectors and both weights in ONE statement (a JS merge would
+  pass a behaviour test and fail this one), and that an oversized `limit` comes back capped.
 - **The failure log is pinned at both ends**: `tests/db.schema.errorlogs.test.ts` holds the table
   to its promised shape (`user_id` nullable in the generated SQL too, exactly one index and not
   on the user, `category` text with no CHECK) and `tests/nina.errorlogs.test.ts` holds the writer

@@ -18,6 +18,7 @@
  *   queries/nags.ts        §7               the escalation ledger
  *   queries/turns.ts       §8               the turn audit trail
  *   queries/avatars.ts     §9 + §9b         her album and its file-manager reads
+ *   queries/avatarsearch.ts     §9d    the album's semantic search (R2/R3/R4)
  *   queries/tuning.ts      §10              character tuning
  *   queries/imageprefs.ts  §10b             image-gen prefs + photo references
  *   queries/jobphotos.ts   §11 + §12        the job → photograph link
@@ -65,6 +66,7 @@ export * from './queries/shortcuts'
 export * from './queries/nags'
 export * from './queries/turns'
 export * from './queries/avatars'
+export * from './queries/avatarsearch'
 export * from './queries/tuning'
 export * from './queries/imageprefs'
 export * from './queries/jobphotos'

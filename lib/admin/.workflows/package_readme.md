@@ -57,6 +57,8 @@ exactly one definition — `schema.ts` imports every bound it enforces rather th
 | `folderOps.ts` | pure (zod) | Folder *maintenance*: the six operations' schemas and the planners that refuse without a database. |
 | `schema.ts` | pure | Every Zod schema `/admin/**` accepts. Imports every bound; declares none. |
 | `ninaAlbumActions.ts` | `'use server'` | The album's write side: 15 actions — describe/edit prose, face, crop, delete, folder register/manifest, folder maintenance. |
+| `ninaAlbumSearchSchema.ts` | pure (zod) | The album search's payload: the typed-query ceiling, the data-URI ceiling and allow-list, and the one cross-field rule (a search with neither arm is not a search). Its own file, like `chatPhotoSchema.ts`. |
+| `ninaAlbumSearchActions.ts` | `'use server'` | The album's READ side, and the layer's only read action: one `searchNinaAvatarsAction` covering text, image and both. Writes nothing, stores nothing, revalidates nothing. |
 | `chatPhotos.ts` | pure | The media collection's vocabulary: pathname shapes, ceilings, id regexes, the carrier-message rule, `planChatPhotoAddWrite`'s types. |
 | `chatPhotoSchema.ts` | pure | Every Zod schema the media collection accepts. Separate from `schema.ts` (different table, different route). `schema.ts` imports from it. |
 | `chatPhotoActions.ts` | `'use server'` | Six actions: add (the only one that mints a message — and so the only one that pushes), replace, find-duplicate, remove, describe, edit description. |
@@ -381,6 +383,12 @@ awaiting it per upload would add three hundred latencies instead of overlapping 
 describe uses the `'self'` subject (via `describeSubjectForSide('hers')`) — every album row is a
 photograph of HER; the runner-default prompt went looking for a man who is not in the frame.
 
+Since 2026-09-15 this module also DECLARES the album search's three result types
+(`AdminSearchMode`, `AdminSearchHit`, `AdminSearchResult`) and re-exports
+`searchNinaAvatarsAction` — the standing rule being that a `'use server'` module may export only
+async functions, so any type the browser needs by name lands on this plain barrel and the action
+imports it back. Its own file's behaviour is documented under the read side below.
+
 **`editNinaAvatarDescriptionAction`** is the album twin of the media collection's hand-written
 edit: no model call, no `after()`, empty box clears to NULL (D1), and it revalidates
 `/admin/nina`. An empty description degrades honestly — her context's avatar block omits it.
@@ -419,6 +427,54 @@ surface. `truncated` is `>=` and not `>`: a subtree holding exactly `NINA_ADMIN_
 (2000) reports truncated when it was not — the error is in the safe direction, and truncation is
 survivable because a short manifest OVER-reports, the extra files are re-PUT, and their inserts
 are discarded by `ON CONFLICT DO NOTHING`. Slower, never wrong.
+
+### `ninaAlbumSearchSchema.ts` / `ninaAlbumSearchActions.ts` — the album's read side
+
+```ts
+export type AdminSearchMode = 'text' | 'image' | 'both'        // declared on the ninaAlbumActions barrel
+export interface AdminSearchHit { /* ExplorerPhotoBase + score */ }
+export interface AdminSearchResult extends AdminActionResult { hits; searched; mode; caption? }
+
+export async function searchNinaAvatarsAction(input): Promise<AdminSearchResult>
+```
+
+Added 2026-09-15. **The only READ action in the layer**, and the rules that follow from that: it
+stores nothing, writes nothing, and must NOT `revalidatePath` — a search that re-rendered the grid
+underneath its own results fights the screen it is on.
+
+- **The three result types are declared on `ninaAlbumActions.ts`, not here.** Same rule that put
+  `AdminActionResult` there: a `'use server'` module may export only async functions, and the UI
+  imports the hit type by name. The action imports them back.
+- **`requireAdmin()` is line 1 and its `userId` is the only one any statement sees.** The action
+  never reads an id from its own argument, so a hand-crafted POST cannot search another album.
+- **"Search by image" is search by caption.** There is no image-embedding model in this app's
+  arsenal, so the uploaded photo is captioned by `describeNinaImagesWithFallback` under
+  `describeSubjectForSide('hers')` — the SAME witness prompt that wrote every album row's
+  `description`, called through the same mapping rather than spelling `'self'`, because captioning
+  the query in a different register would make cosine similarity measure prompt style as much as
+  content. The caption is then embedded and searched exactly as typed text is.
+- **The query image is never stored.** No Blob PUT, no row, no reaper to teach. It rides as a
+  `dataUri` straight into the describe path; a comparison input that lives for one request has no
+  business in a store.
+- **Two model calls on the request path, awaited, and that is correct.** The non-blocking rule is
+  about RENDER paths; a Server Action fired from a click is where an expensive call belongs. The
+  caption is its own `await` (the embeds need it); the two embeds then go together in one
+  `Promise.all`, so a combined search costs one round trip's latency, not two.
+- **Failure is always the same shape** — `ok: false`, an operator-readable sentence, `hits: []`,
+  `searched: 0`, and the `mode` echoed back. The vendor layers have already written their own
+  `nina_error_logs` rows by the time an error arrives, so this catch reports rather than re-logs.
+  The vision error classes get their own sentence because they name the half of the query the
+  operator can change — a token-floor refusal means "a different photo", never "retry".
+- **`searched` is coverage, not the album's size.** It counts the rows that carried an embedding and
+  were therefore compared; a results pane that reads it as a total will tell the operator a photo is
+  missing when it is only un-described.
+- **The schema refuses rather than truncates, and normalises whitespace before the vendor.**
+  `.max()` before `.transform()` (this repo's ordering rule), so an over-long paste is reported, not
+  silently half-searched; the transform folds whitespace runs so `"  red   dress \n"` and
+  `"red dress"` produce the same vector. The refine is the rule worth stating twice: an all-blank
+  box never reaches a model. The data-URI ceiling is sized against Next's default 1 MB Server Action
+  body (the URI IS the body) and the type allow-list is `jpeg|png|webp` only — no `svg`, no `gif`,
+  no hosted URL — because the string goes straight into an `image_url` part.
 
 ### `chatPhotos.ts` / `chatPhotoSchema.ts` / `chatPhotoActions.ts` — the media collection
 
@@ -1056,6 +1112,17 @@ registered) is real and belongs to the reaper, not to this package.
 
 ## Recent Changes
 
+- **2026-09-15** — `admin-album-semantic-search` phase 3 (P2-NIN-A001), satisfying R2/R3/R4
+  (*"semantic search over every image description"*, *"search using image only"*, *"resolve the
+  scoring between these 2"*): the album gained a read side. `lib/admin/ninaAlbumSearchSchema.ts`
+  (payload shape and the two ceilings) and `lib/admin/ninaAlbumSearchActions.ts` (one
+  `requireAdmin()`-gated `searchNinaAvatarsAction`) are new; `ninaAlbumActions.ts` gained the three
+  result types (`AdminSearchMode`, `AdminSearchHit`, `AdminSearchResult`) and the action's
+  re-export, for the reason `AdminActionResult` already lives there. The ranking itself is
+  `lib/nina/queries/avatarsearch.ts` — this package captions, embeds and gates; it does not rank.
+  Covered by `tests/admin.albumSearch.test.ts` and the barrel test's added names. The other phases
+  of that plan set are peer phases in flight in the same worktree (the describe/backfill write side
+  and the `/admin/nina` UI) and are deliberately not documented here.
 - **2026-09-14** — `nina-push-every-message` phase 4 (P1-ADM-A003), satisfying R2 *"when Nina
   speaks on her own initiative, a push notification is sent"*: `addChatPhotoAction` now calls
   `notifyNinaPush(userId, [{ id: message.id, body }], 'admin_chat_photo')` after

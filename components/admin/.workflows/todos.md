@@ -11,7 +11,7 @@
 - P2 Medium: 1
 - P3 Low: 0
 - P4 Backlog: 0
-- Blocked: 1
+- Blocked: 0
 - Completed: 6
 - Archived: 6
 
@@ -29,7 +29,7 @@
   - **Difficulty**: NORMAL
   - **Type**: Feature
   - **Context**: Owns `components/admin/explorer/PhotoSearchBar.tsx` (text input, upload-to-search button with client-side re-encode to a data URI, Search/Clear), a new results-grid component fed by the search action's ranked results, and wiring `components/admin/FileExplorer.tsx` to render the search bar above the existing breadcrumb/toolbar and branch the content pane between the normal `PhotoGrid` and the results grid. Clicking a result tile opens the existing `components/ui/PhotoViewer.tsx` full-screen overlay scoped to the result set (following the `ErrorLogList.tsx` precedent); calls phase 3's Server Action as a black box and touches no `lib/` file. Exit: the search bar renders above "Album" on `/admin/nina`; a text search, an image search, and a combined search each produce a visibly re-ranked grid; clicking a result opens the full-screen viewer with working close/swipe/keyboard paging over the result set; clearing the search returns to normal folder browsing untouched.
-  - **Status**: blocked
+  - **Status**: open
   - **Plan Set**: `ADMIN_ALBUM_SEMANTIC_SEARCH_PLAN.md` (phase 4 of 4)
   - **Satisfies**: R1 — search field + image-upload button above "Album"; clicking a result opens the existing full-screen viewer
   - **Depends on**: `P2-NIN-A001`

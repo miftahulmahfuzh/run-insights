@@ -3,16 +3,16 @@
 **Package Path**: `lib/nina`
 **Package Code**: NIN
 **Last Updated**: 2026-09-15
-**Total Active Tasks**: 1
+**Total Active Tasks**: 0
 
 ## Quick Stats
 - P0 Critical: 0
 - P1 High: 0
-- P2 Medium: 1
+- P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 50
+- Completed: 51
 - Archived: 36
 
 ---
@@ -22,16 +22,6 @@
 ### [P1] High
 
 ### [P2] Medium
-
-- [ ] **P2-NIN-A001** Phase 3: Search query layer + Server Action
-  - **Difficulty**: HARD
-  - **Type**: Feature
-  - **Context**: Owns a new query module under `lib/nina/queries/` implementing text-only, image-caption-only and combined-weighted cosine-similarity search over `nina_avatars` (user_id-scoped, same row/total shape as `listNinaAvatarsInFolder`), plus `lib/admin/ninaAlbumSearchActions.ts`'s `requireAdmin()`-gated `searchNinaAvatarsAction`, the `AdminSearchHit`/`AdminSearchResult`/`AdminSearchMode` types declared on the `lib/admin/ninaAlbumActions.ts` barrel, and the `NINA_SEARCH_LIMIT = 48` cap. Exit: the Server Action returns ranked, user_id-scoped results for text-only, image-only and combined queries; the generated SQL for all three carries `user_id = $n` and `description_embedding is not null`, orders by raw cosine distance ascending, and the combined read carries both vectors/weights in one statement; an empty query image or empty text is rejected by the Zod schema with zero vendor calls.
-  - **Status**: open
-  - **Plan Set**: `ADMIN_ALBUM_SEMANTIC_SEARCH_PLAN.md` (phase 3 of 4)
-  - **Satisfies**: R2, R3, R4 — the query/ranking layer answering text-only, image-only and combined-weighted search
-  - **Depends on**: `P2-DB-A001`
-  - **Plan**: `.workflows/plan/P2-NIN-A001.md`
 
 ### [P3] Low
 
@@ -259,6 +249,23 @@ per-task detail — Context, Drift, Decided, Files — survives in git history a
   - **Drift**: Small drift, code intent preserved: the test suite (written verbatim from the phase plan) asserted `notify` was called with the raw `insertNinaMessages` row shape (including `seq`), but the pre-existing `bubbles = rows.map(...)` line (not touched by this phase) projects rows down to `SentBubble` (`{ id, body, replyToId }`), dropping `seq`. Fixed by adding a `toBubbles()` helper in the test and asserting against the projected shape instead of the raw row shape.
   - **Drift**: Small drift, code intent preserved: the plan's Test 8 ("a notify that fails costs the turn nothing") asserted `insertNinaMessages`, `closeNinaChatTurn` and `runTurnDistillation` were each called exactly once, but the test drives `turnInput({ depth: 1 })` with `NINA_TURN_CHAIN_MAX = 2`, so the chain runs one more link at depth 2 before the cap stops it — each of those three mocks is genuinely called twice (once per link), which the plan's own inline note beneath the test already acknowledged ("that is two links … it's the chain's own suite's business"). Corrected the three assertions from `toHaveBeenCalledTimes(1)` to `toHaveBeenCalledTimes(2)` (or dropped the count assertion in favour of `toHaveBeenCalledWith`, for `closeNinaChatTurn`) to match actual, correct behaviour.
   - **Verified**: `npm run typecheck` clean; `npm run lint` clean; `npm run format:check` clean (scoped to the two touched files); `npx vitest run tests/nina.turnpush.test.ts` 9/9; sibling suites `tests/nina.burstCancel.test.ts tests/nina.turnrevive.test.ts tests/nina.resend.test.ts` 41/41; full `npm test` 336/336 files and 5864/5864 tests (a first-run `components/admin/explorer/MediaPane.test.tsx` red reproduced as a known pre-existing parallel-load flake — green in isolation and on a clean re-run of the full suite); `npm run ci:llm-payload-guard` passed (9 guarded symbols confined); `npm run knip` passed (neither `NinaTurnNotifier` nor `NinaTurnDeps` in the unused-exports report).
+
+- [x] **P2-NIN-A001** Phase 3: Search query layer + Server Action
+  - **Difficulty**: HARD
+  - **Type**: Feature
+  - **Context**: Owns a new query module under `lib/nina/queries/` implementing text-only, image-caption-only and combined-weighted cosine-similarity search over `nina_avatars` (user_id-scoped, same row/total shape as `listNinaAvatarsInFolder`), plus `lib/admin/ninaAlbumSearchActions.ts`'s `requireAdmin()`-gated `searchNinaAvatarsAction`, the `AdminSearchHit`/`AdminSearchResult`/`AdminSearchMode` types declared on the `lib/admin/ninaAlbumActions.ts` barrel, and the `NINA_SEARCH_LIMIT = 48` cap. Exit: the Server Action returns ranked, user_id-scoped results for text-only, image-only and combined queries; the generated SQL for all three carries `user_id = $n` and `description_embedding is not null`, orders by raw cosine distance ascending, and the combined read carries both vectors/weights in one statement; an empty query image or empty text is rejected by the Zod schema with zero vendor calls.
+  - **Status**: done
+  - **Plan Set**: `ADMIN_ALBUM_SEMANTIC_SEARCH_PLAN.md` (phase 3 of 4)
+  - **Satisfies**: R2, R3, R4 — the query/ranking layer answering text-only, image-only and combined-weighted search
+  - **Depends on**: `P2-DB-A001`
+  - **Plan**: `.workflows/plan/P2-NIN-A001.md`
+  - **Completed**: 2026-09-15 10:11
+  - **Method**: /do
+  - **Files**: lib/nina/queries/shapes.ts, lib/nina/queries/avatarsearch.ts, lib/nina/queries.ts, lib/nina/queries.test.ts, lib/admin/ninaAlbumSearchSchema.ts, lib/admin/ninaAlbumSearchActions.ts, lib/admin/ninaAlbumActions.ts, tests/nina.avatarSearch.test.ts, tests/admin.albumSearch.test.ts, tests/admin.albumActionsBarrel.test.ts
+  - **Drift**: Phase 2 (`P2-ADM-A001`) was concurrently in-progress and uncommitted in this same worktree while phase 3 ran, exactly as the plan's Phases table anticipated (phases 2 and 3 both depend only on phase 1 and run concurrently). Phase 2 had already landed its `avatarEmbeddings` barrel export/header line and its `queries.test.ts` prose-count rewrite (85 → 92) by the time phase 3 touched those shared files, so phase 3 inserted its own line/names into the already-updated state per the plan's reconciled ordering (`avatars`, `avatarEmbeddings`, `avatarsearch`) rather than assuming a blank slate.
+    Landing consequence, handled at commit time: the two shared files (`lib/nina/queries.ts`, `lib/nina/queries.test.ts`) carried BOTH phases' additions in the working tree, and phase 2's barrel line points at an untracked file phase 2 owns. This phase's commit therefore stages only its OWN hunks in those two files — the `avatarsearch` map line, the `avatarsearch` `export *` line and the three `searchNinaAvatarsBy*` names — exactly the per-phase region ownership the plan index's Rollback section prescribes. Phase 2's lines stay uncommitted in the working tree for its own session. The committed `BARREL_VALUE_EXPORTS` array is therefore 88 and matches `Object.keys(barrel)` at that commit; the header prose still reads 83 because phase 2 owns that count and writes it once for the finished set (92).
+  - **Decided**: Full `npm test` showed 4 pre-existing failures (`tests/admin.albumAvatarActions.test.ts` x2, `tests/admin.chatPhotoAdoption.test.ts` x2) → left alone, not fixed by this phase. Rung: Owns/Does-not-touch boundary — phase 3's Interface Contract explicitly excludes `lib/admin/ninaAlbumDeferredDescribe.ts` and `lib/admin/ninaAlbumAvatarActions.ts`, which phase 2 owns and was mid-edit/uncommitted on before this session started. Verified none of the 4 failing tests reference any phase-3 file (grepped `avatarsearch` / `ninaAlbumSearch` / `AdminSearchHit` / `searchNinaAvatarsAction` — zero hits) and the failure trace originates entirely inside phase 2's in-flight WIP, so fixing it here would widen scope into another phase's Owns, which the plan's Deciding-Without-Asking rules forbid. Phase 3's own exit-criteria suites (`tests/nina.avatarSearch.test.ts`, `tests/admin.albumSearch.test.ts`, `tests/admin.albumActionsBarrel.test.ts`, `lib/nina/queries.test.ts`) all pass 28/28.
+  - **Verified**: `npm run typecheck`, `npm run lint`, `npm run format:check` (no phase-3 file among its warnings), `npm run ci:data-layer-guard` and `npm run ci:llm-payload-guard` all green; phase-3 suites 28/28.
 
 ---
 

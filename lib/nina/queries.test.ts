@@ -96,6 +96,11 @@ const BARREL_VALUE_EXPORTS = [
   'renameNinaFolderSubtree',
   'renameNinaSession',
   'resolveNinaPhotoReference',
+  // admin-album-semantic-search phase 3: the album's semantic search (R2/R3/R4), documented
+  // growth under this file's "a name was ADDED" rule.
+  'searchNinaAvatarsByImageCaption',
+  'searchNinaAvatarsByText',
+  'searchNinaAvatarsByTextAndCaption',
   'setCurrentNinaAvatar',
   'setNinaAvatarDescription',
   'setNinaMessageImageDescription',
