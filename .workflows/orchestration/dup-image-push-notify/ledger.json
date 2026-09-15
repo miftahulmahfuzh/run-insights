@@ -62,28 +62,28 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "812c7f19bbbe6083165bac27c07d0a9a53106fac",
       "depends_on": [
         1
       ],
       "difficulty": "NORMAL",
       "n": 4,
-      "note": null,
+      "note": "Landed: admin add/replace/avatar-batch wired to duplicate_image push. Pusher trailer says Haiku 4.5 (should be Opus 5, not worth a force-push). Pre-merge: run typecheck+test on the merged tip (union gate) before merging to main.",
       "package": "lib/admin`, `components/admin/explorer`, `lib/nina/queries",
       "plan": ".workflows/plan/dup-image-push-notify/phase-4.md",
-      "reported_at": null,
+      "reported_at": "2026-09-15T03:24:16+00:00",
       "satisfies": [
         "R1"
       ],
-      "status": "pending",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-ADM-L2VN",
       "title": "Wire admin-side upload routes (chat photo add/replace, avatar batch)"
     }
   ],
   "plan": "/home/miftah/run-insights/.workflows/orchestration/dup-image-push-notify/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "dup-image-push-notify",
-  "updated": "2026-09-15T03:23:06+00:00",
+  "updated": "2026-09-15T03:24:16+00:00",
   "verified_at": "2026-09-15T03:16:01+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/dup-image-push-notify"
 }
