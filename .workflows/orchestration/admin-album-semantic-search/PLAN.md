@@ -6,7 +6,7 @@
 **Worktree:** `/home/miftah/.worktrees/run-insights/admin-album-semantic-search`
 **Branch:** `feature/admin-album-semantic-search` (base: `origin/main` @ `c1a3d9e`)
 **Phases:** 4
-**Status:** reconciled
+**Status:** landed — all 4 phases merged to `main` @ `81c101f`
 **Coordinator:** —
 
 ---
@@ -90,10 +90,10 @@ Forks that only appeared once the four phase plans could be read against each ot
 
 | # | Title | Satisfies | Package | Files | Depends on | Difficulty | Plan | TaskID | Card |
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
-| 1 | Schema + embedding client | R2, R3, R4 | `lib/db/schema`, `lib/nina` | 10 | — | NORMAL | `.workflows/plan/admin-album-semantic-search/phase-1.md` | — | — |
-| 2 | Description coverage: deferred describe+embed wiring + backfill | R2, R3, R4 | `lib/admin`, `lib/nina/queries` | 12 | 1 | NORMAL | `.workflows/plan/admin-album-semantic-search/phase-2.md` | — | — |
-| 3 | Search query layer + Server Action | R2, R3, R4 | `lib/nina/queries`, `lib/admin` | 10 | 1 | HARD | `.workflows/plan/admin-album-semantic-search/phase-3.md` | — | — |
-| 4 | Admin UI: search bar, results grid, full-screen viewer | R1 | `components/admin` | 7 | 3 | NORMAL | `.workflows/plan/admin-album-semantic-search/phase-4.md` | — | — |
+| 1 | [x] Schema + embedding client | R2, R3, R4 | `lib/db/schema`, `lib/nina` | 10 | — | NORMAL | `.workflows/plan/admin-album-semantic-search/phase-1.md` | `P2-DB-A001` | — |
+| 2 | [x] Description coverage: deferred describe+embed wiring + backfill | R2, R3, R4 | `lib/admin`, `lib/nina/queries` | 12 | 1 | NORMAL | `.workflows/plan/admin-album-semantic-search/phase-2.md` | `P2-ADM-A001` | — |
+| 3 | [x] Search query layer + Server Action | R2, R3, R4 | `lib/nina/queries`, `lib/admin` | 10 | 1 | HARD | `.workflows/plan/admin-album-semantic-search/phase-3.md` | `P2-NIN-A001` | — |
+| 4 | [x] Admin UI: search bar, results grid, full-screen viewer | R1 | `components/admin` | 7 | 3 | NORMAL | `.workflows/plan/admin-album-semantic-search/phase-4.md` | `P2-CA-A001` | — |
 
 Phases 2 and 3 both depend only on phase 1 and run concurrently. Phase 4 needs phase 3's Server Action to call. Phase 4 does not code-depend on phase 2, but the *operator* should run phase 2's backfill after deploy for search results to be meaningful on day one — an operational note, not a build dependency.
 
