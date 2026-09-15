@@ -37,7 +37,10 @@ vi.mock('next/server', () => ({
   },
 }))
 vi.mock('@/lib/admin/requireAdmin', () => ({ requireAdmin: () => requireAdmin() }))
-vi.mock('@/lib/admin/ninaAlbumDeferredDescribe', () => ({ scheduleDescribe: vi.fn() }))
+vi.mock('@/lib/admin/ninaAlbumDeferredDescribe', () => ({
+  scheduleDescribe: vi.fn(),
+  scheduleDescribeAll: vi.fn(),
+}))
 vi.mock('@/lib/nina/queries', () => ({
   declareNinaFolders: (...args: unknown[]) => declareNinaFolders(...args),
   getCurrentNinaAvatar: (...args: unknown[]) => getCurrentNinaAvatar(...args),
