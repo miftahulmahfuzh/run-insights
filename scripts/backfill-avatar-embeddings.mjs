@@ -129,9 +129,7 @@ for (const row of rows) {
 
   if (dryRun) {
     skipped += 1
-    console.log(
-      `  would  ${row.id}  ${where}  ${text.length} chars${tagged ? '  +keywords' : ''}`,
-    )
+    console.log(`  would  ${row.id}  ${where}  ${text.length} chars${tagged ? '  +keywords' : ''}`)
     continue
   }
 

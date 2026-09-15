@@ -495,7 +495,10 @@ describe('editNinaAvatarSearchKeywordsAction', () => {
     fake.enqueue([avatarRow({ description: 'she is on a beach', searchKeywords: 'tete' })])
     fake.enqueue([{ id: ID }])
 
-    const result = await actions.editNinaAvatarSearchKeywordsAction({ id: ID, searchKeywords: '  ' })
+    const result = await actions.editNinaAvatarSearchKeywordsAction({
+      id: ID,
+      searchKeywords: '  ',
+    })
 
     expect(result.ok).toBe(true)
     expect(fake.last().params).toEqual([null, null, USER, ID])

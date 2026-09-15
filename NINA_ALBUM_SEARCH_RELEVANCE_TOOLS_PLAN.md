@@ -6,7 +6,7 @@
 **Worktree:** `/home/miftah/.worktrees/run-insights/nina-album-search-relevance-tools`
 **Branch:** `feature/nina-album-search-relevance-tools` (base: `origin/main` @ `751e034`)
 **Phases:** 3
-**Status:** phase 2/3 complete (phases 1 and 2 landed on this branch; phase 2's migration is applied to the production database and its backfill has run; phase 3 `P1-SC-V2XN` is now unblocked and runnable). Not yet merged — a plan set is reviewed and merged as a whole.
+**Status:** complete — all 3 phases landed on `feature/nina-album-search-relevance-tools` (R1 viewer navigation, R2 `search_keywords` field, R3 `/search-analysis` diagnostic skill). Phase 2's migration is applied to the production database and its backfill has run. **Not yet merged** — a plan set is reviewed and merged as a whole; the branch is ready for review and merge to `main`.
 **Coordinator:** —
 
 ---
@@ -128,7 +128,7 @@ phases each — see the Reconciliation Log).
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
 | 1 | [x] Viewer button + cross-folder navigation to the description panel | R1 | `components/ui`, `components/admin`, `app/admin/nina`, `lib/nina/queries`, `lib/admin` | 12 | — | HARD | `.workflows/plan/nina-album-search-relevance-tools/phase-1.md` | P1-RI-K3JQ | — |
 | 2 | [x] `search_keywords` field, embedding combine, and backfill | R2 | `lib/db/schema`, `drizzle`, `lib/nina`, `lib/admin`, `components/admin/explorer`, `app/admin/nina`, `scripts` | 26 | — | HARD | `.workflows/plan/nina-album-search-relevance-tools/phase-2.md` | P1-ADM-T8RM | — |
-| 3 | `/search-analysis` skill and its diagnostic script | R3 | `scripts`, `.claude/skills` | 3 | 2 | NORMAL | `.workflows/plan/nina-album-search-relevance-tools/phase-3.md` | P1-SC-V2XN | — |
+| 3 | [x] `/search-analysis` skill and its diagnostic script | R3 | `scripts`, `.claude/skills` | 3 | 2 | NORMAL | `.workflows/plan/nina-album-search-relevance-tools/phase-3.md` | P1-SC-V2XN | — |
 
 Phases 1 and 2 are concurrent (`depends_on: []` both). Phase 3 waits on 2. Phase 2's difficulty was
 raised NORMAL → HARD at reconciliation: its reconciled scope is 26 files, a schema migration against
@@ -294,12 +294,13 @@ nullable column plus an idempotent re-embed that reproduces identical vectors fo
 
 ## Next
 
-Execute the phases one at a time. Phases 1 and 2 are independent and may run in either order;
-phase 3 needs phase 2 landed **and its migration applied**:
+All three phases are executed and green on `feature/nina-album-search-relevance-tools`
+(phase 1 `d783804`, phase 2 `d0ab544`, phase 3 on the same branch). Nothing left to implement.
 
-    /implement -f NINA_ALBUM_SEARCH_RELEVANCE_TOOLS_PLAN.md --phase 1
+Review the set as a whole, then merge:
 
-Or run the whole set as a swarm — a session per phase, concurrent wherever `Depends on` allows,
-resumable on any machine:
+    git checkout main && git merge feature/nina-album-search-relevance-tools
 
-    /analyze-orchestrator -f NINA_ALBUM_SEARCH_RELEVANCE_TOOLS_PLAN.md
+Note when reviewing: phase 2's migration is **already applied to the production database** (this
+repo has one database — invariant 8), so the schema is live ahead of the merge. That is the correct
+order for an additive nullable column, and a revert must not drop it (see **Rollback**).

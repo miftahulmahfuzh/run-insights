@@ -340,7 +340,9 @@ export function PhotoDescription({
             <span className="text-[11px] font-medium text-ink-3 tabular-nums">
               {keywordsText.length}/{ADMIN_AVATAR_MAX_SEARCH_KEYWORDS_CHARS}
             </span>
-            {keywordsDirty && <span className="text-[11px] font-semibold text-accent">unsaved</span>}
+            {keywordsDirty && (
+              <span className="text-[11px] font-semibold text-accent">unsaved</span>
+            )}
           </div>
 
           <p className="mt-1.5 text-[12px] leading-relaxed font-medium text-ink-3">

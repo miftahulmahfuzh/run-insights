@@ -1,15 +1,16 @@
 # Package: scripts
 
 **Location**: `scripts`
-**Last Updated**: 2026-09-14 (the image worker now sends web-push notifications of its own —
-`nina-image-worker/push.ts`; prior: the barrel + `nina-image-worker/` split; see Notes for the
-documentation history)
+**Last Updated**: 2026-09-15 (`search-analysis.mjs`, the album-search relevance diagnostic, and the
+project skill that drives it; prior: the image worker's own web-push, `nina-image-worker/push.ts`;
+see Notes for the documentation history)
 
 ## Overview
 
 `scripts/` is operational code, not app code: the ops and maintenance commands that read or write
-production data and Blob storage, the CI boundary guards, Nina's off-platform image-generation
-worker, and the capture toolkit that photographs the app for the README. Nothing here is imported
+production data and Blob storage, the read-only diagnostics that explain production behaviour the
+app's own code paths hide, the CI boundary guards, Nina's off-platform image-generation worker, and
+the capture toolkit that photographs the app for the README. Nothing here is imported
 by the app, and none of it runs under `npm test`. The reverse is deliberate in three cases —
 `nina-dedupe-plan.mjs`, `nina-image-worker.ts` (a re-export barrel over `nina-image-worker/`
 since 2026-09-12) and `nina-shortcuts-import.mjs` are importable BY
@@ -30,9 +31,12 @@ from its I/O half.
 4. **The `lib/` import rule.** A script may import a `lib/*.ts` module only when stripping its
    types leaves no runtime dependency and no `@/` alias — the zero-import modules
    (`lib/id.ts`, `lib/nina/shortcuts.ts`, `lib/records/catalog.ts`, `lib/nina/imagerecipe.ts`,
-   `lib/photos/contentHash.ts`, …) — run under
+   `lib/photos/contentHash.ts`, `lib/nina/avatarEmbedText.ts`, …) — run under
    `node --experimental-strip-types --no-warnings`. Importing the real module instead of copying
-   it is the whole point: the copy is always the one that drifts. "Zero-import" is shorthand, not
+   it is the whole point: the copy is always the one that drifts. The obligation runs BOTH ways:
+   each of those modules carries a "do not add an import here" contract in its header precisely
+   because a script depends on it, and adding one breaks that script at module load time, in a
+   runtime no test covers. "Zero-import" is shorthand, not
    the test: a `lib` module whose only runtime dependency is a package.json **dependency** (not a
    devDependency) is importable too, because `npm ci --omit=dev` — what the worker's workflow runs
    — still installs it. `lib/push/payload.ts` is the worked example: it pulls `zod`, and it
@@ -132,6 +136,53 @@ call with the production prompt, real Zod validation, real terminal `extractions
 thing the unit suite's injected fakes cannot prove. Creates a throwaway user and deletes it
 afterwards (the cascade cleans everything; `--keep` to inspect). Deliberately asserts NO
 extraction accuracy — only that every seam holds. Spends real money.
+
+## Read-only diagnostics — no write flag, because there is no write
+
+Rule 1 does not apply here: these scripts have no `--apply` because they have no destructive mode
+at all. They SELECT, they call `/embeddings`, they print, and that is the whole surface. Rule 3
+still binds — every number they print is a production number.
+
+### `search-analysis.mjs` — `npm run nina:search-analysis`
+Answers one question: *why did THIS album photograph rank where it did for THAT query?* Invoked as
+`search-analysis.mjs <query…> <id-fragment>` — the LAST argument is the image id or any fragment of
+one, every argument before it joins with single spaces into the query text. Driven by the project
+skill `.claude/skills/search-analysis/SKILL.md` (`/search-analysis <query> <#id>`), which owns the
+inference the JSON is written for.
+
+**It exists because the app's own search structurally cannot answer it.**
+`searchNinaAvatarsByText` caps the page at `NINA_SEARCH_LIMIT` (48) and cuts every row under
+`NINA_SEARCH_MIN_SCORE` (0.2, provisional as of 2026-09-15) — and those two gates hide exactly the
+row an operator asks about. So this reproduces the ranking EXACTLY — same column, same `<=>` cosine
+distance, same `1 - distance` similarity, same vector encoding, same `(created_at desc, id desc)`
+tiebreak, scoped to the resolved row's own `user_id` — with **no limit and no floor**, then reports
+the true rank, the score, a `wouldAppearInApp` verdict with its `cutBy` reasons, the candidate
+count, the top 10 competitors and the ranks either side. The two constants are mirrored here only
+to be REPORTED against; they are never applied to the query.
+
+**The fragment resolves by `strpos(id, $1) > 0`, never `LIKE`.** `_` is a legal symbol in
+`lib/id.ts`'s alphabet AND `LIKE`'s single-character wildcard, so a `LIKE` spelling would silently
+match ids the operator did not name — and the ambiguity guard would then refuse a good fragment or,
+worse, single out the wrong row. Zero matches exit 3 and more than one exits 4 with the candidates
+listed: the script refuses rather than guesses, because picking "the close one" names a different
+photograph and nothing downstream would notice. Exit 2 is usage/env, exit 5 a failed `/embeddings`
+call. Every exit path — success and failure alike — writes ONE JSON document to stdout and the
+human line to stderr, because the consumer is an agent parsing a tool result.
+
+**Imports vs duplication, the one carve-out.** It follows `album-search-probe.mjs`'s convention —
+raw SQL, embeddings URL and model id duplicated, no `server-only` app code — for that file's
+reasons (`lib/nina/embedding.ts` opens with `import 'server-only'` and resolves `@/` aliases). Its
+single exception is `buildNinaAvatarEmbedText` from `lib/nina/avatarEmbedText.ts`, imported under
+`--experimental-strip-types` per rule 4: the report's `embeddedText` field claims to be the exact
+string the row's vector was computed from, and a retyped join would make it a claim about this
+file's copy — still looking right while being wrong about the one field the report is consulted
+for. **Adding any import to `lib/nina/avatarEmbedText.ts` breaks this script at module load.**
+
+**ZERO database writes, by design and not by omission.** The script diagnoses; the description and
+keyword edits are made by hand in `/admin/nina`, where the operator can see the photograph while he
+types. The skill carries the same rule: it may read and report and suggest words, never edit. A
+model rewriting a description from a description — without the picture — writes plausible text that
+degrades the search in a way nothing detects, because the row still looks healthy afterwards.
 
 ## The image worker
 
@@ -295,6 +346,14 @@ real money on a real generation.
 live in the body sections and in each script's own header; narrative lives in git history, which
 is complete and ordered and costs a session no context to load.
 
+- **2026-09-15 — the album-search relevance diagnostic** (`nina-album-search-relevance-tools`;
+  P1-SC-V2XN). New `search-analysis.mjs` + `npm run nina:search-analysis`, and the project skill
+  `.claude/skills/search-analysis/SKILL.md` that drives it — the package's first entry under
+  **Read-only diagnostics** (new section), alongside the earlier `album-search-probe.mjs`. Rule 4's
+  zero-import list gained `lib/nina/avatarEmbedText.ts` and the note that the contract binds the
+  lib module too. Three files in the wave were prettier-only reformats with no logic change
+  (`backfill-avatar-embeddings.mjs` here; `components/admin/explorer/PhotoDescription.tsx` and
+  `tests/admin.albumDescribeEmbed.test.ts` outside this package).
 - **2026-09-14 — the worker notifies** (`nina-push-every-message`, phase 5 of 5; P1-SC-A002). New
   `nina-image-worker/push.ts`, called by `finishSelfie` and by `closeFailed`'s terminal branch;
   three `VAPID_*` lines added to `.github/workflows/nina-image.yml` (optional, absent secrets stay
