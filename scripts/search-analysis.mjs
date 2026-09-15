@@ -9,9 +9,10 @@
 // before it is joined with single spaces into the query text, so a multi-word query needs no quotes
 // — though quoting it is clearer.
 //
-// READ-ONLY: two SELECTs and one /embeddings POST. No UPDATE, no DELETE, no Blob call. This script
-// diagnoses; the edits are made by hand in /admin/nina, which is the whole point of the skill that
-// drives it (`.claude/skills/search-analysis/SKILL.md`).
+// READ-ONLY: two SELECTs and one /embeddings POST. No UPDATE, no DELETE, no Blob call — the target's
+// `blob_url` is reported as a plain string so the SKILL can fetch and view the photograph itself;
+// this script never GETs it. This script diagnoses; the edits are made by hand in /admin/nina,
+// which is the whole point of the skill that drives it (`.claude/skills/search-analysis/SKILL.md`).
 //
 // WHY IT EXISTS — and why it cannot just call the app's search. `searchNinaAvatarsByText`
 // (`lib/nina/queries/avatarsearch.ts`) passes every request through `clampLimit`, which caps the
@@ -155,7 +156,7 @@ const sql = neon(url)
  * the RANKING below, taken from whichever row this resolves to. */
 const matches = await sql`
   select id, user_id, folder, filename, description, search_keywords, negative_search_keywords,
-         (description_embedding is not null) as has_embedding
+         blob_url, (description_embedding is not null) as has_embedding
   from nina_avatars
   where strpos(id, ${fragment}::text) > 0
   order by created_at desc, id desc
@@ -314,6 +315,10 @@ emit(
       id: target.id,
       folder: target.folder === '' ? '(root)' : target.folder,
       filename: target.filename,
+      /* The ONLY thing this script hands back that lets a reader see the photograph rather than
+       * infer it from prose. Never fetched or proxied here — the skill downloads it separately, so
+       * a Blob outage fails that one step instead of the whole report. */
+      blobUrl: target.blob_url,
       description: target.description,
       searchKeywords: target.search_keywords,
       negativeSearchKeywords: target.negative_search_keywords,
