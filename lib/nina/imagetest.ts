@@ -59,10 +59,17 @@ import type { NinaTuning } from './tuning'
  * purpose is to be representative of the real thing.
  *
  * Full body in frame, deliberately: R1's body canon is what this test is testing.
+ *
+ * ── WHY IT NO LONGER DESCRIBES HER HOLDING THE CAMERA ────────────────────────────────────────
+ * It used to read "taking a photograph of herself at arm's length ... the phone visible in one
+ * hand" — a literal selfie, which after `nina-imagegen-proportion-fix` directly contradicts
+ * `NINA_SELFIE_STYLE`'s camera block ("This is not a selfie ... she is not holding the camera
+ * herself"). A prompt arguing with itself is exactly the failure that fix exists to remove, and
+ * this was the one place still causing it. Third person, no phone, matches the register of the
+ * real `scene` values the chat model writes (all sampled ones are third person too).
  */
 const NINA_IMAGE_TEST_SCENE =
-  'Nina taking a photograph of herself at arm’s length, standing, her whole body in frame, ' +
-  'the phone visible in one hand.'
+  'Nina standing outdoors in daylight, her whole body in frame, looking off to one side mid-stride.'
 
 /**
  * **The prompt, assembled and nothing else. Pure: no await, no I/O, no provider.**
