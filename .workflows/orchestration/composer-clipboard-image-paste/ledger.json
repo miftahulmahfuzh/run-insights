@@ -3,6 +3,12 @@
   "coordinator": "orch-composer-clipboard-image-paste",
   "coordinator_session_id": "ddfe2531-56a3-43f1-a8ef-78f2059d5af1",
   "created": "2026-09-16T00:53:59+00:00",
+  "landed": {
+    "at": "2026-09-16T01:07:04+00:00",
+    "base": "main",
+    "commit": "6e48a01f3ef608d06633c28456e197fe751062e4",
+    "machine": "pc"
+  },
   "phases": [
     {
       "card": null,
@@ -25,7 +31,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/composer-clipboard-image-paste/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "composer-clipboard-image-paste",
-  "updated": "2026-09-16T01:05:50+00:00",
+  "updated": "2026-09-16T01:07:04+00:00",
   "verified_at": "2026-09-16T01:04:34+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/composer-clipboard-image-paste"
 }
