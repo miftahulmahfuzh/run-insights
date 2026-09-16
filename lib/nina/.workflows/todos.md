@@ -12,7 +12,7 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 53
+- Completed: 54
 - Archived: 36
 
 ---
@@ -34,6 +34,24 @@
 (all thirty-five completed tasks were archived on 2026-09-12 — see Archive; full
 per-task detail — Context, Drift, Decided, Files — survives in git history and in
 `.workflows/package_readme.md`)
+
+- [x] **P1-NIN-A052** Phase 1: Tune the selfie camera block and calves focus term against the three named problems
+  - **Difficulty**: NORMAL
+  - **Type**: Bug
+  - **Context**: Owns `NINA_SELFIE_STYLE`, `NINA_FOCUS_EMPHASIS.calves.term`, and the high-`steamy` `ninaPhotoPresence` clause in `lib/nina/imagegen.ts`, plus matching test updates in `tests/nina.imagerecipe.test.ts`. Exit: `buildNinaImagePrompt({ purpose: 'selfie', ... })` for every existing test scenario (including high-`steamy`) renders text that rules out arm's-length/mirror/phone-in-hand selfie framing with no contradicting clause, states natural head-to-body proportion and non-compressing camera distance, and describes calves/feet as long and proportionate — and `npx vitest run tests/nina.imagerecipe.test.ts` passes.
+  - **Status**: done
+  - **Plan Set**: `NINA_IMAGEGEN_PROPORTION_FIX_PLAN.md` (phase 1 of 1)
+  - **Satisfies**: R3, R4 — Explicit instructions to fix selfie framing/head-body proportion/calf-feet size; land the change for a later separate promotion step
+  - **Depends on**: none
+  - **Plan**: `.workflows/plan/P1-NIN-A052.md`
+  - **Completed**: 2026-09-16 13:12
+  - **Method**: /do
+  - **Files**: lib/nina/imagegen.ts, tests/nina.imagerecipe.test.ts
+  - **Decided**: Whether to add a `negative_prompt` API field vs. inline "no X" clauses → Inline clauses only (rung 6: surrounding convention) — inherited from plan index, not re-litigated
+    Whether to touch `GENERATE_IMAGE_TOOL.description` → Left untouched (rung 5: user's raw input read literally) — inherited from plan index
+    Whether to re-wire `NINA_FOCUS_EMPHASIS.calves.sentence` into the selfie path → Left dead, fix ships through `.term` instead (rung 2: phase exit criteria) — inherited from plan index
+    Whether the high-`steamy` `ninaPhotoPresence` clause's contradiction with the new no-phone camera block is in scope → Kept in scope (rung 2: phase exit criteria — criterion (a) requires no contradicting clause anywhere in the same render) — inherited from plan index, already ratified there as a Decision, not reopened here
+  - **Verification**: `npx vitest run tests/nina.imagerecipe.test.ts` 88/88; `tests/nina.imageprefs.test.ts` + three admin imagegen suites 157/157; `ImageGenPanel.test.tsx` + `ImageGenTestPanel.test.tsx` 36/36; `npx next typegen && npx tsc --noEmit` clean; `npx prettier --check` clean on both modified files
 
 - [x] **P1-NIN-A051** Phase 1: Promote dependents before delete, guard the blob delete
   - **Difficulty**: HARD

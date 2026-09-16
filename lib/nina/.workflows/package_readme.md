@@ -41,6 +41,13 @@ first OpenRouter path in this package with no z.ai primary in front of it; `open
 P1-NIN-A051 (nina-ghost-photo-dedup-fix phase 1 of 2): `provenancePromotion.ts` added — a delete
 now MEASURES the rows it is about to orphan before it orphans them, and the three avatar-side blob
 deletes ask `isBlobPathnameReferenced` before `del()` — see Images' *Promote before delete*.
+Restated again 2026-09-16 for P1-NIN-A052 (nina-imagegen-proportion-fix): the selfie camera block
+(`NINA_SELFIE_STYLE`), the `calves` focus TERM and the high-`steamy` presence clause were retuned
+together against arm's-length framing, head-to-body proportion and cropped feet — the recorded
+rules are that the tool description never reaches the image prompt, that there is no
+`negative_prompt` to put negatives in, that a focus key's `.sentence` is avatar-only, and that a
+non-empty stored `prompt_template` outranks the source default — see Images' *The photograph's
+aesthetic*.
 **Documentation Created**: 2026-09-05 (`NINA_CHARACTER_TUNING_PLAN.md` phase 2)
 
 ## Overview
@@ -497,6 +504,46 @@ fallback constant `NINA_IMAGE_DAILY_CAP = 30` (the 2026-09-10 ask), moved at run
 `NINA_IMAGE_DAILY_CAP` env var via `ninaImageDailyCap()` (clamped 1–200 so a dropped digit fails
 modest), counting FAILED generations too. `photoEagerness` changes how eagerly she OFFERS, never
 what the operator spends.
+
+**The photograph's aesthetic is decided in `imagegen.ts` and nowhere else.** `NINA_SELFIE_STYLE` is
+the camera block at the head of `NINA_PROMPT_TEMPLATE_DEFAULT`; `GENERATE_IMAGE_TOOL.description`
+("take a photo of yourself and send it") is what the CHAT model reads when it decides to offer a
+photograph and is **never concatenated into the sent image prompt** — which is the whole reason the
+aesthetic lives in this constant rather than in the tool schema: the model cannot drift it. Five
+rules a prompt edit has to hold. (Restated 2026-09-16 for P1-NIN-A052, which retuned the camera
+against three reported defects — the pictures read as arm's-length selfies, her head read too big
+for her body, her calves and feet read short, small or cropped. The three share one near-field
+cause, which is why one paragraph now names the photographer, the lens, the distance, the
+head-to-body proportion and a whole-body frame with the floor under her feet.)
+
+- **There is no `negative_prompt` on this call.** `buildImageRequestBody` (`imagerecipe.ts`) sends
+  `model, prompt, resolution, aspect_ratio, n, seed` plus a conditional `input_references` and
+  nothing else, so every negative is an inline "no X" clause inside the POSITIVE prompt — the
+  mechanism the watermark/border/retouching run has always used. Do not invent a parameter for one.
+- **Every other clause rendered into the prompt must agree with the camera block.** The pose clauses
+  `ninaPhotoPresence` appends land in the same string: the high-`steamy` one used to end *"the phone
+  held close"*, a direct contradiction of a camera block that says no phone and no hand near the
+  lens (it holds the pose for the person photographing her now). Every new dial clause is a fresh
+  chance to re-contradict it, and nothing mechanical catches that — only reading both.
+- **Anything that must reach a PHOTOGRAPH rides on `NINA_FOCUS_EMPHASIS[key].term`, never on
+  `.sentence`.** The selfie path builds `{{focus}}` from `joinTerms` over the ticked `.term`s alone;
+  `.sentence` is read only by `ninaFocusBlock`, whose single call site passes `'avatar'`, so for a
+  focus key that is not in `NINA_AVATAR_FOCUS_KEYS` — `calves` among them — the sentence is dead
+  text kept for the avatar shape's sake. That is why the calf-length and foot-proportion fix is
+  spelled inside the term. A term therefore carries **no internal "and" and no trailing
+  preposition**: `joinTerms` may put five other terms in front of it and the template appends
+  "above everything else in this photograph."
+- **The avatar path is a separate shell and stays out of it** (`NINA_AVATAR_STYLE`,
+  `NINA_AVATAR_PROMPT_TEMPLATE_DEFAULT`, untouched by A052) — a head-and-shoulders crop rendered in
+  a 28-44 px circle has no use for whole-body framing, foot visibility or a three-metre standoff.
+- **The source constants are the DEFAULT, not automatically what goes on the wire.**
+  `effectiveNinaImageTemplate` returns the stored `nina_image_prefs.prompt_template` whenever it is
+  non-empty and valid, and falls back to `NINA_PROMPT_TEMPLATE_DEFAULT` only for `''` or a row that
+  fails validation. Measured 2026-09-16: the stored template was byte-identical to the shipped
+  default, so A052 needed no migration alongside the source edit. The reverse direction — a prompt
+  hand-tuned in `/admin/image-generation` becoming the shipped constant — is the
+  `set-current-image-gen-prompt-as-default` skill's job and always a separate, later step; A052's
+  text is a candidate camera block promoted by nobody yet.
 
 **The pathname has two windows** (`images.ts`, zero imports): what the browser may ASK for
 (`NINA_CHAT_ID_RE`, exactly `{12}` — `newId()`'s length; the mint got TIGHTER, not looser) and

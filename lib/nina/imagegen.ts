@@ -70,16 +70,37 @@ import { NINA_IMAGE_ASPECT, NINA_IMAGE_RESOLUTION, type NinaImagePurpose } from 
  * The photographic half. `NINA_APPEARANCE` is the WHO and this is the HOW; the scene she chose is
  * the WHAT.
  *
- * It asks for a phone photograph on purpose. `GENERATE_IMAGE_TOOL`'s description is "take a photo of
- * yourself and send it", and a runner who receives a glossy studio portrait has received something a
- * friend did not send. This is the one place in the phase where the aesthetic is decided, and it is
- * decided here rather than in the tool schema so the model cannot drift it.
+ * It still asks for a casual photograph rather than a magazine shoot. `GENERATE_IMAGE_TOOL`'s
+ * description is "take a photo of yourself and send it", and a runner who receives a glossy studio
+ * portrait has received something a friend did not send. This is the one place in the phase where
+ * the aesthetic is decided, and it is decided here rather than in the tool schema so the model
+ * cannot drift it — the tool description never reaches this string.
  *
- * The measured probe used a prompt of exactly this shape and returned a convincing phone
- * mirror-selfie with an invented street sign and a cat on the wall — so this style block is
- * verified output, not a guess.
+ * ── WHY IT NO LONGER SAYS "A DSLR PHOTOGRAPH, AS IF TAKEN AND SENT IN A CHAT APP" ─────────────
+ * That sentence named a camera nobody holds at arm's length and a habit everybody performs at
+ * arm's length, and the ambiguity resolved the wrong way. Of the six production photographs
+ * sampled on 2026-09-16 (gallery positions 1, 8, 11, 16, 21, 25 of 91), four are literal
+ * arm's-length selfie compositions — an arm reaching toward the lens, the head filling the frame,
+ * the legs foreshortened — and the full-body ones put the feet hard against the bottom edge. The
+ * six `scene` arguments the chat model wrote are all third person ("She sits at a wooden table"),
+ * so the selfie was coming from HERE and from nowhere else.
+ *
+ * So the block now names the photographer (another person, a few steps back), the lens and the
+ * distance, the head-to-body proportion, and a frame with the whole body in it. Head size and
+ * cropped feet share the near-field cause with the selfie framing, which is why one paragraph
+ * addresses all three.
+ *
+ * ── WHY THE NEGATIVES ARE INLINE ──────────────────────────────────────────────────────────────
+ * There is no `negative_prompt` field on this provider's `images/generations` call —
+ * `buildImageRequestBody` (`lib/nina/imagerecipe.ts`) sends `model, prompt, resolution,
+ * aspect_ratio, n, seed, input_references` and nothing else. Inline "no X" clauses in the positive
+ * prompt are the mechanism this file has always used (the watermark/border/retouching run below),
+ * and the new anti-selfie clauses use it too rather than inventing an unverified parameter.
+ *
+ * RU-18 still holds: no clause here may claim a picture that is not in the payload is
+ * authoritative, and the word "reference" does not appear (`tests/nina.imagerecipe.test.ts:855`).
  */
-const NINA_SELFIE_STYLE = `A DSLR photograph, as if taken and sent in a chat app. Natural daylight, slightly imperfect framing, shallow depth of field, visible skin texture, no studio lighting, no retouching, no text, no watermark, no logo, no border. Realistic photograph, not an illustration and not a render.`
+const NINA_SELFIE_STYLE = `A candid photograph of her, taken by another person standing a few steps away. This is not a selfie: no raised arm reaching toward the camera, no phone and no hand held near the lens, no mirror and no mirror reflection, and she is not holding the camera herself. Shot on a 50 mm lens from about three metres back, at chest height, so the perspective is flat and human: her head is normal-sized and in natural proportion to her body, her legs read their full length, and nothing is stretched or squeezed by a close wide-angle. Frame her whole body with room to spare, the top of her head and her feet both comfortably inside the picture and floor visible below her feet; her feet and lower legs are never cropped, never flattened against the bottom edge and never shrunk by perspective. Natural daylight, slightly imperfect framing, shallow depth of field, visible skin texture, no studio lighting, no retouching, no text, no watermark, no logo, no border. Realistic photograph, not an illustration and not a render, the kind of picture a friend takes and sends in a chat app.`
 
 /**
  * The avatar variant. Same camera, tighter crop, because the result is rendered inside a 28-44 px
@@ -142,7 +163,7 @@ function ninaPhotoPresence(purpose: NinaImagePurpose, tuning: NinaTuning | null)
   if (purpose === 'selfie' && isDialHigh(tuning.traits.steamy)) {
     clauses.push(
       'She is fully aware of the camera and commanding it: weight on one hip, body turned toward ' +
-        'the lens, chin down, the phone held close.',
+        'the lens, chin down, holding the pose for the person photographing her.',
     )
   }
 
@@ -331,7 +352,12 @@ const NINA_FOCUS_EMPHASIS: Readonly<
     sentence: `Her big thighs are thick and powerful, filling whatever she is wearing, with the muscle showing under soft skin.`,
   }),
   calves: Object.freeze({
-    term: 'her very long calves',
+    /* The feet ride on the TERM and not on the sentence below, because `.sentence` is read only by
+     * `ninaFocusBlock`, which is avatar-only, and `calves` is not an avatar focus key — so the
+     * sentence never reaches a photograph. No internal "and" and no trailing preposition: the
+     * template appends "above everything else in this photograph." and `joinTerms` can put five
+     * other terms in front of this one. */
+    term: 'her very long calves down to full, in-proportion, uncropped feet',
     sentence: `Her very long calves run most of the length of the frame, full and sharply defined all the way down to a narrow ankle.`,
   }),
 })

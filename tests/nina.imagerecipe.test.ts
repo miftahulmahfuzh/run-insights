@@ -255,6 +255,58 @@ describe('the prompt', () => {
     expect(prompt.toLowerCase()).not.toContain('reference')
   })
 
+  it('R3: the camera block rules out the selfie and states a human head-to-body proportion', () => {
+    /*
+     * 2026-09-16: four of six sampled production photographs (gallery positions 1, 8, 11, 16, 21,
+     * 25 of 91) were literal arm's-length selfies, with an oversized head and feet crushed against
+     * the bottom edge — one near-field cause behind all three complaints. There is no
+     * `negative_prompt` field on this provider's call, so these are inline "no X" clauses in the
+     * positive prompt, the same mechanism the watermark/border run has always used. The selfie
+     * shell is one fixed string, so the assertion holds at every band floor.
+     */
+    for (const promptLength of BAND_FLOORS) {
+      const prompt = buildNinaImagePrompt({
+        purpose: 'selfie',
+        scene: 'on the track',
+        prefs: prefsWith({ promptLength }),
+      })
+      const where = `band floor ${promptLength}`
+      // (a) somebody else is holding the camera, and none of the three selfie tells is allowed.
+      expect(prompt, where).toContain('taken by another person standing a few steps away')
+      expect(prompt, where).toContain('no raised arm reaching toward the camera')
+      expect(prompt, where).toContain('no phone and no hand held near the lens')
+      expect(prompt, where).toContain('no mirror and no mirror reflection')
+      // (b) the optics that decide head size, and (c) the framing that decides whether feet survive.
+      expect(prompt, where).toContain('Shot on a 50 mm lens from about three metres back')
+      expect(prompt, where).toContain(
+        'her head is normal-sized and in natural proportion to her body',
+      )
+      expect(prompt, where).toContain('her feet and lower legs are never cropped')
+      /* The clauses that have nothing to do with the three problems were carried over character
+       * for character — the R3 rewrite is not allowed to quietly drop them. */
+      expect(prompt, where).toContain(
+        'Natural daylight, slightly imperfect framing, shallow depth of field, visible skin texture',
+      )
+      expect(prompt, where).toContain(
+        'no studio lighting, no retouching, no text, no watermark, no logo, no border',
+      )
+      expect(prompt, where).toContain('Realistic photograph, not an illustration and not a render')
+    }
+  })
+
+  it('R3: a high steamy dial no longer puts a phone back in her hand', () => {
+    /* The pose clause used to end "the phone held close", which contradicted the camera block
+     * above at `steamy` band high+ — a prompt arguing with itself. */
+    const prompt = buildNinaImagePrompt({
+      purpose: 'selfie',
+      scene: 'on the track',
+      tuning: { ...NINA_TUNING_DEFAULTS, traits: { ...NINA_TUNING_DEFAULTS.traits, steamy: 100 } },
+    })
+    expect(prompt).toContain('POSE AND PRESENCE:')
+    expect(prompt).toContain('holding the pose for the person photographing her')
+    expect(prompt).not.toContain('the phone held close')
+  })
+
   it('the sidecar records prompt, model and seed, and says there is no reference', () => {
     const text = sidecarText({ prompt: 'p', seed: 42, purpose: 'selfie', model: NINA_IMAGE_MODEL })
     expect(text).toContain(NINA_IMAGE_MODEL)
@@ -599,7 +651,7 @@ describe('the prompt', () => {
       })
     for (const promptLength of [0, 50, 100]) {
       expect(at(promptLength)).toContain(
-        'FOCUS: Emphasise her big boobs and her very long calves above everything else in this photograph.',
+        'FOCUS: Emphasise her big boobs and her very long calves down to full, in-proportion, uncropped feet above everything else in this photograph.',
       )
       /* The per-key elaboration sentences were rung-spent canon; the template's one line is the
        * whole emphasis now, and no rung brings the sentences back. */
@@ -620,6 +672,44 @@ describe('the prompt', () => {
     })
     expect(avatarTerse).not.toContain('visible pores')
     expect(avatarFull).toContain('visible pores')
+  })
+
+  it('R3: the calves term asks for the feet too, and still reads as English when joined', () => {
+    /*
+     * `.term` is the ONLY part of `NINA_FOCUS_EMPHASIS.calves` that reaches a selfie —
+     * `ninaFocusBlock`, the only reader of `.sentence`, is avatar-only and `calves` is not an
+     * avatar focus key — so "her feet are too small" has to be fixed here. The term carries no
+     * internal "and" and no trailing preposition precisely so that `joinTerms` and the template's
+     * trailing "above everything else in this photograph." both still parse.
+     */
+    const alone = buildNinaImagePrompt({
+      purpose: 'selfie',
+      scene: 'x',
+      prefs: prefsWith({ focus: focusOnly('calves') }),
+    })
+    expect(alone).toContain(
+      'FOCUS: Emphasise her very long calves down to full, in-proportion, uncropped feet above everything else in this photograph.',
+    )
+
+    const joined = buildNinaImagePrompt({
+      purpose: 'selfie',
+      scene: 'x',
+      prefs: prefsWith({ focus: focusOnly('boobs', 'calves') }),
+    })
+    expect(joined).toContain(
+      'FOCUS: Emphasise her big boobs and her very long calves down to full, in-proportion, uncropped feet above everything else in this photograph.',
+    )
+
+    /* And with the whole vocabulary ticked: `calves` is last in `NINA_IMAGE_FOCUS_KEYS`, so the
+     * long term lands at the end of the `a, b and c` list rather than inside it. */
+    const everything = buildNinaImagePrompt({
+      purpose: 'selfie',
+      scene: 'x',
+      prefs: prefsWith({ focus: focusOnly(...NINA_IMAGE_FOCUS_KEYS) }),
+    })
+    expect(everything).toContain(
+      'FOCUS: Emphasise her face, her skin, her big boobs, her bubble butt, her big thighs and her very long calves down to full, in-proportion, uncropped feet above everything else in this photograph.',
+    )
   })
 
   /* ────────────────────────────────────────────────────────────────────────────────────────────
