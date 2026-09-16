@@ -1,0 +1,49 @@
+{
+  "branch": "feature/nina-ghost-photo-dedup-fix",
+  "coordinator": "orch-nina-ghost-photo-dedup-fix",
+  "coordinator_session_id": "1d1ab70f-d249-4cba-8479-ff77c0b80a40",
+  "created": "2026-09-16T04:11:48+00:00",
+  "phases": [
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [],
+      "difficulty": "HARD",
+      "n": 1,
+      "note": null,
+      "package": "lib/nina`, `lib/admin",
+      "plan": ".workflows/plan/nina-ghost-photo-dedup-fix/phase-1.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1"
+      ],
+      "status": "spawned",
+      "task_id": null,
+      "title": "Promote dependents before delete, guard the blob delete"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [
+        1
+      ],
+      "difficulty": "NORMAL",
+      "n": 2,
+      "note": null,
+      "package": "scripts",
+      "plan": ".workflows/plan/nina-ghost-photo-dedup-fix/phase-2.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Phantom-original census + `fill-dimensions` in the existing sweep"
+    }
+  ],
+  "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-ghost-photo-dedup-fix/PLAN.md",
+  "repo": "/home/miftah/run-insights",
+  "slug": "nina-ghost-photo-dedup-fix",
+  "updated": "2026-09-16T04:11:59+00:00",
+  "worktree": "/home/miftah/.worktrees/run-insights/nina-ghost-photo-dedup-fix"
+}
