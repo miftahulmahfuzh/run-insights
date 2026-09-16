@@ -107,8 +107,8 @@ delete it for as long as any promoted dependent survives.
 
 | # | Title | Satisfies | Package | Files | Depends on | Difficulty | Plan | TaskID | Card |
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
-| 1 | Promote dependents before delete, guard the blob delete | R1 | `lib/nina`, `lib/admin` | 15 (+2 conditional) | — | HARD | `.workflows/plan/nina-ghost-photo-dedup-fix/phase-1.md` | — | — |
-| 2 | Phantom-original census + `fill-dimensions` in the existing sweep | R1 | `scripts` | 3 | 1 | NORMAL | `.workflows/plan/nina-ghost-photo-dedup-fix/phase-2.md` | — | — |
+| 1 | Promote dependents before delete, guard the blob delete | R1 | `lib/nina`, `lib/admin` | 15 (+2 conditional) | — | HARD | `.workflows/plan/nina-ghost-photo-dedup-fix/phase-1.md` | P1-NIN-A051 | — |
+| 2 | Phantom-original census + `fill-dimensions` in the existing sweep | R1 | `scripts` | 3 | 1 | NORMAL | `.workflows/plan/nina-ghost-photo-dedup-fix/phase-2.md` | P1-SC-A003 | — |
 
 **On the `Depends on` edge — read this before treating it as a build order.** Phase 2 imports
 nothing from Phase 1, touches none of its files, and would build and test green against

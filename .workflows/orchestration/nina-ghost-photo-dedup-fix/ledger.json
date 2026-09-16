@@ -3,6 +3,12 @@
   "coordinator": "orch-nina-ghost-photo-dedup-fix",
   "coordinator_session_id": "1d1ab70f-d249-4cba-8479-ff77c0b80a40",
   "created": "2026-09-16T04:11:48+00:00",
+  "landed": {
+    "at": "2026-09-16T04:52:31+00:00",
+    "base": "main",
+    "commit": "2b1db13ca5b8f58954f0fa32d77022ca1cd37a0b",
+    "machine": "pc"
+  },
   "phases": [
     {
       "card": null,
@@ -44,7 +50,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-ghost-photo-dedup-fix/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-ghost-photo-dedup-fix",
-  "updated": "2026-09-16T04:51:38+00:00",
+  "updated": "2026-09-16T04:52:31+00:00",
   "verified_at": "2026-09-16T04:39:51+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-ghost-photo-dedup-fix"
 }
