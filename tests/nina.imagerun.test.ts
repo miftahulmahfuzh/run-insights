@@ -355,6 +355,8 @@ describe('the delivered photograph buzzes the phone', () => {
       USER,
       [{ id: 'msg-1', body: 'nih, di pantai' }],
       'photo_delivered',
+      undefined,
+      SESSION,
     )
   })
 
@@ -369,6 +371,8 @@ describe('the delivered photograph buzzes the phone', () => {
       USER,
       [{ id: 'msg-1', body: ninaImageCaption(JOB_ID) }],
       'photo_delivered',
+      undefined,
+      SESSION,
     )
   })
 

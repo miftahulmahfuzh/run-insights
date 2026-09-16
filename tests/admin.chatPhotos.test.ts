@@ -980,6 +980,8 @@ describe('addChatPhotoAction tells his phone (R2)', () => {
       USER,
       [{ id: MESSAGE_ID, body: inserted.body }],
       'admin_chat_photo',
+      undefined,
+      SESSION_ID,
     )
     expect(NINA_IMAGE_CAPTIONS).toContain(inserted.body)
   })
@@ -1140,6 +1142,8 @@ describe('the admin routes announce a photograph the collection already had', ()
       USER,
       [{ id: MESSAGE_ID, body: inserted.body }],
       'admin_chat_photo',
+      undefined,
+      SESSION_ID,
     )
   })
 

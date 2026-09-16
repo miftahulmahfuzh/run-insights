@@ -907,7 +907,14 @@ describe('sendWorkerPush — the app’s sender, restated for a host that cannot
     const sql = sqlWithSubscriptions([SUB])
     const send = stubSend()
 
-    const report = await sendWorkerPush(sql, USER, BUBBLE, 'worker_photo_delivered', send)
+    const report = await sendWorkerPush(
+      sql,
+      USER,
+      BUBBLE,
+      'worker_photo_delivered',
+      SESSION_ID,
+      send,
+    )
 
     expect(report.skipped).toMatch(/VAPID/)
     expect(report.attempted).toBe(0)
@@ -926,6 +933,7 @@ describe('sendWorkerPush — the app’s sender, restated for a host that cannot
       USER,
       [{ id: 'm1', body: '   ' }],
       'worker_photo_delivered',
+      SESSION_ID,
       send,
     )
 
@@ -938,7 +946,7 @@ describe('sendWorkerPush — the app’s sender, restated for a host that cannot
     withVapid()
     const sql = sqlWithSubscriptions([SUB])
 
-    await sendWorkerPush(sql, USER, BUBBLE, 'worker_photo_delivered', stubSend())
+    await sendWorkerPush(sql, USER, BUBBLE, 'worker_photo_delivered', SESSION_ID, stubSend())
 
     const [select] = sent(sql, /from push_subscriptions/)
     expect(select?.text).toMatch(/user_id = \$\d+/)
@@ -957,7 +965,14 @@ describe('sendWorkerPush — the app’s sender, restated for a host that cannot
     const sql = sqlWithSubscriptions([])
     const send = stubSend()
 
-    const report = await sendWorkerPush(sql, USER, BUBBLE, 'worker_photo_delivered', send)
+    const report = await sendWorkerPush(
+      sql,
+      USER,
+      BUBBLE,
+      'worker_photo_delivered',
+      SESSION_ID,
+      send,
+    )
 
     expect(report.skipped).toBe('no live subscriptions')
     expect(send).not.toHaveBeenCalled()
@@ -968,7 +983,7 @@ describe('sendWorkerPush — the app’s sender, restated for a host that cannot
     const sql = sqlWithSubscriptions([SUB])
     const send = stubSend()
 
-    await sendWorkerPush(sql, USER, BUBBLE, 'worker_photo_delivered', send)
+    await sendWorkerPush(sql, USER, BUBBLE, 'worker_photo_delivered', SESSION_ID, send)
 
     const call = send.mock.calls[0]!
     expect(call[0]).toEqual({
@@ -976,12 +991,14 @@ describe('sendWorkerPush — the app’s sender, restated for a host that cannot
       keys: { p256dh: SUB.p256dh, auth: SUB.auth },
     })
     /* Built by `buildNinaPushPayload`, not assembled here — the whole point of importing
-     * `lib/push/payload.ts` is that the two hosts cannot disagree about the wire. */
+     * `lib/push/payload.ts` is that the two hosts cannot disagree about the wire, and the deep link
+     * is now part of that agreement: this is `ninaJumpHref`'s grammar, produced on a host that
+     * cannot import `ninaJumpHref`. */
     expect(JSON.parse(call[1] as string)).toEqual({
       v: 1,
       title: 'Nina',
       body: 'ini fotonya',
-      url: '/nina',
+      url: `/nina?s=${SESSION_ID}&jump=msg000000002`,
       tag: 'nina',
       messageId: 'msg000000002',
       kind: 'worker_photo_delivered',
@@ -999,7 +1016,14 @@ describe('sendWorkerPush — the app’s sender, restated for a host that cannot
     withVapid()
     const sql = sqlWithSubscriptions([{ ...SUB, failure_count: 3 }])
 
-    const report = await sendWorkerPush(sql, USER, BUBBLE, 'worker_photo_delivered', stubSend())
+    const report = await sendWorkerPush(
+      sql,
+      USER,
+      BUBBLE,
+      'worker_photo_delivered',
+      SESSION_ID,
+      stubSend(),
+    )
 
     expect(report).toEqual({
       attempted: 1,
@@ -1020,7 +1044,14 @@ describe('sendWorkerPush — the app’s sender, restated for a host that cannot
     const sql = sqlWithSubscriptions([SUB])
     const gone = Object.assign(new Error('Gone'), { statusCode: 410 })
 
-    const report = await sendWorkerPush(sql, USER, BUBBLE, 'worker_photo_delivered', stubSend(gone))
+    const report = await sendWorkerPush(
+      sql,
+      USER,
+      BUBBLE,
+      'worker_photo_delivered',
+      SESSION_ID,
+      stubSend(gone),
+    )
 
     expect(report.pruned).toBe(1)
     expect(report.delivered).toBe(0)
@@ -1039,6 +1070,7 @@ describe('sendWorkerPush — the app’s sender, restated for a host that cannot
       USER,
       BUBBLE,
       'worker_photo_delivered',
+      SESSION_ID,
       stubSend(new Error('ECONNRESET')),
     )
 
@@ -1060,6 +1092,7 @@ describe('sendWorkerPush — the app’s sender, restated for a host that cannot
       USER,
       BUBBLE,
       'worker_photo_delivered',
+      SESSION_ID,
       stubSend(new Error('ETIMEDOUT')),
     )
 
@@ -1076,7 +1109,14 @@ describe('sendWorkerPush — the app’s sender, restated for a host that cannot
       return { statusCode: 201 }
     })
 
-    const report = await sendWorkerPush(sql, USER, BUBBLE, 'worker_photo_delivered', send)
+    const report = await sendWorkerPush(
+      sql,
+      USER,
+      BUBBLE,
+      'worker_photo_delivered',
+      SESSION_ID,
+      send,
+    )
 
     expect(report.attempted).toBe(2)
     expect(report.delivered).toBe(1)
@@ -1091,7 +1131,14 @@ describe('sendWorkerPush — the app’s sender, restated for a host that cannot
     const sql = sqlWithSubscriptions([SUB], { failOn: /from push_subscriptions/ })
     const send = stubSend()
 
-    const report = await sendWorkerPush(sql, USER, BUBBLE, 'worker_photo_delivered', send)
+    const report = await sendWorkerPush(
+      sql,
+      USER,
+      BUBBLE,
+      'worker_photo_delivered',
+      SESSION_ID,
+      send,
+    )
 
     expect(report.skipped).toMatch(/subscriptions unreadable/)
     expect(send).not.toHaveBeenCalled()
@@ -1107,11 +1154,31 @@ describe('sendWorkerPush — the app’s sender, restated for a host that cannot
       rows: (call) => (/from push_subscriptions/.test(call.text) ? [SUB] : []),
     })
 
-    const report = await sendWorkerPush(sql, USER, BUBBLE, 'worker_photo_delivered', stubSend())
+    const report = await sendWorkerPush(
+      sql,
+      USER,
+      BUBBLE,
+      'worker_photo_delivered',
+      SESSION_ID,
+      stubSend(),
+    )
 
     expect(report.delivered).toBe(1)
     expect(report.retryable).toBe(0)
     expect(report.pruned).toBe(0)
+  })
+
+  it('falls back to bare /nina when the caller could not name a session', async () => {
+    /* The parameter is optional on this host too, and the old behaviour is what a caller with no
+     * session still gets — never a malformed `?s=`. */
+    withVapid()
+    const sql = sqlWithSubscriptions([SUB])
+    const send = stubSend()
+
+    await sendWorkerPush(sql, USER, BUBBLE, 'worker_photo_delivered', undefined, send)
+
+    const payload = JSON.parse(send.mock.calls[0]![1] as string)
+    expect(payload.url).toBe('/nina')
   })
 })
 
@@ -1155,6 +1222,9 @@ describe('finishSelfie — the push (nina-push-every-message R1)', () => {
      * so the `worker_` prefix is the one thing in a log line that says the backstop delivered this
      * photograph. Collapsing them would make the diagnostic vacuous. */
     expect(kind).toBe('worker_photo_delivered')
+    /* R2: the session the photograph's bubble was filed in, so the tap opens that conversation and
+     * flashes the caption. `sqlResolving(SESSION_ID)` is what `resolveWorkerSessionId` answered. */
+    expect(notify.mock.calls[0]![4]).toBe(SESSION_ID)
     /* The body is the string the INSERT bound, not a second `ninaImageCaption` call that happens
      * to agree. */
     const [insert] = sent(sql, /insert into nina_messages/)
@@ -1249,6 +1319,9 @@ describe('closeFailed — the apology push (nina-push-every-message R1)', () => 
     /* NOT phase 3's `'photo_apology'`: the two hosts keep separate kinds so a log line can say
      * which one gave the photograph up. */
     expect(kind).toBe('worker_photo_apology')
+    /* The session is hoisted out of the selfie branch alongside the row itself, so the apology's
+     * notification cannot point at a different conversation than the apology. */
+    expect(notify.mock.calls[0]![4]).toBe(SESSION_ID)
     /* Both the id and the sentence are the INSERT's own bound values, not a second draw. */
     const [insert] = sent(sql, /insert into nina_messages/)
     expect(insert?.values).toContain(messages[0]?.id)

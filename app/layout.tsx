@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next'
 import { Poppins } from 'next/font/google'
+import { PushTapNavigator } from '@/components/push/PushTapNavigator'
 import { APPLE_WEB_APP, INSTALL } from '@/lib/pwa'
 import './globals.css'
 
@@ -85,7 +86,17 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: LayoutProps<'/'>) {
   return (
     <html lang="en" className={poppins.variable}>
-      <body className="min-h-dvh antialiased">{children}</body>
+      <body className="min-h-dvh antialiased">
+        {children}
+        {/*
+         * R1. Renders nothing; it exists to hear `lib/service-worker.js` say a notification was
+         * tapped and to `router.push` where the tap wanted to go. It lives HERE and not in
+         * `AppShell` because `AppShell` does not wrap `/photo/[kind]/[id]`, `/upload`,
+         * `/onboarding`, `/admin/*` or `/x/[extractionId]`, and the requirement is "wherever the
+         * user is". One mount, every route.
+         */}
+        <PushTapNavigator />
+      </body>
     </html>
   )
 }

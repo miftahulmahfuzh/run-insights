@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
-import { appendNewBubbles, SW_MESSAGE_TYPE, mergeServerMessages } from './live'
+import {
+  appendNewBubbles,
+  SW_MESSAGE_TYPE,
+  SW_NAVIGATE_MESSAGE_TYPE,
+  mergeServerMessages,
+} from './live'
 
 /**
  * Rows are shaped `{ id, state }` structurally rather than imported from `components/nina/types`,
@@ -19,6 +24,21 @@ describe('SW_MESSAGE_TYPE', () => {
     /* The worker is plain JS outside `tsc`'s reach, so nothing but this assertion connects the two
      * halves of the signal. If you change one, this fails — which is the point. */
     expect(SW_MESSAGE_TYPE).toBe('nina:new')
+  })
+})
+
+describe('SW_NAVIGATE_MESSAGE_TYPE', () => {
+  it('matches the literal `lib/service-worker.js` posts on a tap', () => {
+    /* Same reason as above, and one more: this string is the ONLY thing standing between a tapped
+     * notification and nothing happening. The worker restates it because it cannot import. */
+    expect(SW_NAVIGATE_MESSAGE_TYPE).toBe('nina:navigate')
+  })
+
+  it('is not the live-arrival type — a refresh and a navigation are different events', () => {
+    /* One listener per type, and `PushTapNavigator` must not route on `nina:new`: every push posts
+     * that one to every open window, so conflating the two would navigate the whole app on arrival
+     * rather than on a tap. */
+    expect(SW_NAVIGATE_MESSAGE_TYPE).not.toBe(SW_MESSAGE_TYPE)
   })
 })
 

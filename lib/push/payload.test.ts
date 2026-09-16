@@ -153,8 +153,8 @@ describe('buildNinaPushPayload', () => {
 
   it('defaults url to /nina and lets a caller override it with a same-origin path', () => {
     /* The override is what the duplicate-image notification needs and what nothing before it did.
-     * The DEFAULT is the load-bearing half of this assertion: `sendNinaPush`, the worker's push
-     * and every proactive trigger pass no url at all and must keep landing on `/nina`. */
+     * The DEFAULT is the load-bearing half of this assertion: `lib/push/actions.ts`'s manual test
+     * button, and any future caller with no session, must keep landing on `/nina`. */
     expect(buildNinaPushPayload({ messages: FOUR, kind: 'chat_reply' })?.url).toBe('/nina')
     expect(
       buildNinaPushPayload({
@@ -165,12 +165,65 @@ describe('buildNinaPushPayload', () => {
     ).toBe('/photo/shot/aB3_xYz01234')
   })
 
+  it('DEEP-LINKS to the session and the bubble when it is given a session', () => {
+    /* The whole of R2. `ninaJumpHref` (`lib/nina/jobview.ts`) builds this exact string for
+     * "Buka chat-nya" and for every search hit, and `useQuoteLanding` scrolls and flashes on
+     * arrival — this assertion is what pins the two spellings together, since this module may not
+     * import that one (no `@/`, so the off-platform worker can load it). */
+    expect(
+      buildNinaPushPayload({ messages: FOUR, kind: 'chat_reply', sessionId: 'ses000000001' })?.url,
+    ).toBe('/nina?s=ses000000001&jump=m1')
+  })
+
+  it('points ?jump= at the SAME bubble the body and messageId came from', () => {
+    /* One selection, not two: a lock screen showing bubble B while the landing flashes bubble A is
+     * the defect this reuse exists to make impossible. The leading blank is what makes the two
+     * capable of differing at all. */
+    const payload = buildNinaPushPayload({
+      messages: [
+        { id: 'a', body: '   ' },
+        { id: 'b', body: 'real' },
+      ],
+      kind: 'chat_reply',
+      sessionId: 'ses000000001',
+    })
+    expect(payload?.messageId).toBe('b')
+    expect(payload?.url).toBe('/nina?s=ses000000001&jump=b')
+  })
+
+  it('AN EXPLICIT url STILL WINS over a session — duplicate_image is not about a bubble', () => {
+    /* `notifyDuplicateImagePush` passes `/photo/<kind>/<id>` and that notification must never be
+     * rewritten into a chat link. Belt to that brace: it passes no session today, so this case
+     * hands it both and asserts the precedence rather than the absence. */
+    expect(
+      buildNinaPushPayload({
+        messages: FOUR,
+        kind: 'duplicate_image',
+        url: '/photo/image/aB3_xYz01234',
+        sessionId: 'ses000000001',
+      })?.url,
+    ).toBe('/photo/image/aB3_xYz01234')
+  })
+
+  it('falls back to bare /nina for a blank session rather than sending ?s=', () => {
+    /* `?s=` empty would be rejected by `parseNinaSessionParam` on arrival, and the chat would then
+     * consume the `jump` against whichever session was most recently active — a flash on the wrong
+     * bubble, which is worse than no flash. */
+    expect(buildNinaPushPayload({ messages: FOUR, kind: 'chat_reply', sessionId: '' })?.url).toBe(
+      '/nina',
+    )
+  })
+
   it('does not bump the wire version for the added field', () => {
     /* `NinaPushPayload`'s header: bump `v` when a field's MEANING changes, never when one is
      * added. A registered service worker can be a week older than the server pushing to it, and
-     * it already reads `url` defensively. */
+     * it already reads `url` defensively — a query string on a path it already treats as opaque is
+     * not a meaning change. */
     expect(
       buildNinaPushPayload({ messages: FOUR, kind: 'duplicate_image', url: '/photo/image/x' })?.v,
+    ).toBe(1)
+    expect(
+      buildNinaPushPayload({ messages: FOUR, kind: 'chat_reply', sessionId: 'ses000000001' })?.v,
     ).toBe(1)
   })
 

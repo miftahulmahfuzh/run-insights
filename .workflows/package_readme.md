@@ -1,7 +1,9 @@
 # Package: run-insights (application root)
 
 **Location**: `.`
-**Last Updated**: 2026-09-12 — full compaction and verification pass: every constant, count, route
+**Last Updated**: 2026-09-16 — the notification-tap channel (service worker → root layout) and a
+re-count of the route tree; see *The notification-tap channel* and *Recent changes*. Before that,
+2026-09-12 — full compaction and verification pass: every constant, count, route
 and version below re-checked against the current tree; twelve accumulated per-phase changelog
 entries folded into one rolling summary; the shell-contract sections rewritten for the compact bar
 (39 px), the composer's 60 px content box, the gated inset, and the shared `NinaBarProvider`.
@@ -32,6 +34,8 @@ custom property — because none of those four can read the others.
   to a client bar without a fetch, a poll, or a prop threaded through every page — and the provider
   seam that gives the bar's two toggle buttons one shared state.
 - Own the route tree, and which routes get chrome at all.
+- Own what the root layout mounts for *every* route — currently one thing, the receiving half of
+  the notification-tap channel.
 - Own the auth edge and the repo-wide build, lint and test configuration.
 
 ## The shell contract
@@ -372,8 +376,8 @@ against and no reveal state to hold.
 
 ### The route tree, and its chrome
 
-Nineteen pages, nine route handlers, three layouts. Two route groups — `(app)` and `(public)` —
-neither of which contributes a URL segment.
+Twenty-one pages, ten route handlers, three layouts (counted 2026-09-16). Two route groups —
+`(app)` and `(public)` — neither of which contributes a URL segment.
 
 | route | file | chrome | notes |
 |---|---|---|---|
@@ -388,8 +392,9 @@ neither of which contributes a URL segment.
 | `/nina/about` | `app/nina/about/page.tsx` | `AppShell` (tabs) | her page: viewer, attach strip, job tracking |
 | `/nina/jobs` | `app/nina/jobs/page.tsx` | `AppShell` + `ScreenHeader` | her image-job queue, runner-facing |
 | `/nina/jobs/[id]` | `app/nina/jobs/[id]/page.tsx` | `AppShell` + `ScreenHeader` | one job, live status |
+| `/photo/[kind]/[id]` | `app/photo/[kind]/[id]/page.tsx` | none — `PhotoViewer` is `fixed inset-0 z-60` | one photograph full screen from a cold load; the `duplicate_image` push's tap target |
 | `/onboarding` | `app/onboarding/page.tsx` | none | standalone |
-| `/admin`, `/admin/nina`, `/admin/personality`, `/admin/image-generation`, `/admin/memory`, `/admin/shortcuts` | `app/admin/**` | none — `app/admin/layout.tsx` | a phone shell below `lg` (six-cell `AdminNav`, all four safe-area insets) and the unchanged desktop rail at `lg`; caps at `max-w-[1400px]`; carries the **second install contract** below |
+| `/admin`, `/admin/nina`, `/admin/personality`, `/admin/image-generation`, `/admin/memory`, `/admin/shortcuts`, `/admin/error-logs` | `app/admin/**` | none — `app/admin/layout.tsx` | a phone shell below `lg` (six-cell `AdminNav`, all four safe-area insets) and the unchanged desktop rail at `lg`; caps at `max-w-[1400px]`; carries the **second install contract** below |
 | `/s/[token]` | `app/(public)/s/[token]/page.tsx` | none — own layout | public share; `force-dynamic`, plus `not-found.tsx` |
 
 Route handlers, all declaring `runtime = 'nodejs'`: `/api/auth/*` (re-exports Auth.js `handlers`),
@@ -405,8 +410,10 @@ for.
 
 `app/layout.tsx` is the root layout and the one place **`viewport-fit=cover`** is set — without it
 `env(safe-area-inset-*)` returns zero and every `--safe-bottom` term in the geometry above
-silently collapses. It also self-hosts Poppins via `next/font/google` and points `manifest` at
-`app/manifest.ts`. `app/robots.ts` allows `/` and `/s/` and disallows the rest; `/s/` is
+silently collapses. It also self-hosts Poppins via `next/font/google`, points `manifest` at
+`app/manifest.ts`, and renders exactly one component of its own beside `{children}` —
+`components/push/PushTapNavigator`, the receiving half of the notification-tap channel below.
+`app/robots.ts` allows `/` and `/s/` and disallows the rest; `/s/` is
 crawlable-but-`noindex` on purpose, because `Disallow` is not `noindex` and blocking it would
 break the WhatsApp preview card. There is no `sitemap.ts`, no root `error.tsx` and no root
 `not-found.tsx` — each absence is deliberate.
@@ -479,6 +486,64 @@ independently of what the page component *does*, so a session-less `curl` of `/a
 with an empty body, since `requireAdmin` redirects — still carries the complete resolved
 `<head>`. Reading the served tags needs neither an auth cookie nor a live database.
 
+### The notification-tap channel — the one thing the root layout renders
+
+Like the install contract, this one is invisible to lint, typecheck and build: only a phone with a
+registered worker and a real notification can see it. The rule is a single sentence.
+
+> **The service worker never navigates a window. It focuses one and `postMessage`s the
+> destination; a component in the root layout turns that message into `router.push`.**
+
+`lib/service-worker.js`'s `notificationclick` handler used to call `WindowClient.navigate()`. Per
+the Service Worker spec that call rejects with a `TypeError` for a client this worker does not
+**control**, and `includeUncontrolled: true` widens only what `matchAll` can *see*, never what
+`navigate()` will act on. This worker has no `activate` handler and so never calls
+`clients.claim()` — a stated invariant in its own header — which makes every window opened before
+the current worker took over uncontrolled; on a PWA left open for days that is the ordinary case,
+not the edge. The rejection had no `.catch()`, escaped `event.waitUntil` unhandled, and the tap did
+nothing at all except from a screen whose pathname already matched.
+
+`focus()` and `postMessage` carry no such control requirement, and
+`navigator.serviceWorker.addEventListener('message', …)` listens on the **container**, firing
+whether or not the page is controlled — the same property `ChatScreen`'s `nina:new` listener has
+always rested on. So the tap travels as a message on that same channel:
+
+| | worker side (`lib/service-worker.js`) | window side |
+|---|---|---|
+| live message | `LIVE_MESSAGE_TYPE` | `SW_MESSAGE_TYPE` (`lib/nina/live.ts`) → `ChatScreen`, only while `/nina` is mounted |
+| tap message | `NAVIGATE_MESSAGE_TYPE` | `SW_NAVIGATE_MESSAGE_TYPE` (`lib/nina/live.ts`) → `components/push/PushTapNavigator`, on every route |
+
+Both pairs are two string literals in two files that cannot import each other (the worker is plain
+JS served as a static asset), each side carrying a "kept in step with" comment naming the other.
+Changing one is changing both.
+
+The root-owned half is the **mount point**, and it is a decision this file exists to hold:
+`PushTapNavigator` renders `null` and lives in `app/layout.tsx`, **not** in `AppShell`. The
+requirement is "a tap works wherever the runner is standing", and `AppShell` does not wrap
+`/photo/[kind]/[id]`, `/upload`, `/x/[extractionId]`, `/onboarding` or `/admin/*` — see the
+deliberate non-consumers under *Reverse Dependencies*. The root layout is the only component that
+wraps literally every route, and it mounts this one exactly once.
+
+Three rules the handler and the listener each enforce, none of which a type checker can:
+
+- **A window already showing the target is focused and sent nothing.** Route identity is
+  `pathname + search`, not `pathname` alone: a window whose query differs is showing a different
+  screen, and re-posting to a window already there would re-run whatever that route does on
+  arrival.
+- **Nothing in the handler may reject.** `postMessage` sits in a `try`, `focus()` is reached
+  through `Promise.resolve().then(…)` so a synchronous throw lands in the same `.catch()`, URL
+  parsing swallows its own errors, and the outer chain ends in a `.catch()`. An unhandled rejection
+  here logs only to the worker's own console — it is invisible, and it costs the runner the tap.
+- **The receiver re-checks the path.** `PushTapNavigator` accepts only a string starting with `/`
+  and not `//` (which would be protocol-relative, and not same-origin), restating the `push`
+  handler's guard rather than trusting it: the string came off the network, and a registered worker
+  outlives the deploy that shipped it.
+
+`router.push` rather than `window.location` is also what unmounts a query-param overlay — the
+`?photo=` full-screen viewer on `/nina/about`, the original repro — instead of hard-reloading out
+of it. Everything about the push subscription, the payload and the send path is documented in the
+auth/push cluster readme (`lib/push/.workflows/package_readme.md`), not here.
+
 ## Dependencies
 
 ### External
@@ -537,6 +602,10 @@ charting pair (`lib/charts` + `components/charts`, anchored at `lib/charts`).
   `ADMIN_PWA_ICONS`), read by `app/manifest.ts`, `app/layout.tsx`,
   `app/admin/manifest.webmanifest/route.ts` and `app/admin/layout.tsx`. Plain constants — no
   `server-only`, no env read, no image generation.
+- `components/push/PushTapNavigator` — the only component `app/layout.tsx` renders beside
+  `{children}`; mounted there, and nowhere else, so a notification tap navigates from every route.
+- `lib/nina/live` — `SW_NAVIGATE_MESSAGE_TYPE`, reached from the root layout only through that
+  component; the constant's docstring carries the argument for why a tap travels as a message.
 - `lib/cn` — class composition, by both `AppShell` and `TabBar`.
 - `lib/env` — `server-only`; reachable from `AppShell` through the badge, which is why the shell
   is out of the UI barrel.
@@ -566,8 +635,13 @@ Deliberate non-consumers, each of which says so in a comment — do not "fix" th
 hardcodes `max-w-[470px]` and pairs itself with the runner's `TabBar`; the admin shell caps at
 `max-w-[1400px]` and carries its own six-cell `AdminNav` — and `FileExplorer` is still
 desktop-shaped), `app/(public)/s/[token]/page.tsx` (a public page, and the shell's import graph is
-what `tests/share.bundle.test.ts` guards), and `components/profile/RecordsTable.tsx` (would drag
-the shell across a client boundary for one empty state).
+what `tests/share.bundle.test.ts` guards), `app/photo/[kind]/[id]/page.tsx` (`PhotoViewer` is
+`fixed inset-0 z-60` and covers the bar completely — the shell beneath it would be a nav nobody can
+see), and `components/profile/RecordsTable.tsx` (would drag the shell across a client boundary for
+one empty state).
+
+This list is the reason `PushTapNavigator` mounts in the root layout instead: anything that must
+exist on *every* route cannot ride on `AppShell`, because `AppShell` is a choice each screen makes.
 
 ### Geometry-constant consumers
 
@@ -706,6 +780,12 @@ bounce work; authorization itself still comes from `requireUserId()`.
   only.
 - **Two bar toggles, one state.** `ChatChrome`'s floating control and the sidebar rail's `up` must
   dispatch through `NinaBarProvider` — a second state would be two bars that disagree.
+- **Do not move `PushTapNavigator` into `AppShell`, and do not mount a second one.** It looks like
+  chat furniture and is not: five routes never render `AppShell`, and a tap has to work from all of
+  them. Two mounts would mean two `router.push` calls for one tap.
+- **Do not reach for `WindowClient.navigate()` in the service worker.** It rejects for a window
+  this worker does not control, and the worker deliberately never claims one. Focus, then
+  `postMessage`.
 - **Do not add `viewportFit` to `app/admin/layout.tsx`.** The root's value arrives by `viewport`
   merge-by-key; restating it creates a second source of truth for the one value that must not
   drift.
@@ -730,6 +810,19 @@ readable from git history (see the `docs: re-point retired RECONCILIATION/ROADMA
 history` commit). Landed feature plans live in `docs/plans/archive/`.
 
 ### Recent changes
+
+**2026-09-16 — the notification-tap channel, and a route-table refresh** (`push-notification-tap-redirect`
+phase 1, P1-RI-A042). A tapped push now navigates from wherever the runner is standing, because the
+service worker stopped calling `WindowClient.navigate()` — a call that rejects for an uncontrolled
+window, which every window is on a worker that never claims — and instead focuses the window and
+posts the destination to it, on the same container channel `nina:new` already used. The receiving
+half, `components/push/PushTapNavigator`, is the first component the root layout renders beside
+`{children}`, and *that* is the root-owned decision: it cannot live in `AppShell`, which five routes
+never render. The full rule, the two constant pairs, and the three invariants the handler enforces
+are under *The notification-tap channel*; the mount is noted with `app/layout.tsx` in the route-tree
+section and with the non-consumers under *Reverse Dependencies*. Counted the same day and corrected
+here: **21 pages** (was 19 — `/photo/[kind]/[id]` and `/admin/error-logs` had never been added) and
+**10 route handlers** (was 9 — `/api/admin/nina/backfill-descriptions`).
 
 **2026-09-12 — compaction and verification.** This file had grown to 1359 lines, roughly half of
 it twelve per-phase changelog entries restating facts the body already carried — the

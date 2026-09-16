@@ -231,11 +231,16 @@ export async function finishSelfie(
    * line appears in a public Actions log.
    */
   try {
+    /* The session this photograph's bubble was filed in (`:125`), so the tap opens that
+     * conversation and flashes the caption rather than landing on the chat tab. Same derivation as
+     * the app's own `photo_delivered` push — `buildNinaPushPayload` builds the URL on both hosts,
+     * which is the whole reason that module is importable from here. */
     const report = await notify(
       sql,
       userId,
       [{ id: messageId, body: caption }],
       'worker_photo_delivered',
+      sessionId,
     )
     console.info('[nina-worker] notified', { jobId, ...report })
   } catch (cause) {
@@ -363,8 +368,12 @@ export async function closeFailed(
    * WAS WRITTEN — no session resolved, or the write threw — and a notification about a message that
    * does not exist is strictly worse than silence. Same rule phase 3 applies to
    * `postNinaApologyMessage`'s `insertNinaMessages` returning `[]`; different mechanism, because
-   * this host writes raw SQL and gets no row back to test. */
-  let apology: { id: string; body: string } | null = null
+   * this host writes raw SQL and gets no row back to test.
+   *
+   * It carries `sessionId` as well as the row, because the push below needs it and the resolve is
+   * block-scoped inside the branch. One binding rather than two nullables: a row and a session that
+   * could disagree is a notification that opens the wrong conversation. */
+  let apology: { id: string; body: string; sessionId: string } | null = null
 
   if (args.purpose === 'selfie') {
     try {
@@ -388,7 +397,7 @@ export async function closeFailed(
           )
         `
         /* Only after the INSERT resolved. If it threw, the catch below runs and this stays null. */
-        apology = { id: messageId, body }
+        apology = { id: messageId, body, sessionId }
       }
     } catch (cause) {
       /* Best-effort, and it MUST stay that way. See the header: this throw is what killed the
@@ -431,7 +440,16 @@ export async function closeFailed(
    */
   if (apology != null) {
     try {
-      const report = await notify(sql, userId, [apology], 'worker_photo_apology')
+      /* The bubble is rebuilt to exactly `{ id, body }` rather than spreading `apology`, which now
+       * also carries the session: `messages` is the wire's shape and gains nothing from a third
+       * field. The session goes in its own parameter, where `buildNinaPushPayload` reads it. */
+      const report = await notify(
+        sql,
+        userId,
+        [{ id: apology.id, body: apology.body }],
+        'worker_photo_apology',
+        apology.sessionId,
+      )
       console.info('[nina-worker] apology notified', { jobId, ...report })
     } catch (cause) {
       console.warn('[nina-worker] the apology notification could not be sent; the job is closed', {

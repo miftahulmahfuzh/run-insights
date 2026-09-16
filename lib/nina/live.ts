@@ -27,6 +27,29 @@
 /** Kept in step with `LIVE_MESSAGE_TYPE` in `lib/service-worker.js`. */
 export const SW_MESSAGE_TYPE = 'nina:new'
 
+/**
+ * The other thing the worker says: a notification was TAPPED, and this is where the tap wants to
+ * land. Kept in step with `NAVIGATE_MESSAGE_TYPE` in `lib/service-worker.js`, and read by
+ * `components/push/PushTapNavigator.tsx`.
+ *
+ * ── WHY A MESSAGE AND NOT `WindowClient.navigate()` ────────────────────────────────────────────
+ * `notificationclick` used to call `client.navigate(target)` on whatever window `matchAll` handed
+ * it. Per the Service Worker spec that call rejects with a `TypeError` when the worker does not
+ * CONTROL the client — and `includeUncontrolled: true` only affects what `matchAll` can SEE, not
+ * what `navigate()` is willing to do to it. This worker has no `activate` handler and therefore
+ * never calls `clients.claim()` (a stated invariant in its own header), so any window opened
+ * before the current worker took over is uncontrolled — on a PWA left open for days, that is the
+ * normal case, not the edge one. The rejection had no `.catch()`, so it escaped `event.waitUntil`
+ * unhandled and the tap silently did nothing.
+ *
+ * `postMessage` carries no such requirement: `navigator.serviceWorker.addEventListener('message',
+ * …)` listens on the CONTAINER and fires whether or not the page is controlled — the same property
+ * `SW_MESSAGE_TYPE` above has relied on since F33 phase 11. The listener then performs an ordinary
+ * client-side `router.push`, which also unmounts query-param overlays (`/nina/about`'s `?photo=`
+ * full-screen viewer, the user's own repro) instead of hard-reloading out of them.
+ */
+export const SW_NAVIGATE_MESSAGE_TYPE = 'nina:navigate'
+
 /** The only property this rule needs. `ChatMessage` (phase 4, widened by 6/7/8) satisfies it. */
 export interface LiveMessage {
   id: string

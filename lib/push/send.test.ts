@@ -137,6 +137,28 @@ describe('notifyNinaPush', () => {
       expect.objectContaining({ attempted: 0, skipped: 'no live subscriptions' }),
     )
   })
+
+  it('SENDS THE SESSION DEEP LINK as the tap target when the caller names a session', async () => {
+    /* R2 at the wire, not at the builder: `sendNinaPush` has to forward the 5th argument or every
+     * chat push keeps landing on bare `/nina`. The payload is read back off `web-push` because
+     * that string is the only thing the phone ever sees. */
+    vi.spyOn(console, 'info').mockImplementation(() => {})
+
+    await notifyNinaPush('user-1', BUBBLES, 'chat_reply', undefined, 'ses000000001')
+
+    const body = vi.mocked(sendNotification).mock.calls[0]?.[1] as string
+    expect(JSON.parse(body).url).toBe('/nina?s=ses000000001&jump=m1')
+  })
+
+  it('still sends bare /nina when no session is named', async () => {
+    /* `lib/push/actions.ts`'s manual test button, and the regression this plan must not cause. */
+    vi.spyOn(console, 'info').mockImplementation(() => {})
+
+    await notifyNinaPush('user-1', BUBBLES, 'manual_test')
+
+    const body = vi.mocked(sendNotification).mock.calls[0]?.[1] as string
+    expect(JSON.parse(body).url).toBe('/nina')
+  })
 })
 
 describe('pushNotifier', () => {
@@ -161,6 +183,17 @@ describe('pushNotifier', () => {
       '[push] notified',
       expect.objectContaining({ userId: 'user-1', kind: 'silence', delivered: 1 }),
     )
+  })
+
+  it('deep-links a proactive trigger to the session it was written into', async () => {
+    /* The five proactive kinds reach the wire through here and nowhere else — `ProactiveNotifier`'s
+     * 4th parameter exists for exactly this line. */
+    vi.spyOn(console, 'info').mockImplementation(() => {})
+
+    await pushNotifier('user-1', BUBBLES, 'silence', 'ses000000001')
+
+    const body = vi.mocked(sendNotification).mock.calls[0]?.[1] as string
+    expect(JSON.parse(body).url).toBe('/nina?s=ses000000001&jump=m1')
   })
 })
 

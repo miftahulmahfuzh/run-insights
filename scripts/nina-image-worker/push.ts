@@ -140,6 +140,12 @@ export type WorkerNotifier = (
   userId: string,
   messages: ReadonlyArray<{ id: string; body: string }>,
   kind: NinaPushKind,
+  /**
+   * The session the bubble was written into. `buildNinaPushPayload` turns it into
+   * `/nina?s=…&jump=…` so a tap on this host's notification lands on the same bubble the app's own
+   * push would have landed on.
+   */
+  sessionId?: string,
 ) => Promise<WorkerPushReport>
 
 /** A subscription worth sending to: this user's, not revoked. `LivePushSubscription`
@@ -288,9 +294,21 @@ export async function sendWorkerPush(
   userId: string,
   messages: ReadonlyArray<{ id: string; body: string }>,
   kind: NinaPushKind,
+  /**
+   * The session the bubble was written into — `WorkerNotifier`'s 5th parameter, and it must stay
+   * the 5th HERE too. `finish.ts` writes `notify: WorkerNotifier = sendWorkerPush`, so the two
+   * parameter lists are compared position by position; `sendFn` sitting here would make position 5
+   * a `SendWorkerNotification` on one side and a `string` on the other, and `npx tsc --noEmit`
+   * says so.
+   */
+  sessionId?: string,
+  /* `sendFn` is the test seam — see `SendWorkerNotification`. It defaults to the real
+   * `web-push.sendNotification` and nothing in the worker ever passes it. Last, which is also where
+   * every other injected seam in this package sits (`finishSelfie`'s `notify`,
+   * `releaseBlobIfUnreferenced`'s `delFn`). */
   sendFn: SendWorkerNotification = webPush.sendNotification,
 ): Promise<WorkerPushReport> {
-  const payload = buildNinaPushPayload({ messages, kind })
+  const payload = buildNinaPushPayload({ messages, kind, sessionId })
   if (payload == null) return NOTHING('no message body to send')
 
   try {

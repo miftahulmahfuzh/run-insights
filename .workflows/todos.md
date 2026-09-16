@@ -2,7 +2,7 @@
 
 **Package Path**: `.`
 **Package Code**: RI
-**Last Updated**: 2026-09-15
+**Last Updated**: 2026-09-16
 **Total Active Tasks**: 0
 
 ## Quick Stats
@@ -12,7 +12,7 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 42
+- Completed: 44
 - Archived: 41
 
 ---
@@ -34,6 +34,37 @@
 ---
 
 ## Completed Tasks
+
+- [x] **P1-RI-A043** Phase 2: Deep-link every chat push to its session and bubble
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns `lib/push/payload.ts`'s `buildNinaPushPayload` (new optional `sessionId` input and the deep-link URL it produces), and threading `sessionId?` through `lib/push/send.ts` (`sendNinaPush`, `NinaPushNotifier`, `notifyNinaPush`), `lib/nina/turnrun.ts`, `lib/nina/imagerun.ts`, `lib/nina/imagejobs.ts`, `lib/admin/chatPhotoActions.ts`, `lib/nina/proactive.ts` (widening `ProactiveNotifier`), and `scripts/nina-image-worker/push.ts` + `finish.ts`. Exit: every chat-shaped push kind (`chat_reply`, `photo_delivered`, `photo_apology`, `admin_chat_photo`, the five proactive triggers, and the worker's two backstop kinds) produces a `url` of `/nina?s=<sessionId>&jump=<messageId>`; `duplicate_image`'s payload is byte-for-byte unaffected; `sessionId` stays optional with the bare `PUSH_TARGET_URL` fallback intact; `npx tsc --noEmit` passes with `ProactiveNotifier` widened and the worker script still runs under `node --experimental-strip-types`; tests updated at each call site plus `lib/push/payload.test.ts`.
+  - **Status**: completed
+  - **Plan Set**: `PUSH_NOTIFICATION_TAP_REDIRECT_PLAN.md` (phase 2 of 2)
+  - **Satisfies**: R2 — The tap must land on the correct bubble in the correct chat session, not just the chat tab in general.
+  - **Depends on**: none
+  - **Plan**: `.workflows/plan/P1-RI-A043.md`
+  - **Completed**: 2026-09-16 09:11
+  - **Method**: /do
+  - **Files**: lib/push/payload.ts, lib/push/send.ts, lib/nina/turnrun.ts, lib/nina/imagerun.ts, lib/nina/imagejobs.ts, lib/admin/chatPhotoActions.ts, lib/nina/proactive.ts, scripts/nina-image-worker/push.ts, scripts/nina-image-worker/finish.ts, lib/push/payload.test.ts, lib/push/send.test.ts, lib/push/duplicateImage.test.ts, tests/nina.turnpush.test.ts, tests/nina.imagerun.test.ts, tests/nina.imagepush.test.ts, tests/admin.chatPhotos.test.ts, tests/nina.imageworker.test.ts
+  - **Drift**: `tests/admin.chatPhotos.test.ts` had a second `admin_chat_photo` `toHaveBeenCalledWith` assertion (a different test case, "a genuinely new photograph keeps today's admin_chat_photo push, unchanged") that the phase plan's Files table did not cite by line number — only one such assertion was listed. Updated it identically (appended `undefined`, `SESSION_ID`) since it pins the same call site's arity and would otherwise fail.
+  - **Decided**: `pushNotifier`'s arrow function (`lib/push/send.ts`) declares `sessionId` via `satisfies ProactiveNotifier` rather than a type annotation, so contextual typing gave the parameter its TYPE but not its optionality — existing 3-argument callers (e.g. `pushNotifier('user-1', BUBBLES, 'silence')`) failed `npx tsc --noEmit` with "Expected 4 arguments, but got 3." Fixed by marking the parameter explicitly optional in the implementation (`sessionId?`) → Rung 2 (phase exit criteria: tsc must pass with `ProactiveNotifier` widened, and existing 3-arg callers must keep compiling).
+  - **Verification**: `npx tsc --noEmit` clean; targeted vitest suite 8 files / 259 tests green; full `npm test` 352 files / 6121 tests green; `node --experimental-strip-types` worker-load check printed `[ 'sendWorkerPush' ]`; `@/`/`server-only` grep under `scripts/nina-image-worker/` shows only pre-existing header-comment mentions.
+
+- [x] **P1-RI-A042** Phase 1: Make the tap work from anywhere
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns `lib/service-worker.js`'s `notificationclick` handler, the SW→window message-type constant (`lib/nina/live.ts`), a new app-wide client component that turns that message into a client-side route change, and its wiring into `app/layout.tsx`. Exit: `notificationclick` no longer relies on `WindowClient.navigate()` as its primary mechanism for an already-open, possibly-uncontrolled window (focus + postMessage works regardless); no unhandled promise rejection is reachable from any (controlled|uncontrolled) × (has navigate|doesn't) × (matches target|doesn't) combination; a window already showing the exact target (pathname + query) is focused without a redundant navigation; the new listener is mounted once, app-wide, and is reachable from a route `AppShell` does not wrap; new/updated tests cover the listener.
+  - **Status**: completed
+  - **Plan Set**: `PUSH_NOTIFICATION_TAP_REDIRECT_PLAN.md` (phase 1 of 2)
+  - **Satisfies**: R1 — Tapping the push notification must work from anywhere in the app — any screen, any overlay (full-screen photo, another chat session, Nina's profile picture) — not just from a bare `/nina`.
+  - **Depends on**: none
+  - **Plan**: `.workflows/plan/P1-RI-A042.md`
+  - **Completed**: 2026-09-16 09:08
+  - **Method**: /do
+  - **Files**: lib/service-worker.js, lib/nina/live.ts, lib/nina/live.test.ts, components/push/PushTapNavigator.tsx, components/push/PushTapNavigator.test.tsx, app/layout.tsx
+  - **Decided**: `PushTapNavigator.test.tsx`'s `afterEach` crashed (`removeEventListener` on an undefined `navigator.serviceWorker`) → fixed the test cleanup ordering by calling `cleanup()` explicitly before deleting `navigator.serviceWorker` in the local `afterEach`, because this project's `afterEach` hooks fire in reverse registration order (the local hook ran before the global `afterEach(cleanup)` in `tests/support/setup.ts`). Tie-break rung: fix the code, never relax a failing check.
+  - **Verification**: `npm run typecheck` clean; `npm run lint` 0 errors; `npx vitest run components/push/PushTapNavigator.test.tsx lib/nina/live.test.ts` 23/23. The live worktree's full `npm test` shows 14 failures, all in `tests/nina.imageworker.test.ts` and `tests/nina.turnpush.test.ts` — files phase 1 never opens, mid-edit under the concurrent P1-RI-A043. Proved not ours by copying phase 1's 6 files onto a clean detached-HEAD worktree: 352/352 files, 6112/6112 tests pass, typecheck clean.
 
 - [x] **P1-RI-K3JQ** Viewer button + cross-folder navigation to the description panel
   - **Difficulty**: HARD

@@ -20,6 +20,29 @@ const PUSH_TITLE = 'Nina'
 const PUSH_TARGET_URL = '/nina'
 
 /**
+ * ── THE TWO QUERY KEYS OF THE CHAT DEEP LINK, RESTATED RATHER THAN IMPORTED ───────────────────
+ * `'s'` is `SESSION_PARAM` (`lib/nina/active.ts:36`) and `'jump'` is `JOB_JUMP_PARAM`
+ * (`lib/nina/jobview.ts:68`). Together they are `ninaJumpHref`'s output
+ * (`lib/nina/jobview.ts:90`) — the URL `/nina/jobs/[id]`'s "Buka chat-nya" link and every search
+ * hit already use, and the one `components/nina/useQuoteLanding.ts` consumes on arrival to scroll
+ * the named bubble into the band above the composer and flash it.
+ *
+ * **They are written twice on purpose.** This module has no imports beyond `zod` — that is its
+ * whole design — so that `scripts/nina-image-worker/` can load it through a relative
+ * `../../lib/push/payload.ts` specifier under `node --experimental-strip-types`, with no bundler
+ * and no `@/` resolution. Both files that own these names are unreachable from here: `active.ts`
+ * and `jobview.ts` each import through `@/`. `WORKER_PUSH_TTL_SECONDS`
+ * (`scripts/nina-image-worker/push.ts:92`) is the identical trade in the other direction and says
+ * so in the same words.
+ *
+ * **KEEP IN STEP WITH** `SESSION_PARAM` and `JOB_JUMP_PARAM`. Renaming either there without
+ * renaming it here fails no build — it lands every push on a chat that ignores the query string it
+ * was sent with, which is exactly the class of bug this comment exists to make expensive to cause.
+ */
+const PUSH_SESSION_PARAM = 's'
+const PUSH_JUMP_PARAM = 'jump'
+
+/**
  * One tag for every Nina notification, so a second one REPLACES the first in the tray instead of
  * stacking. Nina sends 1–4 bubbles per turn (RU-5) and four separate notifications for one thought
  * is the behaviour that makes people turn notifications off. `renotify` is set alongside it in the
@@ -272,6 +295,26 @@ export function truncateForNotification(body: string, max: number = PUSH_BODY_MA
 }
 
 /**
+ * `/nina?s=<sessionId>&jump=<messageId>` — the chat URL that opens one session and pinpoints one
+ * bubble. `ninaJumpHref`'s output (`lib/nina/jobview.ts:90`), built with `URLSearchParams` for the
+ * reason that function gives: each key is spelled once and the encoding is the platform's.
+ *
+ * **No session means bare `/nina`, and that is not a degradation to fix.** A `jump` on its own
+ * names nothing — `JOB_JUMP_PARAM`'s own note is "`s` is not optional", because a message id means
+ * nothing outside its own conversation. An EMPTY session string is treated the same way:
+ * `parseNinaSessionParam` would reject it on arrival, and the chat would then open whichever
+ * session was most recently active while still consuming the `jump` against it, which is a
+ * flash on the wrong bubble rather than no flash at all.
+ */
+function ninaBubbleUrl(sessionId: string | undefined, messageId: string): string {
+  if (sessionId == null || sessionId.length === 0) return PUSH_TARGET_URL
+  const params = new URLSearchParams()
+  params.set(PUSH_SESSION_PARAM, sessionId)
+  params.set(PUSH_JUMP_PARAM, messageId)
+  return `${PUSH_TARGET_URL}?${params.toString()}`
+}
+
+/**
  * **Phase 10 hands over `bubbles` in reveal order**, so the first non-blank bubble is the first
  * thing she says and it is the notification body. The remaining bubbles are deliberately NOT
  * concatenated: the notification is a knock on the door, not the conversation, and a four-bubble
@@ -284,8 +327,13 @@ export function buildNinaPushPayload(input: {
   messages: ReadonlyArray<{ id: string; body: string }>
   kind: string
   /**
-   * Where a tap goes. **Omitted means `/nina`**, which is every caller that existed before the
-   * duplicate-image notification and which must keep behaving identically.
+   * Where a tap goes. **Omitted means the deep link below, or `/nina` when there is no session.**
+   *
+   * ── IT WINS OVER `sessionId`, AND THAT ORDER IS LOAD-BEARING ─────────────────────────────
+   * `notifyDuplicateImagePush` (`lib/push/duplicateImage.ts`) passes `/photo/<kind>/<id>` and no
+   * session: that notification is about an UPLOAD, not a bubble, and must never be rewritten into
+   * a chat link. An explicit destination is a caller saying it knows better than the derivation,
+   * and it does.
    *
    * ── IT MUST BE A SAME-ORIGIN PATH ────────────────────────────────────────────────────────
    * `NinaPushPayload.url`'s contract, and `lib/service-worker.js:44`'s `FALLBACK_URL` is what
@@ -296,6 +344,15 @@ export function buildNinaPushPayload(input: {
    * (no imports beyond `zod`, loadable by a strip-types script) cannot share with it.
    */
   url?: string
+  /**
+   * The session the bubbles were written into. Given one, and given no explicit `url`, the tap
+   * opens THAT conversation and flashes THAT bubble instead of landing on whichever session was
+   * most recently active with no scroll at all.
+   *
+   * Optional, and the fallback is permanent: `lib/push/actions.ts`'s `manual_test` button has no
+   * session to name, and a future caller that has none must not be forced to invent one.
+   */
+  sessionId?: string
 }): NinaPushPayload | null {
   const first = input.messages.find((message) => message.body.trim().length > 0)
   if (!first) return null
@@ -303,7 +360,10 @@ export function buildNinaPushPayload(input: {
     v: 1,
     title: PUSH_TITLE,
     body: truncateForNotification(first.body),
-    url: input.url ?? PUSH_TARGET_URL,
+    /* `first.id` and not a second selection: the bubble the body was drawn from, the row
+     * `messageId` names below and the one `?jump=` points at are ONE value, so the landing can
+     * never flash a bubble other than the one the lock screen showed. */
+    url: input.url ?? ninaBubbleUrl(input.sessionId, first.id),
     tag: PUSH_NOTIFICATION_TAG,
     messageId: first.id,
     kind: input.kind,

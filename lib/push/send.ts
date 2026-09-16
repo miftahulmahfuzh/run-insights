@@ -153,14 +153,23 @@ export async function sendNinaPush(
   messages: ReadonlyArray<{ id: string; body: string }>,
   kind: string,
   /**
-   * Where a tap goes. Omitted means `/nina`, which is every caller that existed before the
-   * duplicate-image notification. Appended rather than folded into an options object because the
-   * four positional arguments read as a sentence and an options bag for one optional field would
-   * churn six call sites to say nothing.
+   * Where a tap goes. Omitted means the `sessionId` deep link below, or `/nina` when there is no
+   * session either. Appended rather than folded into an options object because the four positional
+   * arguments read as a sentence and an options bag for one optional field would churn six call
+   * sites to say nothing.
    */
   url?: string,
+  /**
+   * The session the bubbles were written into, so the tap opens the right conversation and flashes
+   * the right bubble (`/nina?s=…&jump=…`). Ignored when `url` is given — an explicit destination
+   * wins, which is what `notifyDuplicateImagePush` relies on.
+   *
+   * It is appended AFTER `url` rather than before it because `notifyDuplicateImagePush` passes
+   * `url` positionally and this plan does not touch that file.
+   */
+  sessionId?: string,
 ): Promise<PushSendReport> {
-  const payload = buildNinaPushPayload({ messages, kind, url })
+  const payload = buildNinaPushPayload({ messages, kind, url, sessionId })
   if (!payload) return NOTHING('no message body to send')
 
   try {
@@ -228,6 +237,7 @@ export type NinaPushNotifier = (
   messages: ReadonlyArray<{ id: string; body: string }>,
   kind: NinaPushKind,
   url?: string,
+  sessionId?: string,
 ) => Promise<void>
 
 /**
@@ -242,9 +252,9 @@ export type NinaPushNotifier = (
  * **`url` is optional and its default is `/nina`** — the shape every caller before
  * `notifyDuplicateImagePush` relies on, and `pushNotifier` below never passes it at all.
  */
-export const notifyNinaPush: NinaPushNotifier = async (userId, messages, kind, url) => {
+export const notifyNinaPush: NinaPushNotifier = async (userId, messages, kind, url, sessionId) => {
   try {
-    const report = await sendNinaPush(userId, messages, kind, url)
+    const report = await sendNinaPush(userId, messages, kind, url, sessionId)
     console.info('[push] notified', { userId, kind, ...report })
   } catch (cause) {
     /* The message row is already committed and the caller has already moved on: there is nothing
@@ -263,7 +273,7 @@ export const notifyNinaPush: NinaPushNotifier = async (userId, messages, kind, u
  * proactive turn's success has nothing to do with whether a phone was reachable. The numbers are
  * in the log line below, which is the only consumer they have.
  */
-export const pushNotifier = (async (userId, messages, kind) => {
+export const pushNotifier = (async (userId, messages, kind, sessionId?) => {
   /* ── THE SUBSET PIN, AND WHY IT IS AN ANNOTATION AND NOT A COMMENT ─────────────────────────
    * `kind` here is `ProactiveTriggerKind` (inferred from the `satisfies` below), and
    * `NINA_PUSH_KINDS` in `payload.ts` spells those five trigger names out by hand because that
@@ -275,6 +285,9 @@ export const pushNotifier = (async (userId, messages, kind) => {
    * HERE, at the only seam that knows about both. It is erased at runtime: `sendNinaPush` receives
    * exactly the string it received before. */
   const pushKind: NinaPushKind = kind
-  const report = await sendNinaPush(userId, messages, pushKind)
+  /* `undefined` in the `url` slot, deliberately: a proactive trigger has no destination of its own
+   * to name, so the URL is DERIVED from the session and the first bubble by `buildNinaPushPayload`.
+   * `url` sits before `sessionId` because `notifyDuplicateImagePush` passes it positionally. */
+  const report = await sendNinaPush(userId, messages, pushKind, undefined, sessionId)
   console.info('[push] notified', { userId, kind, ...report })
 }) satisfies ProactiveNotifier
