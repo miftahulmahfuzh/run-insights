@@ -100,7 +100,19 @@
  * system text AND every tool schema in `./tools.ts`, and a turn that had a fifth tool in its
  * `body.tools` is a turn `nina_turns` has to be able to tell from version 7's. This is the SINGLE
  * bump for the whole set: it is a one-phase set and no other file touches this constant. */
-export const NINA_PROMPT_VERSION = 8
+/* 9 — the outfit-slot fix (2026-09-16). `./tools.ts` gained `GENERATE_IMAGE_TOOL.input_schema
+ * .properties.outfit`, an OPTIONAL string; `./system.ts` was not opened, so `buildNinaSystemPrompt`
+ * is byte-identical to version 8's and `tests/__snapshots__/nina.prompts.test.ts.snap` passes
+ * UNREGENERATED (the snapshot does not cover tool schemas). What she can now do that she could not
+ * before: put a runner's per-photograph clothing request in its own field instead of narrating it
+ * inside `scene`, where it used to sit alongside — never replace — `prefs.wardrobe`'s own
+ * `Her outfit for this photograph: …` line, so one prompt could carry two dress-code instructions
+ * at once (measured 2026-09-16: "wear a black mini dress" produced both the default running outfit
+ * AND the mini dress in the same generation). A call that never mentions clothing is unchanged —
+ * `outfit` renders nothing and `buildNinaImagePrompt` falls back to `prefs.wardrobe`/the canon
+ * default exactly as before. This is the SINGLE bump for the fix: no other file touches this
+ * constant. */
+export const NINA_PROMPT_VERSION = 9
 
 export {
   NINA_REPAIR_PREAMBLE,

@@ -594,6 +594,16 @@ export function buildNinaImagePrompt(input: {
   purpose: NinaImagePurpose
   scene: string
   mood?: string | null
+  /**
+   * **The chat model's own per-photograph clothing request — selfie only, and the ONLY thing that
+   * may replace the wardrobe line.** Before this field existed, a runner's "wear a black mini
+   * dress" reached the prompt through `scene` while `prefs.wardrobe`/the canon default kept its own
+   * `Her outfit for this photograph: …` line — two dress-code instructions in one prompt, decided
+   * by nothing (2026-09-16). `GENERATE_IMAGE_TOOL` now gives the model a dedicated slot and tells it
+   * not to repeat clothing inside `scene`, so there is exactly one wardrobe line, ever: this value
+   * when it is non-empty, `prefs.wardrobe` otherwise, the canon default under that.
+   */
+  outfit?: string | null
   /** Her character. Only `steamy` and `flirty` reach a photograph. */
   tuning?: NinaTuning | null
   /** The operator's image preferences. Absent renders `NINA_PROMPT_LENGTH_FALLBACK`'s rung. */
@@ -658,10 +668,17 @@ export function buildNinaImagePrompt(input: {
       (key) => NINA_FOCUS_EMPHASIS[key].term,
     ),
   )
+  const outfitOverride = input.outfit?.trim() ?? ''
   const wardrobe = prefs.wardrobe.trim()
+  const wardrobeValue =
+    outfitOverride.length > 0
+      ? outfitOverride
+      : wardrobe.length > 0
+        ? wardrobe
+        : NINA_DEFAULT_OUTFIT_VALUE
 
   const blocks: Record<string, string> = {
-    wardrobe: withSentenceStop(wardrobe.length > 0 ? wardrobe : NINA_DEFAULT_OUTFIT_VALUE),
+    wardrobe: withSentenceStop(wardrobeValue),
     focus: focusTerms,
     presence: ninaPhotoPresence('selfie', tuning) ?? '',
     venue: prefs.venue.trim(),

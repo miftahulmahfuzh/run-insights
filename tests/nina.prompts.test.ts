@@ -17,6 +17,7 @@ import {
 } from '@/lib/nina/persona'
 import {
   AGGREGATE_RUNS_TOOL,
+  GENERATE_IMAGE_TOOL,
   NINA_PROMPT_VERSION,
   NINA_SECTION_TITLES,
   NINA_SYSTEM_PROMPT,
@@ -448,6 +449,22 @@ describe('the tool schemas', () => {
     ).properties.bubbles!
     expect(bubbles.minItems).toBe(1)
     expect(bubbles.maxItems).toBe(4)
+  })
+
+  /*
+   * The 2026-09-16 defect: a runner's clothing request ("black mini dress") reached the model only
+   * through `scene`, so the operator's standing wardrobe never yielded the line to it — two
+   * dress-code instructions in the same prompt. `outfit` gives the model a dedicated, OPTIONAL slot
+   * (never `required`, matching `mood`) so a call that never mentions clothing keeps working
+   * exactly as it does today.
+   */
+  it('generate_image has an optional `outfit` slot, so clothing has one home and not two', () => {
+    const schema = GENERATE_IMAGE_TOOL.input_schema as unknown as {
+      required: readonly string[]
+      properties: Record<string, { type?: string; description?: string }>
+    }
+    expect(schema.properties.outfit?.type).toBe('string')
+    expect(schema.required).not.toContain('outfit')
   })
 
   /*

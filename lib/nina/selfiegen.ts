@@ -51,6 +51,12 @@ export interface NinaSelfieRequest {
   scene: string
   mood?: string | null
   /**
+   * The chat model's own per-photograph clothing request, when he asked for one — see
+   * `buildNinaImagePrompt`'s `outfit` for the whole argument. Threaded straight through with no
+   * transformation of its own.
+   */
+  outfit?: string | null
+  /**
    * The message this photograph answers, so it quotes it when it lands (phase 7's `reply_to_id`).
    * The chat tool passes the runner's message; the promise sweep passes the message she made the
    * promise in. Null is fine, and a message that has since been deleted is fine too — the worker
@@ -78,6 +84,7 @@ export async function generateNinaSelfie(request: NinaSelfieRequest): Promise<Ni
 
   const scene = request.scene.trim()
   const mood = request.mood?.trim() ?? null
+  const outfit = request.outfit?.trim() || null
   const replyToId = request.replyToId ?? null
   const seed = Math.floor(Math.random() * SEED_MAX)
 
@@ -91,7 +98,7 @@ export async function generateNinaSelfie(request: NinaSelfieRequest): Promise<Ni
    * fail independently in a way the other could recover from, so `Promise.all` is the honest shape.
    */
   const [tuning, prefs] = await Promise.all([readNinaTuning(userId), readNinaImagePrefs(userId)])
-  const prompt = buildNinaImagePrompt({ purpose: 'selfie', scene, mood, tuning, prefs })
+  const prompt = buildNinaImagePrompt({ purpose: 'selfie', scene, mood, outfit, tuning, prefs })
 
   /* The row's camera (§8), read off the prefs the prompt was just built from — one coercion here
    * decides both the `nina_turns.model` stamp (inside `openNinaImageJob`) and the sidecar text. */

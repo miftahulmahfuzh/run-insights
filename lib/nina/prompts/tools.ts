@@ -295,6 +295,12 @@ export const GENERATE_IMAGE_TOOL: Anthropic.Tool = {
           'Your expression and energy, e.g. "smug, out of breath". Never smiling or laughing — she ' +
           'reads serious, like a magazine cover model, lips just barely parted.',
       },
+      outfit: {
+        type: 'string',
+        description:
+          'ONLY if he asked for specific clothing this turn, e.g. "a black mini dress". Leave unset ' +
+          'for her usual outfit. Never also describe clothing inside `scene`.',
+      },
     },
   },
 }

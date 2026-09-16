@@ -766,6 +766,65 @@ describe('the prompt', () => {
   })
 
   /* ────────────────────────────────────────────────────────────────────────────────────────────
+   * OUTFIT — the chat model's per-photograph clothing request, and the two-dress-codes defect
+   * ──────────────────────────────────────────────────────────────────────────────────────────*/
+
+  it('a per-turn outfit replaces the wardrobe line instead of joining it', () => {
+    /*
+     * The measured defect, 2026-09-16: he said "foto lo pake black mini dress" and the shipped
+     * prompt contained BOTH "Her outfit for this photograph: a heather-grey racerback tank..."
+     * AND, later, "...in a short black mini dress" inside SCENE — two dress-code instructions
+     * reaching the image model at once. The fix is one wardrobe line, ever: `outfit`, when given,
+     * IS the wardrobe line, not an addition to it.
+     */
+    const prompt = buildNinaImagePrompt({
+      purpose: 'selfie',
+      scene: 'standing in her small Jakarta bedroom, evening light from the window',
+      outfit: 'a short black mini dress',
+      prefs: prefsWith({ wardrobe: '' }),
+    })
+    expect(prompt).toContain('Her outfit for this photograph: a short black mini dress.')
+    expect(prompt).not.toContain('heather-grey racerback tank')
+  })
+
+  it('the per-turn outfit outranks a standing PREFS wardrobe too', () => {
+    const prompt = buildNinaImagePrompt({
+      purpose: 'selfie',
+      scene: 'x',
+      outfit: 'a short black mini dress',
+      prefs: prefsWith({ wardrobe: 'a black crop top and running shorts' }),
+    })
+    expect(prompt).toContain('Her outfit for this photograph: a short black mini dress.')
+    expect(prompt).not.toContain('crop top')
+  })
+
+  it('the outfit override gets its own sentence stop, same rule as the wardrobe', () => {
+    const prompt = buildNinaImagePrompt({
+      purpose: 'selfie',
+      scene: 'x',
+      outfit: 'a short black mini dress',
+      prefs: prefsWith({}),
+    })
+    expect(prompt).toContain('Her outfit for this photograph: a short black mini dress.')
+  })
+
+  it('an absent or blank outfit changes nothing — prefs.wardrobe still wins over the default', () => {
+    const withoutOutfit = buildNinaImagePrompt({
+      purpose: 'selfie',
+      scene: 'x',
+      prefs: prefsWith({ wardrobe: 'a black crop top and running shorts' }),
+    })
+    const blankOutfit = buildNinaImagePrompt({
+      purpose: 'selfie',
+      scene: 'x',
+      outfit: '   ',
+      prefs: prefsWith({ wardrobe: 'a black crop top and running shorts' }),
+    })
+    expect(withoutOutfit).toContain('a black crop top and running shorts')
+    expect(blankOutfit).toBe(withoutOutfit)
+  })
+
+  /* ────────────────────────────────────────────────────────────────────────────────────────────
    * R7, R8, R9 — VENUE, TIME, NOTES
    * ──────────────────────────────────────────────────────────────────────────────────────────*/
 
