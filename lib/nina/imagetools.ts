@@ -51,6 +51,11 @@ const GenerateImageArgsSchema = z.object({
   /** The dress-code fix (2026-09-16): a runner's per-photograph clothing request, kept out of
    * `scene` so `buildNinaImagePrompt` has exactly one wardrobe line to render. */
   outfit: z.string().trim().max(200).optional(),
+  /** Her physical stance for THIS scene, in her own words. See `ninaPhotoPresence`'s header. */
+  pose: z.string().trim().max(300).optional(),
+  /** Her own invented outfit when nobody dressed her for this photo. See `buildNinaImagePrompt`'s
+   * `ootd` for the precedence it sits at. */
+  ootd: z.string().trim().max(200).optional(),
 })
 
 const handleGenerateImage: NinaToolHandler = async (
@@ -91,6 +96,8 @@ const handleGenerateImage: NinaToolHandler = async (
     scene: parsed.data.scene,
     mood: parsed.data.mood ?? null,
     outfit: parsed.data.outfit ?? null,
+    pose: parsed.data.pose ?? null,
+    ootd: parsed.data.ootd ?? null,
     /*
      * The photograph quotes the message that asked for it (phase 7's `reply_to_id`), which is what
      * makes the answer legible when it lands two minutes after four other bubbles. Null on a

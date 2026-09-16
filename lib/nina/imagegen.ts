@@ -155,15 +155,26 @@ const isDialHigh = (value: number): boolean => ninaBand(value).index >= 3
  * prompt describes her body. What these two dials add is how she is STANDING and how she is LOOKING
  * at him. Keeping the two apart is what lets the user set one without the other.
  */
-function ninaPhotoPresence(purpose: NinaImagePurpose, tuning: NinaTuning | null): string | null {
+function ninaPhotoPresence(
+  purpose: NinaImagePurpose,
+  tuning: NinaTuning | null,
+  /** The chat model's own per-photograph stance, matched to `scene`. Replaces the fixed clause
+   * below rather than joining it — the same one-line-ever rule `outfit` already follows — because
+   * a boudoir pose glued onto a running-track scene is what made the gallery's images look
+   * interchangeable regardless of scene. Blank or absent falls back to that fixed clause. */
+  pose?: string | null,
+): string | null {
   if (tuning == null) return null
 
   const clauses: string[] = []
 
   if (purpose === 'selfie' && isDialHigh(tuning.traits.steamy)) {
+    const scenePose = pose?.trim()
     clauses.push(
-      'She is fully aware of the camera and commanding it: weight on one hip, body turned toward ' +
-        'the lens, chin down, holding the pose for the person photographing her.',
+      scenePose && scenePose.length > 0
+        ? scenePose
+        : 'She is fully aware of the camera and commanding it: weight on one hip, body turned toward ' +
+            'the lens, chin down, holding the pose for the person photographing her.',
     )
   }
 
@@ -629,6 +640,14 @@ export function buildNinaImagePrompt(input: {
    * when it is non-empty, `prefs.wardrobe` otherwise, the canon default under that.
    */
   outfit?: string | null
+  /** The chat model's own guess at how she is physically standing or moving in THIS scene — selfie
+   * only, same reasoning as `outfit`. Only spent when `steamy` is high enough to spend a pose
+   * clause at all; blank or absent falls back to the fixed clause `ninaPhotoPresence` shipped with. */
+  pose?: string | null
+  /** The chat model's invented outfit for a turn nobody dressed her for. Lowest priority of the
+   * three wardrobe sources: `outfit` (an explicit ask) wins over `prefs.wardrobe` (a standing
+   * preference) wins over this — it only ever replaces the canon default, never a real preference. */
+  ootd?: string | null
   /** Her character. Only `steamy` and `flirty` reach a photograph. */
   tuning?: NinaTuning | null
   /** The operator's image preferences. Absent renders `NINA_PROMPT_LENGTH_FALLBACK`'s rung. */
@@ -708,18 +727,21 @@ export function buildNinaImagePrompt(input: {
   )
   const outfitOverride = input.outfit?.trim() ?? ''
   const wardrobe = prefs.wardrobe.trim()
+  const ootdIdea = input.ootd?.trim() ?? ''
   const wardrobeValue =
     outfitOverride.length > 0
       ? outfitOverride
       : wardrobe.length > 0
         ? wardrobe
-        : NINA_DEFAULT_OUTFIT_VALUE
+        : ootdIdea.length > 0
+          ? ootdIdea
+          : NINA_DEFAULT_OUTFIT_VALUE
 
   const blocks: Record<string, string> = {
     wardrobe: withSentenceStop(wardrobeValue),
     focus: focusTerms,
     faceLock: faceLockValue,
-    presence: ninaPhotoPresence('selfie', tuning) ?? '',
+    presence: ninaPhotoPresence('selfie', tuning, input.pose) ?? '',
     venue: prefs.venue.trim(),
     time: prefs.time.trim(),
     scene: input.scene.trim(),

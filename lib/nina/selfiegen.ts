@@ -56,6 +56,11 @@ export interface NinaSelfieRequest {
    * transformation of its own.
    */
   outfit?: string | null
+  /** The chat model's own guess at her stance for this scene — see `buildNinaImagePrompt`'s `pose`. */
+  pose?: string | null
+  /** The chat model's invented outfit for a turn nobody dressed her for — see
+   * `buildNinaImagePrompt`'s `ootd`. */
+  ootd?: string | null
   /**
    * The message this photograph answers, so it quotes it when it lands (phase 7's `reply_to_id`).
    * The chat tool passes the runner's message; the promise sweep passes the message she made the
@@ -85,6 +90,8 @@ export async function generateNinaSelfie(request: NinaSelfieRequest): Promise<Ni
   const scene = request.scene.trim()
   const mood = request.mood?.trim() ?? null
   const outfit = request.outfit?.trim() || null
+  const pose = request.pose?.trim() || null
+  const ootd = request.ootd?.trim() || null
   const replyToId = request.replyToId ?? null
   const seed = Math.floor(Math.random() * SEED_MAX)
 
@@ -113,6 +120,8 @@ export async function generateNinaSelfie(request: NinaSelfieRequest): Promise<Ni
     scene,
     mood,
     outfit,
+    pose,
+    ootd,
     tuning,
     prefs,
     hasReference: reference != null,

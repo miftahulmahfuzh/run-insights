@@ -845,6 +845,60 @@ describe('the prompt', () => {
   })
 
   /* ────────────────────────────────────────────────────────────────────────────────────────────
+   * OOTD — the chat model's own invented outfit, lowest priority of the three wardrobe sources
+   * ──────────────────────────────────────────────────────────────────────────────────────────*/
+
+  it('an invented ootd replaces the canon default when nobody set a wardrobe', () => {
+    const prompt = buildNinaImagePrompt({
+      purpose: 'selfie',
+      scene: 'walking a Kyoto side street at dusk',
+      ootd: 'a cream turtleneck and wide-leg trousers',
+      prefs: prefsWith({ wardrobe: '' }),
+    })
+    expect(prompt).toContain('Her outfit for this photograph: a cream turtleneck and wide-leg trousers.')
+    expect(prompt).not.toContain('heather-grey racerback tank')
+  })
+
+  it('a standing PREFS wardrobe still outranks an invented ootd', () => {
+    const prompt = buildNinaImagePrompt({
+      purpose: 'selfie',
+      scene: 'x',
+      ootd: 'a cream turtleneck and wide-leg trousers',
+      prefs: prefsWith({ wardrobe: 'a black crop top and running shorts' }),
+    })
+    expect(prompt).toContain('a black crop top and running shorts')
+    expect(prompt).not.toContain('turtleneck')
+  })
+
+  it('a per-turn outfit still outranks an invented ootd', () => {
+    const prompt = buildNinaImagePrompt({
+      purpose: 'selfie',
+      scene: 'x',
+      outfit: 'a short black mini dress',
+      ootd: 'a cream turtleneck and wide-leg trousers',
+      prefs: prefsWith({ wardrobe: '' }),
+    })
+    expect(prompt).toContain('Her outfit for this photograph: a short black mini dress.')
+    expect(prompt).not.toContain('turtleneck')
+  })
+
+  it('an absent or blank ootd falls back to the canon default, unchanged behaviour', () => {
+    const withoutOotd = buildNinaImagePrompt({
+      purpose: 'selfie',
+      scene: 'x',
+      prefs: prefsWith({ wardrobe: '' }),
+    })
+    const blankOotd = buildNinaImagePrompt({
+      purpose: 'selfie',
+      scene: 'x',
+      ootd: '   ',
+      prefs: prefsWith({ wardrobe: '' }),
+    })
+    expect(withoutOotd).toContain('heather-grey racerback tank')
+    expect(blankOotd).toBe(withoutOotd)
+  })
+
+  /* ────────────────────────────────────────────────────────────────────────────────────────────
    * R7, R8, R9 — VENUE, TIME, NOTES
    * ──────────────────────────────────────────────────────────────────────────────────────────*/
 
@@ -976,6 +1030,58 @@ describe('the prompt', () => {
       tuning: tuned({ traits: { ...NINA_TUNING_DEFAULTS.traits, steamy: 59, flirty: 59 } }),
     })
     expect(quiet).toBe(buildNinaImagePrompt({ purpose: 'selfie', scene: 'on the track' }))
+  })
+
+  /* ────────────────────────────────────────────────────────────────────────────────────────────
+   * POSE — the chat model's own per-scene stance, replacing the fixed clause
+   * ──────────────────────────────────────────────────────────────────────────────────────────*/
+
+  it('a per-turn pose replaces the fixed clause instead of joining it', () => {
+    const prompt = buildNinaImagePrompt({
+      purpose: 'selfie',
+      scene: 'mid-stride climbing a switchback trail',
+      pose: 'She is mid-stride on the switchback, weight forward, one hand braced on her knee.',
+      tuning: withTrait('steamy', 100),
+    })
+    expect(prompt).toContain('mid-stride on the switchback')
+    expect(prompt).not.toContain('weight on one hip')
+  })
+
+  it('an absent or blank pose falls back to the fixed clause, unchanged behaviour', () => {
+    const withoutPose = buildNinaImagePrompt({
+      purpose: 'selfie',
+      scene: 'on the track',
+      tuning: withTrait('steamy', 100),
+    })
+    const blankPose = buildNinaImagePrompt({
+      purpose: 'selfie',
+      scene: 'on the track',
+      pose: '   ',
+      tuning: withTrait('steamy', 100),
+    })
+    expect(withoutPose).toContain('weight on one hip')
+    expect(blankPose).toBe(withoutPose)
+  })
+
+  it('a pose does nothing when the steamy dial is not high enough to spend a pose clause at all', () => {
+    const prompt = buildNinaImagePrompt({
+      purpose: 'selfie',
+      scene: 'on the track',
+      pose: 'crouched at the starting blocks',
+    })
+    expect(prompt).not.toContain('crouched at the starting blocks')
+    expect(prompt).not.toContain('POSE AND PRESENCE:')
+  })
+
+  it('a per-turn pose still lets the flirty clause join it, same composition as before', () => {
+    const prompt = buildNinaImagePrompt({
+      purpose: 'selfie',
+      scene: 'on the track',
+      pose: 'mid-stride, arms pumping',
+      tuning: tuned({ traits: { ...NINA_TUNING_DEFAULTS.traits, steamy: 100, flirty: 100 } }),
+    })
+    expect(prompt).toContain('mid-stride, arms pumping')
+    expect(prompt).toContain('straight down the lens')
   })
 
   /* ────────────────────────────────────────────────────────────────────────────────────────────

@@ -347,7 +347,25 @@ export const GENERATE_IMAGE_TOOL: Anthropic.Tool = {
         type: 'string',
         description:
           'ONLY if he asked for specific clothing this turn, e.g. "a black mini dress". Leave unset ' +
-          'for her usual outfit. Never also describe clothing inside `scene`.',
+          'if he did not — use `ootd` for that case instead. Never also describe clothing inside ' +
+          '`scene`.',
+      },
+      pose: {
+        type: 'string',
+        description:
+          'Only spent when your energy is steamy: one short phrase for how you are physically ' +
+          'standing or moving, matched to what is happening in `scene` — mid-stride if running, ' +
+          'crouched on a switchback if hiking, leaning in a doorway if indoors. Leave unset to fall ' +
+          'back to a generic pose. Vary this across photos — do not default to the same stance ' +
+          'every time regardless of the scene.',
+      },
+      ootd: {
+        type: 'string',
+        description:
+          'When he did NOT ask for specific clothing this turn (leave `outfit` unset for that): ' +
+          'invent an outfit that fits `scene`, and vary it photo to photo — do not repeat the same ' +
+          'look every time. Ignored whenever `outfit` is set. Never also describe clothing inside ' +
+          '`scene`.',
       },
     },
   },
