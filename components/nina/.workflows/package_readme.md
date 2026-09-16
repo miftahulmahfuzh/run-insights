@@ -688,10 +688,20 @@ two-deck column, and added the keyboard reassert's clock; `photo-send-chat-icons
 two sends (P2-CN-A000) and extracted the keyboard channel (P1-CN-A001); `search-kbd-and-up-btn`
 pinned the window (P1-CN-A005) and made the rail's `up` the bar toggle through the shared
 `NinaBarProvider` (P1-CN-A002); `media-dedupe` (4/4, 2026-09-10/11) put the hash before the bytes;
-`job-photo-link` pointed the detail card at the earliest bubble and the photograph.
+`job-photo-link` pointed the detail card at the earliest bubble and the photograph;
+`composer-clipboard-image-paste` (1/1, 2026-09-16) gave the textarea its own way in (P1-CN-A006).
 
 ## Recent changes
 
+- **2026-09-16 — clipboard image paste (P1-CN-A006, `composer-clipboard-image-paste` 1/1).** The
+  composer's `<textarea>` took an `onPaste` handler, and `useComposerPhotos` grew one shared
+  `handleFiles(files: File[])` core that both `onPick` and `onPaste` feed — the dedup section's
+  "two entry points, one pipeline" paragraph is the contract. That core's file lookup moved from a
+  `{name, size}` `.find()` to an identity-keyed `Map<NinaPickCandidate, File>`, because a
+  multi-image paste can carry several files the OS named `image.png` and the old match collapsed
+  them onto one `File`. A text-only paste is untouched; a non-image file in a paste is dropped with
+  no notice, deliberately unlike the picker's rejection copy. No prop or exported type on
+  `Composer` changed shape. `Composer.test.tsx` gained a `pasteFiles` helper and 6 cases.
 - **2026-09-13 — knip YAGNI + optional-prop re-scan.** Removed 3 dead knip-flagged exports:
   `NinaAvatar.tsx`'s `NINA_AVATAR_SRC` re-export (both real importers already read
   `NINA_AVATAR_FALLBACK_SRC` from `lib/nina/album` directly) and `types.ts`'s `ChatRole`/
