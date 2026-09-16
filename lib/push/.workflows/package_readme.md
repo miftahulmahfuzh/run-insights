@@ -151,13 +151,44 @@ scheme check lives here: a Server Action is a public HTTP endpoint, and an attac
 
 ```ts
 export function truncateForNotification(body: string, max?: number): string
-export function buildNinaPushPayload(input: { messages: ReadonlyArray<{ id: string; body: string }>; kind: string }): NinaPushPayload | null
+export function buildNinaPushPayload(input: {
+  messages: ReadonlyArray<{ id: string; body: string }>
+  kind: string
+  url?: string        // an explicit destination; wins over sessionId
+  sessionId?: string  // the session the bubbles were written into
+}): NinaPushPayload | null
 export function encodeNinaPushPayload(payload: NinaPushPayload): string
 ```
 
 `buildNinaPushPayload` takes **only the first non-blank bubble**. The rest are not concatenated: a
 notification is a knock on the door, not the conversation, and a four-bubble wall of text on a lock
 screen destroys the staggered reveal. Returns `null` for an empty or all-blank turn.
+
+##### Where the tap lands — the three-step rule
+
+`url` is resolved once, here, and every caller inherits it:
+
+1. **An explicit `url` wins.** A caller passing one is saying it knows better than the derivation,
+   and it does — `notifyDuplicateImagePush` (`duplicateImage.ts`) passes `/photo/<kind>/<id>`
+   because that notification is about an *upload*, not a bubble, and must never be rewritten into a
+   chat link.
+2. **Otherwise a `sessionId` gives the chat deep link** `/nina?s=<sessionId>&jump=<messageId>`,
+   where `messageId` is the **same** first non-blank bubble the body was drawn from — one value, so
+   the landing can never flash a bubble other than the one the lock screen showed. The chat consumes
+   it on arrival (`components/nina/useQuoteLanding.ts`) by scrolling that bubble into view and
+   flashing it.
+3. **No session (or an empty one) means bare `/nina`,** and that is a permanent fallback, not a
+   degradation to fix. A `jump` without an `s` names nothing: a message id is meaningless outside
+   its conversation, and an empty `s` would open whichever session was most recently active while
+   still spending the `jump` against it — a flash on the *wrong* bubble, which is worse than none.
+   `actions.ts`'s `manual_test` button has no session to name and never will.
+
+The two query keys live here as `PUSH_SESSION_PARAM` / `PUSH_JUMP_PARAM`, **restated rather than
+imported**, because `payload.ts` may import nothing but `zod` (the worker loads it by relative path
+under `--experimental-strip-types`) while `SESSION_PARAM` (`lib/nina/active.ts`) and
+`JOB_JUMP_PARAM` (`lib/nina/jobview.ts`) both sit behind `@/`. **Renaming either one there without
+renaming it here fails no build** — it lands every push on a chat that ignores the query string it
+was sent with. See the Gotchas.
 
 ### `send.ts`
 
@@ -168,10 +199,18 @@ export type NinaPushNotifier = (
   userId: string,
   messages: ReadonlyArray<{ id: string; body: string }>,
   kind: NinaPushKind,
+  url?: string,
+  sessionId?: string,
 ) => Promise<void>
 
 export const notifyNinaPush: NinaPushNotifier
 ```
+
+**`url` sits before `sessionId`, and that order is frozen.** `notifyDuplicateImagePush` passes its
+destination positionally, so the session could not be slotted in ahead of it. A chat-shaped caller
+therefore writes `notifyNinaPush(userId, bubbles, kind, undefined, sessionId)` — the explicit
+`undefined` is the shape to copy, not a smell. Both are `string`, so swapping them typechecks and
+ships a notification whose tap target is a session id.
 
 **This is the door; `sendNinaPush` is the mechanism.** Any server module may call it, with any of
 the twelve kinds, in the same position: the rows are already committed, the notification is a
@@ -195,11 +234,17 @@ only consumer.
 #### `pushNotifier` — the proactive default (unchanged behaviour)
 
 ```ts
-export const pushNotifier = (async (userId, messages, kind) => { ... }) satisfies ProactiveNotifier
+export const pushNotifier = (async (userId, messages, kind, sessionId?) => { ... }) satisfies ProactiveNotifier
 ```
 
 `ProactiveDeps.notify`'s default, consumed by `lib/nina/proactive.ts`. `satisfies` rather than an
 annotation, so a change to `ProactiveNotifier`'s shape is a compile error *here*, at the seam.
+
+**Its 4th parameter is `sessionId`, not `url` — the one place the two seams disagree.** A proactive
+trigger has no destination of its own to name, so `ProactiveNotifier` never grew a `url` slot; this
+function is what re-aligns the two lists, passing `undefined` into `sendNinaPush`'s `url` and the
+session after it. Deriving the deep link from the session is the entire reason the slot exists, so
+do not "simplify" the `undefined` away.
 
 **It still propagates.** Unlike `notifyNinaPush` it has no `catch` of its own — `proactive.ts`
 wraps its call site and that is the intended arrangement. Do not "harmonise" the two.
@@ -222,8 +267,15 @@ export async function sendNinaPush(
   userId: string,
   messages: ReadonlyArray<{ id: string; body: string }>,
   kind: string,
+  url?: string,
+  sessionId?: string,
 ): Promise<PushSendReport>
 ```
+
+Positional, not an options bag: the leading arguments read as a sentence, and a bag for two optional
+fields would churn every call site to say nothing. The two optionals are handed straight to
+`buildNinaPushPayload`, which owns the three-step `url` rule above — this function makes no
+destination decision of its own.
 
 Returns `{ attempted, delivered, pruned, retryable, skipped }`. `skipped` is set (and everything
 else zero) when nothing was attempted: no message body, VAPID not configured, or no live
@@ -289,8 +341,11 @@ flatten) → `savePushSubscription` (upsert on endpoint) → `revalidatePath('/m
 `recordPushSuccess`, or `classifyPushFailure` → `shouldRevokeSubscription` → `recordPushFailure` →
 `console.warn` → report.
 
-**Send (any other writer).** Caller commits its rows → `notifyNinaPush(userId, messages, kind)` →
-same pipeline, report discarded into the `[push] notified` log line, all throws swallowed.
+**Send (any other writer).** Caller commits its rows →
+`notifyNinaPush(userId, messages, kind, undefined, sessionId)` → same pipeline, report discarded
+into the `[push] notified` log line, all throws swallowed. The `sessionId` a writer passes must be
+the session it just committed those rows to — a notification that opens a different conversation
+than the row it announces is the failure this parameter exists to prevent.
 
 **Receive.** Push service → `lib/service-worker.js` `push` handler → defensive `event.data.json()`
 → `showNotification(title, { body, tag, renotify, data: { url } })`, plus a `nina:new`
@@ -401,10 +456,14 @@ of the subscription, the decision to give up on an endpoint, and the notifier se
 - `payload.test.ts` — failure classification (including "a rotated VAPID key must not delete every
   subscription: 403 is retryable"), the revoke threshold at exactly five, subscription parsing and
   the `https:` rejection, truncation including the no-spaces case, first-non-blank-bubble selection,
-  and the kind vocabulary (every trigger present, the two hosts distinct, no duplicates).
+  and the kind vocabulary (every trigger present, the two hosts distinct, no duplicates). Also the
+  three-step `url` rule: a session deep-links to `?s=…&jump=<first non-blank id>`, an explicit `url`
+  beats a session, and no session (or an empty one) stays on bare `/nina`.
 - `send.test.ts` — `notifyNinaPush` takes a kind the proactive union does not have, swallows a
   rejected subscription read, and reports "nothing attempted"; `pushNotifier` is unchanged and
-  **still propagates**; `sendNinaPush` still fans out.
+  **still propagates**; `sendNinaPush` still fans out, and forwards `url`/`sessionId` in that order.
+- `duplicateImage.test.ts` — pins the one payload this feature must NOT change: an explicit
+  destination still wins, with no query string appended.
 - `tests/integration/pushQueries.int.test.ts` — the query layer against a real database.
 
 ## Gotchas
@@ -424,6 +483,14 @@ of the subscription, the decision to give up on an endpoint, and the notifier se
   the table.
 - **Changing `PUSH_TARGET_URL` or `PUSH_NOTIFICATION_TAG` means editing `lib/service-worker.js`**,
   which holds unchecked copies of both.
+- **`PUSH_SESSION_PARAM` / `PUSH_JUMP_PARAM` are unchecked copies of `SESSION_PARAM`
+  (`lib/nina/active.ts`) and `JOB_JUMP_PARAM` (`lib/nina/jobview.ts`).** Renaming a key on either
+  side alone compiles, deploys, and silently lands every push on a chat that ignores the query it
+  was sent with. They cannot be imported — `payload.ts` may import nothing but `zod`.
+- **Do not reorder `url` and `sessionId` on `sendNinaPush` / `notifyNinaPush`.** Both are `string`,
+  so a swap typechecks and ships notifications whose tap target is a session id.
+- **Do not let a caller pass a `sessionId` other than the one it wrote the rows to.** Derive it from
+  the same binding as the insert, never a second lookup.
 - **Changing a payload field's *meaning* means bumping `v` and branching in the worker.** Adding a
   field, or a kind, does not. A registered worker outlives the deploy that shipped it.
 - `lib/db/schema/push.ts` names the row type `PushSubscriptionRow`, not `PushSubscription` —
@@ -444,6 +511,20 @@ Phase 1 added no dependency, no DDL, and no wire-format change: `NinaPushPayload
 type annotation that the compiler erases.
 
 ## Recent Changes
+
+**2026-09-16 — `P1-RI-A043` (push tap redirect, phase 2)**
+- `payload.ts`: `buildNinaPushPayload` gained `sessionId`, `PUSH_SESSION_PARAM` / `PUSH_JUMP_PARAM`,
+  and the private `ninaBubbleUrl` that resolves the three-step `url` rule. Wire format unchanged —
+  `url` was already a `string`, so `v` stays `1`.
+- `send.ts`: `sendNinaPush`, `NinaPushNotifier` / `notifyNinaPush` and `pushNotifier` all take the
+  session; `pushNotifier` passes `undefined` into the `url` slot ahead of it.
+- Every chat-shaped kind now deep-links: `chat_reply`, `photo_delivered`, `photo_apology`,
+  `admin_chat_photo`, the five proactive triggers, and the worker's two `worker_photo_*` backstops.
+  `duplicate_image`'s payload is byte-for-byte what it was.
+- Tests: `payload.test.ts` and `send.test.ts` extended, `duplicateImage.test.ts` gained the
+  no-rewrite pin; caller-side coverage in `tests/nina.turnpush.test.ts`,
+  `tests/nina.imagerun.test.ts`, `tests/nina.imagepush.test.ts`, `tests/admin.chatPhotos.test.ts`
+  and `tests/nina.imageworker.test.ts`.
 
 **2026-09-14 — `P1-PSH-A000` (phase 1 of 5)**
 - `payload.ts`: added `NINA_PUSH_KINDS` (twelve values) and the `NinaPushKind` type, with the

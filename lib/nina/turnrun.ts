@@ -135,6 +135,16 @@ export type NinaTurnNotifier = (
   userId: string,
   messages: ReadonlyArray<{ id: string; body: string }>,
   kind: NinaPushKind,
+  /**
+   * `NinaPushNotifier`'s `url` slot, mirrored rather than dropped. This file never passes one — the
+   * destination is derived from `sessionId` below — but the DEFAULT for this seam is
+   * `notifyNinaPush`, which reads position 4 as `url`. A type that named `sessionId` here would
+   * typecheck (both are `string`) and would send every chat push to a tap target called
+   * `ses000000001`.
+   */
+  url?: string,
+  /** The session the bubbles were committed to, so the tap opens it and flashes the first bubble. */
+  sessionId?: string,
 ) => Promise<unknown>
 
 /**
@@ -601,7 +611,11 @@ export async function runNinaBackgroundTurn(
      */
     if (bubbles.length > 0) {
       try {
-        await notify(userId, bubbles, 'chat_reply')
+        /* `undefined` in the `url` slot: this push has no destination of its own to name, so
+         * `buildNinaPushPayload` derives `/nina?s=…&jump=…` from the session and the first
+         * non-blank bubble. `sessionId` is `input`'s, destructured at the top of this function —
+         * the same session the rows above were committed to. */
+        await notify(userId, bubbles, 'chat_reply', undefined, sessionId)
       } catch (cause) {
         console.warn('[nina] reply notify failed', { turnId, error: String(cause) })
       }

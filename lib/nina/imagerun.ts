@@ -493,7 +493,17 @@ async function finishSelfie(
    * would make `runNinaImageJob` close a delivered generation as a failure.
    */
   try {
-    await notifyNinaPush(userId, [{ id: message.id, body: caption }], 'photo_delivered')
+    /* `undefined` in the `url` slot, then the session: the tap opens the conversation this
+     * photograph landed in and flashes its bubble, instead of opening whichever session happens to
+     * be most recently active. `sessionId` is the one bound at the top of this function and used
+     * for the insert — the notification cannot point at a different conversation than the row. */
+    await notifyNinaPush(
+      userId,
+      [{ id: message.id, body: caption }],
+      'photo_delivered',
+      undefined,
+      sessionId,
+    )
   } catch (cause) {
     console.warn('[nina] photo notify failed', { jobId, error: String(cause) })
   }

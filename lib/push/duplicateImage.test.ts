@@ -48,6 +48,15 @@ describe('notifyDuplicateImagePush', () => {
     expect(target).not.toContain('blob.vercel-storage.com')
   })
 
+  it('PASSES NO SESSION, so the deep-link derivation can never rewrite its destination', async () => {
+    /* This notification is about an upload, not a bubble. `buildNinaPushPayload` prefers an
+     * explicit `url` over a derived one, and this is the call that relies on it: four arguments,
+     * a 5th that is never supplied. */
+    await notifyDuplicateImagePush(USER, { kind: 'image', id: ID })
+    expect(notify.mock.calls[0]).toHaveLength(4)
+    expect(notify.mock.calls[0]?.[4]).toBeUndefined()
+  })
+
   it('uses a kind that is actually in the vocabulary', async () => {
     expect(NINA_PUSH_KINDS).toContain(DUPLICATE_IMAGE_PUSH_KIND)
     expect(DUPLICATE_IMAGE_PUSH_KIND).toBe('duplicate_image')

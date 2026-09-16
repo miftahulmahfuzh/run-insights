@@ -206,7 +206,16 @@ describe('a reply the turn commits', () => {
     await runNinaBackgroundTurn(turnInput(), deps)
 
     expect(notify).toHaveBeenCalledTimes(1)
-    expect(notify).toHaveBeenCalledWith(USER, toBubbles(ninaRows()), 'chat_reply')
+    /* The trailing `undefined, SESSION` is R2: no explicit tap target, and the session the rows
+     * were committed to, from which `buildNinaPushPayload` derives `/nina?s=…&jump=…`. The chain's
+     * second link (property 7) gets the same session, because it is the same conversation. */
+    expect(notify).toHaveBeenCalledWith(
+      USER,
+      toBubbles(ninaRows()),
+      'chat_reply',
+      undefined,
+      SESSION,
+    )
   })
 
   it('notifies after the insert and the close, and before the distillation', async () => {
@@ -294,10 +303,24 @@ describe('a chained follow-up', () => {
 
     expect(openNinaChatTurn).toHaveBeenCalledTimes(1)
     expect(notify).toHaveBeenCalledTimes(2)
-    expect(notify).toHaveBeenNthCalledWith(1, USER, toBubbles(ninaRows()), 'chat_reply')
+    expect(notify).toHaveBeenNthCalledWith(
+      1,
+      USER,
+      toBubbles(ninaRows()),
+      'chat_reply',
+      undefined,
+      SESSION,
+    )
     /* The seam reached the recursion. Without `deps` threaded at the chain's call site this second
      * assertion fails while the first passes — which is exactly the bug it exists to catch. */
-    expect(notify).toHaveBeenNthCalledWith(2, USER, toBubbles(chainedRows()), 'chat_reply')
+    expect(notify).toHaveBeenNthCalledWith(
+      2,
+      USER,
+      toBubbles(chainedRows()),
+      'chat_reply',
+      undefined,
+      SESSION,
+    )
   })
 })
 
@@ -337,7 +360,13 @@ describe('the default seam', () => {
     await runNinaBackgroundTurn(turnInput())
 
     expect(notifyNinaPush).toHaveBeenCalledTimes(1)
-    expect(notifyNinaPush).toHaveBeenCalledWith(USER, toBubbles(ninaRows()), 'chat_reply')
+    expect(notifyNinaPush).toHaveBeenCalledWith(
+      USER,
+      toBubbles(ninaRows()),
+      'chat_reply',
+      undefined,
+      SESSION,
+    )
     /* The injected double was never wired on this call — the production default really is the path. */
     expect(notify).not.toHaveBeenCalled()
   })

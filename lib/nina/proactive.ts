@@ -482,6 +482,13 @@ export type ProactiveNotifier = (
   userId: string,
   messages: ReadonlyArray<{ id: string; body: string }>,
   kind: ProactiveTriggerKind,
+  /**
+   * The session her opening was written into, so the tap opens THAT conversation and flashes the
+   * first bubble (`/nina?s=…&jump=…`) instead of landing on whichever session was most recently
+   * active. Optional and additive: an implementation that declares three parameters — a test
+   * double, a no-op — is still assignable and still correct.
+   */
+  sessionId?: string,
 ) => Promise<void>
 
 export interface ProactiveDeps {
@@ -700,7 +707,9 @@ async function emitProactiveMessage(
   }
 
   try {
-    await notify(userId, bubbles, detail.kind)
+    /* The session the rows above were committed to (`:598`, and `insertNinaMessages`' own argument
+     * at `:664`). All five triggers deep-link through this one call. */
+    await notify(userId, bubbles, detail.kind, sessionId)
   } catch (cause) {
     console.warn('[nina proactive] notify failed', { userId, error: String(cause) })
   }

@@ -106,7 +106,13 @@ describe('failNinaImageJob — the give-up apologises AND buzzes', () => {
      * asserted against the real deterministic draw, not against a spy's own argument. */
     expect(insertMessages.mock.calls[0]?.[1][0]?.body).toBe(body)
     expect(notify).toHaveBeenCalledTimes(1)
-    expect(notify).toHaveBeenCalledWith(USER, [{ id: APOLOGY_ID, body }], 'photo_apology')
+    expect(notify).toHaveBeenCalledWith(
+      USER,
+      [{ id: APOLOGY_ID, body }],
+      'photo_apology',
+      undefined,
+      SESSION,
+    )
   })
 
   it('pushes nothing for an AVATAR job — nobody asked for one in the chat', async () => {
@@ -189,6 +195,8 @@ describe('sweepStaleNinaImageJobs — the 20-minute deadline buzzes through the 
       USER,
       [{ id: APOLOGY_ID, body: ninaImageApology('stale', JOB) }],
       'photo_apology',
+      undefined,
+      SESSION,
     )
   })
 

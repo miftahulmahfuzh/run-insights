@@ -242,6 +242,18 @@ the run still finishes the photograph and still exits 0. When they are set they 
 byte-identical to the Vercel **Production** pair — a runner signing with a different key pair is
 refused for every subscription the app registered.
 
+**The notification deep-links, and `sessionId` must stay parameter 5.** Since 2026-09-16 both
+`WorkerNotifier` and `sendWorkerPush` take the session the bubble was written into after `kind`, and
+`buildNinaPushPayload` turns it into `/nina?s=…&jump=…` — the imported-judgement split above is
+exactly why this host lands on the same bubble the app's own push would have. `finish.ts` writes
+`notify: WorkerNotifier = sendWorkerPush`, so the two parameter lists are compared **position by
+position**: putting the `sendFn` seam back at position 5 makes that slot a `SendWorkerNotification`
+on one side and a `string` on the other, and `npx tsc --noEmit` is where you find out. `sendFn`
+therefore goes last, which is where every other injected seam in this package already sits.
+`closeFailed` carries the session on the same binding as the apology row (`{ id, body, sessionId }`,
+one nullable, not two) — a row and a session that could disagree is a notification that opens the
+wrong conversation.
+
 Both notifier parameters are defaulted test seams (`notify: WorkerNotifier = sendWorkerPush`), for
 the reason `releaseBlobIfUnreferenced`'s `delFn` is one: the real sender arrives through
 `createRequire`, which no `vi.mock` registry reaches. `run.ts` never passes them.
@@ -346,6 +358,11 @@ real money on a real generation.
 live in the body sections and in each script's own header; narrative lives in git history, which
 is complete and ordered and costs a session no context to load.
 
+- **2026-09-16 — the worker's notification deep-links** (`push-notification-tap-redirect`, phase 2;
+  P1-RI-A043). `WorkerNotifier` and `sendWorkerPush` gained a `sessionId` parameter after `kind`
+  (and `sendFn` moved behind it); `finish.ts` passes the session for both `worker_photo_delivered`
+  and `worker_photo_apology`. No new import, no transport change — the URL is built by the already
+  imported `buildNinaPushPayload`, which is rule 4's split doing its job.
 - **2026-09-15 — the album-search relevance diagnostic** (`nina-album-search-relevance-tools`;
   P1-SC-V2XN). New `search-analysis.mjs` + `npm run nina:search-analysis`, and the project skill
   `.claude/skills/search-analysis/SKILL.md` that drives it — the package's first entry under

@@ -505,7 +505,13 @@ export async function addChatPhotoAction(input: unknown): Promise<ChatPhotoActio
     if (duplicate != null) {
       await notifyDuplicateImagePush(userId, duplicate)
     } else {
-      await notifyNinaPush(userId, [{ id: message.id, body }], 'admin_chat_photo')
+      await notifyNinaPush(
+        userId,
+        [{ id: message.id, body }],
+        'admin_chat_photo',
+        undefined,
+        sessionId,
+      )
     }
   } catch (cause) {
     console.warn('[push] admin chat photo notify failed', {

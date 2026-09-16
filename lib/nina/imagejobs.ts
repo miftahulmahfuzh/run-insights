@@ -663,7 +663,16 @@ async function postNinaApologyMessage(input: {
    */
   if (apology != null) {
     try {
-      await notifyNinaPush(input.userId, [{ id: apology.id, body }], 'photo_apology')
+      /* `undefined` in the `url` slot, then the session the apology row was written into (`:619`,
+       * the same value `insertNinaMessages` was given): the tap opens that conversation and
+       * flashes the sentence, rather than landing on the chat tab in general. */
+      await notifyNinaPush(
+        input.userId,
+        [{ id: apology.id, body }],
+        'photo_apology',
+        undefined,
+        sessionId,
+      )
     } catch (cause) {
       console.warn('[nina] apology notify failed', { jobId: input.jobId, error: String(cause) })
     }
