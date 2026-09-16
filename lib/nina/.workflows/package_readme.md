@@ -202,10 +202,17 @@ and the first only when the user redlines the canon. `buildNinaSystemPrompt(tuni
 `nina*` block functions into ten sections and drops empty sections header-and-all. Proactive split:
 trigger LOGIC (day-count thresholds) is `proactive.ts`'s; trigger COPY is `system.ts`'s.
 
-**Version constants.** `NINA_PROMPT_VERSION` (7) identifies the ASSEMBLER — system text and the
-schemas in `prompts/tools.ts`; it has bumped twice without any system text moving (the shortcut
-block and the burst block are conditional user-turn bytes), because `nina_turns` must be able to
-date a turn that could carry bytes no earlier version could. Three other calls carry their own
+**Version constants.** `NINA_PROMPT_VERSION` (8 as of 2026-09-16) identifies the ASSEMBLER —
+system text **and** the schemas in `prompts/tools.ts`; it has bumped three times without any
+system text moving (the shortcut block and the burst block are conditional user-turn bytes;
+version 8 is the first bump since version 1 in which a TOOL SCHEMA moved and the system text did
+not), because `nina_turns` must be able to date a turn that could carry bytes no earlier version
+could — a turn whose `body.tools` held a fifth dispatched tool is not a version-7 turn. The
+corollary is the one that catches people out in both directions: adding or editing a tool schema
+bumps this constant, and it leaves `tests/__snapshots__/nina.prompts.test.ts.snap` UNTOUCHED,
+because the snapshot is `buildNinaSystemPrompt`'s bytes and the tool array is not in them. A
+regenerated snapshot alongside a tool-only change is the tell that something else moved.
+Three other calls carry their own
 constants and none of them is `NINA_PROMPT_VERSION`: `NINA_DISTILL_PROMPT_VERSION` (3,
 relationship-aware librarian), `NINA_CAPTION_PROMPT_VERSION` (1), `NINA_TITLE_PROMPT_VERSION` (1).
 Changelog comments sit above each constant.
@@ -326,6 +333,47 @@ join the `nina_turns` row for the same turn (nullable for callers that have none
 `OPENROUTER_API_KEY` — read via `ninaEnv()` inside the POST, never at module scope — is itself
 caught and logged as an OpenRouter failure, so an unwired safety net is a visible row, not a
 silence that looks like an outage.
+
+**The tool set is three layers that never see each other** — and the layering, not the count, is
+what a new tool has to satisfy. `prompts/tools.ts` is the JSON schema the model reads (a constant
+whose only import is `type Anthropic`); `schema.ts` is the Zod object that VALIDATES what comes
+back; `tools.ts` is the handler plus one method on `NinaToolGateway`; `gateway.ts` is the only one
+of the four that may touch the database. **Neither `tools.ts` nor `prompts/tools.ts` imports
+`@/lib/db` or `@/lib/db/schema`** (plan-set invariant 9) — which is why a handler that needs a row
+shape RESTATES it as an interface beside the gateway method rather than importing the query's
+return type. `NINA_CORE_TOOL_SET` is what this package dispatches; `extendToolSet` (`imagetools.ts`,
+`avatartools.ts`) adds the tools that carry their own infrastructure, and `NINA_CHAT_TOOL_SET` /
+`NINA_FULL_TOOL_SET` derive from the core set, so a tool added to the core array reaches both with
+no edit in either extender. The test that counts is `tests/nina.prompts.test.ts`: it walks
+`NINA_TOOLS` (every schema that EXISTS, a superset of what any caller sends) and, for the tools
+whose arguments are enumerated, asserts the JSON-Schema `enum` lists are equal to the Zod const
+arrays — the hand-written copy is a checked claim, not a hopeful comment.
+
+Three rules the handlers hold, whatever the tool:
+
+- **Nothing numeric leaves a handler unspelled** (invariant 2/3). Every value in a `tool_result` has
+  been through a `lib/format.ts` call, so there is no number in her context she could subtract from
+  another number. `aggregate_runs` (2026-09-16) is the sharp case: it exists precisely so an average
+  over a training block is a `select avg(...)` the database answers in ONE row, rather than
+  `lookup_runs` printing up to five days of rows for her to average in prose.
+- **The public argument shape is what a model reasons in; the query's shape is not.** A range tool
+  takes an INCLUSIVE `to` and the handler adds the day, because `lib/db/queries/`'s half-open
+  `>= start AND < endExclusive` convention is an implementation detail of the layer below — the same
+  translation `monthRange`/`isoWeekRange` already perform for their own callers. Do that conversion
+  once, in the handler, and hand the gateway a parameter type on which it is already done.
+- **An absence is an ANSWER, not an error.** `isError` is false for "no reviewed run in that range"
+  and for "no run has that reading" — both are complete answers to a well-formed question, and
+  flagging them invites her to apologise for the tool instead of telling him what the data says
+  (`lookup_runs`' `no_run` branch made the call first). `isError: true` is for a malformed argument,
+  a backwards range, or a request that is meaningless on its face — a `sum` over a column that is
+  already a per-run average. Each of those returns a sentence she can act on, never a throw.
+
+Every gateway read is `userId`-scoped and gated on `isNotNull(runs.reviewedAt)` (D16), including
+the per-call ones: `aggregateRuns` is the one method that queries per tool CALL instead of riding
+`loadRunHistory`'s once-per-turn `db.batch`, and what makes that acceptable is the payload — three
+numbers (`value`, `n`, `runCount`), never rows. `n` is the non-null READING count, which is also
+what the tool's `count` returns, because three of the six metrics are nullable and "how many runs
+have a recorded elevation gain" has to be answerable; `runCount - n` is how many had none.
 
 **The claim** (`chatturn.ts`): open, read, cancel, record, close, sweep — the lifecycle and its
 SQL-shape tests live here. `sweepStaleNinaChatTurns` closes a dead turn `failed`/`stale` and
@@ -827,7 +875,10 @@ not a (T): it is the barrel contract test, not a pure module's suite.
   `sendNinaMessage` → persist + claim + `after()` → `runNinaBackgroundTurn` (context/tuning/
   shortcuts live) → `runNinaTurn` (shortcut match once, burst framing, every model call through
   `productionDeps`' fallback-wrapped client — z.ai, then OpenRouter once; tool rounds via
-  `dispatchNinaTool`; `generate_image` opens a job and fires `fireNinaImageGeneration`) →
+  `dispatchNinaTool` — `lookup_runs`/`compare_runs` read the once-per-turn `loadRunHistory`
+  snapshot, `aggregate_runs` issues its own one-row `aggregateRunMetric`
+  (`@/lib/db/queries/rollups.ts`) per call; `generate_image` opens a job and fires
+  `fireNinaImageGeneration`) →
   validated send payload → bubbles → metrics → close → `notifyNinaPush(…, 'chat_reply')` (one per
   committed reply, guarded by `bubbles.length`) → distillation. Client renders through
   `reveal.ts`/`chatview.ts`/`reply.ts` and polls `pollNinaReply`; refresh merges via
@@ -933,6 +984,17 @@ and picks what she says — a failure is a message from Nina, never a stack trac
 - **`prompts/caption.ts` must never grow a second character assembler**, and caption edits bump
   `NINA_CAPTION_PROMPT_VERSION`, never `NINA_PROMPT_VERSION` (the tool property `description`
   is part of the prompt and counts).
+- **A tool's vocabulary lives in `schema.ts` and is COPIED into `prompts/tools.ts`, never
+  imported.** The prompt module's zero-value-imports property is deliberate, so the const arrays
+  (`NINA_AGGREGATE_METRICS`, `NINA_AGGREGATE_FNS`, `NINA_AGGREGATE_INTENTS`) are re-spelled as
+  JSON-Schema `enum`s and `tests/nina.prompts.test.ts` asserts the two equal. Widen one list and the
+  test fails; widen both and forget the handler's `Record`, and `tsc` fails — the record is keyed by
+  the derived union, so it is exhaustive by type. A list mirrored from `lib/db/schema` (run intents)
+  fails at the handler's `RunIntent | null` assignment instead. Three different mechanisms, none of
+  them a comment.
+- **A tool schema change bumps `NINA_PROMPT_VERSION` and must NOT move the prompt snapshot.** The
+  two facts look contradictory and are not: the constant covers system text and tool schemas, the
+  snapshot covers only `buildNinaSystemPrompt`'s bytes.
 - **A new read of an image row carries `isNull(ninaTurns.deletedAt)` itself** — no shared helper,
   by design, and the test names every function that must have it. `countNinaTurnsSince` is the
   ONE reader that must never grow the predicate.
@@ -1044,6 +1106,12 @@ never weakened to a `toContain`. The guards that can actually catch a regression
 subdirectory outside its scan, so the guarantee over `lib/nina` files is enumerated, not
 recursive — a new module under `queries/` does not automatically join the walk.
 
+- **Cross-module equality tests** are the guard over every hand-written copy the layering forces.
+  `tests/nina.prompts.test.ts` pins the tool ROSTER (`NINA_TOOLS`' names, in order) and each
+  enumerated tool's JSON-Schema `enum` against the Zod const array that validates it — the copy
+  exists because `prompts/tools.ts` may not import a value, so the test is what makes it safe.
+  Same family as the barrel contract test: the list is the contract, and it is extended in the SAME
+  commit as the thing it mirrors.
 - **Source-reading tests** (read the file, strip nothing): `tests/nina.prompts.test.ts` fails if
   the `persona/` modules (auto-discovered)/`prompts/system.ts`/`proactive.ts` name a raw tuning field;
   `lib/nina/shortcuts.test.ts` fails on any `import` line; `tests/nina.softDelete.test.ts`

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, exists, gt, gte, isNotNull, lt, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, exists, gt, gte, isNotNull, lt, sql, type SQL } from 'drizzle-orm'
 
 import {
   isoWeekRange,
@@ -9,7 +9,15 @@ import {
 } from '@/lib/date/ranges'
 
 import { db } from '../index'
-import { runSplits, runZones, runs, type Run, type RunSplit, type RunZone } from '../schema'
+import {
+  runSplits,
+  runZones,
+  runs,
+  type Run,
+  type RunIntent,
+  type RunSplit,
+  type RunZone,
+} from '../schema'
 
 /* ============================================================================
  * §5 Rollups — all reviewed-only, all range-scanned
@@ -172,6 +180,138 @@ export async function getAllTimeTotals(userId: string): Promise<AllTimeTotals> {
     .from(runs)
     .where(and(eq(runs.userId, userId), isNotNull(runs.reviewedAt)))
   return rows[0] ?? { runCount: 0, distanceM: 0, durationSec: 0, firstRunOn: null, lastRunOn: null }
+}
+
+/* ============================================================================
+ * §5c The one PARAMETERISED aggregate — Nina's `aggregate_runs` (R1)
+ * ==========================================================================*/
+
+/**
+ * **The metric columns an aggregate may be taken over, as a CLOSED map from key to column.**
+ *
+ * The map is the type source and the injection boundary at once: `RunMetricKey` is derived from
+ * its own keys, so a caller cannot name a column that is not in here, and nothing a model sends is
+ * ever interpolated into SQL as a string — the key selects a `PgColumn`, and drizzle renders that
+ * column's quoted identifier itself.
+ *
+ * Three of the six are NOT NULL on every row (`durationSec`, `distanceM`, `avgPaceSec`) and three
+ * are nullable (`avgHr`, `activeKcal`, `elevationM`), which is the whole reason `n` below counts
+ * non-null READINGS rather than matching rows. Adding a seventh metric is one line here and one
+ * line in `NINA_AGGREGATE_METRICS` (`lib/nina/schema.ts`); `tests/nina.prompts.test.ts` fails
+ * until the tool schema's `enum` moves with them.
+ */
+const RUN_METRIC_COLUMNS = {
+  durationSec: runs.durationSec,
+  distanceM: runs.distanceM,
+  avgPaceSec: runs.avgPaceSec,
+  avgHr: runs.avgHr,
+  activeKcal: runs.activeKcal,
+  elevationM: runs.elevationM,
+} as const
+
+export type RunMetricKey = keyof typeof RUN_METRIC_COLUMNS
+
+export type RunAggregateFn = 'avg' | 'sum' | 'min' | 'max' | 'count'
+
+export interface RunMetricAggregateParams {
+  metric: RunMetricKey
+  agg: RunAggregateFn
+  /** INCLUSIVE lower bound. */
+  startISO: DateISO
+  /** EXCLUSIVE upper bound — rule 1 at the top of this file. The caller added the day. */
+  endExclusiveISO: DateISO
+  /** `null` or omitted means every intent, INCLUDING rows whose intent was never set. */
+  intent?: RunIntent | null
+}
+
+export interface RunMetricAggregate {
+  /** The aggregate. `null` when no reviewed run in the range has a reading for the metric. */
+  value: number | null
+  /** Runs that contributed a NON-NULL reading — the denominator of an `avg`. */
+  n: number
+  /** Reviewed runs the filters matched at all. `runCount - n` is how many had no reading. */
+  runCount: number
+}
+
+/**
+ * The aggregation, as a SQL fragment. A `switch` over a closed union rather than a lookup table so
+ * that adding a sixth `RunAggregateFn` fails to compile here instead of falling through to a
+ * runtime default that quietly returns the wrong function.
+ *
+ * Every branch is typed `string | number | null` and NOT `.mapWith(Number)`: `avg()` over an
+ * integer column returns `numeric` and `sum()`/`count()` return `bigint`, both of which the Neon
+ * driver hands back as strings, while `min()`/`max()` come back as numbers — and `Number(null)` is
+ * `0`, which is the one wrong answer this function must never give. The caller converts once,
+ * after an explicit null check.
+ */
+function aggregateExpr(
+  agg: RunAggregateFn,
+  column: (typeof RUN_METRIC_COLUMNS)[RunMetricKey],
+): SQL<string | number | null> {
+  switch (agg) {
+    case 'avg':
+      return sql<string | number | null>`avg(${column})`
+    case 'sum':
+      return sql<string | number | null>`sum(${column})`
+    case 'min':
+      return sql<string | number | null>`min(${column})`
+    case 'max':
+      return sql<string | number | null>`max(${column})`
+    case 'count':
+      return sql<string | number | null>`count(${column})`
+  }
+}
+
+/**
+ * **One aggregate over one metric, over a half-open day range. One row back, never rows.**
+ *
+ * R1's whole point: an average over two months is a `select avg(...)` the database answers in one
+ * row, and materialising the range to reduce over it in TypeScript would cost more and put the
+ * arithmetic in the wrong place. `getAllTimeTotals` above is the shape; this is that shape with
+ * the column, the function and the window made parameters.
+ *
+ * Reviewed-only (D16) and `userId`-scoped, like every other function in this file. The range is
+ * `>= startISO AND < endExclusiveISO` so `runs_user_occurred_idx` can scan it.
+ *
+ * **`count` counts non-null READINGS, not matching rows.** `getAllTimeTotals` uses `count(*)`
+ * because every column it totals is NOT NULL; three of the six metrics here are nullable, so
+ * "how many runs have a recorded elevation gain" has to be answerable — and for the three NOT NULL
+ * metrics `count(column)` is identical to `count(*)` anyway. `runCount` carries the row count
+ * separately so a caller can tell 12-of-14 from 12-of-12.
+ */
+export async function aggregateRunMetric(
+  userId: string,
+  params: RunMetricAggregateParams,
+): Promise<RunMetricAggregate> {
+  const column = RUN_METRIC_COLUMNS[params.metric]
+  const rows = await db
+    .select({
+      value: aggregateExpr(params.agg, column),
+      n: sql<number>`count(${column})`.mapWith(Number),
+      runCount: sql<number>`count(*)`.mapWith(Number),
+    })
+    .from(runs)
+    .where(
+      and(
+        eq(runs.userId, userId),
+        isNotNull(runs.reviewedAt),
+        gte(runs.occurredOn, params.startISO),
+        lt(runs.occurredOn, params.endExclusiveISO),
+        /* `and()` drops undefined members, so "no intent filter" adds no predicate at all rather
+         * than a tautology the planner has to reason about. */
+        params.intent == null ? undefined : eq(runs.intent, params.intent),
+      ),
+    )
+
+  const row = rows[0]
+  /* An aggregate with no GROUP BY always returns exactly one row; the fallback is here for the
+   * same reason `getAllTimeTotals` has one — a driver shape this file does not control. */
+  if (row == null) return { value: null, n: 0, runCount: 0 }
+  return {
+    value: row.value == null ? null : Number(row.value),
+    n: row.n,
+    runCount: row.runCount,
+  }
 }
 
 /** Which run holds the observed max, not just what it was. See `getObservedMaxHrRun`. */

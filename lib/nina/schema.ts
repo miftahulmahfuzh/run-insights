@@ -92,6 +92,59 @@ export const CompareRunsArgsSchema = z.object({
   dateB: z.string().trim().min(1).max(32),
 })
 
+/**
+ * `aggregate_runs`' vocabulary, spelled ONCE as const arrays so three things derive from it: the
+ * Zod enums below, the TypeScript unions `lib/nina/tools.ts` types its gateway call with, and the
+ * JSON-Schema `enum` lists in `lib/nina/prompts/tools.ts` — which are a hand-written copy, because
+ * that file is a constant with no imports but `type Anthropic` and is meant to stay one.
+ * `tests/nina.prompts.test.ts` asserts the copy against these arrays, so "kept in sync by hand"
+ * is a checked claim rather than a hopeful comment.
+ *
+ * Six metrics: the three columns `runs` stores NOT NULL (`durationSec`, `distanceM`,
+ * `avgPaceSec`) and the three it stores nullable but usually has (`avgHr`, `activeKcal`,
+ * `elevationM`). Five aggregations: what SQL gives for free, and what a question about a training
+ * block ever actually asks for.
+ */
+export const NINA_AGGREGATE_METRICS = [
+  'durationSec',
+  'distanceM',
+  'avgPaceSec',
+  'avgHr',
+  'activeKcal',
+  'elevationM',
+] as const
+
+export const NINA_AGGREGATE_FNS = ['avg', 'sum', 'min', 'max', 'count'] as const
+
+/**
+ * `runs.intent`'s domain (`lib/db/schema/runs.ts:250`). Copied rather than imported for the same
+ * reason the metric list is: this module is the Zod layer and the enum has to be a VALUE array for
+ * `z.enum`. Drift is a compile error, not a silent widening — `lib/nina/tools.ts` assigns the
+ * parsed value to a `RunIntent | null` field, so a member this list gains and `RunIntent` does not
+ * fails `tsc` at that assignment.
+ */
+export const NINA_AGGREGATE_INTENTS = ['easy', 'tempo', 'long', 'race', 'unspecified'] as const
+
+export type NinaAggregateMetric = (typeof NINA_AGGREGATE_METRICS)[number]
+export type NinaAggregateFn = (typeof NINA_AGGREGATE_FNS)[number]
+export type NinaAggregateIntent = (typeof NINA_AGGREGATE_INTENTS)[number]
+
+/**
+ * **The enums are strict and the DATES are loose**, and the split is the same one
+ * `LookupRunsArgsSchema` makes above for the same reason. A bad enum has nothing better to say
+ * than Zod's own issue list, which already names the field and its options. A bad DATE does:
+ * `handleAggregateRuns` answers it with the string it could not read and the shape it wanted,
+ * inside the same budgeted round, and a Zod regex here would turn that into a dispatch failure
+ * with nothing to say.
+ */
+export const AggregateRunsArgsSchema = z.object({
+  metric: z.enum(NINA_AGGREGATE_METRICS),
+  agg: z.enum(NINA_AGGREGATE_FNS),
+  from: z.string().trim().min(1).max(32),
+  to: z.string().trim().min(1).max(32),
+  intent: z.enum(NINA_AGGREGATE_INTENTS).optional(),
+})
+
 export const SaveMemoryArgsSchema = NinaMemoryWriteSchema
 
 /**

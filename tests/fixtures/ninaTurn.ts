@@ -5,6 +5,8 @@ import { SEND_TOOL } from '@/lib/nina/prompts'
 import { NINA_TUNING_DEFAULTS, type NinaTuning } from '@/lib/nina/tuning'
 import {
   NINA_CORE_TOOL_SET,
+  type NinaAggregateParams,
+  type NinaAggregateResult,
   type NinaDetailedRunInput,
   type NinaRunHistory,
   type NinaToolGateway,
@@ -73,14 +75,27 @@ export interface FakeToolGateway extends NinaToolGateway {
    */
   slots: Array<{ key: string; value: NinaSlotValue }>
   facts: Array<{ text: string; sourceMessageId: string | null }>
+  /**
+   * Every `aggregate_runs` call, in order. Recorded rather than asserted through a spy because the
+   * interesting thing about the call is the WINDOW: the handler takes an inclusive `to` and must
+   * hand this method the exclusive bound, and that translation is only visible here.
+   */
+  aggregates: NinaAggregateParams[]
+  /** What the next `aggregateRuns` returns. Assign to it in the test that cares. */
+  aggregateResult: NinaAggregateResult
 }
 
 export function fakeToolGateway(history: NinaRunHistory = runHistoryFixture()): FakeToolGateway {
   const slots: Array<{ key: string; value: NinaSlotValue }> = []
   const facts: Array<{ text: string; sourceMessageId: string | null }> = []
-  return {
+  const aggregates: NinaAggregateParams[] = []
+  const gateway: FakeToolGateway = {
     slots,
     facts,
+    aggregates,
+    /* The empty account, which is the honest default: a fixture that returned a number would make
+     * every unrelated turn test a test of that number. */
+    aggregateResult: { value: null, n: 0, runCount: 0 },
     async loadRunHistory() {
       return history
     },
@@ -90,7 +105,12 @@ export function fakeToolGateway(history: NinaRunHistory = runHistoryFixture()): 
     async appendMemoryFact(_userId, row) {
       facts.push(row)
     },
+    async aggregateRuns(_userId, params) {
+      aggregates.push(params)
+      return gateway.aggregateResult
+    },
   }
+  return gateway
 }
 
 export interface FakeTurnStore extends NinaTurnStore {

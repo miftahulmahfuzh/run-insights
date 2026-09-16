@@ -185,6 +185,62 @@ export const COMPARE_RUNS_TOOL: Anthropic.Tool = {
   },
 }
 
+/**
+ * **One SQL aggregate, one number** (R1) — the counterpart to `LOOKUP_RUNS_TOOL`, which caps at
+ * five named days and returns every per-run fact for each. A question about a training BLOCK
+ * ("rata-rata durasi lari gw 2 bulan terakhir") is not five days, and averaging a printed list of
+ * rows in prose is exactly the arithmetic invariant 2 exists to refuse.
+ *
+ * `to` is INCLUSIVE, because that is what a model reasons in: "the last 2 months" ends today, and
+ * today is a day he may have run. `handleAggregateRuns` converts it to the half-open upper bound
+ * `lib/db/queries/rollups.ts` actually scans — the same translation `monthRange`/`isoWeekRange`
+ * already perform for their own callers.
+ *
+ * The six `metric` values and five `agg` values are the JSON-Schema copy of
+ * `NINA_AGGREGATE_METRICS`/`NINA_AGGREGATE_FNS` in `lib/nina/schema.ts`, which is what validates.
+ * They are spelled here rather than imported because this module is a constant with no imports but
+ * `type Anthropic` (see the header) — and `tests/nina.prompts.test.ts` asserts the two lists are
+ * equal, so the copy cannot drift unnoticed.
+ */
+export const AGGREGATE_RUNS_TOOL: Anthropic.Tool = {
+  name: 'aggregate_runs',
+  description:
+    'One number over a date range — average, total, fastest, slowest or count. Use it when he asks ' +
+    'about a stretch of time rather than a day.',
+  input_schema: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['metric', 'agg', 'from', 'to'],
+    properties: {
+      metric: {
+        type: 'string',
+        enum: ['durationSec', 'distanceM', 'avgPaceSec', 'avgHr', 'activeKcal', 'elevationM'],
+        description: 'REQUIRED. Which number to work out.',
+      },
+      agg: {
+        type: 'string',
+        enum: ['avg', 'sum', 'min', 'max', 'count'],
+        description: 'REQUIRED. How to combine it. "count" counts runs that have that reading.',
+      },
+      from: {
+        type: 'string',
+        pattern: '^\\d{4}-\\d{2}-\\d{2}$',
+        description: 'REQUIRED. First day of the range, YYYY-MM-DD, worked out from now.todayISO.',
+      },
+      to: {
+        type: 'string',
+        pattern: '^\\d{4}-\\d{2}-\\d{2}$',
+        description: 'REQUIRED. Last day of the range, YYYY-MM-DD. This day is included.',
+      },
+      intent: {
+        type: 'string',
+        enum: ['easy', 'tempo', 'long', 'race', 'unspecified'],
+        description: 'Only count runs of this kind. Omit for all of them.',
+      },
+    },
+  },
+}
+
 /** The explicit memory path. See `SEND_TOOL.memoryWrites` for the division of labour. */
 export const SAVE_MEMORY_TOOL: Anthropic.Tool = {
   name: 'save_memory',
@@ -269,14 +325,16 @@ export const SET_AVATAR_TOOL: Anthropic.Tool = {
 }
 
 /**
- * All six. **Phase 3 passes a SUBSET**: the loop starts with `send`, `lookup_runs`,
- * `compare_runs` and `save_memory`, and phases 12 and 13 add the last two as they land. The array
- * exists so `tests/nina.prompts.test.ts` can walk every schema, not so a caller sends all of it.
+ * All seven. **The dispatched set is a SUBSET**: `NINA_CORE_TOOL_SET` (`lib/nina/tools.ts`) ships
+ * `send`, `lookup_runs`, `compare_runs`, `aggregate_runs` and `save_memory`; phases 12 and 13 add
+ * the last two through `extendToolSet`. The array exists so `tests/nina.prompts.test.ts` can walk
+ * every schema, not so a caller sends all of it.
  */
 export const NINA_TOOLS: readonly Anthropic.Tool[] = [
   SEND_TOOL,
   LOOKUP_RUNS_TOOL,
   COMPARE_RUNS_TOOL,
+  AGGREGATE_RUNS_TOOL,
   SAVE_MEMORY_TOOL,
   GENERATE_IMAGE_TOOL,
   SET_AVATAR_TOOL,

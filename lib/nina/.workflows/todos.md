@@ -2,7 +2,7 @@
 
 **Package Path**: `lib/nina`
 **Package Code**: NIN
-**Last Updated**: 2026-09-15
+**Last Updated**: 2026-09-16
 **Total Active Tasks**: 0
 
 ## Quick Stats
@@ -12,7 +12,7 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 51
+- Completed: 52
 - Archived: 36
 
 ---
@@ -34,6 +34,20 @@
 (all thirty-five completed tasks were archived on 2026-09-12 — see Archive; full
 per-task detail — Context, Drift, Decided, Files — survives in git history and in
 `.workflows/package_readme.md`)
+
+- [x] **P1-NIN-A050** Phase 1: Add `aggregate_runs` tool (schema, Zod, gateway, SQL, tests)
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns `lib/nina/prompts/tools.ts`, `lib/nina/schema.ts`, `lib/nina/tools.ts`, `lib/nina/gateway.ts`, `lib/db/queries/rollups.ts`, `lib/nina/prompts/index.ts` (version bump), `lib/nina/tools.test.ts`, `tests/db.queries.rollups.test.ts`, `tests/db.queries.reviewedOnly.test.ts`, `tests/nina.prompts.test.ts`, `tests/fixtures/ninaTurn.ts`. Exit criteria: `aggregate_runs` is callable end-to-end through `dispatchNinaTool`, returns a precomputed aggregate (never raw rows) for a valid request and a structured `isError: true` answer for an invalid one (bad enum, malformed date, `from > to`), every existing test still passes, `npx tsc --noEmit` is clean, and `NINA_PROMPT_VERSION` is 8.
+  - **Status**: done
+  - **Plan Set**: `AGGREGATE_RUNS_TOOL_PLAN.md` (phase 1 of 1)
+  - **Satisfies**: R1 — Add `aggregate_runs`: a Zod-validated tool computing avg/sum/min/max/count over one run metric, over a date range, optionally filtered by intent, via a real SQL aggregate query — wired through the existing schema/dispatch/gateway/rollups layering.
+  - **Depends on**: none
+  - **Plan**: `.workflows/plan/P1-NIN-A050.md`
+  - **Completed**: 2026-09-16 09:50
+  - **Method**: /do
+  - **Files**: lib/db/queries/rollups.ts, lib/nina/schema.ts, lib/nina/prompts/tools.ts, lib/nina/prompts/index.ts, lib/nina/tools.ts, lib/nina/gateway.ts, tests/fixtures/ninaTurn.ts, lib/nina/tools.test.ts, tests/nina.prompts.test.ts, tests/db.queries.rollups.test.ts, tests/db.queries.reviewedOnly.test.ts, lib/nina/turn.test.ts
+  - **Drift**: `lib/nina/turn.test.ts` (not in the phase plan's Files table) hard-coded `NINA_CORE_TOOL_SET`'s tool count at 4 in one assertion ("offers every tool with tool_choice any on a non-final call"). Invariant 5 says `NINA_CORE_TOOL_SET` gains exactly one tool and every consumer picks it up automatically with no edit — that held, but this pre-existing test's literal expected count did not move on its own. Updated the assertion from `toHaveLength(4)` to `toHaveLength(5)` with a one-line comment naming the five tools. Small, mechanical drift; full test suite is green after the fix.
 
 - [x] **P1-NIN-A037** Phase 3: OpenRouter fallback — vision/multimodal
   - **Difficulty**: NORMAL

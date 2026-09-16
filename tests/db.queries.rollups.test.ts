@@ -74,3 +74,105 @@ describe('getAllTimeTotals', () => {
     expect(fake.only().sql).toContain('coalesce')
   })
 })
+
+describe('aggregateRunMetric — the one parameterised aggregate', () => {
+  it('scans a half-open range and aggregates in SQL, returning no rows', async () => {
+    fake.enqueue([['2843.6666', '11', '11']])
+    const result = await q.aggregateRunMetric('u1', {
+      metric: 'durationSec',
+      agg: 'avg',
+      startISO: '2026-07-04',
+      endExclusiveISO: '2026-09-04',
+    })
+    const { sql, params } = fake.only()
+    expect(sql).toContain('avg(')
+    expect(sql).toContain('>=')
+    expect(sql).toContain('<')
+    expect(sql).not.toContain('to_char')
+    expect(params).toContain('2026-07-04')
+    expect(params).toContain('2026-09-04')
+    // numeric comes back from the driver as a string; Number() happens once, after a null check.
+    expect(result).toEqual({ value: 2843.6666, n: 11, runCount: 11 })
+  })
+
+  it('is userId-scoped and reviewed-only, like every other rollup', async () => {
+    fake.enqueue([[null, '0', '0']])
+    await q.aggregateRunMetric('u1', {
+      metric: 'elevationM',
+      agg: 'sum',
+      startISO: '2026-08-01',
+      endExclusiveISO: '2026-09-01',
+    })
+    const { sql, params } = fake.only()
+    expect(sql).toContain('"user_id"')
+    expect(sql).toContain('"reviewed_at" is not null')
+    expect(params).toContain('u1')
+  })
+
+  it('names the metric COLUMN in the SQL and never binds it as a parameter', async () => {
+    fake.enqueue([['151', '9', '14']])
+    await q.aggregateRunMetric('u1', {
+      metric: 'avgHr',
+      agg: 'avg',
+      startISO: '2026-08-01',
+      endExclusiveISO: '2026-09-01',
+    })
+    const { sql, params } = fake.only()
+    expect(sql).toContain('"avg_hr"')
+    // The closed map is the injection boundary: nothing a caller names becomes a bound string.
+    expect(params).not.toContain('avgHr')
+    expect(params).not.toContain('avg_hr')
+  })
+
+  it('adds no intent predicate when no intent is asked for', async () => {
+    fake.enqueue([['0', '0', '0']])
+    await q.aggregateRunMetric('u1', {
+      metric: 'distanceM',
+      agg: 'sum',
+      startISO: '2026-08-01',
+      endExclusiveISO: '2026-09-01',
+    })
+    expect(fake.only().sql).not.toContain('"intent"')
+  })
+
+  it('filters on intent when one is asked for', async () => {
+    fake.enqueue([['12400', '4', '4']])
+    await q.aggregateRunMetric('u1', {
+      metric: 'distanceM',
+      agg: 'max',
+      startISO: '2026-08-01',
+      endExclusiveISO: '2026-09-01',
+      intent: 'long',
+    })
+    const { sql, params } = fake.only()
+    expect(sql).toContain('"intent"')
+    expect(params).toContain('long')
+  })
+
+  it('counts NON-NULL readings, so a nullable metric can be asked how many runs have it', async () => {
+    fake.enqueue([['9', '9', '14']])
+    const result = await q.aggregateRunMetric('u1', {
+      metric: 'elevationM',
+      agg: 'count',
+      startISO: '2026-08-01',
+      endExclusiveISO: '2026-09-01',
+    })
+    // `n` is count(column) and `runCount` is count(*) — 9 of 14 runs recorded an elevation gain.
+    expect(result.n).toBe(9)
+    expect(result.runCount).toBe(14)
+    expect(fake.only().sql).toContain('count(*)')
+  })
+
+  it('returns null and NOT zero when nothing in the range has a reading', async () => {
+    fake.enqueue([[null, '0', '6']])
+    const result = await q.aggregateRunMetric('u1', {
+      metric: 'activeKcal',
+      agg: 'avg',
+      startISO: '2026-08-01',
+      endExclusiveISO: '2026-09-01',
+    })
+    // Number(null) is 0, which is the one wrong answer this function must never give.
+    expect(result.value).toBeNull()
+    expect(result.runCount).toBe(6)
+  })
+})

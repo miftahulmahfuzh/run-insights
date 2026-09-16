@@ -482,7 +482,8 @@ describe('runNinaTurnWith — the request envelope', () => {
     const client = scriptedClient([sendMessage(GOOD)])
     await runNinaTurnWith(fakeTurnDeps(client), input())
     expect(client.calls[0]!.tool_choice).toEqual({ type: 'any' })
-    expect(client.calls[0]!.tools).toHaveLength(4)
+    // send, lookup_runs, compare_runs, aggregate_runs, save_memory — NINA_CORE_TOOL_SET.
+    expect(client.calls[0]!.tools).toHaveLength(5)
   })
 
   it('never sends an image block — INVARIANT 5', async () => {

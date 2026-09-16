@@ -2,6 +2,7 @@ import 'server-only'
 
 import { todayInJakarta } from '@/lib/date/ranges'
 import {
+  aggregateRunMetric,
   getAllTimeTotals,
   getReviewedRunsWithChildren,
   getReviewedRunWindow,
@@ -38,7 +39,13 @@ import {
   listNinaMemoryFacts,
   upsertNinaMemorySlot,
 } from './queries'
-import type { NinaDetailedRunInput, NinaRunHistory, NinaToolGateway } from './tools'
+import type {
+  NinaAggregateParams,
+  NinaAggregateResult,
+  NinaDetailedRunInput,
+  NinaRunHistory,
+  NinaToolGateway,
+} from './tools'
 import type { NinaTurnRow, NinaTurnSource, NinaTurnStore } from './turn'
 import {
   NINA_SLOT_PENDING_PROMISES,
@@ -361,6 +368,29 @@ export const dbNinaToolGateway: NinaToolGateway & NinaMemoryGateway = {
       splitsByRunId: new Map(runs.map((run) => [run.runId, run.splits])),
       zonesByRunId: new Map(runs.map((run) => [run.runId, run.metrics.zonePct])),
     }
+  },
+
+  /**
+   * **R1. The one read in this object that runs per tool CALL instead of once per turn** — and
+   * what makes that acceptable is the payload: three numbers, never rows. `loadRunHistory` above
+   * is one `db.batch` for the whole history because the tools that read it need per-run facts; an
+   * average over a training block is a `select avg(...)` that returns a single row, and
+   * materialising the range to reduce over it here would cost more AND put arithmetic in a gateway,
+   * which this file's header forbids in as many words.
+   *
+   * A pass-through, deliberately. `aggregateRunMetric` already applies the `userId` scope and
+   * D16's `reviewed_at is not null` gate, and the inclusive-`to` translation already happened in
+   * `handleAggregateRuns`, where the tool's public contract lives. Nothing is left for this method
+   * to decide, which is the point — the seam exists for invariant 9, not for logic.
+   */
+  async aggregateRuns(userId: string, params: NinaAggregateParams): Promise<NinaAggregateResult> {
+    return aggregateRunMetric(userId, {
+      metric: params.metric,
+      agg: params.agg,
+      startISO: params.startISO,
+      endExclusiveISO: params.endExclusiveISO,
+      intent: params.intent,
+    })
   },
 
   async saveMemorySlot(userId, row) {

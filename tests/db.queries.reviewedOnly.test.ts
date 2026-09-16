@@ -70,6 +70,17 @@ describe('reviewed-only queries', () => {
     expect(fake.only().sql).toContain('"reviewed_at" is not null')
   })
 
+  it('aggregateRunMetric filters on reviewed_at — the number Nina reads out loud', async () => {
+    fake.enqueue([[null, '0', '0']])
+    await q.aggregateRunMetric('u1', {
+      metric: 'durationSec',
+      agg: 'avg',
+      startISO: '2026-08-01',
+      endExclusiveISO: '2026-09-01',
+    })
+    expect(fake.only().sql).toContain('"reviewed_at" is not null')
+  })
+
   it('getObservedMaxHrRun filters on reviewed_at — F02’s resolver reads this one, not the max()', async () => {
     fake.enqueue([])
     await q.getObservedMaxHrRun('u1')

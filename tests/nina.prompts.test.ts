@@ -16,6 +16,7 @@ import {
   ninaEffectiveVerbosity,
 } from '@/lib/nina/persona'
 import {
+  AGGREGATE_RUNS_TOOL,
   NINA_PROMPT_VERSION,
   NINA_SECTION_TITLES,
   NINA_SYSTEM_PROMPT,
@@ -30,6 +31,11 @@ import {
   buildProactiveInstruction,
 } from '@/lib/nina/prompts'
 import { buildDistillSystemPrompt } from '@/lib/nina/prompts/distill'
+import {
+  NINA_AGGREGATE_FNS,
+  NINA_AGGREGATE_INTENTS,
+  NINA_AGGREGATE_METRICS,
+} from '@/lib/nina/schema'
 import {
   coerceNinaTuning,
   NINA_ADDRESS,
@@ -404,15 +410,34 @@ describe('the tool schemas', () => {
     }
   })
 
-  it('defines the six tools phases 3, 12 and 13 expect, under these exact names', () => {
+  it('defines the seven tools phases 3, 12 and 13 expect, under these exact names', () => {
     expect(NINA_TOOLS.map((t) => t.name)).toEqual([
       'send',
       'lookup_runs',
       'compare_runs',
+      'aggregate_runs',
       'save_memory',
       'generate_image',
       'set_avatar',
     ])
+  })
+
+  /*
+   * `AGGREGATE_RUNS_TOOL`'s enums are a hand-written copy of `lib/nina/schema.ts`'s const arrays —
+   * that file is what VALIDATES, this one is what the model reads, and `prompts/tools.ts` is a
+   * constant with no imports but `type Anthropic` on purpose. This case is what makes the copy
+   * safe: a metric added to one list and not the other fails here instead of becoming a tool call
+   * the model is invited to make and Zod then refuses.
+   */
+  it('keeps aggregate_runs’ enums equal to the Zod vocabulary that validates them', () => {
+    const properties = (
+      AGGREGATE_RUNS_TOOL.input_schema as unknown as {
+        properties: Record<string, { enum?: readonly string[] }>
+      }
+    ).properties
+    expect(properties.metric!.enum).toEqual([...NINA_AGGREGATE_METRICS])
+    expect(properties.agg!.enum).toEqual([...NINA_AGGREGATE_FNS])
+    expect(properties.intent!.enum).toEqual([...NINA_AGGREGATE_INTENTS])
   })
 
   it('caps the reply at 1-4 bubbles, as RU-5 chose', () => {

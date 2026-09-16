@@ -8,6 +8,7 @@ import {
   compareRunFacts,
   dispatchNinaTool,
   extendToolSet,
+  handleAggregateRuns,
   handleCompareRuns,
   handleLookupRuns,
   handleSaveMemory,
@@ -222,12 +223,14 @@ describe('the dispatch table', () => {
       'send',
       'lookup_runs',
       'compare_runs',
+      'aggregate_runs',
       'save_memory',
     ])
   })
 
-  it('ships exactly three handlers — generate_image and set_avatar are phases 12 and 13', () => {
+  it('ships exactly four handlers — generate_image and set_avatar are phases 12 and 13', () => {
     expect(Object.keys(NINA_CORE_TOOL_SET.handlers).sort()).toEqual([
+      'aggregate_runs',
       'compare_runs',
       'lookup_runs',
       'save_memory',
@@ -243,9 +246,9 @@ describe('the dispatch table', () => {
     const extended = extendToolSet(NINA_CORE_TOOL_SET, [
       { tool, handler: async () => ({ answer: {}, isError: false }) },
     ])
-    expect(Object.keys(extended.handlers)).toHaveLength(4)
-    expect(Object.keys(NINA_CORE_TOOL_SET.handlers)).toHaveLength(3)
-    expect(NINA_CORE_TOOL_SET.tools).toHaveLength(4)
+    expect(Object.keys(extended.handlers)).toHaveLength(5)
+    expect(Object.keys(NINA_CORE_TOOL_SET.handlers)).toHaveLength(4)
+    expect(NINA_CORE_TOOL_SET.tools).toHaveLength(5)
   })
 
   it('throws on a duplicate name, at load time, in the phase that added it', () => {
@@ -272,5 +275,178 @@ describe('the dispatch table', () => {
       },
     })
     expect(boom.isError).toBe(true)
+  })
+})
+
+describe('handleAggregateRuns', () => {
+  it('hands the gateway a HALF-OPEN window built from her inclusive "to"', async () => {
+    const gateway = fakeToolGateway()
+    gateway.aggregateResult = { value: 2843, n: 11, runCount: 11 }
+    const { isError } = await handleAggregateRuns(
+      { metric: 'durationSec', agg: 'avg', from: '2026-07-04', to: '2026-09-03' },
+      ctx(runHistoryFixture(), gateway),
+    )
+    expect(isError).toBe(false)
+    expect(gateway.aggregates).toEqual([
+      {
+        metric: 'durationSec',
+        agg: 'avg',
+        startISO: '2026-07-04',
+        // 2026-09-04, not 2026-09-03: her last day is INCLUDED, and the query scans `< bound`.
+        endExclusiveISO: '2026-09-04',
+        intent: null,
+      },
+    ])
+  })
+
+  it('spells the value and never hands back a raw second — invariant 3', async () => {
+    const gateway = fakeToolGateway()
+    gateway.aggregateResult = { value: 2843.66, n: 11, runCount: 11 }
+    const { answer } = await handleAggregateRuns(
+      { metric: 'durationSec', agg: 'avg', from: '2026-07-04', to: '2026-09-03' },
+      ctx(runHistoryFixture(), gateway),
+    )
+    const result = answer as { value: string; unit: string; n: number; situation: string }
+    expect(result.value).toBe('47:24')
+    expect(result.unit).toBe('h:mm:ss')
+    expect(result.n).toBe(11)
+    expect(result.situation).toContain('do NOT recompute')
+    // Nothing in the answer may be a number she could subtract from another number.
+    expect(answer).not.toHaveProperty('raw')
+  })
+
+  it('passes an intent filter through, and reports it back', async () => {
+    const gateway = fakeToolGateway()
+    gateway.aggregateResult = { value: 12400, n: 4, runCount: 4 }
+    const { answer } = await handleAggregateRuns(
+      { metric: 'distanceM', agg: 'max', from: '2026-08-01', to: '2026-08-31', intent: 'long' },
+      ctx(runHistoryFixture(), gateway),
+    )
+    expect(gateway.aggregates[0]!.intent).toBe('long')
+    expect((answer as { intent: string }).intent).toBe('long')
+    expect((answer as { value: string }).value).toBe('12.40 km')
+  })
+
+  it('says an empty range out loud and does NOT report it as an error', async () => {
+    const gateway = fakeToolGateway()
+    gateway.aggregateResult = { value: null, n: 0, runCount: 0 }
+    const { answer, isError } = await handleAggregateRuns(
+      { metric: 'avgHr', agg: 'avg', from: '2026-01-01', to: '2026-01-31' },
+      ctx(runHistoryFixture(), gateway),
+    )
+    expect(isError).toBe(false)
+    const result = answer as { value: string | null; situation: string }
+    expect(result.value).toBeNull()
+    expect(result.situation).toContain('NO reviewed runs')
+  })
+
+  it('distinguishes "no runs" from "no readings" — a missing number is not zero', async () => {
+    const gateway = fakeToolGateway()
+    gateway.aggregateResult = { value: null, n: 0, runCount: 6 }
+    const { answer, isError } = await handleAggregateRuns(
+      { metric: 'elevationM', agg: 'avg', from: '2026-08-01', to: '2026-08-31' },
+      ctx(runHistoryFixture(), gateway),
+    )
+    expect(isError).toBe(false)
+    const result = answer as { value: string | null; runCount: number; situation: string }
+    expect(result.value).toBeNull()
+    expect(result.runCount).toBe(6)
+    expect(result.situation).toContain('not that it is zero')
+  })
+
+  it('names the coverage when some runs have no reading', async () => {
+    const gateway = fakeToolGateway()
+    gateway.aggregateResult = { value: 151, n: 9, runCount: 14 }
+    const { answer } = await handleAggregateRuns(
+      { metric: 'avgHr', agg: 'avg', from: '2026-08-01', to: '2026-08-31' },
+      ctx(runHistoryFixture(), gateway),
+    )
+    const result = answer as { value: string; situation: string }
+    expect(result.value).toBe('151 bpm')
+    expect(result.situation).toContain('9 of 14')
+  })
+
+  it('warns that an average of average paces is not the overall pace', async () => {
+    const gateway = fakeToolGateway()
+    gateway.aggregateResult = { value: 402, n: 8, runCount: 8 }
+    const { answer } = await handleAggregateRuns(
+      { metric: 'avgPaceSec', agg: 'avg', from: '2026-08-01', to: '2026-08-31' },
+      ctx(runHistoryFixture(), gateway),
+    )
+    const result = answer as { value: string; situation: string }
+    expect(result.value).toBe(`6'42"/km`)
+    expect(result.situation).toContain('NOT the figure for the whole distance')
+  })
+
+  it('refuses to add up a column of averages, and names the aggregation that was meant', async () => {
+    const gateway = fakeToolGateway()
+    const { answer, isError } = await handleAggregateRuns(
+      { metric: 'avgPaceSec', agg: 'sum', from: '2026-08-01', to: '2026-08-31' },
+      ctx(runHistoryFixture(), gateway),
+    )
+    expect(isError).toBe(true)
+    expect((answer as { kind: string }).kind).toBe('meaningless')
+    expect((answer as { situation: string }).situation).toContain('"avg"')
+    // The refusal happens BEFORE the query — a meaningless number is never computed.
+    expect(gateway.aggregates).toHaveLength(0)
+  })
+
+  it('answers a malformed date as a tool result, not a throw', async () => {
+    const gateway = fakeToolGateway()
+    const { answer, isError } = await handleAggregateRuns(
+      { metric: 'distanceM', agg: 'sum', from: 'bulan lalu', to: '2026-08-31' },
+      ctx(runHistoryFixture(), gateway),
+    )
+    expect(isError).toBe(true)
+    expect((answer as { kind: string }).kind).toBe('invalid')
+    expect((answer as { input: string }).input).toBe('bulan lalu')
+    expect(gateway.aggregates).toHaveLength(0)
+  })
+
+  it('refuses a backwards range and says which way round it should be', async () => {
+    const gateway = fakeToolGateway()
+    const { answer, isError } = await handleAggregateRuns(
+      { metric: 'distanceM', agg: 'sum', from: '2026-08-31', to: '2026-08-01' },
+      ctx(runHistoryFixture(), gateway),
+    )
+    expect(isError).toBe(true)
+    expect((answer as { kind: string }).kind).toBe('empty_range')
+    expect(gateway.aggregates).toHaveLength(0)
+  })
+
+  it('refuses a metric it does not have a column for, with the field named', async () => {
+    const { answer, isError } = await handleAggregateRuns(
+      { metric: 'restingHr', agg: 'avg', from: '2026-08-01', to: '2026-08-31' },
+      ctx(),
+    )
+    expect(isError).toBe(true)
+    expect(answer).toHaveProperty('issues')
+    expect((answer as { issues: string }).issues).toContain('metric')
+  })
+
+  it('counts runs that HAVE the reading, spelled as runs', async () => {
+    const gateway = fakeToolGateway()
+    gateway.aggregateResult = { value: 9, n: 9, runCount: 14 }
+    const { answer } = await handleAggregateRuns(
+      { metric: 'elevationM', agg: 'count', from: '2026-08-01', to: '2026-08-31' },
+      ctx(runHistoryFixture(), gateway),
+    )
+    const result = answer as { value: string; unit: string; situation: string }
+    expect(result.value).toBe('9 run(s)')
+    expect(result.unit).toBe('runs')
+    expect(result.situation).toContain('out of 14')
+  })
+
+  it('reaches the same handler through dispatchNinaTool', async () => {
+    const gateway = fakeToolGateway()
+    gateway.aggregateResult = { value: 8400, n: 3, runCount: 3 }
+    const { answer, isError } = await dispatchNinaTool(
+      'aggregate_runs',
+      { metric: 'distanceM', agg: 'avg', from: '2026-08-01', to: '2026-08-31' },
+      ctx(runHistoryFixture(), gateway),
+      NINA_CORE_TOOL_SET.handlers,
+    )
+    expect(isError).toBe(false)
+    expect((answer as { value: string }).value).toBe('8.40 km')
   })
 })

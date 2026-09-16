@@ -21,8 +21,8 @@
  * phase stays revertable on its own. It is also what makes ruling (b)'s empirical exit cheap: if
  * `save_memory` never fires, it leaves `NINA_CORE_TOOL_SET` in one line.
  */
-import type { DateISO } from '@/lib/date/ranges'
-import type { NinaFactCategory, NinaMemorySource, NinaSlotValue } from '@/lib/db/schema'
+import { addDays, isValidDateISO, type DateISO } from '@/lib/date/ranges'
+import type { NinaFactCategory, NinaMemorySource, NinaSlotValue, RunIntent } from '@/lib/db/schema'
 import {
   formatBpm,
   formatCadence,
@@ -46,12 +46,21 @@ import {
   type DateResolution,
   type RunsByDate,
 } from './dates'
-import { COMPARE_RUNS_TOOL, LOOKUP_RUNS_TOOL, SAVE_MEMORY_TOOL, SEND_TOOL } from './prompts'
 import {
+  AGGREGATE_RUNS_TOOL,
+  COMPARE_RUNS_TOOL,
+  LOOKUP_RUNS_TOOL,
+  SAVE_MEMORY_TOOL,
+  SEND_TOOL,
+} from './prompts'
+import {
+  AggregateRunsArgsSchema,
   CompareRunsArgsSchema,
   LookupRunsArgsSchema,
   SaveMemoryArgsSchema,
   describeNinaIssues,
+  type NinaAggregateFn,
+  type NinaAggregateMetric,
 } from './schema'
 
 /* ============================================================================
@@ -83,6 +92,36 @@ export interface NinaRunHistory {
   splitsByRunId: ReadonlyMap<string, readonly SplitRow[]>
   /** `runId` -> F06's zone shares, copied from `metrics.zonePct`. Never recomputed here. */
   zonesByRunId: ReadonlyMap<string, readonly ZonePctRow[]>
+}
+
+/**
+ * `aggregate_runs`' request, as the GATEWAY sees it — already validated, already translated.
+ *
+ * `endExclusiveISO` is EXCLUSIVE and `handleAggregateRuns` is what made it so: the tool's public
+ * contract takes an inclusive `to`, because that is what a model reasons in, and the half-open
+ * bound every rollup query scans is an implementation detail of the layer below. The translation
+ * happens once, in the handler, and this type is where it is already done.
+ */
+export interface NinaAggregateParams {
+  metric: NinaAggregateMetric
+  agg: NinaAggregateFn
+  /** INCLUSIVE lower bound, `YYYY-MM-DD`. */
+  startISO: DateISO
+  /** EXCLUSIVE upper bound, `YYYY-MM-DD`. */
+  endExclusiveISO: DateISO
+  /** `null` means every intent, including runs whose intent was never set. */
+  intent: RunIntent | null
+}
+
+/** Three numbers and no rows. The shape `lib/db/queries/rollups.ts` returns, restated here so
+ * `tools.ts` never has to import it — invariant 9. */
+export interface NinaAggregateResult {
+  /** `null` when no reviewed run in the range has a reading for the metric. */
+  value: number | null
+  /** Runs that contributed a NON-NULL reading — the denominator of an `avg`. */
+  n: number
+  /** Reviewed runs the filters matched at all. */
+  runCount: number
 }
 
 export interface NinaToolGateway {
@@ -118,6 +157,17 @@ export interface NinaToolGateway {
     userId: string,
     row: { text: string; sourceMessageId: string | null; category?: NinaFactCategory },
   ): Promise<void>
+  /**
+   * **R1. The only read here that is NOT served from `loadRunHistory`'s snapshot, and the only one
+   * that issues a query per tool CALL.** That is allowed because of what it brings back: three
+   * numbers, never rows. An average over a training block is one `select avg(...)` the database
+   * answers in a single row; loading the range and reducing over it in TypeScript would cost more
+   * and would put the arithmetic in this package, which is what invariant 2 forbids.
+   *
+   * The date window is already half-open (`NinaAggregateParams`), and the `userId` scope and D16's
+   * reviewed-only gate belong to the implementation, exactly as they do for `loadRunHistory`.
+   */
+  aggregateRuns(userId: string, params: NinaAggregateParams): Promise<NinaAggregateResult>
 }
 
 /* ============================================================================
@@ -163,16 +213,24 @@ export interface NinaToolSet {
 }
 
 /**
- * The four tools phase 3 ships. `GENERATE_IMAGE_TOOL` and `SET_AVATAR_TOOL` exist in phase 2's
- * module and are **deliberately not here**: a tool she can call and this file cannot dispatch
- * would return an error she then has to apologise for, which is R22's failure mode arriving two
- * phases early.
+ * The five tools this package dispatches. `GENERATE_IMAGE_TOOL` and `SET_AVATAR_TOOL` exist in
+ * phase 2's module and are **deliberately not here**: a tool she can call and this file cannot
+ * dispatch would return an error she then has to apologise for, which is R22's failure mode
+ * arriving two phases early.
+ *
+ * `aggregate_runs` IS here, and not behind `extendToolSet`, on purpose. `extendToolSet` exists to
+ * keep tools with their own infrastructure — OpenRouter, image jobs, avatar rotation — out of this
+ * file; `aggregate_runs` has the dependency profile of `lookup_runs` and `compare_runs` exactly,
+ * one gateway method and `lib/format.ts`, so the reason for the seam does not reach it. Adding it
+ * here is also what makes `NINA_CHAT_TOOL_SET` and `NINA_FULL_TOOL_SET` inherit it with no edit in
+ * `imagetools.ts` or `avatartools.ts`.
  */
 export const NINA_CORE_TOOL_SET: NinaToolSet = {
-  tools: [SEND_TOOL, LOOKUP_RUNS_TOOL, COMPARE_RUNS_TOOL, SAVE_MEMORY_TOOL],
+  tools: [SEND_TOOL, LOOKUP_RUNS_TOOL, COMPARE_RUNS_TOOL, AGGREGATE_RUNS_TOOL, SAVE_MEMORY_TOOL],
   handlers: {
     [LOOKUP_RUNS_TOOL.name]: handleLookupRuns,
     [COMPARE_RUNS_TOOL.name]: handleCompareRuns,
+    [AGGREGATE_RUNS_TOOL.name]: handleAggregateRuns,
     [SAVE_MEMORY_TOOL.name]: handleSaveMemory,
   },
 }
@@ -842,6 +900,282 @@ export async function handleCompareRuns(
       'Every delta below is B minus A, already worked out. Do NOT subtract anything yourself. ' +
       'Read `higherMeans` before calling a rise good or bad, and `direction: "unknown"` means one ' +
       'of the two runs has no reading for that field — not that nothing changed.',
+  }
+  return { answer, isError: false }
+}
+
+/* ============================================================================
+ * aggregate_runs — R1: one SQL aggregate, one number, already spelled
+ * ==========================================================================*/
+
+interface AggregateMetricSpec {
+  label: string
+  /** The unit a reader should hear. Echoed in the answer so she never has to guess it. */
+  unit: string
+  /** Spelling for an absolute value. Always an existing `lib/format.ts` call — invariant 3. */
+  format: (value: number) => string
+  /** `'a rise means he ran SLOWER'` — so she never has to infer what a bigger number means. */
+  higherMeans: string
+  /**
+   * True for the two metrics that are ALREADY per-run averages. Two consequences, both below:
+   * `sum` over one of them is refused (a column of average paces added up is a number with no
+   * meaning, and a meaningless number is the thing a model restates most confidently), and `avg`
+   * over one of them carries a caveat — it is the mean of each run's own average, which is not the
+   * figure for the whole distance taken together.
+   */
+  perRunAverage: boolean
+}
+
+/**
+ * **Every aggregate Nina can ask for, and therefore every aggregate she can ask for AT ALL.**
+ *
+ * The same shape as `COMPARE_FIELDS` above and for the same reason: a metric is in this table only
+ * if `runs` stores it as a per-run number, so a metric that does not exist cannot be added to a
+ * prompt — it has to be added to the schema first. The keys are `NinaAggregateMetric`, so this
+ * record is exhaustive by type: a seventh metric in `lib/nina/schema.ts` fails to compile until it
+ * has a label, a unit, a spelling and a `higherMeans`.
+ */
+const AGGREGATE_METRICS: Readonly<Record<NinaAggregateMetric, AggregateMetricSpec>> = {
+  durationSec: {
+    label: 'moving time',
+    unit: 'h:mm:ss',
+    format: (v) => formatDuration(v),
+    higherMeans: 'a bigger number means he was out longer',
+    perRunAverage: false,
+  },
+  distanceM: {
+    label: 'distance',
+    unit: 'km',
+    format: (v) => formatDistanceM(v),
+    higherMeans: 'a bigger number means he covered more ground',
+    perRunAverage: false,
+  },
+  avgPaceSec: {
+    label: 'average pace',
+    unit: 'minutes per km',
+    format: (v) => formatPace(v, true),
+    higherMeans: 'pace is seconds per km, so a BIGGER number means he ran SLOWER',
+    perRunAverage: true,
+  },
+  avgHr: {
+    label: 'average heart rate',
+    unit: 'bpm',
+    format: (v) => formatBpm(v),
+    higherMeans: 'a bigger number means his heart worked harder',
+    perRunAverage: true,
+  },
+  activeKcal: {
+    label: 'active calories',
+    unit: 'kcal',
+    format: (v) => formatKcal(v),
+    higherMeans: 'a bigger number means more energy spent, as the watch reported it',
+    perRunAverage: false,
+  },
+  elevationM: {
+    label: 'elevation gain',
+    unit: 'm',
+    format: (v) => formatElevation(v),
+    higherMeans: 'a bigger number means more climbing, which makes a slower pace expected',
+    perRunAverage: false,
+  },
+}
+
+/**
+ * What each aggregation IS, said the way her sentence should say it. `count` is absent on purpose
+ * — it does not read as "the count of average pace", so `situationFor` gives it its own clause.
+ */
+const AGGREGATE_VERBS: Readonly<Record<Exclude<NinaAggregateFn, 'count'>, string>> = {
+  avg: 'The average',
+  sum: 'The total',
+  min: 'The lowest',
+  max: 'The highest',
+}
+
+interface AggregateRunsAnswer {
+  kind: 'aggregate'
+  /** Repeated so the answer is self-contained if she re-reads it three turns later. */
+  todayISO: DateISO
+  metric: NinaAggregateMetric
+  label: string
+  agg: NinaAggregateFn
+  fromISO: DateISO
+  /** INCLUSIVE, exactly as she sent it — never the exclusive bound the query used. */
+  toISO: DateISO
+  intent: RunIntent | null
+  /**
+   * **Already spelled, and never a raw second or metre** (invariant 3). `null` means nothing in
+   * the range had a reading for this metric, which is an ANSWER and not an error.
+   */
+  value: string | null
+  unit: string
+  /** Runs that contributed a reading — the denominator, so she can say "over 11 runs". */
+  n: number
+  /** Reviewed runs in the range at all. `runCount - n` had no reading for this metric. */
+  runCount: number
+  higherMeans: string
+  situation: string
+}
+
+/** Every answer `aggregate_runs` can give. A union, so no branch can return "nothing". */
+type AggregateRunsResult =
+  | AggregateRunsAnswer
+  | { kind: 'invalid'; input: string; situation: string }
+  | { kind: 'empty_range'; fromISO: string; toISO: string; situation: string }
+  | { kind: 'meaningless'; metric: NinaAggregateMetric; agg: NinaAggregateFn; situation: string }
+
+/**
+ * The clause addressed to her, and the reason this tool is safe to hand a model: it names what the
+ * number IS, how many runs it came from, that it is already worked out — and, for the two metrics
+ * that are themselves averages, what it is NOT.
+ *
+ * Three states have their own sentence and none of them is an empty object: no runs at all, runs
+ * but no readings, and a real number. `lookup_runs`' `no_run` branch makes the same distinction for
+ * the same reason (R15): an absence has to get SAID rather than skipped.
+ */
+function situationFor(input: {
+  spec: AggregateMetricSpec
+  agg: NinaAggregateFn
+  fromISO: DateISO
+  toISO: DateISO
+  intent: RunIntent | null
+  n: number
+  runCount: number
+  spelled: string | null
+}): string {
+  const { spec, agg, fromISO, toISO, intent, n, runCount, spelled } = input
+  const scope = intent == null ? 'his runs' : `his "${intent}" runs`
+  const window = `${fromISO} to ${toISO} inclusive`
+
+  if (runCount === 0) {
+    return `NO reviewed runs at all for ${scope} between ${window}. There is nothing to work out. Tell him that.`
+  }
+  if (spelled == null || n === 0) {
+    return `${runCount} reviewed run(s) for ${scope} between ${window}, but NONE has a ${spec.label} reading. Say the number is missing — not that it is zero.`
+  }
+
+  const coverage =
+    n === runCount
+      ? `all ${n} of them`
+      : `${n} of ${runCount} — the other ${runCount - n} have no reading`
+  const head =
+    agg === 'count'
+      ? `${spelled} of ${scope} between ${window} have a ${spec.label} reading, out of ${runCount} reviewed run(s).`
+      : `${AGGREGATE_VERBS[agg]} ${spec.label} for ${scope} between ${window} is ${spelled}, over ${coverage}.`
+  const caveat =
+    agg === 'avg' && spec.perRunAverage
+      ? ` It is the mean of each run's own ${spec.label}, NOT the figure for the whole distance taken together.`
+      : ''
+
+  return `${head} It is already worked out — do NOT recompute it.${caveat}`
+}
+
+/**
+ * **R1. One number, computed by the database, spelled by `lib/format.ts`.**
+ *
+ * The three things this handler owns, which the layers on either side of it deliberately do not:
+ *
+ *   - **The date translation.** Her `to` is the last day he means; the query scans `< to + 1 day`.
+ *     `monthRange`/`isoWeekRange` already do this for their callers, and doing it here keeps the
+ *     half-open convention an implementation detail of `lib/db/queries/rollups.ts`.
+ *   - **The refusals.** A malformed day, a backwards range, and `sum` over a metric that is
+ *     already an average. Each is a `tool_result` with a sentence she can act on, never a throw —
+ *     and, per ruling (g), none of them spends the repair budget.
+ *   - **The spelling.** The gateway returns a raw number; this returns `'8.40 km'`. Nothing in the
+ *     answer is a number she could subtract from another number, which is invariant 2 applied at
+ *     the one other place it could break.
+ *
+ * `isError` is FALSE for "no runs in that range" and for "no run has that reading". Both are
+ * correct, complete answers to a well-formed question, and flagging them would invite her to
+ * apologise for the tool instead of telling him what the data says — the same call
+ * `handleLookupRuns` makes for `no_run`.
+ */
+export async function handleAggregateRuns(
+  args: unknown,
+  ctx: NinaToolContext,
+): Promise<NinaToolAnswer> {
+  const parsed = AggregateRunsArgsSchema.safeParse(args)
+  if (!parsed.success) {
+    return {
+      answer: {
+        error:
+          'aggregate_runs needs { metric, agg, from: "YYYY-MM-DD", to: "YYYY-MM-DD", intent? }.',
+        issues: describeNinaIssues(parsed.error),
+      },
+      isError: true,
+    }
+  }
+
+  const { metric, agg, from, to } = parsed.data
+  /* The one place `NINA_AGGREGATE_INTENTS` meets `RunIntent`. If the two lists ever drift, this
+   * assignment is what stops compiling — see `lib/nina/schema.ts`'s note on the copy. */
+  const intent: RunIntent | null = parsed.data.intent ?? null
+  const spec = AGGREGATE_METRICS[metric]
+
+  for (const input of [from, to]) {
+    if (!isValidDateISO(input)) {
+      return {
+        answer: {
+          kind: 'invalid',
+          input,
+          situation: `"${input}" is not a real calendar day. Send YYYY-MM-DD worked out from todayISO.`,
+        } satisfies AggregateRunsResult,
+        isError: true,
+      }
+    }
+  }
+
+  if (from > to) {
+    /* String comparison is date comparison for `YYYY-MM-DD`, and both sides are already proven to
+     * be real days one statement above. */
+    return {
+      answer: {
+        kind: 'empty_range',
+        fromISO: from,
+        toISO: to,
+        situation: `from (${from}) is after to (${to}), so the range holds no days. Send the earlier day as "from".`,
+      } satisfies AggregateRunsResult,
+      isError: true,
+    }
+  }
+
+  if (agg === 'sum' && spec.perRunAverage) {
+    return {
+      answer: {
+        kind: 'meaningless',
+        metric,
+        agg,
+        situation: `${spec.label} is already a per-run average, so adding it up across runs means nothing. Ask for "avg", "min" or "max" instead.`,
+      } satisfies AggregateRunsResult,
+      isError: true,
+    }
+  }
+
+  const { value, n, runCount } = await ctx.gateway.aggregateRuns(ctx.userId, {
+    metric,
+    agg,
+    startISO: from,
+    endExclusiveISO: addDays(to, 1),
+    intent,
+  })
+
+  const spelled =
+    value == null ? null : agg === 'count' ? `${Math.round(value)} run(s)` : spec.format(value)
+
+  const answer: AggregateRunsAnswer = {
+    kind: 'aggregate',
+    todayISO: ctx.todayISO,
+    metric,
+    label: spec.label,
+    agg,
+    fromISO: from,
+    toISO: to,
+    intent,
+    value: spelled,
+    unit: agg === 'count' ? 'runs' : spec.unit,
+    n,
+    runCount,
+    higherMeans: spec.higherMeans,
+    situation: situationFor({ spec, agg, fromISO: from, toISO: to, intent, n, runCount, spelled }),
   }
   return { answer, isError: false }
 }

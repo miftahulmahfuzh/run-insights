@@ -88,7 +88,19 @@
  * change, so `nina_turns` has to be able to tell those turns from version 6's. This is the SINGLE
  * bump for the whole set: phase 2 owns it and no other phase touches this constant, because two
  * bumps would date two commits to one change. */
-export const NINA_PROMPT_VERSION = 7
+/* 8 — the aggregate-runs-tool set, R1. **A TOOL SCHEMA MOVED, and it is the first one since
+ * version 1.** `./tools.ts` gained `AGGREGATE_RUNS_TOOL` and `NINA_TOOLS` went from six entries to
+ * seven; `./system.ts` was not opened, so `buildNinaSystemPrompt` is byte-identical to version 7's
+ * at every tuning and `tests/__snapshots__/nina.prompts.test.ts.snap` passes UNREGENERATED. What
+ * she can now do that she could not before is ask the database for ONE number over a range —
+ * average, total, fastest, slowest, count — over one of six run metrics, instead of calling
+ * `lookup_runs` for up to five days and averaging the printed rows in prose.
+ *
+ * The bump is the file header's own rule applied literally: `NINA_PROMPT_VERSION` covers the
+ * system text AND every tool schema in `./tools.ts`, and a turn that had a fifth tool in its
+ * `body.tools` is a turn `nina_turns` has to be able to tell from version 7's. This is the SINGLE
+ * bump for the whole set: it is a one-phase set and no other file touches this constant. */
+export const NINA_PROMPT_VERSION = 8
 
 export {
   NINA_REPAIR_PREAMBLE,
@@ -105,6 +117,7 @@ export {
 } from './system'
 
 export {
+  AGGREGATE_RUNS_TOOL,
   COMPARE_RUNS_TOOL,
   GENERATE_IMAGE_TOOL,
   LOOKUP_RUNS_TOOL,
