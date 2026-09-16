@@ -47,7 +47,7 @@ import type { NinaImagePrefs } from '../imageprefs'
  */
 export const NINA_BODY_SENTENCES: readonly string[] = [
   `She has got an alluring body, big boobs and very long calves. This silhouette is the point of the photograph and it must be visible in it.`,
-  `Her chest is full and heavy, her hips are wide and her waist is narrow.`,
+  `Her chest is full and heavy and her waist is narrow.`,
   `Her butt is round, high and prominent, standing out from her back rather than flattening into it.`,
   `Her thighs are thick and strong, filling whatever she is wearing, with a runner's muscle visible under soft skin.`,
   `Her calves are very long and full, defined all the way down to a narrow ankle, on legs that are unusually long for her height. She is curvy and heavy-bodied, never lean and never slight.`,
