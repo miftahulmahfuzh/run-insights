@@ -32,6 +32,7 @@ const spies = vi.hoisted(() => ({
   revalidatePath: vi.fn(),
   getNinaMessageImage: vi.fn(),
   deleteNinaMessageImage: vi.fn(),
+  promoteNinaImageDependents: vi.fn(),
   releaseBlobIfUnreferenced: vi.fn(),
 }))
 
@@ -42,17 +43,22 @@ vi.mock('@/lib/nina/sessionActions', () => ({
 }))
 
 /*
- * The delete action moved in beside the attach action, and its imports arrive with it. Mocked at
- * the edges whole, for the reason this suite's header already gives — `requireUserId` drags the
- * next-auth chain and `queries` drags the database client, and neither belongs in a suite whose
- * subject is the two sends' branching. The delete has its own suite
- * (`tests/nina.galleryDelete.test.ts`), which owns these collaborators' assertions.
+ * The delete action moved in beside the attach action, and its imports arrive with it — plus, since
+ * the ghost-photo fix, `provenancePromotion`, whose own import of `perceptualSign` would otherwise
+ * put `sharp` into this suite's graph. Mocked at the edges whole, for the reason this suite's header
+ * already gives — `requireUserId` drags the next-auth chain and `queries` drags the database client,
+ * and neither belongs in a suite whose subject is the two sends' branching. The delete has its own
+ * suite (`tests/nina.galleryDelete.test.ts`), which owns these collaborators' assertions.
  */
 vi.mock('@/lib/auth/requireUserId', () => ({ requireUserId: spies.requireUserId }))
 vi.mock('next/cache', () => ({ revalidatePath: spies.revalidatePath }))
 vi.mock('@/lib/nina/queries', () => ({
   getNinaMessageImage: spies.getNinaMessageImage,
   deleteNinaMessageImage: spies.deleteNinaMessageImage,
+}))
+vi.mock('@/lib/nina/provenancePromotion', () => ({
+  promoteNinaImageDependents: spies.promoteNinaImageDependents,
+  promoteNinaAvatarDependents: vi.fn(),
 }))
 vi.mock('@/lib/nina/blobRelease', () => ({
   releaseBlobIfUnreferenced: spies.releaseBlobIfUnreferenced,

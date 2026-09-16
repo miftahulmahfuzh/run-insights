@@ -378,6 +378,145 @@ export function buildFillPerceptualOps(rows) {
     .filter(Boolean)
 }
 
+/* ── PHANTOM ORIGINALS (2026-09-16's measured defect) ──────────────────────────────────────────
+ * A `nina_message_images` row written as a REFERENCE carries no measurements of its own by design:
+ * `resolveAttachment` copies `blob_url`/`pathname`/`description` from the source and leaves
+ * `content_hash`/`perceptual_hash`/`perceptual_sig`/`width`/`height`/`bytes` NULL, because the
+ * keeper owns those facts. When the parent is hard-deleted, the FK's deliberate `ON DELETE SET
+ * NULL` (`lib/db/schema/nina/chat.ts:614-618`) blanks `source_avatar_id`/`source_image_id` — and
+ * the row silently reclassifies to an ORIGINAL by `isOriginalRow`'s definition while still
+ * carrying nothing dedup can read. It is now a tile in Media that no mechanism can ever match.
+ *
+ * Measured on production 2026-09-16: exactly one such row, `Tdw_AkrJT0ks` — every measurement
+ * column NULL, `message_id` NULL, pathname `avatar-7pgf5f96AXK6-…jpg` (the AVATAR naming
+ * convention, never a chat selfie's), `description` byte-identical to the live, correctly-hashed
+ * `CwBaQhK_PG5p`. A GET of its `blob_url` returns "Blob not found": the object was deleted out from
+ * under it by an avatar-delete path that never checked whether anything still rendered those bytes
+ * (phase 1 closes that). So this row is UNRECOVERABLE — there are no bytes left to measure — and it
+ * is REPORTED, never removed. Deleting it is a human decision this sweep does not make.
+ *
+ * ── WHY `fill-dimensions` HAD TO EXIST ────────────────────────────────────────────────────────
+ * A phantom whose object is still alive is already hashed by pass 1 and signed by pass 3c. It is
+ * still invisible, because `isPerceptualTwin`'s first line refuses any row with a NULL
+ * `width`/`height`, and NOTHING in this family ever filled those columns. And the perceptual pass
+ * is the ONLY pass that can catch a phantom: the phantom names the avatar object's bytes while its
+ * twin names a separately-encoded selfie object, so their `content_hash` values legitimately
+ * differ and the byte pass can never group them. `fill-dimensions` is that missing measurement,
+ * persisted as an op for the same reason every other fill here is an op — a measurement that lives
+ * only in a console is not a measurement.
+ *
+ * ── THE GUARD, AND WHY IT IS NOT `content_hash is null` ───────────────────────────────────────
+ * Each fill guards ITS OWN column: `fill-hash` on `content_hash is null`, `fill-perceptual` on
+ * `perceptual_hash is null`, `fill-dimensions` on `width is null and height is null`. A
+ * `fill-dimensions` guarded on `content_hash is null` would write nothing at all, because
+ * `fill-hash` runs first in the same op list and fills that very column. `bytes` rides along under
+ * `coalesce` — a stored size is never overwritten, which keeps this consistent with the sweep's
+ * standing "bytes metadata mismatches are REPORTED ONLY" line.
+ *
+ * The app-layer promotion this mirrors (`lib/nina/provenancePromotion.ts`) guards differently on
+ * purpose, and the difference is not a drift to reconcile away: it writes all six columns in ONE
+ * statement, so one guard (`content_hash is null`) covers the whole write, and it adds
+ * `pathname = $n` because it runs inside a Server Action where an admin Replace can repoint the row
+ * between its read and its write. A sweep is a single linear pass over rows it loaded itself, and
+ * each of its three fills is a separate op guarded on the column it fills. Two write paths, two
+ * correct guard shapes, one end state.
+ */
+
+/**
+ * The load-time shape, as a predicate. `hadNullHashAtLoad` is set by the ops script when it maps
+ * the raw row — deliberately NOT the same flag as `hadNullHash`, which pass 1 sets only AFTER a
+ * successful GET and which `buildFillOps` reads. A phantom whose blob is gone never gets
+ * `hadNullHash`, and it is precisely the one this census must not lose.
+ */
+export function isPhantomOriginal(row) {
+  return isOriginalRow(row) && row.hadNullHashAtLoad === true
+}
+
+/**
+ * The census, in three buckets, each row named individually and never silently dropped:
+ *
+ *   recovered     — this run measured the bytes AND signed them AND has dimensions. The fills are
+ *                   queued as ops; on `--apply` the row becomes a fully dedup-eligible original,
+ *                   indistinguishable from one phase 1's app-layer helper promoted.
+ *   partial       — the bytes were measured (hash recovered) but the signature or the dimensions
+ *                   were not (sharp missing, or an undecodable image). Honest half-repair: the row
+ *                   gains a `content_hash` and stays out of the perceptual pass. `missing` says
+ *                   which fact is absent.
+ *   unrecoverable — the GET failed. There are no bytes to measure and there never will be. Named,
+ *                   with the fetch's own reason, and left exactly where it is.
+ *
+ * Each list is id-sorted so two runs over the same data print the same report.
+ */
+export function classifyPhantomOriginals(rows) {
+  const recovered = []
+  const partial = []
+  const unrecoverable = []
+
+  for (const row of rows) {
+    if (!isPhantomOriginal(row)) continue
+
+    if (row.hashFailed === true || row.verifiedHash == null) {
+      unrecoverable.push({
+        id: row.id,
+        pathname: row.pathname,
+        blobUrl: row.blobUrl,
+        reason: row.fetchFailure ?? 'bytes were never measured this run',
+      })
+      continue
+    }
+
+    const entry = {
+      id: row.id,
+      pathname: row.pathname,
+      contentHash: row.verifiedHash,
+      width: row.width ?? null,
+      height: row.height ?? null,
+      bytes: row.bytes ?? null,
+    }
+    const missing = []
+    if (row.sig == null) missing.push('perceptual signature')
+    if (entry.width == null || entry.height == null) missing.push('dimensions')
+
+    if (missing.length > 0) partial.push({ ...entry, missing })
+    else recovered.push(entry)
+  }
+
+  const byId = (a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+  recovered.sort(byId)
+  partial.sort(byId)
+  unrecoverable.sort(byId)
+  return { recovered, partial, unrecoverable }
+}
+
+/**
+ * One op per ORIGINAL whose `width`/`height` were both NULL at load and which this run measured.
+ * References are excluded on purpose: a reference carries no measurements by the module's own
+ * doctrine, and filling one would make it look like an original that nothing elected.
+ *
+ * `bytes` is carried when the run measured a plausible size and is written under `coalesce`, so a
+ * stored size is never clobbered. A measurement that is not a positive integer throws rather than
+ * being written — the same paranoia `buildFillOps` applies to a measured hash.
+ */
+export function buildFillDimensionOps(rows) {
+  return rows
+    .map((row) => {
+      if (row.hadNullDims !== true) return null
+      if (!isOriginalRow(row)) return null
+      const width = row.measuredWidth
+      const height = row.measuredHeight
+      if (width == null || height == null) return null
+      if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) {
+        throw new Error(
+          `row ${row.id}'s measured dimensions are not positive integers — refusing to write ${width}x${height}`,
+        )
+      }
+      const bytes =
+        Number.isInteger(row.measuredBytes) && row.measuredBytes > 0 ? row.measuredBytes : null
+      return { op: 'fill-dimensions', id: row.id, width, height, bytes }
+    })
+    .filter(Boolean)
+}
+
 /**
  * The release gate, as a pure decision over live counts the ops script measures AFTER the group's
  * rows have been repointed. Counts are numbers; `null` means "the query could not answer" —

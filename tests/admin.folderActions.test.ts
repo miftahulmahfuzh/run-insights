@@ -22,6 +22,14 @@ import { installFakeDb, projectedRow, uninstallFakeDb, type FakeDb } from './sup
  * SQL against the fake Neon driver (`installFakeDb`), with only the edges mocked: `@vercel/blob`'s
  * `del`, `requireAdmin`, `revalidatePath`. No `put` and no `after` here — none of these six actions
  * write a new blob or defer a vendor call, unlike the avatar-adoption path in the sibling file.
+ *
+ * Since the ghost-photo fix, the two bulk deletes also run a real promotion lookup and a real
+ * per-object reference check (`lib/nina/provenancePromotion.ts`, `isBlobPathnameReferenced`) — both
+ * against this same fake driver. None of the cases below ever returns an unmeasured dependent, so
+ * neither the `fetch` edge nor `signImageBytes` is ever reached, and neither is mocked here: see
+ * `tests/nina.provenancePromotion.test.ts` for the promotion pass itself. A query this file does
+ * not enqueue a result for answers `[]` by default (the fake driver's own behaviour), which is
+ * exactly "unreferenced" / "no dependents" — the common case every existing fixture below relies on.
  */
 
 const USER = 'usr123XYZ_-9'
@@ -104,6 +112,11 @@ function blobRefRow(id: string, thumb = false): unknown[] {
     thumb ? `https://blob.example/nina/${USER}/thumb-${id}.jpg` : null,
     thumb ? `nina/${USER}/thumb-${id}.jpg` : null,
   )
+}
+
+/** `listNinaAvatarIdsInFolderTree`'s one-column projection. */
+function avatarIdRow(id: string): unknown[] {
+  return projectedRow(id)
 }
 
 describe('createNinaAlbumFolderAction', () => {
@@ -305,6 +318,8 @@ describe('deleteNinaAlbumFolderAction', () => {
 
   it('leaves her current photo behind under keepCurrent, and stays in the folder', async () => {
     fake.enqueue([currentAvatarRow({ id: AVATAR_A, folder: 'Trips/Bali', filename: 'her.jpg' })])
+    fake.enqueue([avatarIdRow(AVATAR_B), avatarIdRow(AVATAR_C)]) // the subtree's deletable ids
+    fake.enqueue([]) // no unmeasured dependents name them
     fake.enqueue([blobRefRow(AVATAR_B), blobRefRow(AVATAR_C, true)])
 
     const result = await actions.deleteNinaAlbumFolderAction({
@@ -325,11 +340,40 @@ describe('deleteNinaAlbumFolderAction', () => {
         expect.stringContaining(AVATAR_C),
       ]),
     )
+
+    /* Her current photo is NOT promoted against: `listNinaAvatarIdsInFolderTree` carries
+     * `is_current = false`, exactly as the delete does. */
+    const ids = fake.queries.find((q) => q.sql.includes('select "id" from "nina_avatars"'))
+    expect(ids?.sql).toContain('"is_current"')
+    expect(ids?.params).not.toContain(AVATAR_A)
+  })
+
+  it('keeps an album object a chat row still renders, and deletes the rest', async () => {
+    fake.enqueue([]) // her current photo is not among the ids
+    fake.enqueue([avatarIdRow(AVATAR_A), avatarIdRow(AVATAR_B)])
+    fake.enqueue([]) // no unmeasured dependents
+    fake.enqueue([blobRefRow(AVATAR_A), blobRefRow(AVATAR_B)])
+    fake.enqueue([[{ id: 'imgStillHere' }]], []) // A: a chat row still names those bytes
+    fake.enqueue([], []) // B: nothing does
+
+    const result = await actions.deleteNinaAlbumFolderAction({
+      folder: 'Trips/Bali',
+      keepCurrent: false,
+    })
+
+    expect(result.ok).toBe(true)
+    expect(del).toHaveBeenCalledTimes(1)
+    expect(del.mock.calls[0]?.[0]).toEqual([expect.stringContaining(AVATAR_B)])
   })
 
   it('deletes rows, reaps both original and thumbnail blobs, and undeclares the empty subtree', async () => {
     fake.enqueue([]) // getCurrentNinaAvatar — her current photo is not in this subtree
+    fake.enqueue([avatarIdRow(AVATAR_A), avatarIdRow(AVATAR_B)])
+    fake.enqueue([]) // no unmeasured dependents
     fake.enqueue([blobRefRow(AVATAR_A), blobRefRow(AVATAR_B, true)])
+    // Three objects (A's original, B's original, B's thumbnail), two arms each, all unreferenced —
+    // otherwise these results would be consumed out of order by the trailing enqueue below.
+    fake.enqueue([], [], [], [], [], [])
     fake.enqueue([projectedRow('Trips/Bali')]) // deleteNinaFolderSubtree RETURNING
 
     const result = await actions.deleteNinaAlbumFolderAction({
@@ -346,6 +390,8 @@ describe('deleteNinaAlbumFolderAction', () => {
   })
 
   it('does not fail the action when the blob store rejects the delete', async () => {
+    fake.enqueue([])
+    fake.enqueue([avatarIdRow(AVATAR_A)])
     fake.enqueue([])
     fake.enqueue([blobRefRow(AVATAR_A)])
     fake.enqueue([])
@@ -383,6 +429,7 @@ describe('removeNinaAvatarsAction', () => {
 
   it('keeps her current photo and removes the rest, when told to', async () => {
     fake.enqueue([currentAvatarRow({ id: AVATAR_A, folder: 'Trips/Bali', filename: 'her.jpg' })])
+    fake.enqueue([]) // no unmeasured dependents
     fake.enqueue([blobRefRow(AVATAR_B)])
 
     const result = await actions.removeNinaAvatarsAction({
@@ -397,6 +444,7 @@ describe('removeNinaAvatarsAction', () => {
 
   it('removes an ordinary selection with no note and reaps the blobs', async () => {
     fake.enqueue([]) // her current photo is not among the ids
+    fake.enqueue([]) // no unmeasured dependents
     fake.enqueue([blobRefRow(AVATAR_A), blobRefRow(AVATAR_B)])
 
     const result = await actions.removeNinaAvatarsAction({
@@ -407,5 +455,22 @@ describe('removeNinaAvatarsAction', () => {
     expect(result).toEqual({ ok: true, count: 2, note: undefined })
     expect(del).toHaveBeenCalledTimes(1)
     expect(revalidatePath).toHaveBeenCalledWith('/admin/nina')
+  })
+
+  it('keeps an album object a chat row still renders, and deletes the rest', async () => {
+    fake.enqueue([]) // her current photo is not among the ids
+    fake.enqueue([]) // no unmeasured dependents
+    fake.enqueue([blobRefRow(AVATAR_A), blobRefRow(AVATAR_B)])
+    fake.enqueue([[{ id: 'imgStillHere' }]], []) // A: a chat row still names those bytes
+    fake.enqueue([], []) // B: nothing does
+
+    const result = await actions.removeNinaAvatarsAction({
+      ids: [AVATAR_A, AVATAR_B],
+      keepCurrent: false,
+    })
+
+    expect(result.ok).toBe(true)
+    expect(del).toHaveBeenCalledTimes(1)
+    expect(del.mock.calls[0]?.[0]).toEqual([expect.stringContaining(AVATAR_B)])
   })
 })

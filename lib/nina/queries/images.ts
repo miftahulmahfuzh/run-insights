@@ -539,8 +539,11 @@ export function isOriginalPhoto(): SQL | undefined {
  * after the chat row is deleted.
  *
  * **The copy is not being un-copied, and no back-reference column is being added.** "Bytes copied,
- * not shared" is deliberate (an album delete calls `del` with no reference check, so a shared
- * object would blank the chat bubble the day the album row went away), and a new column would be a
+ * not shared" is deliberate (until the ghost-photo fix an album delete called `del` with no
+ * reference check at all, so a shared object would blank the chat bubble the day the album row
+ * went away; the delete is reference-checked now — `lib/admin/ninaAlbumAvatarActions.ts` and
+ * `reapAvatarBlobs` both ask `isBlobPathnameReferenced` first — but a copy is still what makes the
+ * two sides' framing, folder and lifetime independent of each other), and a new column would be a
  * migration for a fact `nina_avatars.source_key` already states.
  *
  * **It is scoped and it is indexed.** `nina_avatars.user_id` is spelled inside the subquery — an
@@ -870,6 +873,208 @@ export async function deleteNinaMessageImage(
     .returning(imageColumns)
 
   return deleted[0] ?? null
+}
+
+/**
+ * One row a parent's delete is about to orphan: a REFERENCE that carries no measurements of its
+ * own, about to be reclassified as an "original" by `isOriginalPhoto()` the moment the FK fires.
+ *
+ * Three columns and no more. The promotion needs an id to write to and the object's two spellings
+ * to fetch and to guard on; `description` is `glm-4.6v`'s private text (invariant 5) and has no
+ * business in a projection whose only consumer is a `fetch`.
+ */
+export interface NinaImageDependent {
+  id: string
+  blobUrl: string
+  pathname: string
+}
+
+/**
+ * **"Which of this user's rows point at the parents that are about to be deleted, and have never
+ * been measured?"** The read half of the promote-before-delete rule (`lib/nina/provenancePromotion.ts`).
+ *
+ * ── WHY IT MUST RUN BEFORE THE PARENT'S DELETE, AND CAN NEVER BE ASKED AFTER ────────────────
+ * `nina_message_images.source_avatar_id` and `.source_image_id` are both `ON DELETE SET NULL`
+ * (`lib/db/schema/nina/chat.ts:614-618`, deliberate: *"the collection KEEPS the picture instead of
+ * losing it"*). Postgres fires that inside the parent DELETE's own statement, so the link this
+ * query reads is gone before the delete returns. There is no later moment in the request at which
+ * "the dependents, keyed by the parent id" can be found again — which is the whole reason the
+ * promotion is ordered first.
+ *
+ * ── `content_hash IS NULL` IS THE QUALIFIER, AND IT IS ONE COLUMN ON PURPOSE ────────────────
+ * A row that already carries a hash has already been measured — by the sweep's `fill-hash` op, by
+ * an earlier promotion, or by a writer that owned its bytes — and re-fetching its object to
+ * re-measure it would be a GET for a value that is already correct. One column rather than a
+ * conjunction over all six: `content_hash` is the column BOTH dedup mechanisms ultimately gate on
+ * (`findNinaImageByContentHash` reads it directly, and the promotion writes the perceptual pair in
+ * the same statement that fills it), and the sweep's own `fill-hash` guard is spelled exactly this
+ * way. A row with a hash but no signature is the sweep's `fill-perceptual` case, not this one's.
+ *
+ * ── EITHER COLUMN, AS AN `OR` OF TWO `IN` LISTS ─────────────────────────────────────────────
+ * An avatar delete supplies `avatarIds`, a chat-photo delete supplies `imageIds`, and the shape
+ * admits both at once because a future caller deleting across both tables in one gesture must not
+ * have to run this twice and merge the halves itself. An arm with no ids is omitted rather than
+ * emitted as `in ()`, which drizzle spells differently across versions and which
+ * `moveNinaAvatarsToFolder` already declines to depend on. Both lists empty answers `[]` without a
+ * statement.
+ *
+ * ── NO `isOriginalPhoto()`, AND THAT IS THE POINT ───────────────────────────────────────────
+ * Every row this returns is, by construction, a REFERENCE — that predicate would exclude all of
+ * them. The rows are about to STOP being references, which is what this whole read exists to get
+ * ahead of.
+ *
+ * ── ORDERED BY PATHNAME, BECAUSE THE CALLER GROUPS BY IT ────────────────────────────────────
+ * The promotion fetches each distinct pathname's bytes at most once, so handing it rows already
+ * clustered makes the grouping a single pass and makes the GET order stable across runs — which is
+ * what lets a partial failure (one dead object among twenty) be reproduced rather than guessed at.
+ * `id` is the tiebreak for the usual reason: `pathname` ties for every row that shares an object.
+ *
+ * Owner-scoped in the WHERE (`lib/nina/queries.ts`'s rule 1). The parent ids arrive from a Server
+ * Action's argument and are claims; a claim naming another user's parent simply matches none of
+ * this user's rows, which is the same "not yours and does not exist are one answer" this layer
+ * gives everywhere else. No index carries `source_avatar_id`/`source_image_id` (see the columns'
+ * own header in the schema) — this is a bounded scan filtered by `user_id`, run once per
+ * human-paced delete, and **no index is being added**.
+ */
+export async function listUnmeasuredNinaImageDependents(
+  userId: string,
+  parents: { avatarIds?: readonly string[]; imageIds?: readonly string[] },
+): Promise<NinaImageDependent[]> {
+  const avatarIds = [...new Set(parents.avatarIds ?? [])]
+  const imageIds = [...new Set(parents.imageIds ?? [])]
+
+  const arms: SQL[] = []
+  if (avatarIds.length > 0) arms.push(inArray(ninaMessageImages.sourceAvatarId, avatarIds))
+  if (imageIds.length > 0) arms.push(inArray(ninaMessageImages.sourceImageId, imageIds))
+  if (arms.length === 0) return []
+
+  return db
+    .select({
+      id: ninaMessageImages.id,
+      blobUrl: ninaMessageImages.blobUrl,
+      pathname: ninaMessageImages.pathname,
+    })
+    .from(ninaMessageImages)
+    .where(
+      and(
+        eq(ninaMessageImages.userId, userId),
+        or(...arms),
+        isNull(ninaMessageImages.contentHash),
+      ),
+    )
+    .orderBy(asc(ninaMessageImages.pathname), asc(ninaMessageImages.id))
+}
+
+/**
+ * Everything one Blob object's bytes say about themselves, measured once, in one place.
+ *
+ * `contentHash` and `bytes` are always present — they are arithmetic over the buffer and cannot
+ * fail once the buffer exists. `signature` is `null` when `sharp` could not decode the bytes,
+ * which is `signImageBytes`'s documented degradation and NOT a reason to withhold the hash: the
+ * sweep's `fill-hash` and `fill-perceptual` are two ops for exactly this reason, and a row with a
+ * hash and no signature participates in the byte-exact dedup arm while the perceptual arm waits
+ * for the sweep.
+ */
+export interface NinaImageMeasurement {
+  /** 64 lowercase hex over the exact bytes the object serves (`contentHashOf`). */
+  contentHash: string
+  /** The object's size in bytes, as fetched — never a claim. */
+  bytes: number
+  /** `signImageBytes`'s pair plus the dimensions it measured, or `null` if sharp could not read them. */
+  signature: { dhashHex: string; sig16Base64: string; width: number; height: number } | null
+}
+
+/**
+ * **PROMOTE: a reference becomes a measured original, one statement per shared object.** The write
+ * half of the promote-before-delete rule, and the statement that makes the `ON DELETE SET NULL`
+ * reclassification honest instead of silent.
+ *
+ * ── WHY THE WHERE DELIBERATELY OMITS `isOriginalPhoto()` ────────────────────────────────────
+ * Every other write in this section carries it — `updateNinaChatPhotoBlob`,
+ * `updateNinaChatPhotoPerceptualSignature` and `updateNinaChatPhotoDescription` all refuse a
+ * reference, because a reference re-shows bytes that live elsewhere and a fact written onto it
+ * would be a fact about bytes it does not own. This statement is the ONE exception in the file and
+ * the exception is the requirement: its rows are references *for another few milliseconds*, and
+ * the values being written are measurements of the object their own `blob_url` serves and will go
+ * on serving after their parent is gone. Adding the predicate here would make the statement a
+ * guaranteed no-op. **Do not "restore consistency" by adding it.**
+ *
+ * The window this opens is provably inert. Between this UPDATE and the parent's DELETE the row is
+ * a reference that carries a hash and a signature — and both dedup reads that could act on those
+ * values, `findNinaImageByContentHash` and `findNinaSignedOriginals`, carry `isOriginalPhoto()` in
+ * their own WHERE. Nothing can match against it until it stops being a reference. The sweep is the
+ * same answer from the other side: `scripts/nina-dedupe-plan.mjs`'s header already states that
+ * *"every row is hashed"*, references included, and its perceptual merge already excludes them — so
+ * a row this statement measures is a row the sweep would eventually have measured anyway. This
+ * writes it at the one moment it matters instead of at the next manual run.
+ *
+ * ── THE TWO GUARDS, AND WHAT EACH ONE STOPS ─────────────────────────────────────────────────
+ *   · `content_hash IS NULL` — idempotence against a concurrent promotion, the sweep's own
+ *     `fill-hash` guard (`update ... where id = $1 and content_hash is null`) spelled in drizzle.
+ *     A second promoter, a retried Server Action, or the sweep running mid-delete all resolve to
+ *     "0 rows written", and the measurement that landed first is the one that stands.
+ *   · `pathname = $n` — the ghost-signature lesson (2026-09-15), the same guard
+ *     `updateNinaChatPhotoPerceptualSignature` carries and for the identical reason: between the
+ *     dependent read and this write, the row can be repointed at other bytes (an admin Replace, a
+ *     sweep repoint). Writing THESE bytes' measurements onto THOSE bytes' row is how a ghost is
+ *     minted, and this clause is what makes that a no-op instead.
+ *
+ * ── ONE STATEMENT PER OBJECT, NOT PER ROW ───────────────────────────────────────────────────
+ * `id IN (...)` because the rows that share a pathname share a measurement by definition — one
+ * object, one GET, one UPDATE. Deleting a folder of two hundred avatars that a conversation
+ * referenced is therefore bounded by how many distinct OBJECTS are involved, not by how many rows
+ * point at them, which is `deleteNinaAvatars`' own argument against a loop.
+ *
+ * ── WHAT IT WRITES, AND WHAT IT LEAVES ALONE WHEN SHARP FAILED ──────────────────────────────
+ * `content_hash` and `bytes` always. The perceptual pair and `width`/`height` are spread in only
+ * when the signature exists AND both halves normalize through the one parsers
+ * (`lib/nina/perceptual.ts`) — an absent or malformed pair leaves those four columns untouched
+ * rather than writing NULL over them, because "could not measure" is not the same claim as "has no
+ * value" and the sweep's `fill-perceptual` op is what fills them later. It is the one place in this
+ * file where `.set()` is built conditionally, and the reason is that the alternative erases data.
+ *
+ * Returns how many rows were written. `0` is an ordinary outcome — someone else promoted them, the
+ * pathname moved, or the rows are gone — and no caller treats it as a failure.
+ */
+export async function promoteNinaImageMeasurements(
+  userId: string,
+  pathname: string,
+  ids: readonly string[],
+  measurement: NinaImageMeasurement,
+): Promise<number> {
+  if (ids.length === 0) return 0
+  /* The door rule `insertNinaMessageImages` applies to a client claim, applied to a measured one:
+   * a value that is not 64 lowercase hex is not one of ours and must never reach the column. */
+  if (!isValidContentHash(measurement.contentHash)) return 0
+
+  const signature = measurement.signature
+  const perceptualHash =
+    signature == null ? null : normalizeClaimedPerceptualHash(signature.dhashHex)
+  const perceptualSig =
+    signature == null ? null : normalizeClaimedPerceptualSig(signature.sig16Base64)
+  const measured =
+    signature != null && perceptualHash != null && perceptualSig != null
+      ? { perceptualHash, perceptualSig, width: signature.width, height: signature.height }
+      : {}
+
+  const promoted = await db
+    .update(ninaMessageImages)
+    .set({
+      contentHash: measurement.contentHash,
+      bytes: measurement.bytes,
+      ...measured,
+    })
+    .where(
+      and(
+        eq(ninaMessageImages.userId, userId),
+        inArray(ninaMessageImages.id, [...ids]),
+        eq(ninaMessageImages.pathname, pathname),
+        isNull(ninaMessageImages.contentHash),
+      ),
+    )
+    .returning({ id: ninaMessageImages.id })
+
+  return promoted.length
 }
 
 /**

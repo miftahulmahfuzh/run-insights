@@ -1,6 +1,6 @@
 'use server'
 
-import { del, put } from '@vercel/blob'
+import { put } from '@vercel/blob'
 import { revalidatePath } from 'next/cache'
 
 import {
@@ -28,6 +28,8 @@ import {
   type NinaAvatarRow,
   type NinaImageRow,
 } from '@/lib/nina/queries'
+import { releaseBlobIfUnreferenced } from '@/lib/nina/blobRelease'
+import { promoteNinaAvatarDependents } from '@/lib/nina/provenancePromotion'
 
 /**
  * The face itself: make a photograph hers, keep her in it, reframe it, and take it away.
@@ -35,7 +37,8 @@ import {
  *   · `setCurrentNinaAvatarAction` promotes an album row to current.
  *   · `setChatPhotoAsAvatarAction` adopts a chat photograph — the bytes are copied, not shared.
  *   · `saveNinaAvatarCropAction` saves the framing an operator dragged.
- *   · `deleteNinaAvatarAction` removes one photo, and its blob(s) with it.
+ *   · `deleteNinaAvatarAction` removes one photo — promoting anything that re-shows it first, and
+ *     then releasing its blob(s) only if nothing else still points at them.
  *
  * The bulk forms of move and remove live in `lib/admin/ninaAlbumFolderActions.ts`; the deferred
  * describe that promotion schedules lives in `lib/admin/ninaAlbumDeferredDescribe.ts`. The
@@ -79,14 +82,16 @@ export async function setCurrentNinaAvatarAction(rawId: string): Promise<AdminAc
  * ── THE BYTES ARE COPIED, NOT SHARED, AND THAT IS THE DECISION ────────────────────────────────
  * The two candidate designs were a `nina_avatars` row pointing at the chat photo's object, and
  * this: `fetch` + `put` into a fresh `avatar-` object. Sharing would win on storage and lose on
- * everything else, because the album-side deletes (`deleteNinaAvatarAction`, `reapAvatarBlobs`)
- * call `del` with NO reference check — the reference-checked release
- * (`releaseBlobIfUnreferenced`) exists on the CHAT side only. A shared object would survive
- * every chat-side delete and then break the day the operator removed the album row: a dead
- * photograph in the conversation, unrecoverable. A copy costs one duplicate object (~100-500 KB)
- * and makes both sides' existing delete rules correct with nothing changed on either. The
- * adopted row also appears in `/admin/nina` (root folder), where its framing can be re-tuned —
- * which is a feature, not a leak.
+ * everything else. The original argument was that the album-side deletes called `del` with NO
+ * reference check, so a shared object would break the day the operator removed the album row —
+ * that half is fixed (the ghost-photo fix routes this file's delete through
+ * `releaseBlobIfUnreferenced` and `reapAvatarBlobs` through `isBlobPathnameReferenced`), and the
+ * decision survives it unchanged for the reasons that were always the stronger ones: a copy gives
+ * the album row its OWN lifetime, its own folder and its own framing, so re-cropping her profile
+ * picture cannot re-crop a photograph sitting in a conversation, and deleting either side cannot
+ * turn the other into a row whose bytes are kept alive only by someone else's reference. A copy
+ * costs one duplicate object (~100-500 KB). The adopted row also appears in `/admin/nina` (root
+ * folder), where its framing can be re-tuned — which is a feature, not a leak.
  *
  * ── RE-ADOPTION IS A CONSTRAINT DECISION, NOT A COUNT ────────────────────────────────────────
  * The row is written with `source_key = 'chat-photo:<imageId>'`, so a second "set as her profile
@@ -269,51 +274,82 @@ export async function saveNinaAvatarCropAction(input: unknown): Promise<AdminAct
 }
 
 /**
- * Remove a photo from the album, and its blob with it.
+ * Remove a photo from the album — and its blob with it, unless something else is still rendering
+ * those exact bytes.
  *
- * ── ROW FIRST, BLOB SECOND ──────────────────────────────────────────────────────────────────
- * A failed `del` leaves an orphaned object, which is recoverable (and is what
- * `scripts/blob-reap.mjs` exists for, once it is taught the `nina/` prefix — ruling D4's one
- * follow-up card). A deleted blob under a live row is a permanently broken image in her album. So
- * the row goes first and the `del` is best-effort, logged rather than surfaced.
+ * ── PROMOTE, THEN DELETE THE ROW, THEN ASK, THEN `del` ──────────────────────────────────────
+ * Three steps and the order of all three is load-bearing:
+ *
+ *   1. **Promote first.** A `nina_message_images` row can re-show this album photograph
+ *      (`source_avatar_id` naming it) with no measurements of its own. The FK is
+ *      `ON DELETE SET NULL`, so the delete below turns it into an "original" that no dedup
+ *      mechanism can ever see — unless it is measured first, which is exactly what
+ *      `promoteNinaAvatarDependents` does, and which can only be done while this id still links
+ *      them. It cannot fail this action: every failure inside it degrades to today's behaviour and
+ *      logs (see that module's header).
+ *   2. **Row first, blob second.** Unchanged and for the unchanged reason: a failed `del` leaves
+ *      an orphaned object, which is recoverable (`scripts/blob-reap.mjs`, and
+ *      `reap-orphaned-blobs`), while a deleted blob under a live row is a permanently broken image.
+ *   3. **Ask before deleting the bytes.** THIS IS NEW, and it is the second half of the
+ *      ghost-photo fix. This action's `del` used to be unconditional, which is very probably how
+ *      the production row found on 2026-09-16 came to point at a 404: the album row was deleted
+ *      and a chat bubble was still rendering those exact bytes. `releaseBlobIfUnreferenced` is the
+ *      ONE reference-checked release in the repo (`lib/nina/blobRelease.ts`) and this file now
+ *      deletes through it rather than re-implementing the rule — *"a second copy of a delete rule
+ *      is how the copy becomes the one that forgot the check"*, its own header. It is safe to ask
+ *      AFTER the row is gone, and only then: this row has stopped referencing the object, so there
+ *      is no "except this one" parameter to pass wrongly.
+ *
+ * ── TWO OBJECTS, TWO QUESTIONS, TWO RELEASES ────────────────────────────────────────────────
+ * A row can carry a derived thumbnail (`nina_avatars.thumb_url`, F34 R1) and the row is the only
+ * record it exists — its stored pathname carries Blob's random suffix and is not derivable — so a
+ * delete that released one ref would leak an object nothing could ever find again. Both fields are
+ * NULL for every pre-F34 row, and NULL means "there is nothing to delete", not "something went
+ * wrong".
+ *
+ * This is the one place the previous `del([original, thumb])` becomes two calls, and that is the
+ * cost of the check: the question "is anything still pointing at these bytes" is asked per OBJECT,
+ * and the two objects have different answers (a chat row can reference the full-size photograph
+ * while nothing on earth references its album thumbnail). One `del` of both would have to take the
+ * weaker of the two answers for both.
  *
  * The current photo cannot be removed: `deleteNinaAvatar`'s WHERE clause refuses it, which is what
- * makes "zero current avatars" unreachable rather than repaired.
+ * makes "zero current avatars" unreachable rather than repaired. A refused delete has already run
+ * the promotion, and that is deliberately not defended against: the measurements written are true
+ * statements about bytes those rows already serve, the sweep would have written them anyway
+ * (`scripts/nina-dedupe-plan.mjs` hashes every row, references included), and both dedup reads
+ * filter references — so the only cost is a GET that bought nothing. Buying a pre-read to avoid it
+ * would cost one every time, for the common case that succeeds.
  */
 export async function deleteNinaAvatarAction(rawId: string): Promise<AdminActionResult> {
   const { userId } = await requireAdmin()
   const parsed = avatarIdSchema.safeParse(rawId)
   if (!parsed.success) return { ok: false, error: 'Not an avatar id.' }
 
+  /* STEP 1 — while `parsed.data` still links them. Never throws; see the module's header. */
+  await promoteNinaAvatarDependents(userId, [parsed.data])
+
+  /* STEP 2 — the row. This is the statement inside which `ON DELETE SET NULL` fires. */
   const removed = await deleteNinaAvatar(userId, parsed.data)
   if (removed == null) {
     return { ok: false, error: 'That is her current photo — make another one current first.' }
   }
 
-  /*
-   * ROW FIRST, BLOB SECOND, BEST-EFFORT — and TWO objects now, not one.
-   *
-   * The order and the swallow are unchanged and the original argument still holds: a failed `del`
-   * leaves an orphaned object, which is recoverable (and is what `scripts/blob-reap.mjs` exists
-   * for, once it is taught the `nina/` prefix — ruling D4's one follow-up card), while a deleted
-   * blob under a live row is a permanently broken image in her album.
-   *
-   * What is new is the thumbnail (F34 R1). `nina_avatars.thumb_url` is written by
-   * `registerNinaAvatarsAction` (`lib/admin/ninaAlbumUploadActions.ts`), and the ROW is the only
-   * record that the object exists — its stored pathname carries Blob's random suffix and is not
-   * derivable — so a delete that removed one ref would leak an object nothing could ever find
-   * again. Both fields are NULL for every pre-F34 row and for any row whose canvas encode failed,
-   * and NULL means "there is nothing to delete" rather than "something went wrong".
-   *
-   * One `del([...])` and not two calls: `del` takes an array, both objects belong to the same
-   * photo, and a partial success here has no meaning worth reporting separately — either the
-   * photo's objects are gone or a `[f34]` line names the ones that are not.
-   */
-  const orphans = removed.thumbUrl == null ? [removed.blobUrl] : [removed.blobUrl, removed.thumbUrl]
-  try {
-    await del(orphans)
-  } catch (cause) {
-    console.error('[f34] row deleted, blob(s) left behind', orphans, cause)
+  /* STEP 3 — the bytes, per object, and only if nothing else names them. */
+  await releaseBlobIfUnreferenced(userId, {
+    blobUrl: removed.blobUrl,
+    pathname: removed.pathname,
+  })
+  if (removed.thumbUrl != null) {
+    /* `thumb_pathname` and `thumb_url` are written together by `registerNinaAvatarsAction`, so a
+     * URL with no pathname is not a state this table produces. If one ever appeared, asking about
+     * the URL under both parameters is still a correct question — `isBlobPathnameReferenced` ORs
+     * the pathname columns with the URL columns, and a pathname that matches nothing simply
+     * contributes nothing to the answer. */
+    await releaseBlobIfUnreferenced(userId, {
+      blobUrl: removed.thumbUrl,
+      pathname: removed.thumbPathname ?? removed.thumbUrl,
+    })
   }
 
   revalidatePath('/admin/nina')

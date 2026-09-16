@@ -26,12 +26,15 @@ import {
   deleteNinaAvatarsInFolderTree,
   deleteNinaFolderSubtree,
   getCurrentNinaAvatar,
+  isBlobPathnameReferenced,
   listNinaAvatarFolders,
+  listNinaAvatarIdsInFolderTree,
   moveNinaAvatarsToFolder,
   renameNinaAvatarFolder,
   renameNinaFolderSubtree,
   type NinaAvatarBlobRef,
 } from '@/lib/nina/queries'
+import { promoteNinaAvatarDependents } from '@/lib/nina/provenancePromotion'
 
 /**
  * Folder maintenance: create, rename, move, delete, and the bulk move and remove that go with
@@ -60,6 +63,9 @@ import {
  * object, which is recoverable... A deleted blob under a live row is a permanently broken image in
  * her album."* Both halves of it get bigger here and both stay right. See `reapAvatarBlobs` for
  * what a *batch* of `del`s makes of it.
+ * Since the ghost-photo fix the rule has a third beat: the blob delete is REFERENCE-CHECKED. See
+ * `reapAvatarBlobs` for the check, and `lib/nina/provenancePromotion.ts` for the promotion that
+ * runs before the rows so the check has the right answer to give.
  *
  * ── THE FOLDER LIST HAS TWO SOURCES AND NEITHER IS AUTHORITATIVE ────────────────────────────
  * A folder exists if a photograph is filed in it **or** if it is declared in `nina_folders`, and
@@ -84,42 +90,110 @@ import {
 const ADMIN_BLOB_DEL_BATCH = 100
 
 /**
- * Delete the objects behind rows that are already gone. **Never called before the rows are
- * deleted**, and never allowed to fail an action.
+ * How many objects' reference checks are in flight at once.
  *
- * ── WHY A BATCH MAKES THE ORPHAN EXPOSURE BIGGER, AND WHY IT IS STILL THE RIGHT ORDER ───────
- * `deleteNinaAvatarAction` weighed one object: *"A failed `del` leaves an orphaned object, which
- * is recoverable (and is what `scripts/blob-reap.mjs` exists for, once it is taught the `nina/`
- * prefix — ruling D4's one follow-up card). A deleted blob under a live row is a permanently
- * broken image in her album."* A recursive folder delete weighs hundreds, and a batch of `del`s is
- * where a partial failure is most likely: the store is a network service, the call is not
- * transactional with Postgres, and nothing about it is atomic across chunks. So what happens when
- * it half-fails is stated here rather than discovered:
+ * `isBlobPathnameReferenced` is two SELECTs, and a folder delete can involve hundreds of objects,
+ * so asking one at a time would serialise hundreds of neon-http round trips inside one Server
+ * Action — the exact cost `deleteNinaAvatars` exists to avoid. Asking them ALL at once is the
+ * other failure: a few hundred concurrent HTTP requests against one Neon endpoint is how a reap
+ * turns into a rate-limit. A small fixed window is the answer, and the number is deliberately
+ * unrelated to `ADMIN_BLOB_DEL_BATCH` above — that one bounds blast radius, this one bounds
+ * concurrency, and coupling them would make one of the two arbitrary.
+ */
+const ADMIN_BLOB_REF_CHECK_CONCURRENCY = 8
+
+/** One Blob object, in the two spellings `isBlobPathnameReferenced` and `del` respectively want. */
+interface AvatarBlobObject {
+  pathname: string
+  url: string
+}
+
+/**
+ * Delete the objects behind rows that are already gone — **the ones nothing else still points at**.
+ * Never called before the rows are deleted, and never allowed to fail an action.
  *
+ * ── THE REFERENCE CHECK IS NEW, AND IT IS THE GHOST-PHOTO FIX'S SECOND HALF ─────────────────
+ * This function used to `del` every URL it was handed, unconditionally. That was a data-loss bug
+ * of exactly the class `lib/nina/blobRelease.ts` was extracted to prevent on the chat side:
+ * `resolveAttachment` copies `blob_url`/`pathname` onto a chat row rather than copying bytes, so an
+ * album object can be the object behind a bubble in the runner's conversation — and a bulk album
+ * delete would take the bytes out from under it, leaving a live row pointing at a 404. Measured on
+ * production 2026-09-16 (`Tdw_AkrJT0ks`). So every object is now asked about first, per pathname,
+ * AFTER its row is gone, and only the unreferenced ones are deleted.
+ *
+ * ── WHY NOT JUST CALL `releaseBlobIfUnreferenced` PER OBJECT ────────────────────────────────
+ * Because the batching is the whole reason this function exists. That helper is one check plus one
+ * `del(url)`; calling it per object would turn a folder delete of four hundred photographs into
+ * four hundred separate `del` requests and throw away the chunking argument above. The RULE is the
+ * same rule and is deliberately spelled the same way — ask `isBlobPathnameReferenced` first, keep
+ * the object on any answer that is not a definite "no" — and `lib/admin/ninaAlbumAvatarActions.ts`
+ * (one photo, at most two objects) DOES go through the shared helper, which is where a reader
+ * should look for the canonical version of the argument.
+ *
+ * ── A CHECK THAT THROWS KEEPS THE OBJECT ────────────────────────────────────────────────────
+ * `releaseBlobIfUnreferenced`'s posture, restated: *"could not prove it is unreferenced, so do not
+ * delete it. Erring toward an orphan is the only direction that is recoverable."* A failed check
+ * therefore answers `true` and the object stays.
+ *
+ * ── WHAT A HALF-FAILED `del` STILL MEANS ────────────────────────────────────────────────────
  *   · The rows are already gone, which is the outcome the operator asked for. The album is
  *     correct, the tree is correct, and nothing renders a broken image.
  *   · The objects for the chunks that failed stay in the store, referenced by nothing. They cost
- *     storage and they show up in the free tier's usage number; they cannot corrupt anything.
- *   · Every failed chunk is logged with its URLs, so the orphans are *named* in the function log
- *     and not merely inferable from a diff of the store against the table.
- *   · Reaping them is `scripts/blob-reap.mjs`'s job — and it **still does not know the `nina/`
- *     prefix** (ruling D4's open card, restated in the plan's Rollback section). This phase widens
- *     the exposure that card describes from "a failed single delete" to "a failed chunk of a
- *     hundred", which is worth saying out loud and is not a reason to reverse the order: the
- *     reverse order trades a recoverable orphan for a permanently broken image.
+ *     storage; they cannot corrupt anything.
+ *   · Every failed chunk is logged with its URLs, so the orphans are *named* in the function log.
+ *   · Reaping them is `scripts/blob-reap.mjs` / the `reap-orphaned-blobs` skill's job.
  *
  * The thumbnail is reaped beside the original because phase 4 wrote it as a second object and
- * nothing else references it. A row with no thumbnail (anything that predates phase 1) simply
- * contributes one URL instead of two.
+ * nothing else references it — but it is asked about SEPARATELY, because the two objects have
+ * genuinely different answers: a chat row can reference the full-size photograph while nothing
+ * anywhere references its album thumbnail.
  */
-async function reapAvatarBlobs(rows: readonly NinaAvatarBlobRef[]): Promise<void> {
-  const urls = rows.flatMap((row) =>
-    row.thumbUrl == null ? [row.blobUrl] : [row.blobUrl, row.thumbUrl],
-  )
-  if (urls.length === 0) return
+async function reapAvatarBlobs(
+  userId: string,
+  rows: readonly NinaAvatarBlobRef[],
+): Promise<void> {
+  const objects: AvatarBlobObject[] = rows.flatMap((row) => {
+    const own: AvatarBlobObject = { pathname: row.pathname, url: row.blobUrl }
+    if (row.thumbUrl == null) return [own]
+    /* `thumb_pathname` and `thumb_url` are written together by `registerNinaAvatarsAction`, so a
+     * URL with no pathname is not a state this table produces. If one ever appears, asking under
+     * both parameters is still a correct question — `isBlobPathnameReferenced` ORs the pathname
+     * columns with the URL columns, and a pathname matching nothing contributes nothing. */
+    return [own, { pathname: row.thumbPathname ?? row.thumbUrl, url: row.thumbUrl }]
+  })
+  if (objects.length === 0) return
 
-  for (let start = 0; start < urls.length; start += ADMIN_BLOB_DEL_BATCH) {
-    const chunk = urls.slice(start, start + ADMIN_BLOB_DEL_BATCH)
+  const orphans: string[] = []
+  let kept = 0
+  for (let start = 0; start < objects.length; start += ADMIN_BLOB_REF_CHECK_CONCURRENCY) {
+    const window = objects.slice(start, start + ADMIN_BLOB_REF_CHECK_CONCURRENCY)
+    const referenced = await Promise.all(
+      window.map(async (object) => {
+        try {
+          return await isBlobPathnameReferenced(userId, object.pathname, object.url)
+        } catch (cause) {
+          console.error(
+            '[f34] could not check blob references; keeping the object',
+            object.pathname,
+            cause,
+          )
+          return true
+        }
+      }),
+    )
+    window.forEach((object, index) => {
+      if (referenced[index] === false) orphans.push(object.url)
+      else kept++
+    })
+  }
+
+  if (kept > 0) {
+    console.info(`[f34] ${kept} album object(s) kept: another row still points at them`)
+  }
+  if (orphans.length === 0) return
+
+  for (let start = 0; start < orphans.length; start += ADMIN_BLOB_DEL_BATCH) {
+    const chunk = orphans.slice(start, start + ADMIN_BLOB_DEL_BATCH)
     try {
       await del(chunk)
     } catch (cause) {
@@ -372,6 +446,9 @@ export async function moveNinaAvatarsAction(input: unknown): Promise<AdminAction
  * `reapAvatarBlobs` runs after the rows are gone and cannot fail this action; its header carries
  * what happens when a chunk of `del`s fails, and points at ruling D4's open card for
  * `scripts/blob-reap.mjs`, which still does not know the `nina/` prefix.
+ * Since the ghost-photo fix it is also ROW FIRST, *QUESTION* SECOND, BLOB THIRD: `reapAvatarBlobs`
+ * asks `isBlobPathnameReferenced` per object before deleting anything, so an object a conversation
+ * is still rendering survives the folder that held its album row.
  *
  * The album root is refused outright. `folder: ''` would mean "delete every photo she has", and
  * that button does not belong on a screen whose job is organising them; the folders inside the
@@ -394,8 +471,18 @@ export async function deleteNinaAlbumFolderAction(input: unknown): Promise<Admin
   const refusal = currentPhotoRefusal(current, keepCurrent)
   if (refusal != null) return { ok: false, error: refusal }
 
+  /*
+   * PROMOTE, THEN DELETE. The ids have to be read separately because this delete is expressed as a
+   * folder predicate, and `deleteNinaAvatarsInFolderTree`'s own `RETURNING` arrives too late: the
+   * `ON DELETE SET NULL` that orphans the dependents fires inside that statement.
+   * `listNinaAvatarIdsInFolderTree` carries the same WHERE, `is_current = false` included, so
+   * under `keepCurrent` her photograph is not promoted against — it is not going anywhere.
+   */
+  const doomed = await listNinaAvatarIdsInFolderTree(userId, folder)
+  await promoteNinaAvatarDependents(userId, doomed)
+
   const removed = await deleteNinaAvatarsInFolderTree(userId, folder)
-  await reapAvatarBlobs(removed)
+  await reapAvatarBlobs(userId, removed)
 
   /*
    * Undeclare the subtree — but ONLY when it is actually empty, which is exactly `current == null`.
@@ -448,8 +535,18 @@ export async function removeNinaAvatarsAction(input: unknown): Promise<AdminActi
   const refusal = currentPhotoRefusal(current, keepCurrent)
   if (refusal != null) return { ok: false, error: refusal }
 
+  /*
+   * PROMOTE, THEN DELETE — and her current photograph is excluded from the promotion for the same
+   * reason `listNinaAvatarIdsInFolderTree` carries `is_current = false`: `deleteNinaAvatars`' own
+   * WHERE refuses it, so it survives this call, so nothing that re-shows it is being orphaned and
+   * a GET per object on its behalf would buy nothing. `current` is already in hand — it is read by
+   * `currentPhotoAmong(userId, ids)` above, for the refusal check this sits directly beneath.
+   */
+  const doomed = current == null ? ids : ids.filter((id) => id !== current.id)
+  await promoteNinaAvatarDependents(userId, doomed)
+
   const removed = await deleteNinaAvatars(userId, ids)
-  await reapAvatarBlobs(removed)
+  await reapAvatarBlobs(userId, removed)
 
   revalidatePath('/admin/nina')
   return {

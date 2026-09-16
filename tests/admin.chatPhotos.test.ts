@@ -398,6 +398,7 @@ const updateNinaChatPhotoBlob = vi.fn()
 const updateNinaChatPhotoDescription = vi.fn()
 const updateNinaChatPhotoPerceptualSignature = vi.fn()
 const fetchAndSignImage = vi.fn()
+const promoteNinaImageDependents = vi.fn()
 const updateNinaMessage = vi.fn()
 const readNinaTuning = vi.fn()
 const describeNinaImages = vi.fn()
@@ -451,6 +452,10 @@ vi.mock('@/lib/nina/queries', () => ({
   updateNinaMessage: (...args: unknown[]) => updateNinaMessage(...args),
 }))
 vi.mock('@/lib/nina/blobRelease', () => ({ releaseBlobIfUnreferenced: vi.fn() }))
+vi.mock('@/lib/nina/provenancePromotion', () => ({
+  promoteNinaImageDependents: (...args: unknown[]) => promoteNinaImageDependents(...args),
+  promoteNinaAvatarDependents: vi.fn(),
+}))
 
 /**
  * The ONE signer's fetch half, mocked so no test GETs a blob or loads `sharp`. `scheduleChatPhotoResign`
@@ -1386,6 +1391,7 @@ beforeEach(() => {
   // `undefined` (its callback never reads the answer); these actions DO, so they need the row.
   setNinaMessageImageDescription.mockResolvedValue({ id: IMAGE_ID })
   releaseBlobIfUnreferenced.mockResolvedValue('deleted')
+  promoteNinaImageDependents.mockResolvedValue({ found: 0, fetched: 0, promoted: 0 })
   deleteNinaMessage.mockResolvedValue({ id: MESSAGE_ID })
   deleteNinaMessageImage.mockResolvedValue({ id: IMAGE_ID })
   getNinaMessagesByIds.mockResolvedValue([
@@ -1447,6 +1453,21 @@ describe('removeChatPhotoAction — the one destructive action on this surface',
       expect.objectContaining({ id: IMAGE_ID }),
     )
     expect(revalidatePath).toHaveBeenCalledWith(ADMIN_CHAT_PHOTOS_PATH)
+  })
+
+  it('promotes the `source_image_id` dependents before either delete branch runs', async () => {
+    // Two siblings, so the plain image-row delete branch runs (the file's own fixture shape).
+    getNinaMessageImagesForMessages.mockResolvedValue([
+      { ...imageRow },
+      { ...imageRow, id: 'otherImg1234' },
+    ])
+
+    await actions.removeChatPhotoAction({ id: IMAGE_ID })
+
+    expect(promoteNinaImageDependents).toHaveBeenCalledWith(USER, [IMAGE_ID])
+    const promoteAt = promoteNinaImageDependents.mock.invocationCallOrder[0] ?? Infinity
+    const deleteAt = deleteNinaMessageImage.mock.invocationCallOrder[0] ?? -Infinity
+    expect(promoteAt).toBeLessThan(deleteAt)
   })
 
   it('the LAST image on her caption-only bubble deletes the MESSAGE — no empty bubble, ever', async () => {
@@ -1511,6 +1532,7 @@ describe('removeChatPhotoAction — the one destructive action on this surface',
     })
     expect(getNinaMessagesByIds).not.toHaveBeenCalled()
     expect(deleteNinaMessageImage).not.toHaveBeenCalled()
+    expect(promoteNinaImageDependents).not.toHaveBeenCalled()
     expect(releaseBlobIfUnreferenced).not.toHaveBeenCalled()
   })
 

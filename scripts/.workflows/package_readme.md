@@ -1,9 +1,9 @@
 # Package: scripts
 
 **Location**: `scripts`
-**Last Updated**: 2026-09-15 (`search-analysis.mjs`, the album-search relevance diagnostic, and the
-project skill that drives it; prior: the image worker's own web-push, `nina-image-worker/push.ts`;
-see Notes for the documentation history)
+**Last Updated**: 2026-09-16 (the dedupe sweep's phantom-original census and its `fill-dimensions`
+op; prior: `search-analysis.mjs`, the album-search relevance diagnostic, and the project skill that
+drives it; see Notes for the documentation history)
 
 ## Overview
 
@@ -69,7 +69,8 @@ blobs under a non-empty prefix — the signature of a wrong `DATABASE_URL` — u
 The Nina Media dedupe sweep, in ordered passes: hash-fill `content_hash` for every row (originals
 AND references — the reference's own bytes must be measured, not presumed); verify gates that
 re-fetch and re-hash stored hashes and stored perceptual signatures before trusting them; signing
-of originals that lack one (64-bit dHash + 16x16 grayscale mean-abs, via `sharp`); then the merge
+of originals that lack one (64-bit dHash + 16x16 grayscale mean-abs, via `sharp`); a census of
+**phantom originals** with the dimension fill that makes them matchable; then the merge
 — byte-identical groups and perceptual twins at conservative gates, loser row repointed to the
 keeper, loser blob released only after a live re-check of the reference gate (err toward keep).
 Idempotent: a second `--apply` finds nothing to do. `--apply` runs HAVE happened against
@@ -77,14 +78,46 @@ production (measured 2026-09-11: 48/52 rows hashed, 17 rows repointed, releases 
 e.g. `c2c2ca5`), and it stays safe to re-run after any future drift. All judgment lives in
 `nina-dedupe-plan.mjs`.
 
+**Phantom originals** (since 2026-09-16) are rows `isOriginalRow` accepts that nevertheless arrived
+with `content_hash` NULL — a reference whose parent was hard-deleted, silently reclassified by the
+FK's `ON DELETE SET NULL` without ever being given the measurements an original needs. The sweep
+reports them in three buckets and removes none of them under any flag: **recovered** (bytes,
+signature and dimensions all measured this run — the fills are queued and the row becomes fully
+dedup-eligible), **partial** (the hash was recovered but the signature or the dimensions were not;
+`missing` names which), **unrecoverable** (the GET failed — named with the fetch's own reason and
+left exactly where it is; deleting a ghost row is a human decision this script does not make).
+Measured on production 2026-09-16 over 131 Media rows: 0 recovered / 0 partial / 1 unrecoverable
+(`Tdw_AkrJT0ks`, whose blob already 404s).
+
+The pass exists because the perceptual pass is the ONLY one that can ever catch a phantom — it
+names the avatar object's bytes while its twin names a separately-encoded selfie object, so their
+`content_hash` values legitimately differ and the byte pass can never group them — and
+`isPerceptualTwin` refuses any row with a NULL `width`/`height`, which nothing in this family had
+ever filled. Hence the `fill-dimensions` op, and hence `signBytes` now returning `width`/`height`
+off an added `metadata()` read: the dimensions are adopted onto the row in the same pass, so a
+phantom can cluster in the run that measured it, not only in the next one.
+
 ### `nina-dedupe-plan.mjs` — no npm entry (imported)
 The pure half of the sweep: grouping by `(user_id, content_hash)`, keeper election, the ordered op
-list, and the perceptual twin gates. No database, no Blob client, no env — every input is an
+list, the phantom census (`isPhantomOriginal`, `classifyPhantomOriginals`, `buildFillDimensionOps`)
+and the perceptual twin gates. No database, no Blob client, no env — every input is an
 argument — which is what lets `tests/nina.dedupeMedia.test.ts` hold the merge rules against
 measured production groups. The twin-gate constants exist in BOTH this file and
 `lib/nina/perceptual.ts` — the write-time twin check, which adds `PERCEPTUAL_MAX_SIG16` of its
 own — and must move together (the move-BOTH rule); read this file's header before loosening either
 number.
+
+**Each fill guards its OWN column**, and this is deliberately NOT the shape the app-layer promotion
+helper uses. Here: `fill-hash` on `content_hash is null`, `fill-perceptual` on
+`perceptual_hash is null`, `fill-dimensions` on `width is null and height is null` — three separate
+ops in one linear pass over rows the script loaded itself, so a shared `content_hash is null` guard
+would make the two later fills permanent no-ops (`fill-hash` fills that very column first).
+`lib/nina/provenancePromotion.ts` writes the same six columns in ONE statement, so one guard
+(`content_hash is null`) covers the whole write, plus `pathname = $n` because it runs inside a
+Server Action where an admin Replace can repoint the row between its read and its write. Two write
+paths, two correct guard shapes, one end state: **do not "reconcile" either guard toward the
+other.** `bytes` rides along under `coalesce` in both, so a stored size is never clobbered — which
+keeps the sweep consistent with its standing "bytes metadata mismatches are REPORTED ONLY" line.
 
 ### `nina-memory-reap.mjs` — `npm run nina:memory-reap`
 Deletes distilled memory rows — `nina_memory_facts`, `nina_memory_slots`, entries inside
@@ -358,6 +391,17 @@ real money on a real generation.
 live in the body sections and in each script's own header; narrative lives in git history, which
 is complete and ordered and costs a session no context to load.
 
+- **2026-09-16 — the sweep sees ghost photos** (`nina-ghost-photo-dedup-fix`, phase 2 of 2;
+  P1-SC-A003). `nina-dedupe-plan.mjs` gained `isPhantomOriginal`, `classifyPhantomOriginals` and
+  `buildFillDimensionOps`; `nina-dedupe-media.mjs` gained the census report and the
+  `fill-dimensions` op, and its `signBytes` now returns `width`/`height` off an added
+  `img.metadata()` read. No new flag, no `del()`, no `DELETE` under any flag — the sweep is still
+  read-only without `--apply` and still removes no row it cannot repair. The guard shape
+  deliberately diverges from phase 1's `lib/nina/provenancePromotion.ts` (per-column here, one
+  statement there); the plan's invariant 4 records that neither is to be made "consistent" with the
+  other. `tests/nina.dedupeMedia.test.ts` grew 12 cases to 88 on 2026-09-16. Read-only production
+  dry run that day: 131 Media rows (the plan's earlier same-day count was 129 — production grew by
+  2 in the interim, references/originals unaffected), phantom census 0/0/1.
 - **2026-09-16 — the worker's notification deep-links** (`push-notification-tap-redirect`, phase 2;
   P1-RI-A043). `WorkerNotifier` and `sendWorkerPush` gained a `sessionId` parameter after `kind`
   (and `sendFn` moved behind it); `finish.ts` passes the session for both `worker_photo_delivered`

@@ -30,6 +30,7 @@ const spies = vi.hoisted(() => ({
   requireUserId: vi.fn(),
   getNinaMessageImage: vi.fn(),
   deleteNinaMessageImage: vi.fn(),
+  promoteNinaImageDependents: vi.fn(),
   releaseBlobIfUnreferenced: vi.fn(),
   revalidatePath: vi.fn(),
   sendNinaMessage: vi.fn(),
@@ -40,6 +41,10 @@ vi.mock('@/lib/auth/requireUserId', () => ({ requireUserId: spies.requireUserId 
 vi.mock('@/lib/nina/queries', () => ({
   getNinaMessageImage: spies.getNinaMessageImage,
   deleteNinaMessageImage: spies.deleteNinaMessageImage,
+}))
+vi.mock('@/lib/nina/provenancePromotion', () => ({
+  promoteNinaImageDependents: spies.promoteNinaImageDependents,
+  promoteNinaAvatarDependents: vi.fn(),
 }))
 vi.mock('@/lib/nina/blobRelease', () => ({
   releaseBlobIfUnreferenced: spies.releaseBlobIfUnreferenced,
@@ -77,6 +82,7 @@ beforeEach(async () => {
 
   spies.requireUserId.mockResolvedValue(USER)
   spies.getNinaMessageImage.mockResolvedValue({ ...UPLOAD_ROW })
+  spies.promoteNinaImageDependents.mockResolvedValue({ found: 0, fetched: 0, promoted: 0 })
 
   albumActions = await import('@/lib/nina/albumActions')
 })
@@ -105,12 +111,27 @@ describe('deleteNinaChatPhoto', () => {
     expect(spies.revalidatePath).toHaveBeenCalledWith('/nina/about')
   })
 
+  it('promotes anything that re-shows the photograph BEFORE deleting its row', async () => {
+    spies.deleteNinaMessageImage.mockResolvedValue({ ...UPLOAD_ROW })
+    spies.releaseBlobIfUnreferenced.mockResolvedValue('shared')
+
+    await albumActions.deleteNinaChatPhoto({ id: ID })
+
+    expect(spies.promoteNinaImageDependents).toHaveBeenCalledWith(USER, [ID])
+    /* The ORDER is the correctness: `source_image_id` stops naming this row inside the DELETE's
+     * own statement, so a promotion afterwards has nothing left to find. */
+    const promoteAt = spies.promoteNinaImageDependents.mock.invocationCallOrder[0] ?? Infinity
+    const deleteAt = spies.deleteNinaMessageImage.mock.invocationCallOrder[0] ?? -Infinity
+    expect(promoteAt).toBeLessThan(deleteAt)
+  })
+
   it('refuses HER photograph — a generated row is not deletable from this screen', async () => {
     spies.getNinaMessageImage.mockResolvedValue({ ...UPLOAD_ROW, kind: 'generated' })
 
     await expect(albumActions.deleteNinaChatPhoto({ id: ID })).resolves.toEqual({ ok: false })
 
     expect(spies.deleteNinaMessageImage).not.toHaveBeenCalled()
+    expect(spies.promoteNinaImageDependents).not.toHaveBeenCalled()
     expect(spies.releaseBlobIfUnreferenced).not.toHaveBeenCalled()
     expect(spies.revalidatePath).not.toHaveBeenCalled()
   })
@@ -121,6 +142,7 @@ describe('deleteNinaChatPhoto', () => {
     await expect(albumActions.deleteNinaChatPhoto({ id: ID })).resolves.toEqual({ ok: false })
 
     expect(spies.deleteNinaMessageImage).not.toHaveBeenCalled()
+    expect(spies.promoteNinaImageDependents).not.toHaveBeenCalled()
     expect(spies.releaseBlobIfUnreferenced).not.toHaveBeenCalled()
   })
 
@@ -131,6 +153,7 @@ describe('deleteNinaChatPhoto', () => {
 
     expect(spies.getNinaMessageImage).not.toHaveBeenCalled()
     expect(spies.deleteNinaMessageImage).not.toHaveBeenCalled()
+    expect(spies.promoteNinaImageDependents).not.toHaveBeenCalled()
   })
 
   it('refuses when the row vanished between the read and the delete', async () => {

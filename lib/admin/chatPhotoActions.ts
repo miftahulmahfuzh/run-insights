@@ -24,6 +24,7 @@ import { isValidId, newId } from '@/lib/id'
 import { describeSubjectForSide, photoSideOf } from '@/lib/nina/album'
 import { captionNinaPhoto } from '@/lib/nina/caption'
 import { releaseBlobIfUnreferenced } from '@/lib/nina/blobRelease'
+import { promoteNinaImageDependents } from '@/lib/nina/provenancePromotion'
 import { ninaImageCaption } from '@/lib/nina/imagefail'
 import {
   deleteNinaMessage,
@@ -599,6 +600,11 @@ export async function findChatPhotoDuplicateAction(
  * another chat row or a `nina_avatars` row — possibly her current profile picture.
  * `releaseBlobIfUnreferenced` asks first. Deleting the row before asking is what makes the question
  * answerable without an exclusion parameter.
+ * What was missing until the ghost-photo fix is the step BEFORE the row delete: a
+ * `source_image_id` dependent had to be measured while this row still existed, or the
+ * `ON DELETE SET NULL` left it an original that no dedup mechanism could ever see.
+ * `promoteNinaImageDependents` is that step, and it is why the release below can now honestly
+ * answer "shared" for a photograph that will keep rendering.
  *
  * ── A REFERENCE ROW IS NOT A MEMBER, SO IT IS NOT REMOVABLE FROM HERE ───────────────────────
  * F37's `source_avatar_id` / `source_image_id` mark a row that re-shows a photograph which already
@@ -632,6 +638,17 @@ export async function removeChatPhotoAction(input: unknown): Promise<ChatPhotoAc
 
   const carrier = await loadPhotoCarrier(userId, row.messageId)
   const isLastImage = carrier.siblings.every((sibling) => sibling.id === id)
+
+  /*
+   * PROMOTE BEFORE EITHER BRANCH DELETES THE ROW. A chat photograph can be re-shown by another
+   * chat row (`source_image_id` naming this id), and that FK is `ON DELETE SET NULL` too — so
+   * whichever branch runs below, the dependent is about to become an unmeasured "original" unless
+   * it is measured now. Both branches remove THIS row (the message branch only runs when this is
+   * the last image on it, and `deleteNinaMessage` deletes its own image rows), so one call above
+   * the branch covers both. It never throws and never blocks the remove; see
+   * `lib/nina/provenancePromotion.ts`'s header.
+   */
+  await promoteNinaImageDependents(userId, [id])
 
   if (isLastImage && carrier.message != null && isNinaPhotoCarrierMessage(carrier.message)) {
     const gone = await deleteNinaMessage(userId, carrier.message.id)

@@ -34,6 +34,12 @@ import * as barrel from '@/lib/nina/queries'
  *
  * The same set's R2 follow-up (2026-09-15) takes it 92 → 93: `setNinaAvatarNegativeSearchKeywords`,
  * the plain writer for the new `negative_search_keywords` exclusion column.
+ *
+ * nina-ghost-photo-dedup-fix phase 1 takes it 93 → 96: `listUnmeasuredNinaImageDependents` and
+ * `promoteNinaImageMeasurements` (the read and write halves of promote-before-delete) plus
+ * `listNinaAvatarIdsInFolderTree` (the folder delete's pre-read). All three exist so an orphaned
+ * reference row is measured before `ON DELETE SET NULL` reclassifies it — see
+ * `lib/nina/provenancePromotion.ts`.
  */
 const BARREL_VALUE_EXPORTS = [
   'adoptNinaMessageImage',
@@ -95,6 +101,10 @@ const BARREL_VALUE_EXPORTS = [
   'listNinaAvatarDescribeBacklog',
   'listNinaAvatarDescribeTargets',
   'listNinaAvatarFolders',
+  // nina-ghost-photo-dedup-fix phase 1 (R1): the subtree id read the folder delete needs BEFORE
+  // its own DELETE, because `ON DELETE SET NULL` cuts the dependents loose inside that statement.
+  // Documented growth, and it must carry `deleteNinaAvatarsInFolderTree`'s WHERE clause for clause.
+  'listNinaAvatarIdsInFolderTree',
   'listNinaAvatarManifest',
   'listNinaAvatars',
   'listNinaAvatarsInFolder',
@@ -107,12 +117,20 @@ const BARREL_VALUE_EXPORTS = [
   'listNinaSelfieJobIdsSince',
   'listNinaSessions',
   'listNinaShortcuts',
+  // nina-ghost-photo-dedup-fix phase 1 (R1): the read half of promote-before-delete — the rows an
+  // imminent parent delete is about to reclassify, found while the provenance column still names
+  // the parent. Documented growth; see `lib/nina/provenancePromotion.ts` for why it exists.
+  'listUnmeasuredNinaImageDependents',
   // nina-album-search-relevance-tools phase 1 (R1): the id -> folder(+offset) read the album's
   // `?avatar=` deep link resolves through. Documented growth, one name.
   'locateNinaAvatar',
   'markNinaAvatarAnnounced',
   'markNinaMessagesRead',
   'moveNinaAvatarsToFolder',
+  // nina-ghost-photo-dedup-fix phase 1 (R1): the write half — the guarded, batched promotion
+  // UPDATE. It is the one write in `queries/images.ts` that deliberately does NOT carry
+  // `isOriginalPhoto()`; the reason is argued at the function. Documented growth.
+  'promoteNinaImageMeasurements',
   'readNinaImagePrefs',
   'readNinaTuning',
   'removeNinaSession',
