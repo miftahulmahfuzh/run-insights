@@ -92,7 +92,8 @@ screenshots travel with it ([`docs/media/12-share.png`](docs/media/12-share.png)
                                                     └──► badge evaluation (22)
 
 runs ──► Nina — glm-5.3 turns with tools (the chat tab)
-   │        ├── lookup_runs / compare_runs: numbers handed over pre-formatted, never computed
+   │        ├── lookup_runs / compare_runs / aggregate_runs: numbers handed over pre-formatted,
+   │        │   never computed — a training-block average is one SQL aggregate, never rows
    │        ├── memory: what-is-true-now slots + an append-only fact ledger
    │        └── her photos: qwen-image-3-pro on OpenRouter, an async job queue (~90 s, cap 30/day)
    └── she also speaks first: five triggers, at most one message per Jakarta day
@@ -268,11 +269,36 @@ runner on aerobic fitness that "held up" during the exact run where their heart 
 of max while their pace faded from 6'36" to 8'00". So `lib/metrics/*` computes every number, and
 the model's only permitted operation on one is to copy it into a sentence.
 
-The rule grew a second application with Nina: her `lookup_runs` and `compare_runs` tools receive
-every figure pre-formatted, her prompt's hard rule is that a number must be copied character for
-character from what she was handed, and the measured −14.1 is written into the prompt file itself
-as the reason. The model that invented a decoupling sign now answers questions about your
-training — which is why it does that through tools, and never through arithmetic.
+The rule grew a second application with Nina: she never writes SQL and never does arithmetic.
+Every question that needs real numbers — one day, two days compared, or a whole training block —
+goes through one of four **typed tools**, a fixed JSON schema the model fills in rather than code
+it writes, and the number that comes back is already spelled: `'47:24'`, never `2843.66`.
+`lookup_runs` and `compare_runs` hand back every figure pre-formatted; `aggregate_runs` (2026-09)
+answers a stretch of time with one SQL aggregate — "average duration, last two months" is one
+`select avg(...)`, never five days of rows for the model to average in prose. `save_memory` is
+the one write path. The measured −14.1 sign flip is why: the model that invented a decoupling
+sign now answers questions about your training only through a tool, never through arithmetic.
+
+```
+lib/nina/prompts/tools.ts   the schema she reads — Anthropic.Tool, hand-written, enums only
+        │
+        ▼   Zod parses the same shape, strictly
+lib/nina/schema.ts          *ArgsSchema — validates every call before it reaches a handler
+        │
+        ▼
+lib/nina/tools.ts           dispatchNinaTool → handleLookupRuns / handleCompareRuns /
+        │                   handleAggregateRuns / handleSaveMemory — NO import of `db`,
+        │                   `runs`, or any Drizzle value (invariant 9)
+        ▼
+lib/nina/gateway.ts         NinaToolGateway — the one seam allowed to touch Postgres
+        │
+        ▼
+lib/db/queries/*.ts         real SQL — loadRunHistory (one db.batch for the whole history),
+                            aggregateRunMetric (one parameterised avg/sum/min/max/count)
+```
+
+`npm run ci:data-layer-guard` enforces the middle boundary by grepping the import list, not by
+trusting a comment — the schema and dispatch layers cannot reach the database even by accident.
 
 The canonical fixture pins eleven values and fires exactly six flags — `HIGH_DECOUPLING`,
 `TOO_MUCH_HARD`, `POSITIVE_SPLIT`, `CADENCE_FADE`, `VERY_HIGH_AVG_HR`, `FAST_START` — no more, no
