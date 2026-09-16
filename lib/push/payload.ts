@@ -175,7 +175,7 @@ export function parsePushSubscription(value: unknown): PushSubscriptionInput | n
  * specifier. This file has no `server-only` and no I/O — that is its entire design — so the
  * vocabulary is importable from both worlds and there is one list rather than two.
  *
- * **For the same reason this file does not import `ProactiveTriggerKind`.** The first five entries
+ * **For the same reason this file does not import `ProactiveTriggerKind`.** The first six entries
  * are that union spelled out by hand; importing it would drag `@/lib/nina/prompts` into a module
  * the worker loads. The two lists are pinned together by the `NinaPushKind` annotation in
  * `send.ts`'s `pushNotifier` — the one place that legitimately knows about both — so adding a
@@ -190,6 +190,8 @@ export const NINA_PUSH_KINDS = [
   'pattern_crossed',
   'silence',
   'avatar_changed',
+  /** The sixth trigger (nina-natural-reminders, R1) — a standing daily check-in he asked her for. */
+  'reminder_due',
 
   /* The "Send me a test" button on `/me`. `lib/push/actions.ts` passes this literal as a bare
    * string and is deliberately not typed to this union ("this is not a trigger", its own comment);

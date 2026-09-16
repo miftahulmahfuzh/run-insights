@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { todayInJakarta } from '@/lib/date/ranges'
 import type { NinaPushKind } from '@/lib/push/payload'
 import { notifyNinaPush } from '@/lib/push/send'
 
@@ -27,6 +28,7 @@ import {
   type NinaMessageRow,
 } from './queries'
 import type { QuotedMessageInput } from './reply'
+import { applyNinaReminderWrites } from './reminderstore'
 import type { NinaMemoryWrite } from './schema'
 import { NINA_SHORTCUT_LOOKBACK } from './shortcuts'
 import {
@@ -620,6 +622,30 @@ export async function runNinaBackgroundTurn(
         console.warn('[nina] reply notify failed', { turnId, error: String(cause) })
       }
     }
+
+    /*
+     * ── R1: THE REMINDERS. A standing daily check-in he asked for in this turn. ──────────────────
+     *
+     * **Its own call with its own `try`, and deliberately NOT routed through
+     * `runNinaDistillation`.** That pipeline's contract is `lib/nina/memory.ts`'s `slot`/`fact`
+     * STRING vocabulary (`planMemoryWrites`, `NINA_SLOT_SPECS`), and a reminder is a structured
+     * record with a time, a label and his reason — the same argument
+     * `NINA_SLOT_SPECS.pending_promises.canonicalise` makes by refusing a string outright.
+     *
+     * **Position:** after the bubbles are committed and the push has gone out, before the
+     * distillation. She has already told him she will remind him; persisting it is what makes that
+     * true, and it must not sit behind a 10-20 s second model call. `applyNinaReminderWrites` is a
+     * primary-key read plus at most one upsert.
+     *
+     * **It never throws** (the function swallows and logs its own failures), so the enclosing
+     * `catch` at `:653` can never record a turn that SUCCEEDED as 'crashed' because a memory slot
+     * would not write. `turnrun.ts`'s push block twenty lines up makes the same trade in the same
+     * words.
+     */
+    await applyNinaReminderWrites(userId, result.payload.reminders ?? [], {
+      todayISO: todayInJakarta(),
+      sourceMessageId: runnerMessageId,
+    })
 
     /*
      * STEP 6 — the distillation (R4). AWAITED here rather than scheduled in a nested `after()`,

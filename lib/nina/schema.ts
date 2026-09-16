@@ -56,6 +56,59 @@ const NinaMemoryWriteSchema = z.object({
 export type NinaMemoryWrite = z.infer<typeof NinaMemoryWriteSchema>
 
 /**
+ * `SEND_TOOL.reminders`' cap. Four standing daily check-ins is already more than a friend would
+ * ever be asked for, and a model that emits ten of them in one turn has misunderstood the field
+ * rather than discovered a use for it. `lib/nina/reminders.ts`'s `MAX_ACTIVE_REMINDERS` is the
+ * SEPARATE, durable cap on how many may be live at once; this one bounds a single turn.
+ */
+const MAX_REMINDER_WRITES = 4
+
+/**
+ * A Jakarta wall clock, zero-padded, 24-hour. **Exported as a STRING**, not as a `RegExp`, because
+ * `lib/nina/prompts/tools.ts` needs the same characters as a JSON-Schema `pattern` and that module
+ * is a constant with no imports but `type Anthropic` (its own header says so). The copy there is
+ * pinned to this constant by `tests/nina.prompts.test.ts`, exactly the way `aggregate_runs`' enums
+ * are pinned to `NINA_AGGREGATE_METRICS`.
+ *
+ * A regex here rather than in the applier, unlike `LookupRunsArgsSchema`'s deliberately loose date
+ * strings: there is no `lib/nina/dates.ts` for clock times and nothing downstream can say anything
+ * better about `"8:45 pm"` than "that is not HH:mm". One repair round is exactly what it is worth.
+ */
+export const NINA_REMINDER_TIME_PATTERN = '^([01]\\d|2[0-3]):[0-5]\\d$'
+
+const REMINDER_TIME_RE = new RegExp(NINA_REMINDER_TIME_PATTERN)
+
+/**
+ * **A standing daily reminder, created or cancelled** — the nina-natural-reminders set, R1. It rides
+ * along on `send` for precisely the reason `memoryWrites` does, and the reason is measured rather
+ * than stylistic: `lib/nina/turn.ts:946-954` drops every sibling `tool_use` block when a `send` is
+ * present in the same model message, so a standalone `set_reminder` tool would be silently dropped
+ * the moment she also answered him — which is every time.
+ *
+ * ── SHAPE HERE, BUSINESS RULES IN THE APPLIER ────────────────────────────────────────────────
+ * This schema checks that `timeOfDay` is an `HH:mm`, that the strings are inside their caps and
+ * that `action` is one of the two verbs. It does NOT check that a `create` carries all three of
+ * `timeOfDay`/`label`/`message`, or that a `cancel`'s `id` names a real active reminder this user
+ * owns — those are `applyReminderWrites`' (`lib/nina/reminders.ts`), for the same reason
+ * `replyToMessageId` above is "validated for shape here; the ACTION checks it names a real row this
+ * user owns". A shape failure is worth a repair round; a business failure is worth a log line and a
+ * reply that already landed.
+ */
+const NinaReminderWriteSchema = z.object({
+  action: z.enum(['create', 'cancel']),
+  /** For `cancel`: a `NinaReminder.id`, nanoid(12). Capped generously; the applier does the lookup. */
+  id: z.string().trim().min(1).max(24).optional(),
+  /** For `create`: `'20:45'`. Jakarta, always — this app has one timezone. */
+  timeOfDay: z.string().trim().regex(REMINDER_TIME_RE).optional(),
+  /** For `create`: two or three words. 60 is a label; 600 is a message that lost its way. */
+  label: z.string().trim().min(1).max(60).optional(),
+  /** For `create`: his own reason. Under `MAX_BUBBLE_CHARS`, because she says it back in one. */
+  message: z.string().trim().min(1).max(300).optional(),
+})
+
+export type NinaReminderWrite = z.infer<typeof NinaReminderWriteSchema>
+
+/**
  * **The reply.** RU-5: 1–4 bubbles, each of which becomes its own `nina_messages` row so phase 7
  * can quote any one of them independently.
  *
@@ -73,6 +126,12 @@ export const NinaSendPayloadSchema = z.object({
    */
   replyToMessageId: z.string().trim().min(1).max(64).optional(),
   memoryWrites: z.array(NinaMemoryWriteSchema).max(MAX_MEMORY_WRITES).optional(),
+  /**
+   * The nina-natural-reminders set, R1. Parallel to `memoryWrites` in every respect: optional,
+   * capped, applied AFTER the bubbles are committed by its own applier
+   * (`lib/nina/turnrun.ts`), and never able to fail the reply it rode in on.
+   */
+  reminders: z.array(NinaReminderWriteSchema).max(MAX_REMINDER_WRITES).optional(),
 })
 
 export type NinaSendPayload = z.infer<typeof NinaSendPayloadSchema>

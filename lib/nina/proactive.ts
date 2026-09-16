@@ -2,6 +2,7 @@ import 'server-only'
 
 import { badgeDefinition } from '@/lib/badges/catalog'
 import { daysBetween, todayInJakarta, type DateISO } from '@/lib/date/ranges'
+import type { NinaReminder } from '@/lib/db/schema'
 import { pushNotifier } from '@/lib/push/send'
 import { isRecordKey } from '@/lib/records/catalog'
 import { RECORD_LABELS } from '@/lib/records/labels'
@@ -21,6 +22,8 @@ import {
   readNinaTuning,
   upsertNinaNag,
 } from './queries'
+import { activeReminders, dueReminder } from './reminders'
+import { markNinaReminderFired, readNinaReminders } from './reminderstore'
 import { resolveNinaWriteSession } from './sessionResolve'
 import { runNinaTurn } from './turn'
 import type { NinaTuning } from './tuning'
@@ -28,8 +31,9 @@ import type { NinaTuning } from './tuning'
 /* ══════════════════════════════════════════════════════════════════════════════════════════════
  * PROACTIVITY — R3's iron rule, made mechanical
  *
- * Five reasons Nina opens a conversation (RU-15's four plus RU-17's avatar). Phase 2 owns the
- * words (`PROACTIVE_INSTRUCTIONS`); this module owns WHEN, ONCE, and WHICH ONE.
+ * Six reasons Nina opens a conversation (five she infers, one he asked for) — RU-15's four plus
+ * RU-17's avatar plus the nina-natural-reminders set's `reminder_due`. Phase 2 owns the words
+ * (`PROACTIVE_INSTRUCTIONS`); this module owns WHEN, ONCE, and WHICH ONE.
  *
  * ── THE THING THAT MATTERS MOST HERE IS IDEMPOTENCE ─────────────────────────────────────────────
  * Firing "jadi ga lari selasa ini?" twice on one Tuesday is the exact failure that makes her feel
@@ -43,6 +47,7 @@ import type { NinaTuning } from './tuning'
  *   pattern_crossed   phase 9's own nag row for that code (so escalation lives in ONE ledger)
  *   silence           nina_nags['trigger:silence'].last_mentioned_on, plus a 3-day cooldown
  *   avatar_changed    nina_avatars.announced_at IS NULL means "not said yet"
+ *   reminder_due      the reminder's own `lastFiredOn` in the `reminders` memory slot — NOT a nag
  *
  * No new table. `nina_nags` is phase 1's, phase 9 fills it with pattern codes, and this module
  * reserves the `trigger:` prefix for the two schedule-driven nags that are not patterns. The
@@ -52,10 +57,10 @@ import type { NinaTuning } from './tuning'
  * ── AT MOST ONE PROACTIVE MESSAGE PER USER PER EVALUATION ───────────────────────────────────────
  * `decideProactive` resolves the four cron candidates by `PROACTIVE_PRIORITY` and returns ONE. Two
  * openers in one evening is not twice as proactive, it is spam — and it is also twice the model
- * cost for a personal app on a Hobby plan. Ordering: the avatar first because it is the one the
- * runner just caused and is waiting on; then the pattern, because tough love that arrives late is
- * worthless; then the missed day, which is time-boxed to this evening; then silence, which by
- * definition is not urgent.
+ * cost for a personal app on a Hobby plan. Ordering: the reminder first, because it is the only one
+ * of the six he explicitly asked for; then the avatar, because it is the one the runner just caused
+ * and is waiting on; then the pattern, because tough love that arrives late is worthless; then the
+ * missed day, which is time-boxed to this evening; then silence, which by definition is not urgent.
  *
  * ── THE PURE HALF IS EVERYTHING WORTH TESTING (INVARIANT 6) ─────────────────────────────────────
  * Down to `decideProactive` this file is pure functions over a plain `ProactiveFacts` object, and
@@ -70,6 +75,12 @@ export type Weekday = 0 | 1 | 2 | 3 | 4 | 5 | 6
 const JAKARTA_UTC_OFFSET_HOURS = 7
 
 const PROACTIVE_PRIORITY: readonly ProactiveTriggerKind[] = [
+  /* FIRST, and it is the only entry in this list the runner WROTE. The other five are things she
+   * infers about him; a reminder is a standing instruction he handed her ("tolong lo remind gw tiap
+   * 8:45 pm buat tidur na"). Losing his own explicit ask to an inferred nag, in a mechanism that
+   * emits exactly one message per tick, is the one failure of this list a user would actually
+   * notice and be upset by. */
+  'reminder_due',
   'avatar_changed',
   'pattern_crossed',
   'missed_usual_day',
@@ -135,6 +146,12 @@ export interface ProactiveFacts {
   todayISO: DateISO
   /** 0–23, Jakarta wall clock. */
   jakartaHour: number
+  /**
+   * Jakarta wall clock to the MINUTE, zero-padded `'HH:mm'` — `jakartaMinuteClockOf(now)`. Only
+   * `reminder_due` reads it, and it is the one fact in this object that nothing in the app could
+   * compute before: `jakartaHourOf` stops at the hour and `todayInJakarta` at the day.
+   */
+  nowHHmm: string
   /** Parsed from phase 5's `running_days` slot. Empty disables trigger 2 rather than guessing. */
   runningDays: readonly Weekday[]
   hasRunToday: boolean
@@ -144,6 +161,11 @@ export interface ProactiveFacts {
   patterns: readonly ProactivePattern[]
   nags: readonly TriggerMarker[]
   unannouncedAvatarId: string | null
+  /**
+   * The ACTIVE entries of the `reminders` slot, earliest `timeOfDay` first (`activeReminders`).
+   * `[]` for every user who has never asked for one, which is every user until he does.
+   */
+  reminders: readonly NinaReminder[]
 }
 
 interface RunCommittedDetail {
@@ -189,12 +211,23 @@ interface AvatarChangedDetail {
   avatarId: string
 }
 
+interface ReminderDueDetail {
+  kind: 'reminder_due'
+  /** `NinaReminder.id` — what `markNinaReminderFired` stamps once the rows are committed. */
+  reminderId: string
+  timeOfDay: string
+  label: string
+  /** HIS reason, verbatim off the record. `PROACTIVE_COPY.reminder_due` spends itself on this. */
+  message: string
+}
+
 export type ProactiveDetail =
   | RunCommittedDetail
   | MissedUsualDayDetail
   | PatternCrossedDetail
   | SilenceDetail
   | AvatarChangedDetail
+  | ReminderDueDetail
 
 export type ProactiveDecision =
   { fire: false; reason: string } | { fire: true; detail: ProactiveDetail }
@@ -213,6 +246,31 @@ const NO = (reason: string): ProactiveDecision => ({ fire: false, reason })
  */
 export function jakartaHourOf(instant: Date): number {
   return (instant.getUTCHours() + JAKARTA_UTC_OFFSET_HOURS) % 24
+}
+
+/**
+ * The Jakarta wall clock of an instant, as a zero-padded `'HH:mm'`.
+ *
+ * **Nothing in this app reached the minute before this.** `jakartaHourOf` above stops at the hour
+ * (18 vs 23 is all the evening window ever needed) and `todayInJakarta` stops at the day. A
+ * reminder needs "is it at or past 20:45 yet", and the answer has to be comparable without a
+ * parser — which is what the zero padding buys: `'09:05' < '20:45'` is true as characters and as
+ * clock times, for every pair of valid values.
+ *
+ * Plain arithmetic rather than `Intl`, for `jakartaHourOf`'s own reason: UTC+7 is fixed for all
+ * time. It is sited here rather than in `lib/date/ranges.ts` because that module owns the DATE
+ * decision and spends it exactly once; this is the same hour arithmetic `jakartaHourOf` already
+ * does for the same one caller, carried one digit further. `lib/nina/context.ts` has a private
+ * `jakartaClockOf` that renders the same string through `Intl` for `NowFacts.clock` — a rendered
+ * value for a prompt, not a comparable one for a guard, and parsing it back here would be the
+ * worse of the two (the note on `jakartaHourOf` makes the identical argument).
+ */
+export function jakartaMinuteClockOf(instant: Date): string {
+  const total =
+    (instant.getUTCHours() * 60 + instant.getUTCMinutes() + JAKARTA_UTC_OFFSET_HOURS * 60) % 1440
+  const hours = Math.floor(total / 60)
+  const minutes = total % 60
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`
 }
 
 /**
@@ -369,6 +427,36 @@ export function evaluateSilence(facts: ProactiveFacts): ProactiveDecision {
 }
 
 /**
+ * **R1, the sixth trigger, and the only one the RUNNER wrote.** Every guard lives in
+ * `dueReminder` (`./reminders.ts`) so that all of it is testable with no clock and no database;
+ * this function is the adapter between `ProactiveFacts` and that pure decision.
+ *
+ * `facts.reminders` is already the ACTIVE set, earliest first, so a fired decision names the
+ * earliest reminder whose time has arrived and which has not already gone out today. The
+ * single-message-per-tick rule is not bypassed for reminders: a second one due on the same tick
+ * waits for tomorrow, which is the plan's stated Out of scope rather than an oversight.
+ */
+export function evaluateReminderDue(facts: ProactiveFacts): ProactiveDecision {
+  const due = dueReminder({
+    reminders: facts.reminders,
+    todayISO: facts.todayISO,
+    nowHHmm: facts.nowHHmm,
+  })
+  if (!due) return NO('no reminder is due, or today’s has already gone out')
+
+  return {
+    fire: true,
+    detail: {
+      kind: 'reminder_due',
+      reminderId: due.id,
+      timeOfDay: due.timeOfDay,
+      label: due.label,
+      message: due.message,
+    },
+  }
+}
+
+/**
  * The resolver. Runs the four cron-eligible evaluators in `PROACTIVE_PRIORITY` order and returns
  * the first that fires, or every refusal joined so a cron log line says something useful. Pure, so
  * `tests/nina.proactive.test.ts` asserts the whole priority table without a database.
@@ -377,6 +465,7 @@ export function decideProactive(facts: ProactiveFacts): ProactiveDecision {
   const evaluators: Partial<
     Record<ProactiveTriggerKind, (f: ProactiveFacts) => ProactiveDecision>
   > = {
+    reminder_due: evaluateReminderDue,
     avatar_changed: evaluateAvatarChanged,
     pattern_crossed: evaluatePatternCrossed,
     missed_usual_day: evaluateMissedUsualDay,
@@ -420,6 +509,11 @@ export function markerFor(detail: ProactiveDetail, facts: ProactiveFacts): Trigg
       return detail.marker
     case 'avatar_changed':
     case 'run_committed':
+    /* `reminder_due`'s marker is the reminder's own `lastFiredOn`, written by
+     * `markNinaReminderFired` in `emitProactiveMessage` below — NOT a `nina_nags` row. A reminder
+     * has no escalation rung and no shared code, and its identity (time, label, his reason) has no
+     * home in that table. */
+    case 'reminder_due':
       return null
   }
 }
@@ -467,6 +561,13 @@ export function triggerBlock(detail: ProactiveDetail): string {
         }
       case 'avatar_changed':
         return { kind: detail.kind }
+      case 'reminder_due':
+        return {
+          kind: detail.kind,
+          timeOfDay: detail.timeOfDay,
+          label: detail.label,
+          message: detail.message,
+        }
     }
   })()
 
@@ -536,9 +637,14 @@ async function loadProactiveFacts(
 ): Promise<ProactiveFacts> {
   const todayISO = todayInJakarta(now)
 
-  const [nagRows, avatar] = await Promise.all([
+  const [nagRows, avatar, reminderSlot] = await Promise.all([
     getNinaNags(userId),
     getUnannouncedCurrentNinaAvatar(userId),
+    /* One primary-key lookup on `(user_id, key)`, the same cost class as `getNinaNags` above. It is
+     * read HERE rather than off `context.memory.slots` because that path renders every value to a
+     * display STRING (`renderSlotValue`), and parsing a `JSON.stringify`'d list back out of a
+     * prompt field to decide whether to send a message would be the worse of the two. */
+    readNinaReminders(userId),
   ])
 
   const runningDaysSlot = context.memory.slots.find(
@@ -548,6 +654,7 @@ async function loadProactiveFacts(
   return {
     todayISO,
     jakartaHour: jakartaHourOf(now),
+    nowHHmm: jakartaMinuteClockOf(now),
     runningDays: parseRunningDays(runningDaysSlot),
     hasRunToday: context.recentRuns.some((run) => run.dateISO === todayISO),
     lastRunOn: context.recentRuns[0]?.dateISO ?? null,
@@ -563,6 +670,7 @@ async function loadProactiveFacts(
       lastMentionedOn: row.lastMentionedOn,
     })),
     unannouncedAvatarId: avatar?.id ?? null,
+    reminders: activeReminders(reminderSlot.slot),
   }
 }
 
@@ -688,6 +796,12 @@ async function emitProactiveMessage(
   try {
     if (detail.kind === 'avatar_changed') {
       await markNinaAvatarAnnounced(userId, detail.avatarId, now())
+    } else if (detail.kind === 'reminder_due') {
+      /* R1. The marker is the reminder's own `lastFiredOn` and it is stamped HERE — after the
+       * bubbles are committed above and before the notify below — which is the same ordering
+       * every other trigger gets and for the same reason: marking first would spend the day's
+       * reminder on a model call that failed, and she would silently skip a night. */
+      await markNinaReminderFired(userId, detail.reminderId, facts.todayISO)
     } else {
       const marker = markerFor(detail, facts)
       if (marker) {

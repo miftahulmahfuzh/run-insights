@@ -228,9 +228,24 @@ export type NinaRole = 'runner' | 'nina'
  * test asserting `NinaMessageSource` equals `'chat' | ProactiveTriggerKind`** — not this phase,
  * because phase 10 is the first phase in which both types exist and a test cannot import a type
  * that has not been written yet.
+ *
+ * ── THE SIXTH TRIGGER, AND WHY IT WIDENED THE DOMAIN ─────────────────────────────────────────
+ * `'reminder_due'` (the nina-natural-reminders set, R1) is the sixth `ProactiveTriggerKind` and
+ * therefore the sixth member here — the pairing above is not decorative: `emitProactiveMessage`
+ * writes `source: detail.kind` straight through, so a trigger this column cannot hold is a trigger
+ * that cannot be persisted. It earns its own value for the same reason `'run_committed'` did: a
+ * reminder's message rows are the only durable evidence, outside the slot, that she kept a standing
+ * promise on a given day, and collapsing it into a shared `'proactive'` would make that
+ * unanswerable from this table.
  */
 export type NinaMessageSource =
-  'chat' | 'run_committed' | 'missed_usual_day' | 'pattern_crossed' | 'silence' | 'avatar_changed'
+  | 'chat'
+  | 'run_committed'
+  | 'missed_usual_day'
+  | 'pattern_crossed'
+  | 'silence'
+  | 'avatar_changed'
+  | 'reminder_due'
 
 /**
  * Who named a session. NULL is the fourth member and the important one: the column is nullable

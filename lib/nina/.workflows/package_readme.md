@@ -47,7 +47,14 @@ together against arm's-length framing, head-to-body proportion and cropped feet 
 rules are that the tool description never reaches the image prompt, that there is no
 `negative_prompt` to put negatives in, that a focus key's `.sentence` is avatar-only, and that a
 non-empty stored `prompt_template` outranks the source default — see Images' *The photograph's
-aesthetic*.
+aesthetic*. Restated a third time 2026-09-16 for P1-NIN-A053 (nina-natural-reminders, a one-phase
+set): `reminders.ts` (pure) + `reminderstore.ts` (server-only) added — standing daily reminders the
+runner asks for in ordinary chat prose, carried on `SEND_TOOL`'s new optional `reminders` array,
+persisted as a `reminders` key in the existing `nina_memory_slots` jsonb (**no new table, no
+migration**), and delivered by a SIXTH `ProactiveTriggerKind` (`reminder_due`) at the FRONT of
+`PROACTIVE_PRIORITY`; the `/api/cron/nina` schedule moved `"0 12 * * *"` → `"0 13 * * *"` (19:00 →
+20:00 WIB) so the Hobby plan's within-the-hour window brackets 20:45 — see *Memory, promises,
+patterns, proactive* and Gotchas.
 **Documentation Created**: 2026-09-05 (`NINA_CHARACTER_TUNING_PLAN.md` phase 2)
 
 ## Overview
@@ -67,7 +74,9 @@ modules into `'use client'` components.
 - **The turn** — assemble a context, run the tool-use loop, validate the reply, persist the
   bubbles, distil memory afterwards — as a background job that survives the response, with every
   model call behind a z.ai-first/OpenRouter-second fallback client (`llmFallbackText.ts`).
-- **Proactive speech** — whether she opens a conversation, and on what.
+- **Proactive speech** — whether she opens a conversation, and on what. Six triggers: five she
+  INFERS about him, plus `reminder_due` (since 2026-09-16) — the only one he wrote, a standing
+  daily check-in he asked for in chat prose and she delivers once per Jakarta day.
 - **Images** — her selfies and avatars, prompt → job row → Blob, plus the caption she writes
   under a photograph of hers from what is actually in it.
 - **Embeddings** — one string to one 1536-wide vector (`embedding.ts`, since 2026-09-15), the
@@ -212,12 +221,14 @@ and the first only when the user redlines the canon. `buildNinaSystemPrompt(tuni
 `nina*` block functions into ten sections and drops empty sections header-and-all. Proactive split:
 trigger LOGIC (day-count thresholds) is `proactive.ts`'s; trigger COPY is `system.ts`'s.
 
-**Version constants.** `NINA_PROMPT_VERSION` (8 as of 2026-09-16) identifies the ASSEMBLER —
-system text **and** the schemas in `prompts/tools.ts`; it has bumped three times without any
+**Version constants.** `NINA_PROMPT_VERSION` (10 as of 2026-09-16) identifies the ASSEMBLER —
+system text **and** the schemas in `prompts/tools.ts`; it has bumped several times without any
 system text moving (the shortcut block and the burst block are conditional user-turn bytes;
-version 8 is the first bump since version 1 in which a TOOL SCHEMA moved and the system text did
-not), because `nina_turns` must be able to date a turn that could carry bytes no earlier version
-could — a turn whose `body.tools` held a fifth dispatched tool is not a version-7 turn. The
+version 8 was the first bump since version 1 in which a TOOL SCHEMA moved and the system text did
+not, and versions 9 and 10 are both of that kind — 10 is the nina-natural-reminders set's
+`SEND_TOOL.reminders` array), because `nina_turns` must be able to date a turn that could carry
+bytes no earlier version could — a turn whose `body.tools` held a fifth dispatched tool is not a
+version-7 turn, and a turn whose `send` could carry a `reminders` array is not a version-9 one. The
 corollary is the one that catches people out in both directions: adding or editing a tool schema
 bumps this constant, and it leaves `tests/__snapshots__/nina.prompts.test.ts.snap` UNTOUCHED,
 because the snapshot is `buildNinaSystemPrompt`'s bytes and the tool array is not in them. A
@@ -948,10 +959,36 @@ folder already open answers a question the operator could answer by looking.
   through whichever camera `photoEagerness` names (send a selfie vs change her avatar), decided
   at fire time and recorded on the entry, so a dial moving mid-flight cannot make the evaluator
   watch the wrong table. A settle is an exact `turn_id` match, never a same-day count.
+- **Reminders** (since 2026-09-16): `reminders.ts` (pure) / `reminderstore.ts` (server-only)
+  split, the same shape `promise.ts`/`promises.ts` has and for the same reason — every question
+  the feature asks is about strings and dates, so all of it is node-testable with no clock and no
+  database (`todayISO`, `nowHHmm` and `newId` are all PARAMETERS). The runner asks in ordinary
+  prose; the model expresses it on `SEND_TOOL`'s optional `reminders` array, **inline on `send`
+  rather than as its own tool** because `turn.ts` drops sibling `tool_use` blocks when a `send` is
+  present — a standalone `set_reminder` would be silently dropped exactly when she also replied.
+  Storage is a `reminders` key in `nina_memory_slots` (`NINA_SLOT_REMINDERS`, `lib/db/schema/nina/
+  memory.ts`), the `pending_promises` mechanism reused: **no new table and no migration**. Every
+  time is a zero-padded Jakarta `'HH:mm'`, which makes "is it time yet" a plain string compare
+  against `jakartaMinuteClockOf(now)` with no parser on either side. Two SEPARATE caps, and
+  conflating them is the easy mistake: `MAX_REMINDER_WRITES` (4, `schema.ts`) bounds ONE TURN's
+  writes; `MAX_ACTIVE_REMINDERS` (4, `reminders.ts`) bounds how many may be live at once, because
+  the whole slot is rendered into her per-turn context. Cancelled entries are kept, newest
+  `MAX_CANCELLED_KEPT` (3) only, so "you told me to stop" is answerable. Entries in one array are
+  applied IN ORDER, which is load-bearing: an edit ("move it to 9") is a `cancel` followed by a
+  `create`, and reordering them either refuses the create against a cap the cancel was about to
+  free or cancels the entry just made.
 - **Proactive** (`proactive.ts`): `evaluateAndEmitForUser` (cron) and `emitRunCommitted` (fired
   by `lib/review/actions.ts` on commit). `clinginess` moves `SILENCE_NO_CHAT_DAYS` (4),
   `SILENCE_NO_RUN_DAYS` (5), `SILENCE_COOLDOWN_DAYS` (3) — the only day-counts, and the reason
-  the manja register must never be folded into it.
+  the manja register must never be folded into it. **Six triggers since 2026-09-16**, five of
+  them cron-eligible; `reminder_due` sits FIRST in `PROACTIVE_PRIORITY`, ahead of `avatar_changed`,
+  because it is the only entry in that list the runner himself wrote and the engine emits at most
+  ONE message per user per tick. Its idempotence marker is NOT a `nina_nags` row: it is the
+  reminder's own `lastFiredOn` field, stamped by `markNinaReminderFired` AFTER the message rows
+  are committed (the ordering `emitProactiveMessage` already gives every other trigger — marking
+  first would spend the day's reminder on a model call that failed). `markerFor` therefore returns
+  `null` for it, alongside `avatar_changed` and `run_committed`. A second reminder due on the same
+  tick waits for tomorrow; that is stated Out of scope, not an oversight.
 
 ## Module map
 
@@ -961,7 +998,7 @@ folder already open answers a question the operator could answer by looking.
 | Turn pipeline | `turnrun.ts`* (also the ONE `'chat_reply'` push site; `NinaTurnDeps.notify` is its only injectable edge), `turnrevive.ts`*, `turn.ts`(T), `llmFallbackText.ts`* (the z.ai-first/OpenRouter-second client `productionDeps` wraps), `tools.ts`(T), `schema.ts`(T), `gateway.ts`, `load.ts`, `context.ts`, `dates.ts`(T), `chatturn.ts`(T), `turnflight.ts` |
 | Prompts | `prompts/index.ts`, `prompts/system.ts`, `prompts/tools.ts`, `prompts/distill.ts`, `prompts/describe.ts` (two witness prompts behind a `Record` — a third subject is a compile error, and `subject` defaults to `'runner'` so existing callers are byte-identical), `prompts/caption.ts` |
 | Character | `tuning.ts`, `persona.ts` (barrel) + `persona/` (bands, identity, appearance, voice, instructor, anger, verbosity, never-say, tuning-blocks) |
-| Memory/behaviour | `memory.ts`, `distill.ts`, `promise.ts`(T)/`promises.ts`, `nags.ts`, `patterns.ts`, `shortcuts.ts`(T), `title.ts`/`autotitle.ts` |
+| Memory/behaviour | `memory.ts`, `distill.ts`, `promise.ts`(T)/`promises.ts`, `reminders.ts`/`reminderstore.ts`* (2026-09-16 — the same pure/impure split as promises; the pure half imports NO value and never reads a clock, and the impure half is the only file in the feature that knows a database exists; its suite is repo-level `tests/nina.reminders.test.ts`, not colocated), `nags.ts`, `patterns.ts`, `shortcuts.ts`(T), `title.ts`/`autotitle.ts` |
 | Images | `imagerecipe.ts`, `imagegen.ts`, `imageprefs.ts`, `imagejobs.ts`, `imagecall.ts`, `imageDedupe.ts`, `perceptual.ts`/`perceptualSign.ts`, `imagerun.ts`, `imagefail.ts`, `caption.ts`, `imagetools.ts`/`avatartools.ts`, `selfiegen.ts`/`avatargen.ts`/`imagetest.ts`, `jobview.ts`(T), `provenancePromotion.ts` (2026-09-16 — the promote-before-delete pass; `blobRelease.ts` is the reference-checked release every single-object delete goes through; neither declares `server-only`, both are db-touching and neither is a Server Action) |
 | Vision/intake | `vision.ts`(T), `imageTicket.ts`(T) (HMAC carrier, `node:crypto`), `images.ts`(T), `crop.ts`(T) |
 | Provider constants | `openrouter.ts` (zero imports; the ONE home of `OPENROUTER_CHAT_URL` + `OPENROUTER_EMBEDDINGS_URL` and of all three model vocabularies — `NINA_VISION_FALLBACK_MODEL` hardcoded, `NINA_CHAT_FALLBACK_MODEL_IDS`/`_SPECS`/`_DEFAULT_MODEL` operator-picked, `NINA_EMBEDDING_MODEL` migration-locked; read by the vision fallback, the text-chat fallback client and `embedding.ts`) |
@@ -989,7 +1026,10 @@ not a (T): it is the barrel contract test, not a pure module's suite.
   (`@/lib/db/queries/rollups.ts`) per call; `generate_image` opens a job and fires
   `fireNinaImageGeneration`) →
   validated send payload → bubbles → metrics → close → `notifyNinaPush(…, 'chat_reply')` (one per
-  committed reply, guarded by `bubbles.length`) → distillation. Client renders through
+  committed reply, guarded by `bubbles.length`) → `applyNinaReminderWrites` (a PK read plus at most
+  one upsert; its own call with its own `try`, deliberately NOT routed through the distillation,
+  whose contract is `memory.ts`'s `slot`/`fact` STRING vocabulary while a reminder is a structured
+  record) → distillation. Client renders through
   `reveal.ts`/`chatview.ts`/`reply.ts` and polls `pollNinaReply`; refresh merges via
   `mergeServerMessages`.
 - **Died turn**: sweep closes it `stale`; next render of `/nina` revives it (`turnrevive.ts`);
@@ -1007,7 +1047,11 @@ not a (T): it is the barrel contract test, not a pure module's suite.
   `deleteNinaAlbumFolderAction` (via `listNinaAvatarIdsInFolderTree`, read BEFORE the delete) and
   `removeNinaAvatarsAction`.
 - **Proactive**: cron per user → `resolveNinaPromises` → `evaluateAndEmitForUser` →
-  `emitProactiveMessage` (trigger block from `system.ts`'s copy, push via `lib/push/send`).
+  `loadProactiveFacts` (which reads the `reminders` slot DIRECTLY through `readNinaReminders`, not
+  off `context.memory.slots` — that path renders every value to a display STRING) →
+  `decideProactive` (five cron evaluators in `PROACTIVE_PRIORITY` order, `reminder_due` first) →
+  `emitProactiveMessage` (trigger block from `system.ts`'s copy, push via `lib/push/send`, then
+  the marker — `markNinaReminderFired` for a reminder, a `nina_nags` upsert for the others).
 - **Character path**: `readNinaTuning` → `coerceNinaTuning` → `buildNinaSystemPrompt(tuning)`.
   Live every turn; no cache; no invalidation step anywhere.
 - **Album search** (read-only, since 2026-09-15): `/admin/nina` → `searchNinaAvatarsAction`
@@ -1022,7 +1066,9 @@ not a (T): it is the barrel contract test, not a pure module's suite.
 
 **External:** `@anthropic-ai/sdk` (type-only; the client is `@/lib/llm/client`), `zod`, `drizzle-orm`,
 `next/server`'s `after()`, `next/cache`'s `revalidatePath` (jobActions only), `server-only`
-(26 modules as of 2026-09-15 — `embedding.ts` is the newest), `node:crypto`.
+(33 top-level modules, measured 2026-09-16 — `reminderstore.ts` is the newest; the count moves with
+every landing, so `grep -l "import 'server-only'" lib/nina/*.ts | wc -l` rather than trust it),
+`node:crypto`.
 **Internal:** `@/lib/db` + `@/lib/db/schema`
 (heaviest), `@/lib/photos/contentHash` (the sha-256 hex format the whole dedupe set answers
 from), `@/lib/date/ranges` (the Jakarta day model behind nags/patterns/promises/proactive),
@@ -1113,7 +1159,55 @@ and picks what she says — a failure is a message from Nina, never a stack trac
   them a comment.
 - **A tool schema change bumps `NINA_PROMPT_VERSION` and must NOT move the prompt snapshot.** The
   two facts look contradictory and are not: the constant covers system text and tool schemas, the
-  snapshot covers only `buildNinaSystemPrompt`'s bytes.
+  snapshot covers only `buildNinaSystemPrompt`'s bytes. Adding `PROACTIVE_COPY.reminder_due`
+  (version 10) did not move it either, and that is not luck: `buildNinaSystemPrompt` renders no
+  trigger copy — `PROACTIVE_INSTRUCTIONS` is appended to the USER turn by `proactive.ts`.
+- **A new `ProactiveTriggerKind` is a THREE-list change and only one of the three can import the
+  union.** `NINA_PUSH_KINDS` (`lib/push/payload.ts`) spells the names by hand because the
+  off-platform image worker loads that module under `--experimental-strip-types`, and
+  `NinaMessageSource` (`lib/db/schema/nina/chat.ts`) is a column domain — `emitProactiveMessage`
+  writes `source: detail.kind` straight through, so a trigger the column cannot hold is a trigger
+  that cannot be persisted. Neither list is optional and neither is a comment: `npx tsc --noEmit`
+  fails at `pushNotifier satisfies ProactiveNotifier` (`lib/push/send.ts`) and at
+  `lib/push/payload.test.ts`'s exhaustive `Record` if either drifts. `vitest` alone will NOT catch
+  it — run the typecheck.
+- **`reminders` is deliberately NOT a member of `NINA_SLOT_KEYS`.** That list is the closed
+  vocabulary the DISTILLER may write and `/admin/memory` renders, and every key in it owes a
+  `SlotSpec` (`canonicalise` + a line of distiller prompt) plus entries in two exhaustive
+  `Record<NinaSlotKey, …>` tables in `lib/admin/memoryVocab.ts`. A reminder is written by its own
+  applier and never by the distiller, so joining that vocabulary would buy nothing and cost the
+  distiller a key it must be told to refuse. `NINA_SLOT_REMINDERS` is declared in
+  `lib/db/schema/nina/memory.ts` beside `NINA_SLOT_PENDING_PROMISES` for exactly that reason: its
+  value is STRUCTURED, so the evaluator must be able to name the key without reaching into
+  `memory.ts`'s prose vocabulary.
+- **The reminder slot row carries a NULL `source_message_id`, and that is what keeps it alive.**
+  A NULL there is what makes the row structurally unreachable by `removeNinaSession`'s
+  `source_message_id IN (…)` purge, and a standing daily instruction should outlive the
+  conversation it was given in. The ENTRY still carries its own `sourceMessageId` for provenance.
+  The row's own `source` is read and written back, never relabelled as distilled.
+- **The Nina cron is `"0 13 * * *"` (20:00 WIB) and the account may hold exactly two cron jobs.**
+  Vercel `schedule` strings are UTC always; Asia/Jakarta is UTC+7 with no DST, and 13 + 7 = 20 < 24
+  so there is no date rollover (unlike `/api/cron/rollup`'s `"0 20 * * *"`, which lands at 03:00
+  WIB the FOLLOWING day). It moved from `"0 12 * * *"` (19:00 WIB) for the reminders set: the Hobby
+  plan fires a cron within the HOUR of its schedule, so the real window is ~20:00–21:00 WIB, which
+  brackets the 20:45 that was asked for. `MISSED_DAY_EVENING_HOUR` (18) and `MISSED_DAY_LATEST_HOUR`
+  (23) did NOT move with it and must not: they are an admission WINDOW, and 20:00–21:00 sits inside
+  it exactly as 19:00–20:00 did. `vercel.json` still declares exactly two crons — the Hobby cap —
+  which is why a second Nina pass is not proposed.
+- **Stated limitation, recorded rather than papered over: a reminder due before the evening window
+  cannot be delivered on time.** `dueReminder` is built generically and fires "at or past its
+  time", so a 07:00 reminder is due every morning and delivered every evening. Firing it EARLY
+  would be worse (a reminder that arrives before the thing it is about is noise) and a third cron
+  job is not available on this plan. Do not "fix" this in the evaluator.
+- **`jakartaMinuteClockOf` is the comparable clock; `context.ts`'s private `jakartaClockOf` is the
+  rendered one.** The first is plain arithmetic in `proactive.ts` producing a zero-padded `'HH:mm'`
+  that string-compares in clock order; the second renders the same shape through `Intl` for
+  `NowFacts.clock`, a prompt value. Parsing the prompt value back out to decide whether to send a
+  message is the wrong one of the two.
+- **`NINA_REMINDER_TIME_PATTERN` is exported as a STRING, not a `RegExp`**, because
+  `prompts/tools.ts` needs the same characters as a JSON-Schema `pattern` and that module may not
+  import a value. `tests/nina.prompts.test.ts` pins the two equal, the same mechanism the
+  `aggregate_runs` enums use.
 - **A new read of an image row carries `isNull(ninaTurns.deletedAt)` itself** — no shared helper,
   by design, and the test names every function that must have it. `countNinaTurnsSince` is the
   ONE reader that must never grow the predicate.
@@ -1247,8 +1341,18 @@ recursive — a new module under `queries/` does not automatically join the walk
   `tests/nina.prompts.test.ts` pins the tool ROSTER (`NINA_TOOLS`' names, in order) and each
   enumerated tool's JSON-Schema `enum` against the Zod const array that validates it — the copy
   exists because `prompts/tools.ts` may not import a value, so the test is what makes it safe.
+  Since 2026-09-16 it also pins `SEND_TOOL`'s `reminders[].timeOfDay` JSON-Schema `pattern` against
+  `NINA_REMINDER_TIME_PATTERN` (`schema.ts`), which is the same copy-and-pin for the same reason.
   Same family as the barrel contract test: the list is the contract, and it is extended in the SAME
   commit as the thing it mirrors.
+- **The reminders feature is tested almost entirely as pure functions**
+  (`tests/nina.reminders.test.ts`, 2026-09-16, plus the `reminder_due` cases in
+  `tests/nina.proactive.test.ts`). That is the point of the `reminders.ts`/`reminderstore.ts`
+  split: `todayISO`, `nowHHmm` and `newId` are parameters, so ordering, the caps, the duplicate
+  refusal, the cancel-then-create edit and — the case the whole feature exists for — "already fired
+  today" are all asserted with no clock, no database and not one mock. `tests/db.schema.nina.test.ts`
+  holds the widened `NinaMessageSource` domain; `lib/push/payload.test.ts` holds
+  `NINA_PUSH_KINDS`' sixth member.
 - **Source-reading tests** (read the file, strip nothing): `tests/nina.prompts.test.ts` fails if
   the `persona/` modules (auto-discovered)/`prompts/system.ts`/`proactive.ts` name a raw tuning field;
   `lib/nina/shortcuts.test.ts` fails on any `import` line; `tests/nina.softDelete.test.ts`

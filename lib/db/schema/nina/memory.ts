@@ -115,11 +115,81 @@ export type NinaPendingPromisesSlot = { promises: NinaPendingPromise[] }
 export const NINA_SLOT_PENDING_PROMISES = 'pending_promises'
 
 /**
+ * **One standing daily reminder** — the nina-natural-reminders set, R1. The runner asks for one in
+ * ordinary chat prose ("tolong lo remind gw tiap 8:45 pm buat tidur na"), the model expresses it on
+ * `SEND_TOOL.reminders`, and `lib/nina/proactive.ts`'s sixth trigger delivers it once per Jakarta
+ * calendar day.
+ *
+ * ── WHY THIS IS A `jsonb` SLOT AND NOT A TABLE ────────────────────────────────────────────────
+ * `NinaPendingPromise` above makes the whole argument and this is the same shape: a per-user list of
+ * structured, date-tracked records evaluated on every cron tick. `nina_memory_slots.value` is
+ * `jsonb`, so it costs **no migration**, and a reminder has the same access pattern a promise has —
+ * read the whole list for this user, decide, write the whole list back.
+ *
+ * ── `lastFiredOn` IS THE IDEMPOTENCE MARKER, AND IT LIVES HERE RATHER THAN IN `nina_nags` ─────
+ * `nina_nags` is keyed `(user_id, code)` with `level`/`count` columns for an escalation ladder. A
+ * reminder has no anger rung and no shared code — its identity IS this record — so its "already
+ * said it today" marker is a field on itself. `lib/nina/proactive.ts` writes it **after** the
+ * message rows are committed, exactly as `emitProactiveMessage` already orders the nag write, so a
+ * mid-flight failure is retried by the next tick instead of being silently spent.
+ *
+ * Every date is a Jakarta `'YYYY-MM-DD'` string (roadmap D6), never a JS `Date`. `timeOfDay` is a
+ * zero-padded Jakarta wall clock `'HH:mm'`, which makes "is it at or past its time yet" a plain
+ * string comparison against `jakartaMinuteClockOf(now)` and needs no parser on either side.
+ */
+export type NinaReminder = {
+  /** nanoid(12), so the model can name one across turns in order to cancel it. */
+  id: string
+  /** Jakarta wall clock, zero-padded `'HH:mm'`. `'20:45'`, never `'8:45 pm'` and never `'845'`. */
+  timeOfDay: string
+  /** What it is, in two or three words — `'tidur'`. Display-ready, his terms. */
+  label: string
+  /** WHY he said it matters, in his own terms. This is what she says back to him every day. */
+  message: string
+  /** The Jakarta day he asked for it. */
+  createdOn: string
+  /** `'cancelled'` is kept rather than deleted, so "you told me to stop" is answerable. */
+  status: 'active' | 'cancelled'
+  /**
+   * The Jakarta day this reminder last reached him. **The whole of its idempotence**: equal to
+   * today means she has already said it today, whatever else the cron does. Absent/null means never.
+   */
+  lastFiredOn?: string | null
+  /** The Jakarta day he called it off. Null while active. */
+  cancelledOn?: string | null
+  /** `nina_messages.id` he asked in, for provenance. NULL when there is nothing to point at. */
+  sourceMessageId?: string | null
+}
+
+/** The `reminders` slot's value, in full. `lib/nina/reminders.ts` parses exactly this. */
+export type NinaRemindersSlot = { reminders: NinaReminder[] }
+
+/**
+ * The second slot key declared in this file, and for the same reason as the first: its value is
+ * STRUCTURED, so the module that evaluates it has to be able to name the key without reaching into
+ * `lib/nina/memory.ts`'s prose vocabulary.
+ *
+ * **It is deliberately NOT a member of `NINA_SLOT_KEYS`** (`lib/nina/memory.ts:637`). That list is
+ * the closed vocabulary the DISTILLER may write and `/admin/memory` renders, and every key in it
+ * owes a `SlotSpec` (`canonicalise` + a line of distiller prompt) plus an entry in two total
+ * `Record<NinaSlotKey, …>` tables in `lib/admin/memoryVocab.ts`. A reminder is written by its own
+ * applier, never by the distiller, so joining that vocabulary would buy nothing and cost the
+ * distiller a tenth key it must be told to refuse. See the phase plan's Handoffs.
+ */
+export const NINA_SLOT_REMINDERS = 'reminders'
+
+/**
  * What may live in `nina_memory_slots.value`. A bare JSON string is the common case — see the
  * table's header for why that is a feature and not a shortcut.
  */
 export type NinaSlotValue =
-  string | number | boolean | NinaPendingPromisesSlot | { [key: string]: unknown } | unknown[]
+  | string
+  | number
+  | boolean
+  | NinaPendingPromisesSlot
+  | NinaRemindersSlot
+  | { [key: string]: unknown }
+  | unknown[]
 
 /**
  * **The upserted half of RU-6.** One row per `(user, key)`, overwritten in place: the runner's

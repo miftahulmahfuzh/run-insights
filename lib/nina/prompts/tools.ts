@@ -121,6 +121,54 @@ export const SEND_TOOL: Anthropic.Tool = {
           },
         },
       },
+      /**
+       * R1, the nina-natural-reminders set. **Inline, not a standalone tool**, for the reason
+       * `memoryWrites` is inline and one sharper one: `lib/nina/turn.ts:946-954` drops sibling
+       * `tool_use` blocks when a `send` is present, so a `set_reminder` tool would be dropped
+       * exactly when she also replied — and cost a whole extra round trip when she did not.
+       *
+       * `timeOfDay`'s `pattern` is the JSON-Schema copy of `NINA_REMINDER_TIME_PATTERN`
+       * (`lib/nina/schema.ts`), which is what VALIDATES; the copy exists because this module is a
+       * constant with no imports but `type Anthropic`, and `tests/nina.prompts.test.ts` asserts the
+       * two are equal so it cannot drift.
+       */
+      reminders: {
+        type: 'array',
+        maxItems: 4,
+        description:
+          'Daily check-ins he asked you to start, or asked you to stop. Omit when he asked for ' +
+          'neither.',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['action'],
+          description: 'REQUIRED. One reminder to start, or one to stop.',
+          properties: {
+            action: {
+              type: 'string',
+              enum: ['create', 'cancel'],
+              description: 'REQUIRED. "create" starts a daily check-in; "cancel" stops one.',
+            },
+            id: {
+              type: 'string',
+              description: 'For "cancel": the id in memory.slots "reminders". To move one, cancel it and create it again.',
+            },
+            timeOfDay: {
+              type: 'string',
+              pattern: '^([01]\\d|2[0-3]):[0-5]\\d$',
+              description: 'For "create": the Jakarta time he named, as HH:mm, e.g. "20:45".',
+            },
+            label: {
+              type: 'string',
+              description: 'For "create": what it is, two or three words, e.g. "tidur".',
+            },
+            message: {
+              type: 'string',
+              description: 'For "create": why HE said it matters. You say this back to him daily.',
+            },
+          },
+        },
+      },
     },
   },
 }

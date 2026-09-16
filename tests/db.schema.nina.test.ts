@@ -224,9 +224,14 @@ describe('memory: the slots, the ledger, and R26 hand-editing', () => {
     expect(columns(schema.ninaMemoryFacts).get('id')?.primary).toBe(true)
   })
 
-  it('slot values are jsonb, so one column holds a phrase and pending_promises alike', () => {
+  it('slot values are jsonb, so one column holds a phrase, pending_promises and reminders alike', () => {
     expect(sqlType(schema.ninaMemorySlots, 'value')).toBe('jsonb')
     expect(schema.NINA_SLOT_PENDING_PROMISES).toBe('pending_promises')
+    /* The nina-natural-reminders set's key. Declared beside the promise key and for the same
+     * reason — a STRUCTURED slot value whose evaluator has to name the key — and deliberately NOT
+     * a member of `NINA_SLOT_KEYS`, which is the distiller's closed prose vocabulary. */
+    expect(schema.NINA_SLOT_REMINDERS).toBe('reminders')
+    expect(schema.NINA_SLOT_REMINDERS).not.toBe(schema.NINA_SLOT_PENDING_PROMISES)
   })
 
   it('source_message_id is NULLABLE on both, because the admin editor types rows the chat never said', () => {

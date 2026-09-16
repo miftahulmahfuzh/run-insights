@@ -267,6 +267,7 @@ describe('NINA_PUSH_KINDS', () => {
     pattern_crossed: 'pattern_crossed',
     silence: 'silence',
     avatar_changed: 'avatar_changed',
+    reminder_due: 'reminder_due',
   }
 
   /** One bubble with words in it, for the kind-passthrough case at the end of this block. */

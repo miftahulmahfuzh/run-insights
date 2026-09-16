@@ -5,33 +5,45 @@ import { evaluateAndEmitForUser } from '@/lib/nina/proactive'
 import { resolveNinaPromises } from '@/lib/nina/promises'
 
 /**
- * `GET /api/cron/nina` — the evening proactivity pass. Triggers 2–5 of RU-15/RU-17; trigger 1
- * (`run_committed`) fires from `after()` at the moment of the commit and never comes through here.
+ * `GET /api/cron/nina` — the evening proactivity pass. Triggers 2–5 of RU-15/RU-17 plus
+ * `reminder_due` (nina-natural-reminders R1); trigger 1 (`run_committed`) fires from `after()` at
+ * the moment of the commit and never comes through here.
  *
  * **The fifth sanctioned route handler** (roadmap §4.1 / D7, whose count goes four → five with
  * this file). It is a cron, guarded by the same `CRON_SECRET` as the fourth, and D7's reasoning for
  * keeping the list short is unchanged by it.
  *
- * ── WHY 19:00 ASIA/JAKARTA, AND HOW THE SCHEDULE SPELLS IT ──────────────────────────────────────
+ * ── WHY 20:00 ASIA/JAKARTA, AND HOW THE SCHEDULE SPELLS IT ──────────────────────────────────────
  * Vercel cron `schedule` strings are UTC, always, regardless of `regions`. Asia/Jakarta is UTC+7
- * with no DST, ever. 19:00 WIB is therefore `"0 12 * * *"`, and because 12 + 7 = 19 < 24 the
+ * with no DST, ever. 20:00 WIB is therefore `"0 13 * * *"`, and because 13 + 7 = 20 < 24 the
  * Jakarta calendar day at cron time is the same date as the UTC date — no rollover, unlike
  * `/api/cron/rollup`'s `"0 20 * * *"`, which lands at 03:00 WIB the *following* day. That is why
- * copying the rollup's schedule would have been wrong here, and why the two jobs are eight hours
+ * copying the rollup's schedule would have been wrong here, and why the two jobs are seven hours
  * apart on the clock and never contend for the same connection pool or z.ai rate window.
  * `todayInJakarta()` is still the only thing asked what day it is; nothing here does its own
  * offset arithmetic on a date.
  *
- * The Hobby plan triggers a cron within the hour of its schedule and caps the account at two jobs
- * — which is exactly `rollup` + `nina`, and exactly why a second Nina pass (a morning one, say) is
- * not proposed. The real firing window is therefore 19:00–20:00 WIB, so
- * `MISSED_DAY_EVENING_HOUR` is 18 rather than 19: the guard admits the whole window instead of
- * demanding an exact hour. It lives in `lib/nina/proactive.ts` precisely so this route contains no
- * time-of-day logic at all.
+ * **It was `"0 12 * * *"` (19:00 WIB) until the nina-natural-reminders set moved it**, and the move
+ * is the whole of that feature's scheduling: the Hobby plan allows two cron jobs in the account
+ * (exactly `rollup` + `nina`) and fires each one WITHIN THE HOUR of its declared time rather than
+ * at the minute. The runner asked to be reminded at 20:45 WIB, which the old 19:00–20:00 window
+ * could never reach on the same evening. The new real window is ~20:00–21:00 WIB, which brackets
+ * it. A reminder set for a MORNING hour is still not reachable on this plan — the due check is
+ * built generically and simply will not fire until the evening pass; that limitation is recorded
+ * rather than papered over, because the alternative is a third cron job this plan is not
+ * authorised to add.
+ *
+ * `MISSED_DAY_EVENING_HOUR` is 18 and `MISSED_DAY_LATEST_HOUR` is 23, and NEITHER MOVED WITH THE
+ * SCHEDULE: they are an admission WINDOW, not an exact hour, and 20:00–21:00 sits inside it exactly
+ * as 19:00–20:00 did. The four pre-existing evening triggers are unaffected beyond firing about an
+ * hour later than they used to. Both constants live in `lib/nina/proactive.ts` precisely so this
+ * route contains no time-of-day logic at all.
  *
  * ── AT MOST ONE MESSAGE PER USER PER INVOCATION ─────────────────────────────────────────────────
- * `evaluateAndEmitForUser` resolves the four candidates by priority and emits one. Two proactive
- * openers in one evening is not twice as proactive, it is spam.
+ * `evaluateAndEmitForUser` resolves the FIVE cron candidates by priority and emits one — the
+ * reminder first (it is the only one the runner explicitly asked for), then the avatar, the
+ * pattern, the missed day and the silence. Two proactive openers in one evening is not twice as
+ * proactive, it is spam.
  *
  * ── IT IS ALSO THE NUDGE ENDPOINT ───────────────────────────────────────────────────────────────
  * Phase 14's `/update-nina-profpic` skill GETs this route with `Authorization: Bearer $CRON_SECRET`
