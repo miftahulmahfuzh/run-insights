@@ -6,7 +6,7 @@ import { buildNinaImagePrompt, sidecarText } from './imagegen'
 import { ninaImageQuotaLeft, openNinaImageJob } from './imagejobs'
 import { coerceNinaImageModel } from './imageprefs'
 import { SEED_MAX } from './imagerecipe'
-import { readNinaImagePrefs, readNinaTuning } from './queries'
+import { readNinaImagePrefs, readNinaTuning, resolveNinaPhotoReference } from './queries'
 
 /**
  * **The avatar-generation entry point. Phases 13, 14 and 15 all call this and nothing else.**
@@ -101,6 +101,12 @@ export async function generateNinaAvatar(request: NinaAvatarRequest): Promise<Ni
   /* The row's camera (§8), same one-coercion rule as `selfiegen.ts`. */
   const model = coerceNinaImageModel(prefs.model)
 
+  /* Same resolution `imagetest.ts` and `selfiegen.ts` do — the camera choice and the reference
+   * apply to both purposes (imagegen.ts's own comment on the avatar template), so an avatar
+   * generation is anchored exactly like a selfie is, even though its prompt template is not the
+   * operator-editable one. */
+  const reference = await resolveNinaPhotoReference(userId, prefs.reference)
+
   const jobId = await openNinaImageJob(userId, {
     purpose: 'avatar',
     scene,
@@ -111,6 +117,7 @@ export async function generateNinaAvatar(request: NinaAvatarRequest): Promise<Ni
     replyToId: null,
     source: request.source,
     attempts: 0,
+    referenceUrl: reference?.blobUrl ?? null,
     model,
     sidecar: sidecarText({ prompt, seed, purpose: 'avatar', model }),
   })

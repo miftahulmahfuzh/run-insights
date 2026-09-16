@@ -14,13 +14,15 @@ const {
   fireNinaImageGeneration,
   readNinaImagePrefs,
   readNinaTuning,
+  resolveNinaPhotoReference,
 } = vi.hoisted(() => ({
   buildNinaImagePrompt: vi.fn().mockReturnValue('a prompt'),
   ninaImageQuotaLeft: vi.fn().mockResolvedValue(5),
   openNinaImageJob: vi.fn().mockResolvedValue('job1'),
   fireNinaImageGeneration: vi.fn(),
-  readNinaImagePrefs: vi.fn().mockResolvedValue({ model: 'x' }),
+  readNinaImagePrefs: vi.fn().mockResolvedValue({ model: 'x', reference: { source: 'none', id: '' } }),
   readNinaTuning: vi.fn().mockResolvedValue(null),
+  resolveNinaPhotoReference: vi.fn().mockResolvedValue(null),
 }))
 
 vi.mock('@/lib/nina/imagegen', () => ({
@@ -30,7 +32,7 @@ vi.mock('@/lib/nina/imagegen', () => ({
 vi.mock('@/lib/nina/imagejobs', () => ({ ninaImageQuotaLeft, openNinaImageJob }))
 vi.mock('@/lib/nina/imagerun', () => ({ fireNinaImageGeneration }))
 vi.mock('@/lib/nina/imageprefs', () => ({ coerceNinaImageModel: vi.fn().mockReturnValue('m1') }))
-vi.mock('@/lib/nina/queries', () => ({ readNinaImagePrefs, readNinaTuning }))
+vi.mock('@/lib/nina/queries', () => ({ readNinaImagePrefs, readNinaTuning, resolveNinaPhotoReference }))
 
 let generateNinaSelfie: (typeof import('@/lib/nina/selfiegen'))['generateNinaSelfie']
 
@@ -40,8 +42,9 @@ describe('generateNinaSelfie forwards the per-turn outfit', () => {
     buildNinaImagePrompt.mockReturnValue('a prompt')
     ninaImageQuotaLeft.mockResolvedValue(5)
     openNinaImageJob.mockResolvedValue('job1')
-    readNinaImagePrefs.mockResolvedValue({ model: 'x' })
+    readNinaImagePrefs.mockResolvedValue({ model: 'x', reference: { source: 'none', id: '' } })
     readNinaTuning.mockResolvedValue(null)
+    resolveNinaPhotoReference.mockResolvedValue(null)
     ;({ generateNinaSelfie } = await import('@/lib/nina/selfiegen'))
   })
 

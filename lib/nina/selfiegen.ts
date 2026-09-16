@@ -6,7 +6,7 @@ import { buildNinaImagePrompt, sidecarText } from './imagegen'
 import { ninaImageQuotaLeft, openNinaImageJob } from './imagejobs'
 import { coerceNinaImageModel } from './imageprefs'
 import { SEED_MAX } from './imagerecipe'
-import { readNinaImagePrefs, readNinaTuning } from './queries'
+import { readNinaImagePrefs, readNinaTuning, resolveNinaPhotoReference } from './queries'
 
 /**
  * **The chat-selfie entry point.** The `generate_image` tool calls this, and so does the promise
@@ -104,6 +104,12 @@ export async function generateNinaSelfie(request: NinaSelfieRequest): Promise<Ni
    * decides both the `nina_turns.model` stamp (inside `openNinaImageJob`) and the sidecar text. */
   const model = coerceNinaImageModel(prefs.model)
 
+  /* The operator's saved photo reference, resolved the same way `imagetest.ts` resolves it —
+   * owner-scoped, `null` for 'none' or a since-deleted photo, never blocking the generation. A
+   * chat-triggered selfie is exactly as anchorable as an admin test; there is no reason the
+   * picker on /admin/image-generation should only apply to one of the two paths that read it. */
+  const reference = await resolveNinaPhotoReference(userId, prefs.reference)
+
   const jobId = await openNinaImageJob(userId, {
     purpose: 'selfie',
     scene,
@@ -113,6 +119,7 @@ export async function generateNinaSelfie(request: NinaSelfieRequest): Promise<Ni
     replyToId,
     source: 'chat',
     attempts: 0,
+    referenceUrl: reference?.blobUrl ?? null,
     model,
     sidecar: sidecarText({ prompt, seed, purpose: 'selfie', model }),
   })
