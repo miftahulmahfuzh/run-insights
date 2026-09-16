@@ -2,7 +2,7 @@
 
 **Package Path**: `lib/admin`
 **Package Code**: ADM
-**Last Updated**: 2026-09-15
+**Last Updated**: 2026-09-16
 **Total Active Tasks**: 0
 
 ## Quick Stats
@@ -12,7 +12,7 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 9
+- Completed: 10
 - Archived: 4
 
 ---
@@ -38,6 +38,24 @@
 (all four completed tasks were archived on 2026-09-12 — see Archive; full
 per-task detail — Context, Drift, Decided, Files — survives in git history and
 in `.workflows/package_readme.md`)
+
+- [x] **P1-ADM-R6XQ** Phase 2: Admin reminder management in `/admin/memory`
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns a new "Reminders" group on `/admin/memory` — add/edit/delete over the existing `reminders` slot phase 1 introduced (between the Slots and Promises groups), a new pure `patchReminder` in-place-edit function in `lib/nina/reminders.ts` (keeps `id`/`createdOn`/`lastFiredOn` untouched, unlike the chat path's cancel+create), and the fix that keeps the `reminders` slot from ever rendering as an orphan row.
+  - **Status**: completed
+  - **Plan Set**: `NINA_NATURAL_REMINDERS_PLAN.md` (phase 2 of 2 — last phase, set now landed)
+  - **Satisfies**: R2 — "Add a section to `/admin/memory` so an admin can manually add a new reminder, edit an existing one, or remove it — full CRUD, not just delete."
+  - **Depends on**: P1-NIN-A053
+  - **Plan**: `.workflows/plan/P1-ADM-R6XQ.md`
+  - **Completed**: 2026-09-16 15:39
+  - **Method**: /do
+  - **Files**: lib/nina/reminders.ts, lib/admin/memoryModel.ts, lib/admin/memoryVocab.ts, lib/admin/schema.ts, lib/admin/memoryActions.ts, app/admin/memory/page.tsx, components/admin/MemoryTable.tsx, tests/nina.reminders.test.ts, tests/admin.memory.test.ts
+  - **Drift**: The phase plan's prose for widening `deleteMemoryRowAction` said to insert the new `if (kind === 'reminder')` branch "after the 'promise' block, before the closing } catch". Applied literally, that placement is a bug: the existing 'promise' handling code has no `if (kind === 'promise')` guard — it is the unconditional final block reached whenever kind is neither 'slot' nor 'fact' — and it returns early whenever the target id doesn't match a promise, which a reminder id never would. Placed the reminder branch immediately after the 'slot' branch and before the unconditional promise code instead, so it acts as an explicit guard ahead of the implicit final case — matching the plan's own parenthetical ("each branch returns before the next begins") and producing correct behavior.
+    `lib/admin/memoryModel.ts`: the two new caps (`ADMIN_REMINDER_LABEL_MAX`, `ADMIN_REMINDER_MESSAGE_MAX`) were placed directly after `ADMIN_SLOT_VALUE_MAX` and before `ADMIN_LEDGER_PAGE`, exactly where the plan said, rather than after `ADMIN_LEDGER_PAGE` as a first pass briefly did — corrected before finalizing, no net effect.
+    `tests/admin.memory.test.ts`: the plan's "never renders the reminders slot key as an orphan row" test literal used `value: { reminders: [] }` for a `MemorySlotInputRow`, but that interface's `value` field is typed `string` (`NinaSlotRow.value` is always a pre-rendered string) — an object literal there is a type error under `tsc`. Changed the fixture's value to the string `'{"reminders":[]}'` instead; the test only asserts the row is absent from the orphan list, so the literal string content doesn't matter to the assertion.
+  - **Decided**: Admin delete-branch insertion order for the new 'reminder' kind → placed before the promise fallthrough, not after as the plan's prose literally said. Rung 2 (exit criteria: reminder delete must actually work) plus rung 3 (the code's own control-flow logic, which only works with this ordering).
+  - **Verified**: `npx tsc --noEmit` (via `npm run typecheck`, which also runs `next typegen` first) clean, exit 0. Full `npx vitest run` — 357 files / 6225 tests, all passed. `npm run lint` clean.
 
 - [x] **P1-ADM-T8RM** `search_keywords` field, embedding combine, and backfill
   - **Difficulty**: HARD

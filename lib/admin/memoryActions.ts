@@ -16,15 +16,26 @@ import {
   factEditSchema,
   factInsertSchema,
   memoryDeleteSchema,
+  reminderCreateSchema,
+  reminderEditSchema,
   slotEditSchema,
 } from '@/lib/admin/schema'
-import { NINA_SLOT_PENDING_PROMISES, type NinaPendingPromisesSlot } from '@/lib/db/schema'
+import {
+  NINA_SLOT_PENDING_PROMISES,
+  NINA_SLOT_REMINDERS,
+  type NinaPendingPromisesSlot,
+  type NinaRemindersSlot,
+} from '@/lib/db/schema'
+import { todayInJakarta } from '@/lib/date/ranges'
+import { newId } from '@/lib/id'
+import { applyReminderWrites, parseRemindersSlot, patchReminder } from '@/lib/nina/reminders'
 
 /**
  * `/admin/memory`'s write side — R1's *"i can easily edit, add or remove one row easily"*.
  *
- * **Four actions, because the table has four things a person can do to it**: change a cell, add a
- * ledger row, delete a row, and that is all. There were nine. The five that went were not features
+ * **Six actions**, because the table has six things a person can do to it: change a cell, add a
+ * ledger row, add a reminder, edit a reminder, delete a row, and that is all. There were nine.
+ * The five that went were not features
  * the table lost — two of them existed to APPEND a quoting record before deleting, one existed to
  * demand a confirmation word be typed out first, one was a second button offered after a refusal,
  * and one was a third delete control for a row kind the single delete below now covers. Every one
@@ -147,6 +158,80 @@ export async function insertFactAction(input: {
 }
 
 /**
+ * R2's add affordance for reminders. Goes through the SAME `applyReminderWrites` the chat path
+ * uses (`lib/nina/reminders.ts`) — one set of business rules (the `HH:mm` shape, the four-active
+ * cap, the same-time-and-label duplicate refusal) for an admin-authored reminder and a model-
+ * authored one, not two.
+ */
+export async function createReminderAction(input: {
+  userId: string
+  timeOfDay: string
+  label: string
+  message: string
+}): Promise<AdminMemoryResult> {
+  await requireAdmin()
+
+  const parsed = reminderCreateSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Give it a valid time, a label and a message.' }
+  const { userId, timeOfDay, label, message } = parsed.data
+
+  try {
+    const row = await adminReadSlot(userId, NINA_SLOT_REMINDERS)
+    const slot = parseRemindersSlot(row?.value)
+    const result = applyReminderWrites({
+      slot,
+      writes: [{ action: 'create', timeOfDay, label, message }],
+      todayISO: todayInJakarta(),
+      sourceMessageId: null,
+      newId: () => newId(),
+    })
+    const refusal = result.refused[0]
+    if (refusal) return { ok: false, error: refusal.reason }
+
+    await adminUpsertSlot(userId, { key: NINA_SLOT_REMINDERS, value: result.slot })
+  } catch (cause) {
+    return failed('createReminder', cause)
+  }
+
+  revalidatePath('/admin/memory')
+  return { ok: true, note: 'She checks in at that time, once a day, from the next evening pass.' }
+}
+
+/**
+ * R2's edit — a true in-place patch (`patchReminder`, `lib/nina/reminders.ts`), not cancel+create.
+ * See phase 2's Decisions for why: this page's own precedent for every other row is that the cell
+ * you touched changes and nothing else does.
+ */
+export async function editReminderAction(input: {
+  userId: string
+  id: string
+  timeOfDay: string
+  label: string
+  message: string
+}): Promise<AdminMemoryResult> {
+  await requireAdmin()
+
+  const parsed = reminderEditSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'That is not a reminder edit this page can make.' }
+  const { userId, id, timeOfDay, label, message } = parsed.data
+
+  try {
+    const row = await adminReadSlot(userId, NINA_SLOT_REMINDERS)
+    const slot = parseRemindersSlot(row?.value)
+    const result = patchReminder({ slot, id, timeOfDay, label, message })
+    if (result.refusal !== null) return { ok: false, error: result.refusal }
+    if (!result.changed) return { ok: true }
+
+    await adminUpsertSlot(userId, { key: NINA_SLOT_REMINDERS, value: result.slot })
+  } catch (cause) {
+    return failed('editReminder', cause)
+  }
+
+  revalidatePath('/admin/memory')
+  return { ok: true, note: 'Saved.' }
+}
+
+/**
  * A cell save on a ledger row — **any** ledger row, including one the distiller wrote.
  *
  * That is the change R1 forced, and it is not a confirmation being removed: refusing to edit a
@@ -217,7 +302,7 @@ export async function editFactAction(input: {
  */
 export async function deleteMemoryRowAction(input: {
   userId: string
-  kind: 'slot' | 'promise' | 'fact'
+  kind: 'slot' | 'promise' | 'fact' | 'reminder'
   target: string
 }): Promise<AdminMemoryResult> {
   await requireAdmin()
@@ -237,6 +322,21 @@ export async function deleteMemoryRowAction(input: {
     if (kind === 'slot') {
       const removed = await adminDeleteSlot(userId, target)
       if (!removed) return { ok: false, error: 'There is no such slot, so nothing was removed.' }
+      revalidatePath('/admin/memory')
+      return { ok: true }
+    }
+
+    if (kind === 'reminder') {
+      const row = await adminReadSlot(userId, NINA_SLOT_REMINDERS)
+      const slot = parseRemindersSlot(row?.value)
+      const next = slot.reminders.filter((reminder) => reminder.id !== target)
+      if (next.length === slot.reminders.length) {
+        return { ok: false, error: 'No reminder with that id. Nothing changed.' }
+      }
+      await adminUpsertSlot(userId, {
+        key: NINA_SLOT_REMINDERS,
+        value: { reminders: next } satisfies NinaRemindersSlot,
+      })
       revalidatePath('/admin/memory')
       return { ok: true }
     }

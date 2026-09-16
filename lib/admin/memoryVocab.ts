@@ -5,7 +5,7 @@ import {
   type SlotEditKind,
   type SlotProtection,
 } from '@/lib/admin/memoryModel'
-import type { NinaMemorySource } from '@/lib/db/schema'
+import { NINA_SLOT_REMINDERS, type NinaMemorySource } from '@/lib/db/schema'
 import { NINA_SLOT_KEYS, NINA_SLOT_SPECS, isNinaSlotKey, type NinaSlotKey } from '@/lib/nina/memory'
 
 /**
@@ -72,6 +72,10 @@ const ORPHAN_NOTE = 'orphan — no rule reads this key, but she does'
 const PROMISE_NOTE =
   'structured — she checks the metric, the target and the deadline against real runs, so a ' +
   'sentence cannot stand in for it. Delete is the only edit.'
+
+function reminderNote(lastFiredOn: string | null | undefined): string {
+  return lastFiredOn == null ? 'never fired yet' : `last fired ${lastFiredOn}`
+}
 
 /**
  * A `merge`-policy slot is structured by definition — its value is a record list, which is exactly
@@ -151,6 +155,16 @@ export interface MemoryFactInputRow {
   createdAt: Date
 }
 
+/** A `NinaReminder`, structurally — the fields a row needs. */
+export interface MemoryReminderInputRow {
+  id: string
+  timeOfDay: string
+  label: string
+  message: string
+  createdOn: string
+  lastFiredOn?: string | null
+}
+
 /** A `NinaPendingPromise`, structurally — the fields a row needs, and no more. */
 export interface MemoryPromiseInputRow {
   id: string
@@ -217,6 +231,7 @@ export function buildMemoryRows(input: {
   slots: readonly MemorySlotInputRow[]
   facts: readonly MemoryFactInputRow[]
   promises: readonly MemoryPromiseInputRow[]
+  reminders?: readonly MemoryReminderInputRow[]
 }): MemoryRow[] {
   const byKey = new Map(input.slots.map((row) => [row.key, row]))
 
@@ -245,7 +260,7 @@ export function buildMemoryRows(input: {
   })
 
   const orphanRows: MemoryRow[] = input.slots
-    .filter((row) => !isNinaSlotKey(row.key))
+    .filter((row) => !isNinaSlotKey(row.key) && row.key !== NINA_SLOT_REMINDERS)
     .slice()
     .sort((a, b) => a.key.localeCompare(b.key))
     .map((row) => ({
@@ -264,6 +279,23 @@ export function buildMemoryRows(input: {
       reappears: false,
       note: ORPHAN_NOTE,
     }))
+
+  const reminderRows: MemoryRow[] = (input.reminders ?? []).map((reminder) => ({
+    rowId: `reminder:${reminder.id}`,
+    kind: 'reminder',
+    target: reminder.id,
+    label: reminder.label,
+    code: reminder.timeOfDay,
+    hint: '',
+    text: reminder.message,
+    editable: true,
+    category: null,
+    origin: null,
+    at: reminder.createdOn,
+    deletable: true,
+    reappears: false,
+    note: reminderNote(reminder.lastFiredOn),
+  }))
 
   const promiseRows: MemoryRow[] = input.promises.map((promise) => ({
     rowId: `promise:${promise.id}`,
@@ -299,5 +331,5 @@ export function buildMemoryRows(input: {
     note: factNote(fact.source, fact.sourceMessageId),
   }))
 
-  return [...slotRows, ...orphanRows, ...promiseRows, ...factRows]
+  return [...slotRows, ...orphanRows, ...reminderRows, ...promiseRows, ...factRows]
 }

@@ -6,7 +6,7 @@
 **Worktree:** `/home/miftah/.worktrees/run-insights/nina-natural-reminders`
 **Branch:** `feature/nina-natural-reminders` (base: `origin/main` @ `991bcb9`)
 **Phases:** 2
-**Status:** in progress — phase 1 done, phase 2 added after landing (see Amendment below)
+**Status:** complete — both phases done
 **Coordinator:** —
 
 ---
@@ -114,7 +114,7 @@ analysis and already held the full context).
 | # | Title | Satisfies | Package | Files | Depends on | Difficulty | Plan | TaskID | Card |
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
 | 1 ✅ | Natural-language recurring reminders | R1 | `lib/nina`, `lib/db/schema`, `lib/push`, `app/api/cron`, root config | 18 | — | HARD | `.workflows/plan/nina-natural-reminders/phase-1.md` | P1-NIN-A053 | — |
-| 2 | Admin reminder management in `/admin/memory` | R2 | `lib/admin`, `components/admin`, `app/admin/memory`, `lib/nina/reminders.ts` | 9 | 1 | NORMAL | `.workflows/plan/nina-natural-reminders/phase-2.md` | — | — |
+| 2 ✅ | Admin reminder management in `/admin/memory` | R2 | `lib/admin`, `components/admin`, `app/admin/memory`, `lib/nina/reminders.ts` | 9 | 1 | NORMAL | `.workflows/plan/nina-natural-reminders/phase-2.md` | P1-ADM-R6XQ | — |
 
 ### Phase 1 ✅ — Natural-language recurring reminders
 **Status:** done (2026-09-16, TaskID `P1-NIN-A053`)
@@ -128,8 +128,8 @@ existing cross-list parity tests (however they currently assert `ProactiveTrigge
 `NINA_PUSH_KINDS` / tool-schema completeness) pass with the sixth trigger included; `vercel.json`
 still has exactly two `crons` entries.
 
-### Phase 2 — Admin reminder management in `/admin/memory`
-**Status:** planned
+### Phase 2 ✅ — Admin reminder management in `/admin/memory`
+**Status:** done (2026-09-16, TaskID `P1-ADM-R6XQ`)
 **Satisfies:** R2
 **Depends on:** phase 1 (`NinaReminder`/`NinaRemindersSlot`/`NINA_SLOT_REMINDERS` and
 `lib/nina/reminders.ts`'s pure functions)
@@ -170,6 +170,4 @@ triggers back on their original ~19:00–20:00 WIB window with no other code pat
 
 ## Next
 
-Execute the phase:
-
-    /implement -f NINA_NATURAL_REMINDERS_PLAN.md --phase 1
+Nothing — both phases are done and the set has landed on `main`.

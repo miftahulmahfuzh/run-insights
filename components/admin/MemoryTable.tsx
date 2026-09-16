@@ -5,8 +5,10 @@ import * as React from 'react'
 import { TOUCH_ICON } from '@/components/admin/touch'
 import { Button, Card } from '@/components/ui'
 import {
+  createReminderAction,
   deleteMemoryRowAction,
   editFactAction,
+  editReminderAction,
   insertFactAction,
   saveSlotAction,
   type AdminMemoryResult,
@@ -14,6 +16,8 @@ import {
 import {
   ADMIN_FACT_CATEGORIES,
   ADMIN_FACT_TEXT_MAX,
+  ADMIN_REMINDER_LABEL_MAX,
+  ADMIN_REMINDER_MESSAGE_MAX,
   ADMIN_SLOT_VALUE_MAX,
   type AdminFactCategory,
   type MemoryRow,
@@ -70,6 +74,8 @@ import { cn } from '@/lib/cn'
 
 /** The row id under which the add row's result is stored. Not a `MemoryRow`; it has no target yet. */
 const ADD_ROW_ID = 'add:fact'
+
+const ADD_REMINDER_ROW_ID = 'add:reminder'
 
 /**
  * `CONTROL_CLASS`'s tokens at table density. See the header.
@@ -139,6 +145,13 @@ const GROUPS: readonly { kind: MemoryRow['kind']; title: string; blurb: string }
     blurb:
       'Eight closed keys, every one of them in her prompt on every turn. Deleting a slot clears ' +
       'the value; the key comes straight back as a blank row, because the vocabulary is closed.',
+  },
+  {
+    kind: 'reminder',
+    title: 'Reminders',
+    blurb:
+      'Standing daily check-ins — she says the message back to him once a day, at the time set ' +
+      'here. Add, edit or remove them; a change lands before her next evening pass.',
   },
   {
     kind: 'promise',
@@ -246,10 +259,10 @@ export function MemoryTable({
     <Card className="mt-8 overflow-x-auto overscroll-x-contain">
       <table className="w-full min-w-[348px] border-collapse text-left lg:min-w-[854px]">
         <caption className="sr-only">
-          Every memory Nina holds for this account: her eight slots, her pending promises, and the
-          ledger. A cell saves when you leave it. The delete control removes a row on the first
-          click, with no confirmation. On a narrow screen the Origin and When columns are not shown;
-          the table scrolls sideways inside its own box.
+          Every memory Nina holds for this account: her eight slots, her standing reminders, her
+          pending promises, and the ledger. A cell saves when you leave it. The delete control
+          removes a row on the first click, with no confirmation. On a narrow screen the Origin and
+          When columns are not shown; the table scrolls sideways inside its own box.
         </caption>
 
         {/* No `<colgroup>` — the widths live on the header cells now. `CELL_WIDE_ONLY`'s docstring
@@ -278,7 +291,9 @@ export function MemoryTable({
           const groupRows = visible.filter((row) => row.kind === group.kind)
           // The ledger group always renders, because it carries the add row. The other two would be
           // an empty heading over nothing.
-          if (group.kind !== 'fact' && groupRows.length === 0) return null
+          if (group.kind !== 'fact' && group.kind !== 'reminder' && groupRows.length === 0) {
+            return null
+          }
 
           return (
             <tbody key={group.kind}>
@@ -296,6 +311,14 @@ export function MemoryTable({
                   userId={userId}
                   result={results[ADD_ROW_ID]}
                   onResult={(result) => report(ADD_ROW_ID, result)}
+                />
+              )}
+
+              {group.kind === 'reminder' && (
+                <AddReminderRow
+                  userId={userId}
+                  result={results[ADD_REMINDER_ROW_ID]}
+                  onResult={(result) => report(ADD_REMINDER_ROW_ID, result)}
                 />
               )}
 
@@ -342,6 +365,8 @@ function Row({
 }) {
   const [text, setText] = React.useState(row.text)
   const [category, setCategory] = React.useState(row.category)
+  const [reminderTime, setReminderTime] = React.useState(row.code)
+  const [reminderLabel, setReminderLabel] = React.useState(row.label)
 
   /*
    * Each draft follows its prop, adjusted DURING RENDER rather than in an effect — React's own
@@ -362,6 +387,17 @@ function Row({
   if (row.category !== lastCategory) {
     setLastCategory(row.category)
     setCategory(row.category)
+  }
+
+  const [lastCode, setLastCode] = React.useState(row.code)
+  if (row.code !== lastCode) {
+    setLastCode(row.code)
+    setReminderTime(row.code)
+  }
+  const [lastLabel, setLastLabel] = React.useState(row.label)
+  if (row.label !== lastLabel) {
+    setLastLabel(row.label)
+    setReminderLabel(row.label)
   }
 
   function commitSlot() {
@@ -397,9 +433,36 @@ function Row({
     )
   }
 
+  function commitReminder(patch: { timeOfDay?: string; label?: string; message?: string }) {
+    const nextTime = patch.timeOfDay ?? reminderTime
+    const nextLabel = patch.label ?? reminderLabel
+    const nextMessage = patch.message ?? text
+
+    if (nextTime === row.code && nextLabel === row.label && nextMessage === row.text) return
+    if (nextLabel.trim().length === 0 || nextMessage.trim().length === 0) {
+      setReminderLabel(row.label)
+      setText(row.text)
+      onReport(row.rowId, {
+        ok: false,
+        error: 'A reminder needs a label and a message. Delete it instead.',
+      })
+      return
+    }
+    onRun(row.rowId, () =>
+      editReminderAction({
+        userId,
+        id: row.target,
+        timeOfDay: nextTime,
+        label: nextLabel,
+        message: nextMessage,
+      }),
+    )
+  }
+
   function commit() {
     if (row.kind === 'slot') commitSlot()
     else if (row.kind === 'fact') commitFact({})
+    else if (row.kind === 'reminder') commitReminder({})
   }
 
   return (
@@ -422,6 +485,21 @@ function Row({
               </option>
             ))}
           </select>
+        ) : row.kind === 'reminder' ? (
+          <>
+            <span className="block text-[13px] font-semibold text-ink">Reminder</span>
+            <input
+              type="time"
+              aria-label="Time"
+              className={cn(CELL_CONTROL, 'mt-0.5')}
+              value={reminderTime}
+              onChange={(event) => {
+                setReminderTime(event.target.value)
+                if (result !== undefined) onReport(row.rowId, null)
+              }}
+              onBlur={() => commitReminder({ timeOfDay: reminderTime })}
+            />
+          </>
         ) : (
           <>
             <span className="block text-[13px] font-semibold text-ink">{row.label}</span>
@@ -431,7 +509,53 @@ function Row({
       </td>
 
       <td className={CELL}>
-        {row.editable ? (
+        {row.kind === 'reminder' ? (
+          <div className="space-y-1.5">
+            <input
+              aria-label="Label"
+              className={CELL_CONTROL}
+              value={reminderLabel}
+              maxLength={ADMIN_REMINDER_LABEL_MAX}
+              onChange={(event) => {
+                setReminderLabel(event.target.value)
+                if (result !== undefined) onReport(row.rowId, null)
+              }}
+              onBlur={() => commitReminder({ label: reminderLabel })}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault()
+                  event.currentTarget.blur()
+                }
+              }}
+            />
+            <textarea
+              aria-label="Message"
+              className={cn(CELL_CONTROL, 'resize-y leading-snug')}
+              rows={1}
+              value={text}
+              maxLength={ADMIN_REMINDER_MESSAGE_MAX}
+              onChange={(event) => {
+                setText(event.target.value)
+                if (result !== undefined) onReport(row.rowId, null)
+              }}
+              onBlur={() => commitReminder({ message: text })}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') {
+                  event.preventDefault()
+                  setText(row.text)
+                  setReminderLabel(row.label)
+                  setReminderTime(row.code)
+                  onReport(row.rowId, null)
+                  return
+                }
+                if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+                  event.preventDefault()
+                  event.currentTarget.blur()
+                }
+              }}
+            />
+          </div>
+        ) : row.editable ? (
           <textarea
             aria-label={row.label === '' ? 'Ledger row text' : `${row.label} value`}
             className={cn(CELL_CONTROL, 'resize-y leading-snug')}
@@ -483,7 +607,8 @@ function Row({
             row.origin === 'admin' ? 'bg-accent/15 text-accent' : 'bg-paper-2 text-ink-2',
           )}
         >
-          {row.origin ?? (row.kind === 'promise' ? 'promise' : 'not set')}
+          {row.origin ??
+            (row.kind === 'promise' ? 'promise' : row.kind === 'reminder' ? 'reminder' : 'not set')}
         </span>
         <span className="mt-1 block text-[11px] font-medium text-ink-3">{row.note}</span>
       </td>
@@ -617,6 +742,115 @@ function AddRow({
           aria-label="Add this row to the ledger"
           loading={pending}
           disabled={text.trim().length === 0}
+          onClick={add}
+        >
+          +
+        </Button>
+      </td>
+    </tr>
+  )
+}
+
+/**
+ * R2's add affordance for reminders — the same shape as `AddRow`, three fields instead of two.
+ * `type="time"` gives a native picker and guarantees `HH:mm` with no client-side regex of its own.
+ */
+function AddReminderRow({
+  userId,
+  result,
+  onResult,
+}: {
+  userId: string
+  result: AdminMemoryResult | undefined
+  onResult: (result: AdminMemoryResult | null) => void
+}) {
+  const [timeOfDay, setTimeOfDay] = React.useState('20:45')
+  const [label, setLabel] = React.useState('')
+  const [message, setMessage] = React.useState('')
+  const [pending, startTransition] = React.useTransition()
+
+  function add() {
+    if (label.trim().length === 0 || message.trim().length === 0) return
+    startTransition(async () => {
+      const next = await createReminderAction({ userId, timeOfDay, label, message })
+      onResult(next)
+      if (next.ok) {
+        setLabel('')
+        setMessage('')
+      }
+    })
+  }
+
+  return (
+    <tr className="bg-paper-2/40">
+      <td className={CELL}>
+        <span className="block text-[13px] font-semibold text-ink">Reminder</span>
+        <input
+          type="time"
+          aria-label="Time for the new reminder"
+          className={cn(CELL_CONTROL, 'mt-0.5')}
+          value={timeOfDay}
+          disabled={pending}
+          onChange={(event) => setTimeOfDay(event.target.value)}
+        />
+      </td>
+
+      <td className={CELL}>
+        <div className="space-y-1.5">
+          <input
+            aria-label="Label for the new reminder"
+            className={CELL_CONTROL}
+            value={label}
+            maxLength={ADMIN_REMINDER_LABEL_MAX}
+            disabled={pending}
+            placeholder="tidur"
+            onChange={(event) => {
+              setLabel(event.target.value)
+              if (result !== undefined) onResult(null)
+            }}
+          />
+          <input
+            aria-label="Message for the new reminder"
+            className={CELL_CONTROL}
+            value={message}
+            maxLength={ADMIN_REMINDER_MESSAGE_MAX}
+            disabled={pending}
+            placeholder="What she says back to him every day."
+            onChange={(event) => {
+              setMessage(event.target.value)
+              if (result !== undefined) onResult(null)
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault()
+                add()
+              }
+            }}
+          />
+        </div>
+        {result?.ok === false && (
+          <p role="alert" className="mt-1 px-2 text-[11px] font-semibold text-red">
+            {result.error}
+          </p>
+        )}
+        {result?.ok === true && result.note !== undefined && (
+          <p role="status" className="mt-1 px-2 text-[11px] font-semibold text-accent">
+            {result.note}
+          </p>
+        )}
+      </td>
+
+      <td className={cn(CELL_WIDE_ONLY, 'text-[11px] font-medium text-ink-3')} colSpan={2}>
+        Fires once a day at that time, from the evening cron.
+      </td>
+
+      <td className={cn(CELL, 'text-right')}>
+        <Button
+          size="md"
+          className="text-[15px]"
+          aria-label="Add this reminder"
+          loading={pending}
+          disabled={label.trim().length === 0 || message.trim().length === 0}
           onClick={add}
         >
           +

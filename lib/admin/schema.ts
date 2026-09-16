@@ -11,10 +11,13 @@ import {
 } from '@/lib/admin/filetree'
 import { NINA_ADMIN_BATCH_MAX } from '@/lib/nina/album'
 import { NINA_CROP_MAX_ABS_OFFSET, NINA_CROP_MAX_SCALE, NINA_CROP_MIN_SCALE } from '@/lib/nina/crop'
+import { NINA_REMINDER_TIME_PATTERN } from '@/lib/nina/schema'
 
 import {
   ADMIN_FACT_CATEGORIES,
   ADMIN_FACT_TEXT_MAX,
+  ADMIN_REMINDER_LABEL_MAX,
+  ADMIN_REMINDER_MESSAGE_MAX,
   ADMIN_SLOT_VALUE_MAX,
 } from '@/lib/admin/memoryModel'
 
@@ -220,6 +223,25 @@ const slotKeySchema = z
 /** A `nina_memory_facts.id` or a `NinaPendingPromise.id` — both `newId()` nanoids. */
 const memoryIdSchema = z.string().trim().min(1).max(64)
 
+const reminderTimeSchema = z
+  .string()
+  .trim()
+  .regex(new RegExp(NINA_REMINDER_TIME_PATTERN), 'Not a valid HH:mm time.')
+
+/** One shape, used by both create and edit — the table sends the full row either way. */
+const reminderFieldsSchema = z.object({
+  timeOfDay: reminderTimeSchema,
+  label: z.string().trim().min(1).max(ADMIN_REMINDER_LABEL_MAX),
+  message: z.string().trim().min(1).max(ADMIN_REMINDER_MESSAGE_MAX),
+})
+
+export const reminderCreateSchema = reminderFieldsSchema.extend({ userId: userIdSchema })
+
+export const reminderEditSchema = reminderFieldsSchema.extend({
+  userId: userIdSchema,
+  id: memoryIdSchema,
+})
+
 export const slotEditSchema = z.object({
   userId: userIdSchema,
   /** Not trimmed here — `canonicaliseSlotValue` owns every transformation of a slot value. */
@@ -267,6 +289,7 @@ export const memoryDeleteSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('slot'), userId: userIdSchema, target: slotKeySchema }),
   z.object({ kind: z.literal('promise'), userId: userIdSchema, target: memoryIdSchema }),
   z.object({ kind: z.literal('fact'), userId: userIdSchema, target: memoryIdSchema }),
+  z.object({ kind: z.literal('reminder'), userId: userIdSchema, target: memoryIdSchema }),
 ])
 
 /* ============================================================================

@@ -8,6 +8,7 @@ import {
   dueReminder,
   markReminderFired,
   parseRemindersSlot,
+  patchReminder,
   MAX_ACTIVE_REMINDERS,
   MAX_CANCELLED_KEPT,
 } from '@/lib/nina/reminders'
@@ -275,5 +276,87 @@ describe('markReminderFired', () => {
     const slot = slotOf(reminder({ id: 'a' }), reminder({ id: 'b', timeOfDay: '06:00' }))
     const marked = markReminderFired(slot, 'a', TODAY)
     expect(marked.slot.reminders.find((r) => r.id === 'b')?.lastFiredOn).toBeNull()
+  })
+})
+
+describe('patchReminder — the in-place edit', () => {
+  it('changes the fields and keeps id, createdOn and lastFiredOn untouched', () => {
+    const original = reminder({ lastFiredOn: TODAY })
+    const result = patchReminder({
+      slot: slotOf(original),
+      id: original.id,
+      timeOfDay: '21:00',
+      label: 'tidur',
+      message: 'jam baru',
+    })
+    expect(result.refusal).toBeNull()
+    expect(result.changed).toBe(true)
+    const patched = result.slot.reminders[0]
+    expect(patched?.id).toBe(original.id)
+    expect(patched?.createdOn).toBe(original.createdOn)
+    expect(patched?.lastFiredOn).toBe(TODAY)
+    expect(patched?.timeOfDay).toBe('21:00')
+    expect(patched?.message).toBe('jam baru')
+  })
+
+  it('is a no-op, not a refusal, when nothing actually changed', () => {
+    const original = reminder()
+    const result = patchReminder({
+      slot: slotOf(original),
+      id: original.id,
+      timeOfDay: original.timeOfDay,
+      label: original.label,
+      message: original.message,
+    })
+    expect(result.changed).toBe(false)
+    expect(result.refusal).toBeNull()
+  })
+
+  it('refuses an unknown or cancelled id', () => {
+    const cancelled = reminder({ id: 'gone', status: 'cancelled', cancelledOn: YESTERDAY })
+    const result = patchReminder({
+      slot: slotOf(cancelled),
+      id: 'gone',
+      timeOfDay: '20:45',
+      label: 'tidur',
+      message: 'x',
+    })
+    expect(result.changed).toBe(false)
+    expect(result.refusal).toMatch(/no active reminder/)
+  })
+
+  it('refuses a malformed time or an empty field, same as create does', () => {
+    const original = reminder()
+    expect(
+      patchReminder({ slot: slotOf(original), id: original.id, timeOfDay: '8:45 pm', label: 'x', message: 'y' })
+        .refusal,
+    ).toMatch(/valid time/)
+    expect(
+      patchReminder({ slot: slotOf(original), id: original.id, timeOfDay: '20:45', label: '', message: 'y' })
+        .refusal,
+    ).toMatch(/valid time/)
+  })
+
+  it('refuses a time+label collision with ANOTHER active reminder, but allows keeping its own', () => {
+    const a = reminder({ id: 'a', timeOfDay: '06:00', label: 'lari' })
+    const b = reminder({ id: 'b', timeOfDay: '20:45', label: 'tidur' })
+    const collision = patchReminder({
+      slot: slotOf(a, b),
+      id: 'a',
+      timeOfDay: '20:45',
+      label: 'tidur',
+      message: 'x',
+    })
+    expect(collision.refusal).toMatch(/already exists/)
+
+    const ownTime = patchReminder({
+      slot: slotOf(a, b),
+      id: 'b',
+      timeOfDay: '20:45',
+      label: 'tidur',
+      message: 'jam baru',
+    })
+    expect(ownTime.refusal).toBeNull()
+    expect(ownTime.changed).toBe(true)
   })
 })

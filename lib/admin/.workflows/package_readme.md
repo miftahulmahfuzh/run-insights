@@ -1,7 +1,9 @@
 # Package: admin
 
 **Location**: `lib/admin`
-**Last Updated**: 2026-09-15 (`search_keywords` — the album's second embedding input — plus the
+**Last Updated**: 2026-09-16 (the Reminders group on `/admin/memory` — full add/edit/delete over
+the `reminders` slot, P1-ADM-R6XQ, phase 2 of 2 of `NINA_NATURAL_REMINDERS_PLAN.md`).
+Previously: 2026-09-15 (`search_keywords` — the album's second embedding input — plus the
 `nina:backfill-embeddings` script, P1-ADM-T8RM; same day, the album's describe-and-embed write side
 + the backfill route, P2-ADM-A001, and cross-table duplicate detection on the admin upload routes,
 P1-ADM-L2VN).
@@ -56,8 +58,13 @@ exactly one definition — `schema.ts` imports every bound it enforces rather th
   album folder batch) asks the cross-table duplicate question AFTER its row is committed. Nothing
   here skips a write, repoints a row or releases a blob because of the answer; the answer only
   chooses which push is sent.
-- Own `/admin/memory`'s write side (four actions), and make it structurally impossible to write
-  a memory row without the `admin` source label.
+- Own `/admin/memory`'s write side (six actions since 2026-09-16), and make it structurally
+  impossible to write a memory row without the `admin` source label.
+- Since 2026-09-16, own the admin half of Nina's **reminders** — add, edit and delete over the
+  `reminders` slot that used to be reachable only by asking her in chat. The rule that came with
+  it: this package supplies the *surface*, never a second copy of the rules. Create and delete go
+  through phase 1's `applyReminderWrites` / slot shape in `lib/nina/reminders.ts`; the one thing
+  the admin path has of its own is `patchReminder`, an in-place edit the chat path cannot express.
 - Own `/admin/shortcuts`'s write side, and make it structurally impossible for a caller — or a
   forged POST — to supply a `match_key` or a `kind` that disagrees with its own trigger.
 - Decide an upload or a folder operation in pure, import-free (or zod-only) modules that a
@@ -83,10 +90,10 @@ exactly one definition — `schema.ts` imports every bound it enforces rather th
 | `chatPhotoSchema.ts` | pure | Every Zod schema the media collection accepts. Separate from `schema.ts` (different table, different route). `schema.ts` imports from it. |
 | `chatPhotoActions.ts` | `'use server'` | Six actions: add (the only one that mints a message), replace, find-duplicate, remove, describe, edit description. Add and replace are the two that push; the other four mint nothing and notify nothing. |
 | `users.ts` | `server-only` | The unscoped account enumeration the memory page's picker (and others) need. |
-| `memoryModel.ts` | pure | Memory bounds, the seven categories, and `MemoryRow` — the one row model of `/admin/memory`. |
-| `memoryVocab.ts` | `server-only` in practice (no pill; a test imports it) | The bridge from the closed slot vocabulary to the page's rows: `buildMemoryRows`, `canonicaliseSlotValue`. |
+| `memoryModel.ts` | pure | Memory bounds (including the two reminder caps), the seven categories, and `MemoryRow` — the one row model of `/admin/memory`. |
+| `memoryVocab.ts` | `server-only` in practice (no pill; a test imports it) | The bridge from the closed slot vocabulary to the page's rows: `buildMemoryRows` (slots, orphans, reminders, promises, facts), `canonicaliseSlotValue`. |
 | `memoryStore.ts` | `server-only` | The only file naming a phase-1 memory writer; forces the `admin` label. |
-| `memoryActions.ts` | `'use server'` | The four memory actions: save a slot, insert a fact, edit a fact, delete a row. |
+| `memoryActions.ts` | `'use server'` | The six memory actions: save a slot, insert a fact, edit a fact, create a reminder, edit a reminder, delete a row. |
 | `tuningActions.ts` | `'use server'` | One action: the whole-tuning save. (The reset action was deleted with the buttons.) |
 | `tuningModel.ts` | pure (client-safe) | The character panel's client-safe half: copy, draft shape, unsaved-field diff, auto-save merge. |
 | `shortcutModel.ts` | pure | The shortcuts row model, page ceiling, field tuple, formatters — and the one re-export of phase 1's three caps. |
@@ -291,6 +298,8 @@ export const avatarRegisterSchema      // live caller: explorer/thumbnail.ts
 export const slotEditSchema
 export const factInsertSchema
 export const factEditSchema
+export const reminderCreateSchema      // 2026-09-16 — { userId, timeOfDay, label, message }
+export const reminderEditSchema        // its twin plus { id } — same fields, the table sends all of them
 export const memoryDeleteSchema        // discriminated union on kind
 export const folderPathSchema
 export const albumFilenameSchema
@@ -363,10 +372,18 @@ Facts per schema worth keeping (all verified in source):
   that re-punctuated it would store something nobody typed. Same two shared rules as its twin:
   `.max()` **before** the transform (an over-long paste is refused inline, never truncated into
   range), and no `.min(1)` (the empty box is the clear — the action turns `''` into `NULL`).
-- `memoryDeleteSchema` is a discriminated union on `kind` (`slot` | `promise` | `fact`) — the one
-  delete control's three branches, exhaustive by construction. The four per-kind schemas it
-  replaced (`slotRetire`, `promiseRemove`, `factRetract`, `factPurge`) are gone with the actions
-  they served.
+- `memoryDeleteSchema` is a discriminated union on `kind` (`slot` | `promise` | `fact` |
+  `reminder` since 2026-09-16) — the one delete control's four branches, exhaustive by
+  construction. The four per-kind schemas it replaced (`slotRetire`, `promiseRemove`,
+  `factRetract`, `factPurge`) are gone with the actions they served.
+- `reminderCreateSchema` / `reminderEditSchema` (2026-09-16) are **one field object extended
+  twice** — the edit is the create plus an `id`, because the table sends the whole row either way
+  and two hand-written shapes would drift. The time field is validated against
+  `NINA_REMINDER_TIME_PATTERN` imported from `lib/nina/schema.ts` (the same source string the
+  model's own tool schema uses — the `HH:mm` grammar is not re-spelled here), and the label and
+  message caps come from `memoryModel.ts`'s `ADMIN_REMINDER_LABEL_MAX` (60) /
+  `ADMIN_REMINDER_MESSAGE_MAX` (300), which are in turn the same numbers as
+  `NinaReminderWriteSchema`'s. One field, one cap — see *Every bound here is imported* above.
 - `ninaTuningWriteSchema` validates the whole tuning as one object — every bound imported from
   `lib/nina/tuning.ts` — and each trait is **validated, not clamped** (clamping is the assembler's
   job; a Zod refusal is a message, a clamp is a silent coercion). There is no reset schema: the
@@ -928,19 +945,34 @@ edit reaches Nina: the tuning is read live on every turn, no cache on that path.
 ### `memoryModel.ts` / `memoryVocab.ts` / `memoryStore.ts` / `memoryActions.ts` — `/admin/memory`
 
 `memoryModel.ts` (zero value imports, client-safe): `ADMIN_FACT_TEXT_MAX` (400),
-`ADMIN_SLOT_VALUE_MAX` (400), `ADMIN_LEDGER_PAGE` (200), the seven `ADMIN_FACT_CATEGORIES`
+`ADMIN_SLOT_VALUE_MAX` (400), `ADMIN_REMINDER_LABEL_MAX` (60) and `ADMIN_REMINDER_MESSAGE_MAX`
+(300) — both 2026-09-16, both the same numbers as `NinaReminderWriteSchema`'s in
+`lib/nina/schema.ts` — `ADMIN_LEDGER_PAGE` (200), the seven `ADMIN_FACT_CATEGORIES`
 (retyped as a tuple with `satisfies` — `NinaFactCategory` is a type union, not a const tuple), and
-**`MemoryRow`** — slots, ledger facts and `pending_promises` entries flattened into the one
-serializable shape the table renders, with the fields that carry meaning (`editable`, `deletable`,
-`reappears`, `note`). `reappears` is the honest-delete flag: only the closed vocabulary's slot
-keys come back as blank rows, and the table has to say so or it reads as a failed delete.
-`MemoryRowKind` (the row's `kind` field) went module-private 2026-09-13 — it typed `MemoryRow.kind`
-in this file and nowhere else; `SlotEditKind` stays exported, `memoryVocab.ts` imports it.
+**`MemoryRow`** — slots, ledger facts, reminders and `pending_promises` entries flattened into the
+one serializable shape the table renders, with the fields that carry meaning (`editable`,
+`deletable`, `reappears`, `note`). `reappears` is the honest-delete flag: only the closed
+vocabulary's slot keys come back as blank rows, and the table has to say so or it reads as a failed
+delete. `MemoryRowKind` (the row's `kind` field, `'slot' | 'promise' | 'fact' | 'reminder'`) went
+module-private 2026-09-13 — it typed `MemoryRow.kind` in this file and nowhere else;
+`SlotEditKind` stays exported, `memoryVocab.ts` imports it.
 
 `memoryVocab.ts` is the only file here that imports `lib/nina/memory.ts`, and only as a READER:
 `slotEditKind`, `slotProtection`, `describeSlot`, `canonicaliseSlotValue` (the round trip runs on
 the WRITER — a refused value is reported, not converted) and `buildMemoryRows`, the page's
-server-side row builder.
+server-side row builder. `buildMemoryRows` emits five bands in one array, in render order: the
+closed-vocabulary slot rows, the orphan rows, the reminder rows, the promise rows, the fact rows.
+Two things about the reminder band, both 2026-09-16:
+
+- Its input (`reminders`, a `readonly MemoryReminderInputRow[]`) is **optional** — the parameter
+  is additive, so every existing caller and test that passes only slots/facts/promises still
+  type-checks and still gets no reminder band.
+- The orphan filter gained `&& row.key !== NINA_SLOT_REMINDERS`. Without it the `reminders` slot
+  renders TWICE: once as its own group, and once as an "unknown key" orphan row holding raw JSON,
+  because the reminders key is deliberately not in `NINA_SLOT_KEYS`. A row `kind` is `'reminder'`,
+  its `target` is the reminder's id (not a slot key), its `code` carries `timeOfDay`, its `label`
+  the label, its `text` the message, and its `note` is `never fired yet` or `last fired <date>`.
+  `reappears` is `false` — a deleted reminder is gone, the slot is not a closed vocabulary.
 
 `memoryStore.ts` — `server-only`, the only file naming a phase-1 memory writer
 (`adminUpsertSlot`, `adminDeleteSlot`, `adminAppendFact`, `adminUpdateFact`, `adminDeleteFact`,
@@ -951,25 +983,65 @@ no `source`/`sourceMessageId` field. A caller cannot mislabel a row because ther
 put the label. It is under `lib/admin/` (not `lib/nina/`) because a test asserts the distiller's
 modules do not import the mutating ledger queries.
 
-`memoryActions.ts` — **four** actions (`saveSlotAction`, `insertFactAction`, `editFactAction`,
-`deleteMemoryRowAction`), each the same four lines: `requireAdmin()` first, Zod second, the write
-through `memoryStore.ts` only, `revalidatePath` last. There were nine; the five that went were
-each a second step (a quoting record before delete, a typed confirmation, a second button after a
-refusal) and the owner has ruled: no confirmation whatsoever. Consequences worth recording:
+`memoryActions.ts` — **six** actions since 2026-09-16 (`saveSlotAction`, `insertFactAction`,
+`editFactAction`, `createReminderAction`, `editReminderAction`, `deleteMemoryRowAction`), each the
+same four lines: `requireAdmin()` first, Zod second, the write through `memoryStore.ts` only,
+`revalidatePath` last. There were nine, then four; the five that went were each a second step (a
+quoting record before delete, a typed confirmation, a second button after a refusal) and the owner
+has ruled: no confirmation whatsoever. The two that came back are R2's add and edit for reminders,
+and they are affordances the page did not have, not steps re-added to one it did. Consequences
+worth recording:
 
 - `editFactAction` edits ANY ledger row, including distilled ones: the edit sets
   `source = 'admin'`, `source_message_id = NULL` in the same statement, so the row stops claiming
   to be a quotation and the old permissions predicate had nothing left to decide. The row's note
   says the edit makes it his.
+- `createReminderAction` (2026-09-16) goes through phase 1's `applyReminderWrites` with a
+  single-element `[{ action: 'create', … }]` write list — **not** a hand-rolled push onto the
+  array. That is the whole point of it: the `HH:mm` shape check, the four-active cap and the
+  same-time-and-label duplicate refusal are one set of rules for an admin-authored reminder and a
+  model-authored one. A refusal comes back as `result.refused[0].reason` and is shown verbatim.
+  It supplies `todayInJakarta()` and `newId` from the outside, because that function is pure.
+- `editReminderAction` (2026-09-16) is the one place the admin path does something the chat path
+  cannot: `patchReminder` (`lib/nina/reminders.ts`), a TRUE in-place edit of `timeOfDay` / `label`
+  / `message` that leaves `id`, `createdOn`, `lastFiredOn` and `sourceMessageId` untouched. The
+  model's only edit mechanism is cancel + create, which mints a new id and forgets that the
+  reminder already fired today; this page's precedent for every other row (`saveSlotAction`,
+  `editFactAction`) is that the cell you touched changes and nothing else does. `patchReminder`
+  runs the same duplicate guard against every OTHER active entry — never against itself, or a
+  no-op edit would refuse against its own unchanged row — and reports `{ changed: false,
+  refusal: null }` for a genuine no-op, which the action turns into `{ ok: true }` with no write.
 - `deleteMemoryRowAction` is the one destructive action and it destroys on the first click;
-  `memoryDeleteSchema`'s union makes the three branches exhaustive. A **slot** row is gone but
-  the KEY comes back blank (closed vocabulary); a **promise** entry leaves the slot and does not
-  reappear unless the runner states it again; a **fact** is gone for good. No quoting record is
-  written for any of the three — the record was the confirmation.
+  `memoryDeleteSchema`'s union makes the four branches exhaustive. A **slot** row is gone but
+  the KEY comes back blank (closed vocabulary); a **reminder** is filtered out of the slot's array
+  and does not come back; a **promise** entry leaves the slot and does not reappear unless the
+  runner states it again; a **fact** is gone for good. No quoting record is written for any of the
+  four — the record was the confirmation.
+- **Branch ORDER inside `deleteMemoryRowAction` is load-bearing, and the `reminder` branch must
+  stay above the promise code.** Only `slot` and `reminder` are written as explicit `if (kind ===
+  …)` guards; the promise handling is the *unconditional* final block, reached whenever `kind` is
+  neither of those and not `fact`. It returns early ("there are no pending promises" / "no promise
+  with that id") whenever the target id is not a promise — which a reminder id never is. Putting
+  the reminder branch after it, as the phase plan's prose literally said, makes every reminder
+  delete fail with a promise-shaped error while the reminder stays on the page. The plan's own
+  parenthetical ("each branch returns before the next begins") is the rule; the ordering is how it
+  is satisfied.
 - The old "the append comes first, always" two-statement invariant is GONE, deliberately: no
   surviving action writes twice, and the invariant is removed rather than left as folklore.
 - `revalidatePath` re-renders the page and is not how the edit reaches Nina — `loadNinaContext`
   reads both tables live every turn.
+
+The consumers outside this package (owned by it): `app/admin/memory/page.tsx` adds one more
+`adminReadSlot(target.id, NINA_SLOT_REMINDERS)` to its existing `Promise.all`, runs it through
+`parseRemindersSlot` + `activeReminders` (both phase 1's, in `lib/nina/reminders.ts` — cancelled
+entries stay in the slot and must not render), and hands the result to `buildMemoryRows`.
+`components/admin/MemoryTable.tsx` gains a fourth `GROUPS` entry, **Reminders**, sitting between
+Slots and Pending promises; like the ledger group it always renders even when empty, because it
+carries its own add row (`ADD_REMINDER_ROW_ID`, `'add:reminder'`, the same not-a-`MemoryRow`
+pattern as `'add:fact'`). A reminder row edits three fields, not one — the time and label live in
+their own inputs whose drafts follow their props DURING RENDER (the same `lastX` mirror the text
+and category drafts use, never an effect), and each commits by sending the whole row to
+`editReminderAction`.
 
 ### `shortcutModel.ts` / `shortcutStore.ts` / `shortcutActions.ts` — `/admin/shortcuts`
 
@@ -1218,6 +1290,14 @@ backfill route to finish. The other describes are in-band (the two describe acti
 - `@/lib/nina/queries` — every album, chat-photo, memory and shortcut read/write; the four
   shortcut writes are named in `shortcutStore.ts` and nowhere else under `lib/admin` (a test
   asserts it).
+- `@/lib/nina/reminders` — `parseRemindersSlot`, `applyReminderWrites`, `patchReminder` (and
+  `activeReminders` from the page), reached from `memoryActions.ts` alone (2026-09-16). Every one
+  of them is pure: this package reads the slot, hands the value in, and writes what comes back.
+  The reminder RULES live there and must not be restated here.
+- `@/lib/nina/schema` — `NINA_REMINDER_TIME_PATTERN`, the `HH:mm` source string, imported by
+  `schema.ts` rather than re-spelled as a second regex.
+- `@/lib/date/ranges` — `todayInJakarta()`, supplied to `applyReminderWrites` (which takes the
+  day as an argument because it is pure).
 - `@/lib/nina/{crop,album,images,vision,caption,memory,shortcuts,attach}` — clamp/bounds, batch
   and manifest caps, the blob prefix, the two model-call families (`describeNinaImages`,
   `captionNinaPhoto`), the slot vocabulary read, the trigger caps and normaliser, the
@@ -1248,7 +1328,8 @@ backfill route to finish. The other describes are in-band (the two describe acti
   must name **all three** runtime exports (`sendNinaPush`, `notifyNinaPush`, `pushNotifier`): the
   module graph reaches it through `lib/nina/proactive.ts`, which imports `pushNotifier`, so an
   omitted key is a module-resolution error rather than a silent undefined.
-- `@/lib/id` — `isValidId` shape checks on claimed ids.
+- `@/lib/id` — `isValidId` shape checks on claimed ids, and `newId` for a reminder's id
+  (`memoryActions.ts` passes it in as `applyReminderWrites`' `newId` argument).
 - `@/lib/db`, `@/lib/db/schema`, `@/lib/db/queries` — `users.ts` and the memory type imports;
   `isUniqueViolation` (shortcuts' 23505 catch).
 
@@ -1507,9 +1588,16 @@ export default async function Page() {
   do not narrow the read to enabled rows, do not add a value import to `shortcutModel.ts`, and do
   not add a confirmation step to any shortcut action — the test asserts the absence of every
   second-click API by name.
-- **Do not add a confirmation to a memory action either.** Four actions, first-click deletes, and
+- **Do not add a confirmation to a memory action either.** Six actions, first-click deletes, and
   `editFactAction` making a row his IS the data-integrity answer (the row stops claiming to quote
   its source message).
+- **Do not move the `reminder` branch below the promise block in `deleteMemoryRowAction`,** and do
+  not re-implement a reminder rule inside `lib/admin`. The promise block is the unconditional
+  fallthrough and will swallow a reminder id; the create path's cap, time grammar and duplicate
+  refusal belong to `applyReminderWrites` in `lib/nina/reminders.ts`, which the chat path uses too.
+- **Do not let the `reminders` slot key back into the orphan list.** It is deliberately absent
+  from `NINA_SLOT_KEYS`, so `buildMemoryRows`' orphan filter has to exclude it by name or the slot
+  renders a second time as a raw-JSON "unknown key" row underneath its own group.
 - **Do not "fix" the manifest `truncated` `>=`.** The error is in the safe direction and the
   cheap fix would need a second `COUNT(*)`.
 - **Do not read `attempts` alone as "a retry happened"** in the image test view — the claim
@@ -1543,6 +1631,31 @@ the browser and so never survive an upload; the orphaned-blob window (blob PUT a
 registered) is real and belongs to the reaper, not to this package.
 
 ## Recent Changes
+
+- **2026-09-16** — `nina-natural-reminders` phase 2 of 2 (P1-ADM-R6XQ), satisfying R2 (*"add a
+  section to `/admin/memory` so an admin can manually add a new reminder, edit an existing one, or
+  remove it — full CRUD, not just delete"*): the `reminders` slot phase 1 introduced stopped being
+  chat-only. New **Reminders** group on `/admin/memory`, between Slots and Pending promises, with
+  an add row and per-row edit and delete. In this package: `ADMIN_REMINDER_LABEL_MAX` (60) and
+  `ADMIN_REMINDER_MESSAGE_MAX` (300) in `memoryModel.ts`, and `'reminder'` added to the private
+  `MemoryRowKind`; `reminderCreateSchema` / `reminderEditSchema` in `schema.ts` (one field object
+  extended twice) plus a fourth arm on `memoryDeleteSchema`, with the `HH:mm` grammar imported as
+  `NINA_REMINDER_TIME_PATTERN` rather than re-spelled; `buildMemoryRows` in `memoryVocab.ts` gained
+  an OPTIONAL `reminders` input, a `MemoryReminderInputRow` interface, a reminder band between the
+  orphans and the promises, and the orphan-filter exclusion that stops the `reminders` key itself
+  rendering as a raw-JSON orphan row; `memoryActions.ts` went from four actions to six with
+  `createReminderAction` (through phase 1's `applyReminderWrites`, so the cap, the time check and
+  the duplicate refusal are not re-implemented) and `editReminderAction` (through the new
+  `patchReminder`), and `deleteMemoryRowAction` gained a `reminder` branch placed ABOVE the
+  unconditional promise fallthrough — the phase plan's prose said below, which would have made
+  every reminder delete fail with a promise-shaped error (see the gotcha). Outside the package but
+  owned by it: one more `adminReadSlot` in `app/admin/memory/page.tsx`' existing `Promise.all`,
+  read through `parseRemindersSlot` + `activeReminders`, and the new group plus its three-field row
+  editor in `components/admin/MemoryTable.tsx`. The one new function outside `lib/admin` is
+  `patchReminder` in `lib/nina/reminders.ts` — a true in-place edit preserving `id`, `createdOn`
+  and `lastFiredOn`, which the chat path's cancel+create cannot express. Covered by
+  `tests/admin.memory.test.ts` and `tests/nina.reminders.test.ts`; `npm run typecheck`, `npm run
+  lint` and the full `npx vitest run` (357 files / 6225 tests) green.
 
 - **2026-09-15** — `nina-album-search-relevance-tools` phase 2 of 3 (P1-ADM-T8RM), satisfying R2
   (*"kalo selain image description, kita tambah satu field baru, search_keywords"*): the album's
