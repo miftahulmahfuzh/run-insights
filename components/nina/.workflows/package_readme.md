@@ -46,9 +46,11 @@ blink) both live in `app/globals.css` and are both redefined under `prefers-redu
   `busy`, the poll that brings her bubbles, and the staggered reveal that plays them — with her
   words never fabricated by this package.
 - Own the composer: text, photo tiles (compress → hash → owner-scoped pre-check → PUT + describe,
-  or attach the already-collected photograph with no upload, no ticket and no describe), the reply
-  strip, the pinned run chip and the pinned album photo, and the four-clause "something to send"
-  rule (whose image clause covers both draft kinds — a `deduped` tile is still an image).
+  or attach the already-collected photograph with no upload, no ticket and no describe) entered
+  through either of two doors — the camera button's file picker, or a clipboard image pasted into
+  the textarea — the reply strip, the pinned run chip and the pinned album photo, and the
+  four-clause "something to send" rule (whose image clause covers both draft kinds — a `deduped`
+  tile is still an image).
 - Draw the conversation: day-divided list, bubbles with quote stubs and photo grids and run cards,
   two swipe gestures plus a tap, and the actions sheet — every gate decided in `lib/`.
 - Host the sidebar overlay: URL-held open state, the pinned four-icon rail whose `up` is the chat
@@ -77,7 +79,7 @@ blink) both live in `app/globals.css` and are both redefined under `prefers-redu
 | `MessageList.tsx` | `'use client'` | The conversation, grouped by day. The page scrolls — no `overflow-y-auto` panel — and `decideAutoScroll` is fed by a passive scroll *sample*. Honours R14's `?at=` scroll mark with a `useLayoutEffect` restore; sets `--nina-flash-count` from the server-resolved `flashBlinks` prop. |
 | `MessageBubble.tsx` | `'use client'` | One message. Two sides, two extension slots (`quote`, `above`), two `sr-only`-until-focused openers, three gestures decided in `lib/`. Carries the landing flash: the `flash` prop attaches `nina-flash-blink` (`data-flash=true` for the probe) and recolours the ring per side — hers keep the keyframe's `--accent` default, his take the bubble's own fill (`[--nina-flash-ring-color:var(--ink)]`; the 09-09 white lasted a night, invisible against light paper exactly where a jobs deep link lands). |
 | `MessageActionsSheet.tsx` | `'use client'` | Edit / delete / resend / retry in one `Sheet`. Owns its own draft (the `Sheet.tsx` focus-loss lesson, twice); `key={acting?.id}` upstream resets it. Delete is immediate — the owner removed the confirm step. |
-| `Composer.tsx` | `'use client'` | The fixed bar: auto-growing textarea, photo tiles, reply strip, run chip, photo chip, send. Owns its own text; takes `bottomCss`/`padBottomCss` as precomputed strings and computes no geometry. The tile pipeline (compress → `contentHashOf` → `findNinaDuplicateChatImage` → `planNinaPickUpload`, with the `checking` state) is the dedup section's. |
+| `Composer.tsx` | `'use client'` | The fixed bar: auto-growing textarea, photo tiles, reply strip, run chip, photo chip, send. Owns its own text; takes `bottomCss`/`padBottomCss` as precomputed strings and computes no geometry. The tile pipeline (compress → `contentHashOf` → `findNinaDuplicateChatImage` → `planNinaPickUpload`, with the `checking` state) is the dedup section's, and so is the textarea's `onPaste` — the pipeline's second entry point, which intercepts nothing but an image on the clipboard. |
 | `ChatImages.tsx` | no directive | The photos inside a bubble, through `MessageBubble`'s `above` slot. `onOpen` absent means not interactive; `kinds` parallel array names the tap target honestly (`photoSideOf`). |
 | `ChatPhotoActions.tsx` | `'use client'` | Save/attach controls in `PhotoViewer`'s `actions` slot — two floating `bg-ink/70` discs over the shared `components/ui/useSavePhoto` ladder (import the hook; never re-grow the machinery here). `onAttach: (() => void) \| null` — `null` means the control does not render (an optimistic row has no `imageIds` yet). |
 | `AttachmentChip.tsx` | no directive | The run pinned to the next message. Compiles into `Composer`'s graph. Not a link: a tap must not throw the runner out of a draft. |
@@ -226,6 +228,23 @@ The degrade rule is invariant 9 at every floor: an uncomputable hash is null and
 a thrown pre-check degrades to null; an invalid claim writes NULL, never a send error; a failed
 keeper lookup degrades to fresh. A pick can never fail BECAUSE of dedup — the whole ladder lands
 on "writes the photograph, maybe twice", never on "a row pointing at nothing".
+
+**Two entry points, one pipeline.** A photograph reaches that ladder either from the camera
+button's hidden `<input type="file">` (`onPick`) or from a clipboard image pasted into the textarea
+(`onPaste`, added 2026-09-16). Neither does more than turn its own event into a `File[]` and hand
+it to `useComposerPhotos`'s single `handleFiles` core, so every rule `planNinaPicked` already
+carried — the three-image cap, the 25 MB pre-decode ceiling, the "not an image" rejection and its
+notice copy — covers a paste by construction, not by a second copy that could drift. A third door
+(drag-and-drop, say) is another two-line adapter, not another pipeline. Two rules belong to the
+paste alone: `preventDefault()` fires ONLY when the clipboard actually carries an image file, so a
+text-only paste is never touched (no interception, no notice, no tile — and a mixed image+text
+clipboard counts as an image paste, WhatsApp's own call); and a non-image file in a paste is
+dropped SILENTLY, because the picker's rejection copy answers a deliberate choice in an OS dialog
+and a paste of whatever was on the clipboard is not one. Inside `handleFiles` the candidate→`File`
+lookup is keyed by object IDENTITY (`Map<NinaPickCandidate, File>`), never by `{name, size}`:
+`planNinaPicked` hands back the very candidate objects it was given, and one paste can carry
+several files the OS named `image.png`, which a name+size `.find()` collapses onto one `File` and
+silently duplicates a tile's bytes.
 
 **The send carries the split.** `ComposerDraftImage` is a discriminated union — `upload` (ticket,
 url, stored pathname, contentHash) or `deduped` (url, imageId; the `url` exists for the optimistic
@@ -669,10 +688,20 @@ two-deck column, and added the keyboard reassert's clock; `photo-send-chat-icons
 two sends (P2-CN-A000) and extracted the keyboard channel (P1-CN-A001); `search-kbd-and-up-btn`
 pinned the window (P1-CN-A005) and made the rail's `up` the bar toggle through the shared
 `NinaBarProvider` (P1-CN-A002); `media-dedupe` (4/4, 2026-09-10/11) put the hash before the bytes;
-`job-photo-link` pointed the detail card at the earliest bubble and the photograph.
+`job-photo-link` pointed the detail card at the earliest bubble and the photograph;
+`composer-clipboard-image-paste` (1/1, 2026-09-16) gave the textarea its own way in (P1-CN-A006).
 
 ## Recent changes
 
+- **2026-09-16 — clipboard image paste (P1-CN-A006, `composer-clipboard-image-paste` 1/1).** The
+  composer's `<textarea>` took an `onPaste` handler, and `useComposerPhotos` grew one shared
+  `handleFiles(files: File[])` core that both `onPick` and `onPaste` feed — the dedup section's
+  "two entry points, one pipeline" paragraph is the contract. That core's file lookup moved from a
+  `{name, size}` `.find()` to an identity-keyed `Map<NinaPickCandidate, File>`, because a
+  multi-image paste can carry several files the OS named `image.png` and the old match collapsed
+  them onto one `File`. A text-only paste is untouched; a non-image file in a paste is dropped with
+  no notice, deliberately unlike the picker's rejection copy. No prop or exported type on
+  `Composer` changed shape. `Composer.test.tsx` gained a `pasteFiles` helper and 6 cases.
 - **2026-09-13 — knip YAGNI + optional-prop re-scan.** Removed 3 dead knip-flagged exports:
   `NinaAvatar.tsx`'s `NINA_AVATAR_SRC` re-export (both real importers already read
   `NINA_AVATAR_FALLBACK_SRC` from `lib/nina/album` directly) and `types.ts`'s `ChatRole`/
