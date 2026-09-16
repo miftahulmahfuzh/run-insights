@@ -552,14 +552,28 @@ export const NINA_REPAIR_PREAMBLE =
  * ==========================================================================*/
 
 /**
- * The five reasons she speaks first. Four are RU-15's; `avatar_changed` is RU-17 — a hand-uploaded
- * avatar writes a trigger and she comments on it next time she talks.
+ * The SIX reasons she speaks first. Four are RU-15's; `avatar_changed` is RU-17 — a hand-uploaded
+ * avatar writes a trigger and she comments on it next time she talks. `reminder_due` is the
+ * nina-natural-reminders set's R1, and it is the only one of the six she did not INFER: the runner
+ * handed it to her in a chat turn, with a time he chose and a reason he gave.
  *
  * **Phase 10 owns the trigger LOGIC; the text lives here** because it is prompt text and prompt
  * text has one home. Phase 10 picks a key and appends the instruction; it does not write copy.
+ *
+ * **Two other lists are pinned to this union and neither can import it.** `NINA_PUSH_KINDS`
+ * (`lib/push/payload.ts:184`) spells these names by hand because the off-platform image worker loads
+ * that module under `node --experimental-strip-types`; `NinaMessageSource`
+ * (`lib/db/schema/nina/chat.ts:232`) is a column domain. `npx tsc --noEmit` catches drift in both —
+ * at `pushNotifier satisfies ProactiveNotifier` (`lib/push/send.ts:276-293`) and at
+ * `insertNinaMessages`' `source: detail.kind` respectively.
  */
 export type ProactiveTriggerKind =
-  'run_committed' | 'missed_usual_day' | 'pattern_crossed' | 'silence' | 'avatar_changed'
+  | 'run_committed'
+  | 'missed_usual_day'
+  | 'pattern_crossed'
+  | 'silence'
+  | 'avatar_changed'
+  | 'reminder_due'
 
 /**
  * ── THE IRON RULE, FINDINGS 2 AND 4 OF 4. THREE CLAUSES INSIDE THE TRIGGER COPY ──────────────
@@ -693,7 +707,7 @@ function proactiveTuningSuffix(tuning: NinaTuning): string {
 }
 
 /**
- * The five trigger texts as functions of the tuning, carrying the three clauses above.
+ * The six trigger texts as functions of the tuning, carrying the three clauses above.
  * `PROACTIVE_INSTRUCTIONS` below is their default render.
  */
 const PROACTIVE_COPY: Record<ProactiveTriggerKind, (tuning: NinaTuning) => string> = {
@@ -723,6 +737,28 @@ Say something a friend would actually say after that long. Do not open with a tr
   avatar_changed: () => `Your profile picture has just changed. You are opening this conversation.
 
 Mention it in passing, the way someone does when they change their picture. One bubble. Do not describe the photo to him — he can see it.`,
+
+  /**
+   * R1, the nina-natural-reminders set, and the only trigger whose content the RUNNER wrote. The
+   * trigger block carries `label` (what he asked for) and `message` (**why he said it mattered, in
+   * his own terms**), and the instruction spends itself on making her use the second one: the user's
+   * whole point was sleep CONSISTENCY — regeneration, muscle repair, immunity, the liver — not a
+   * bedtime. A generic "wah udah jam segini, tidur gih" is precisely the alarm-clock voice R1
+   * exists to avoid, and it is what she writes if nobody tells her the reason is in the payload.
+   *
+   * Three prohibitions, and each has a failure behind it: announcing the reminder makes her a
+   * notification that talks about itself; reading the time back is a number she does not need and
+   * `NUMBERS_RULE` would make her copy character-for-character anyway; repeating yesterday's
+   * sentence is the thing that turns a friend into a cron job — the same failure the header of
+   * `lib/nina/proactive.ts` names as the one that matters most.
+   *
+   * No tuning clause. Nothing in this text contradicts a dial (unlike `pattern_crossed`'s rung,
+   * `missed_usual_day`'s lecture and `silence`'s sulk), so the suffix mechanism is sufficient and
+   * this stays a plain function of no arguments — `avatar_changed`'s shape.
+   */
+  reminder_due: () => `He asked you to check in with him about this every day at this time, and it is that time now. "label" is what he asked for and "message" is the reason HE gave for it. You are opening this conversation.
+
+Say it in your own words, and say it for HIS reason rather than a general one. One bubble. Do not announce that this is a reminder, do not read the time back to him, and do not use the sentence you used yesterday.`,
 }
 
 /**
@@ -744,7 +780,7 @@ export function buildProactiveInstruction(kind: ProactiveTriggerKind, tuning: Ni
 }
 
 /**
- * The five trigger texts at the default tuning, under the name and the type this file has always
+ * The six trigger texts at the default tuning, under the name and the type this file has always
  * exported. Byte-identical to the record that shipped.
  */
 export const PROACTIVE_INSTRUCTIONS: Record<ProactiveTriggerKind, string> = {
@@ -753,4 +789,5 @@ export const PROACTIVE_INSTRUCTIONS: Record<ProactiveTriggerKind, string> = {
   pattern_crossed: PROACTIVE_COPY.pattern_crossed(NINA_TUNING_DEFAULTS),
   silence: PROACTIVE_COPY.silence(NINA_TUNING_DEFAULTS),
   avatar_changed: PROACTIVE_COPY.avatar_changed(NINA_TUNING_DEFAULTS),
+  reminder_due: PROACTIVE_COPY.reminder_due(NINA_TUNING_DEFAULTS),
 }

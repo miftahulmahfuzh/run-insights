@@ -5,8 +5,8 @@
 **Analysis:** `20260916-144113-1VCB_code_analyzer.md`
 **Worktree:** `/home/miftah/.worktrees/run-insights/nina-natural-reminders`
 **Branch:** `feature/nina-natural-reminders` (base: `origin/main` @ `991bcb9`)
-**Phases:** 1
-**Status:** planned
+**Phases:** 2
+**Status:** in progress — phase 1 done, phase 2 added after landing (see Amendment below)
 **Coordinator:** —
 
 ---
@@ -25,6 +25,20 @@ a friend would — not a one-off acknowledgement.
 | ID | What the user asked for | Phases |
 |---|---|---|
 | R1 | Recognize a natural-language "remind me daily at TIME to X" request in chat, confirm it in Nina's own reply, and actually deliver a chat message + push notification at that time every day thereafter, with no duplicate per day. | 1 |
+| R2 | Add a section to `/admin/memory` so an admin can manually add a new reminder, edit an existing one, or remove it — full CRUD, not just delete. | 2 |
+
+## Amendment (2026-09-16, after phase 1 landed)
+
+R2 was requested by the user after phase 1's implementation had already finished (`npx tsc --noEmit`
+and the full suite green, 357 files / 6218 tests). Rather than open a second plan set for one small,
+tightly related admin surface over the same `reminders` slot, this index and a new
+`.workflows/plan/nina-natural-reminders/phase-2.md` were added to this set, `depends_on: [1]`, in the
+same worktree/branch — phase 1's own `Status: complete`/`Phases: 1` above were about to trigger the
+completion-handler's end-of-set merge/push/worktree-delete; both were reverted to the values above
+before that could happen. See `phase-2.md`'s own **R2 Analysis** section for the analysis-document
+extension R2 needed (Step 3 of `/analyze` normally precedes planning; here it is folded into the
+phase file itself, since the session doing the amending is the same one that wrote the original
+analysis and already held the full context).
 
 ## Scope
 
@@ -66,9 +80,11 @@ a friend would — not a one-off acknowledgement.
   spam"). A reminder is not exempt from that rule; if two reminders are due on the same tick, the
   earliest `timeOfDay` wins and the other is picked up the following day. For the one reminder this
   request actually describes, this never bites.
-- **A UI for managing reminders** (a settings screen, a list view). The user asked for a chat-driven
-  feature; create/cancel both happen through ordinary conversation with Nina, exactly like every
-  other piece of memory in this app.
+- ~~**A UI for managing reminders.**~~ **Superseded by R2 / phase 2.** At the time phase 1 was
+  planned the only interface was chat, matching every other piece of memory in this app; the user
+  separately asked for an admin CRUD surface after phase 1 landed, which phase 2 now owns. Left
+  struck through rather than deleted, so the reasoning that was true when phase 1 was written is not
+  lost.
 - **Editing an existing reminder's time via a partial-update tool call.** `cancel` + a fresh
   `create` covers "change my reminder to 9pm" in one turn (the model can emit both in the same
   `reminders` array) without a third `action` value to validate and test.
@@ -97,9 +113,11 @@ a friend would — not a one-off acknowledgement.
 
 | # | Title | Satisfies | Package | Files | Depends on | Difficulty | Plan | TaskID | Card |
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
-| 1 | Natural-language recurring reminders | R1 | `lib/nina`, `lib/db/schema`, `lib/push`, `app/api/cron`, root config | 18 | — | HARD | `.workflows/plan/nina-natural-reminders/phase-1.md` | — | — |
+| 1 ✅ | Natural-language recurring reminders | R1 | `lib/nina`, `lib/db/schema`, `lib/push`, `app/api/cron`, root config | 18 | — | HARD | `.workflows/plan/nina-natural-reminders/phase-1.md` | P1-NIN-A053 | — |
+| 2 | Admin reminder management in `/admin/memory` | R2 | `lib/admin`, `components/admin`, `app/admin/memory`, `lib/nina/reminders.ts` | 9 | 1 | NORMAL | `.workflows/plan/nina-natural-reminders/phase-2.md` | — | — |
 
-### Phase 1 — Natural-language recurring reminders
+### Phase 1 ✅ — Natural-language recurring reminders
+**Status:** done (2026-09-16, TaskID `P1-NIN-A053`)
 **Satisfies:** R1
 **Owns:** everything in Scope above — schema/tool, pure reminders module, proactive-engine wiring,
 context visibility, push-kind registration, cron schedule move, tests.
@@ -109,6 +127,18 @@ context visibility, push-kind registration, cron schedule move, tests.
 existing cross-list parity tests (however they currently assert `ProactiveTriggerKind` /
 `NINA_PUSH_KINDS` / tool-schema completeness) pass with the sixth trigger included; `vercel.json`
 still has exactly two `crons` entries.
+
+### Phase 2 — Admin reminder management in `/admin/memory`
+**Status:** planned
+**Satisfies:** R2
+**Depends on:** phase 1 (`NinaReminder`/`NinaRemindersSlot`/`NINA_SLOT_REMINDERS` and
+`lib/nina/reminders.ts`'s pure functions)
+**Owns:** a new "Reminders" group on `/admin/memory` — add/edit/delete over the same `reminders`
+slot phase 1 introduced, plus a new pure `patchReminder` in-place-edit function and the fix that
+keeps the `reminders` slot from ever rendering as an orphan row.
+**Does not touch:** the chat-facing tool/prompt/cron surface phase 1 built; `NINA_SLOT_KEYS` (the
+`reminders` key still does not join the distiller's closed vocabulary).
+**Exit criteria:** see `phase-2.md`'s own Exit Criteria section.
 
 ## Reconciliation Log
 

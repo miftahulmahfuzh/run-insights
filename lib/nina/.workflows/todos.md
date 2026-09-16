@@ -12,7 +12,7 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 54
+- Completed: 55
 - Archived: 36
 
 ---
@@ -34,6 +34,20 @@
 (all thirty-five completed tasks were archived on 2026-09-12 — see Archive; full
 per-task detail — Context, Drift, Decided, Files — survives in git history and in
 `.workflows/package_readme.md`)
+
+- [x] **P1-NIN-A053** Phase 1: Natural-language recurring reminders
+  - **Difficulty**: HARD
+  - **Type**: Feature
+  - **Context**: Owns everything in Scope above — schema/tool, pure reminders module, proactive-engine wiring, context visibility, push-kind registration, cron schedule move, tests. Does not touch anything under Out of scope. Exit: `npx tsc --noEmit` and the full `vitest` suite pass; a new `tests/nina.reminders.test.ts` exercises create/cancel/due/idempotent-fire as pure functions; the existing cross-list parity tests pass with the sixth trigger included; `vercel.json` still has exactly two `crons` entries.
+  - **Status**: done
+  - **Plan Set**: `NINA_NATURAL_REMINDERS_PLAN.md` (phase 1 of 1)
+  - **Satisfies**: R1 — Recognize a natural-language "remind me daily at TIME to X" request in chat, confirm it in Nina's own reply, and actually deliver a chat message + push notification at that time every day thereafter, with no duplicate per day.
+  - **Depends on**: none
+  - **Plan**: `.workflows/plan/P1-NIN-A053.md`
+  - **Completed**: 2026-09-16 15:17
+  - **Method**: /do
+  - **Files**: app/api/cron/nina/route.ts, lib/db/schema/nina/chat.ts, lib/db/schema/nina/memory.ts, lib/nina/proactive.ts, lib/nina/prompts/index.ts, lib/nina/prompts/system.ts, lib/nina/prompts/tools.ts, lib/nina/reminders.ts, lib/nina/reminderstore.ts, lib/nina/schema.ts, lib/nina/turnrun.ts, lib/push/payload.ts, lib/push/payload.test.ts, tests/db.schema.nina.test.ts, tests/nina.proactive.test.ts, tests/nina.prompts.test.ts, tests/nina.reminders.test.ts, vercel.json
+  - **Drift**: lib/nina/proactive.ts: the phase plan's import block for NINA_SLOT_REMINDERS also imported the value (not just the type) "for the docstring's sake"; the plan itself flagged this as optional and said to drop the value import if the linter would object to it being unused. Dropped it — only `type NinaReminder` is imported from `@/lib/db/schema` in that file; `readNinaReminders` in reminderstore.ts already names the slot key internally. No behavior change.
 
 - [x] **P1-NIN-A052** Phase 1: Tune the selfie camera block and calves focus term against the three named problems
   - **Difficulty**: NORMAL

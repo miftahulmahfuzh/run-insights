@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import type { NinaReminder } from '@/lib/db/schema'
 import {
   MISSED_DAY_EVENING_HOUR,
   MISSED_DAY_LATEST_HOUR,
@@ -12,8 +13,10 @@ import {
   evaluateAvatarChanged,
   evaluateMissedUsualDay,
   evaluatePatternCrossed,
+  evaluateReminderDue,
   evaluateSilence,
   jakartaHourOf,
+  jakartaMinuteClockOf,
   jakartaWeekdayOf,
   markerFor,
   parseRunningDays,
@@ -41,6 +44,10 @@ function facts(overrides: Partial<ProactiveFacts> = {}): ProactiveFacts {
   return {
     todayISO: TUESDAY,
     jakartaHour: 19,
+    /* The sixth trigger's clock. 19:30 agrees with `jakartaHour: 19` above, and `reminders: []`
+     * means `reminder_due` never fires for a case that did not ask for it — which is what keeps
+     * every pre-existing case in this file asserting exactly what it asserted before. */
+    nowHHmm: '19:30',
     runningDays: [2],
     hasRunToday: false,
     lastRunOn: '2026-08-31',
@@ -48,6 +55,23 @@ function facts(overrides: Partial<ProactiveFacts> = {}): ProactiveFacts {
     patterns: [],
     nags: [],
     unannouncedAvatarId: null,
+    reminders: [],
+    ...overrides,
+  }
+}
+
+/** One active reminder, for the sixth trigger's cases. */
+function reminderFact(overrides: Partial<NinaReminder> = {}): NinaReminder {
+  return {
+    id: 'rem_sleep_01',
+    timeOfDay: '18:45',
+    label: 'tidur',
+    message: 'konsistensi tidur — regenerasi sel dan liver',
+    createdOn: '2026-08-31',
+    status: 'active',
+    lastFiredOn: null,
+    cancelledOn: null,
+    sourceMessageId: null,
     ...overrides,
   }
 }
@@ -86,7 +110,7 @@ describe('parseRunningDays — phase 5 owns the vocabulary, this is the 0-6 view
   })
 })
 
-describe('the two timezone helpers', () => {
+describe('the three timezone helpers', () => {
   it('reads a Jakarta calendar day as the right weekday, independently of the server zone', () => {
     // Asserted against the literal value, NOT against `new Date(iso).getDay()` — that is the bug
     // this function exists to prevent, and comparing against it would encode the bug in the test.
@@ -101,6 +125,16 @@ describe('the two timezone helpers', () => {
     // The rollup's, for contrast: 20:00 UTC is 03:00 WIB the NEXT day, which is why copying that
     // schedule would have been wrong for a trigger that asks about "today".
     expect(jakartaHourOf(new Date('2026-09-01T20:00:00Z'))).toBe(3)
+  })
+
+  it('converts an instant to the Jakarta wall clock, to the minute and zero-padded', () => {
+    // The new cron's own instant: "0 13 * * *" UTC is 20:00 WIB on the SAME calendar day.
+    expect(jakartaMinuteClockOf(new Date('2026-09-01T13:00:00Z'))).toBe('20:00')
+    // The minute is what the hour helper could not reach, and the padding is what makes '<=' work.
+    expect(jakartaMinuteClockOf(new Date('2026-09-01T13:45:00Z'))).toBe('20:45')
+    expect(jakartaMinuteClockOf(new Date('2026-09-01T02:05:00Z'))).toBe('09:05')
+    // And it wraps, the way the hour helper does: 20:00 UTC is 03:00 WIB the NEXT day.
+    expect(jakartaMinuteClockOf(new Date('2026-09-01T20:30:00Z'))).toBe('03:30')
   })
 })
 
@@ -253,28 +287,63 @@ describe('evaluatePatternCrossed — phase 9 owns the ladder, this only picks', 
   })
 })
 
+describe('evaluateReminderDue — R1, the one trigger the runner wrote', () => {
+  it('fires at its time and not again the same day', () => {
+    const due = facts({ reminders: [reminderFact()], nowHHmm: '18:45' })
+    const decision = evaluateReminderDue(due)
+    expect(decision.fire).toBe(true)
+    if (!decision.fire || decision.detail.kind !== 'reminder_due') throw new Error('expected')
+    expect(decision.detail.reminderId).toBe('rem_sleep_01')
+    // His reason travels on the detail, because PROACTIVE_COPY.reminder_due is about using it.
+    expect(decision.detail.message).toContain('liver')
+
+    const already = facts({
+      reminders: [reminderFact({ lastFiredOn: TUESDAY })],
+      nowHHmm: '22:00',
+    })
+    expect(evaluateReminderDue(already).fire).toBe(false)
+  })
+
+  it('says nothing before the reminder’s own time', () => {
+    expect(evaluateReminderDue(facts({ reminders: [reminderFact()], nowHHmm: '18:44' })).fire).toBe(
+      false,
+    )
+  })
+
+  it('says nothing for a user who never asked for one', () => {
+    expect(evaluateReminderDue(facts()).fire).toBe(false)
+  })
+})
+
 describe('decideProactive — one message, by priority', () => {
-  it('returns the avatar when everything is true at once', () => {
+  it('returns the reminder when everything is true at once', () => {
     const everything = facts({
+      reminders: [reminderFact()],
+      nowHHmm: '19:30',
       unannouncedAvatarId: 'avatar_1',
       patterns: [{ code: 'ACWR_SPIKE', value: '150%', nagLevel: 0 }],
       lastRunOn: '2026-08-01',
       daysSinceRunnerSpoke: 30,
     })
-    // All four evaluators fire on these facts…
+    // All five cron evaluators fire on these facts…
+    expect(evaluateReminderDue(everything).fire).toBe(true)
     expect(evaluateAvatarChanged(everything).fire).toBe(true)
     expect(evaluatePatternCrossed(everything).fire).toBe(true)
     expect(evaluateMissedUsualDay(everything).fire).toBe(true)
     expect(evaluateSilence(everything).fire).toBe(true)
 
-    // …and exactly one message comes out, the one he just caused and is waiting on.
+    // …and exactly one message comes out: the one he explicitly asked her for. Losing HIS standing
+    // request to something she merely inferred is the failure this ordering exists to prevent.
     const decision = decideProactive(everything)
     if (!decision.fire) throw new Error('expected a decision')
-    expect(decision.detail.kind).toBe('avatar_changed')
+    expect(decision.detail.kind).toBe('reminder_due')
   })
 
   it('falls down the priority list as each candidate is exhausted', () => {
     const base = facts({
+      reminders: [reminderFact()],
+      nowHHmm: '19:30',
+      unannouncedAvatarId: 'avatar_1',
       patterns: [{ code: 'ACWR_SPIKE', value: '150%', nagLevel: 0 }],
       lastRunOn: '2026-08-01',
       daysSinceRunnerSpoke: 30,
@@ -284,12 +353,26 @@ describe('decideProactive — one message, by priority', () => {
       return d.fire ? d.detail.kind : null
     }
 
-    expect(kindOf(base)).toBe('pattern_crossed')
-    expect(kindOf({ ...base, patterns: [] })).toBe('missed_usual_day')
-    expect(kindOf({ ...base, patterns: [], runningDays: [] })).toBe('silence')
+    expect(kindOf(base)).toBe('reminder_due')
+    expect(kindOf({ ...base, reminders: [] })).toBe('avatar_changed')
+    expect(kindOf({ ...base, reminders: [], unannouncedAvatarId: null })).toBe('pattern_crossed')
+    expect(
+      kindOf({ ...base, reminders: [], unannouncedAvatarId: null, patterns: [] }),
+    ).toBe('missed_usual_day')
     expect(
       kindOf({
         ...base,
+        reminders: [],
+        unannouncedAvatarId: null,
+        patterns: [],
+        runningDays: [],
+      }),
+    ).toBe('silence')
+    expect(
+      kindOf({
+        ...base,
+        reminders: [],
+        unannouncedAvatarId: null,
         patterns: [],
         runningDays: [],
         daysSinceRunnerSpoke: 0,
@@ -304,6 +387,7 @@ describe('decideProactive — one message, by priority', () => {
     )
     expect(decision.fire).toBe(false)
     if (decision.fire) return
+    expect(decision.reason).toContain('reminder_due')
     expect(decision.reason).toContain('avatar_changed')
     expect(decision.reason).toContain('missed_usual_day')
     expect(decision.reason).toContain('silence')
@@ -322,6 +406,18 @@ describe('markerFor', () => {
           occurredOn: TUESDAY,
           recordKeys: [],
           badgeKeys: [],
+        },
+        f,
+      ),
+    ).toBeNull()
+    expect(
+      markerFor(
+        {
+          kind: 'reminder_due',
+          reminderId: 'rem_sleep_01',
+          timeOfDay: '20:45',
+          label: 'tidur',
+          message: 'why',
         },
         f,
       ),
@@ -390,6 +486,21 @@ describe('triggerBlock — R8, and invariant 2 at its boundary', () => {
       marker: { code: 'ACWR_SPIKE', level: 1, lastMentionedOn: TUESDAY },
     })
     expect(JSON.parse(block.slice('TRIGGER\n'.length)).value).toBe('152%')
+  })
+
+  it('hands the reminder’s label and HIS reason to the prompt, and not its database id', () => {
+    const block = triggerBlock({
+      kind: 'reminder_due',
+      reminderId: 'rem_sleep_01',
+      timeOfDay: '20:45',
+      label: 'tidur',
+      message: 'konsistensi tidur — regenerasi sel dan liver',
+    })
+    const body = JSON.parse(block.slice('TRIGGER\n'.length))
+    expect(body.label).toBe('tidur')
+    expect(body.message).toContain('liver')
+    // A row id is not something she has any use for in a sentence.
+    expect(JSON.stringify(body)).not.toContain('rem_sleep_01')
   })
 })
 

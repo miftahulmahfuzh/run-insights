@@ -112,7 +112,19 @@
  * `outfit` renders nothing and `buildNinaImagePrompt` falls back to `prefs.wardrobe`/the canon
  * default exactly as before. This is the SINGLE bump for the fix: no other file touches this
  * constant. */
-export const NINA_PROMPT_VERSION = 9
+/* 10 — the nina-natural-reminders set, R1. **A TOOL SCHEMA MOVED, and no system text did.**
+ * `./tools.ts` gained `SEND_TOOL.input_schema.properties.reminders`, an OPTIONAL array of
+ * create/cancel entries; `./system.ts` gained a sixth `ProactiveTriggerKind` (`'reminder_due'`)
+ * and its `PROACTIVE_COPY` / `PROACTIVE_INSTRUCTIONS` entry, neither of which
+ * `buildNinaSystemPrompt` renders — so the system prompt is byte-identical to version 9's at every
+ * tuning and `tests/__snapshots__/nina.prompts.test.ts.snap` passes UNREGENERATED.
+ *
+ * What she can now do that she could not before: turn "tolong lo remind gw tiap 8:45 pm buat tidur"
+ * into a standing record the evening cron delivers every day, and cancel one by naming its id. A
+ * turn whose `send` call could carry a `reminders` array is a turn `nina_turns` has to be able to
+ * tell from version 9's, which is the whole job of this constant. This is the SINGLE bump for the
+ * set: it is a one-phase set and no other file touches the constant. */
+export const NINA_PROMPT_VERSION = 10
 
 export {
   NINA_REPAIR_PREAMBLE,

@@ -36,6 +36,7 @@ import {
   NINA_AGGREGATE_FNS,
   NINA_AGGREGATE_INTENTS,
   NINA_AGGREGATE_METRICS,
+  NINA_REMINDER_TIME_PATTERN,
 } from '@/lib/nina/schema'
 import {
   coerceNinaTuning,
@@ -452,6 +453,22 @@ describe('the tool schemas', () => {
   })
 
   /*
+   * `SEND_TOOL.reminders.items.properties.timeOfDay.pattern` is a hand-written copy of
+   * `NINA_REMINDER_TIME_PATTERN` (`lib/nina/schema.ts`), which is what VALIDATES — `prompts/tools.ts`
+   * is a constant with no imports but `type Anthropic` on purpose. Same argument, and same pin, as
+   * `aggregate_runs`' enums above.
+   */
+  it('keeps the reminder clock pattern equal to the Zod pattern that validates it', () => {
+    const items = (
+      SEND_TOOL.input_schema as unknown as {
+        properties: Record<string, { items?: { properties?: Record<string, { pattern?: string; enum?: readonly string[] }> } }>
+      }
+    ).properties.reminders!.items!
+    expect(items.properties!.timeOfDay!.pattern).toBe(NINA_REMINDER_TIME_PATTERN)
+    expect(items.properties!.action!.enum).toEqual(['create', 'cancel'])
+  })
+
+  /*
    * The 2026-09-16 defect: a runner's clothing request ("black mini dress") reached the model only
    * through `scene`, so the operator's standing wardrobe never yielded the line to it — two
    * dress-code instructions in the same prompt. `outfit` gives the model a dedicated, OPTIONAL slot
@@ -479,11 +496,12 @@ describe('the tool schemas', () => {
 })
 
 describe('PROACTIVE_INSTRUCTIONS', () => {
-  it("covers all four RU-15 triggers plus RU-17's avatar change", () => {
+  it("covers all four RU-15 triggers, RU-17's avatar change, and R1's reminder", () => {
     expect(Object.keys(PROACTIVE_INSTRUCTIONS).sort()).toEqual([
       'avatar_changed',
       'missed_usual_day',
       'pattern_crossed',
+      'reminder_due',
       'run_committed',
       'silence',
     ])
