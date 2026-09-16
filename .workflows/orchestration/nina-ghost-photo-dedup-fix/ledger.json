@@ -23,28 +23,28 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "18dd00b",
       "depends_on": [
         1
       ],
       "difficulty": "NORMAL",
       "n": 2,
-      "note": null,
+      "note": "phantom census: 0 recovered/0 partial/1 unrecoverable (Tdw_AkrJT0ks) matching plan exactly; test import order decided alphabetically (classifyPhantomOriginals before compareKeeperCandidates) over plan's literal placement",
       "package": "scripts",
       "plan": ".workflows/plan/nina-ghost-photo-dedup-fix/phase-2.md",
-      "reported_at": null,
+      "reported_at": "2026-09-16T04:51:38+00:00",
       "satisfies": [
         "R1"
       ],
-      "status": "spawned",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-SC-A003",
       "title": "Phantom-original census + `fill-dimensions` in the existing sweep"
     }
   ],
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-ghost-photo-dedup-fix/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-ghost-photo-dedup-fix",
-  "updated": "2026-09-16T04:40:57+00:00",
+  "updated": "2026-09-16T04:51:38+00:00",
   "verified_at": "2026-09-16T04:39:51+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-ghost-photo-dedup-fix"
 }
