@@ -485,6 +485,20 @@ describe('the tool schemas', () => {
   })
 
   /*
+   * The 2026-09-16 hobbit-calves defect: an invented pose (mid-stride walking) and an invented
+   * outfit (a knee-length sundress) each independently hid or foreshortened her legs, so the
+   * `FOCUS: emphasise her very long calves` line had nothing left to work with. `pose` and `ootd`
+   * are OPTIONAL and LLM-authored, so the only lever against this is the instruction itself.
+   */
+  it('generate_image tells the model never to hide or bend away her legs via `pose` or `ootd`', () => {
+    const schema = GENERATE_IMAGE_TOOL.input_schema as unknown as {
+      properties: Record<string, { description?: string }>
+    }
+    expect(schema.properties.pose?.description).toMatch(/calves must stay straight/)
+    expect(schema.properties.ootd?.description).toMatch(/calves must stay bare/)
+  })
+
+  /*
    * The nina-character-tuning set proposed two tuning-aware descriptions here and declined both —
    * see `lib/nina/prompts/tools.ts`'s header. This case is what makes the decision durable: the
    * tool set stays a CONSTANT, so nothing about it can depend on a per-user setting.

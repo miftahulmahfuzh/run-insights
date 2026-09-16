@@ -357,7 +357,9 @@ export const GENERATE_IMAGE_TOOL: Anthropic.Tool = {
           'standing or moving, matched to what is happening in `scene` — mid-stride if running, ' +
           'crouched on a switchback if hiking, leaning in a doorway if indoors. Leave unset to fall ' +
           'back to a generic pose. Vary this across photos — do not default to the same stance ' +
-          'every time regardless of the scene.',
+          'every time regardless of the scene. NEVER pick a pose that bends both knees or turns her ' +
+          'legs away from the camera (crouching, sitting, kneeling, seen from behind): her calves ' +
+          'must stay straight and fully visible in every photo.',
       },
       ootd: {
         type: 'string',
@@ -365,7 +367,9 @@ export const GENERATE_IMAGE_TOOL: Anthropic.Tool = {
           'When he did NOT ask for specific clothing this turn (leave `outfit` unset for that): ' +
           'invent an outfit that fits `scene`, and vary it photo to photo — do not repeat the same ' +
           'look every time. Ignored whenever `outfit` is set. Never also describe clothing inside ' +
-          '`scene`.',
+          '`scene`. NEVER invent something that covers her leg below the hip — no long dresses, no ' +
+          'skirts past mid-thigh, no pants, no boots past the ankle: her calves must stay bare and ' +
+          'fully visible.',
       },
     },
   },
