@@ -1,0 +1,31 @@
+{
+  "branch": "feature/composer-clipboard-image-paste",
+  "coordinator": "orch-composer-clipboard-image-paste",
+  "coordinator_session_id": "ddfe2531-56a3-43f1-a8ef-78f2059d5af1",
+  "created": "2026-09-16T00:53:59+00:00",
+  "phases": [
+    {
+      "card": null,
+      "commit": "7ca9c02610dcfcfc8a8fe0fb52a6a12e0748df0c",
+      "depends_on": [],
+      "difficulty": "NORMAL",
+      "n": 1,
+      "note": "landed on feature branch: fe0ea00 (impl) + 9e6760d,7ca9c02 (readme). Child ticked PLAN.md directly (commit 2005c7e).",
+      "package": "components/nina",
+      "plan": ".workflows/plan/composer-clipboard-image-paste/phase-1.md",
+      "reported_at": "2026-09-16T01:05:50+00:00",
+      "satisfies": [
+        "R1"
+      ],
+      "status": "done",
+      "task_id": "P1-CN-A006",
+      "title": "Paste an image into the composer"
+    }
+  ],
+  "plan": "/home/miftah/run-insights/.workflows/orchestration/composer-clipboard-image-paste/PLAN.md",
+  "repo": "/home/miftah/run-insights",
+  "slug": "composer-clipboard-image-paste",
+  "updated": "2026-09-16T01:05:50+00:00",
+  "verified_at": "2026-09-16T01:04:34+00:00",
+  "worktree": "/home/miftah/.worktrees/run-insights/composer-clipboard-image-paste"
+}
