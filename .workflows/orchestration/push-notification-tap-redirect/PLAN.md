@@ -6,7 +6,7 @@
 **Worktree:** `/home/miftah/.worktrees/run-insights/push-notification-tap-redirect`
 **Branch:** `feature/push-notification-tap-redirect` (base: `origin/main` @ `f48a941`)
 **Phases:** 2
-**Status:** planned
+**Status:** complete
 **Coordinator:** —
 
 ---
@@ -77,8 +77,8 @@
 
 | # | Title | Satisfies | Package | Files | Depends on | Difficulty | Plan | TaskID | Card |
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
-| 1 | Make the tap work from anywhere | R1 | `lib/service-worker.js`, `components/push`, `app/` | 6 | — | NORMAL | `.workflows/plan/push-notification-tap-redirect/phase-1.md` | — | — |
-| 2 | Deep-link every chat push to its session and bubble | R2 | `lib/push`, `lib/nina`, `lib/admin`, `scripts/nina-image-worker` | 17 | — | NORMAL | `.workflows/plan/push-notification-tap-redirect/phase-2.md` | — | — |
+| 1 ✅ | Make the tap work from anywhere | R1 | `lib/service-worker.js`, `components/push`, `app/` | 6 | — | NORMAL | `.workflows/plan/push-notification-tap-redirect/phase-1.md` | P1-RI-A042 | — |
+| 2 ✅ | Deep-link every chat push to its session and bubble | R2 | `lib/push`, `lib/nina`, `lib/admin`, `scripts/nina-image-worker` | 17 | — | NORMAL | `.workflows/plan/push-notification-tap-redirect/phase-2.md` | P1-RI-A043 | — |
 
 File counts are the phases' own Files tables: phase 1 is 6 (`lib/service-worker.js`,
 `lib/nina/live.ts`, `lib/nina/live.test.ts`, `components/push/PushTapNavigator.tsx` + its test,
