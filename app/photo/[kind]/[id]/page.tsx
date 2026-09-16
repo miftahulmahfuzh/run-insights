@@ -14,10 +14,11 @@ import { parsePhotoViewerSegments, type PhotoPointerKind } from '@/lib/photos/po
  * ── WHAT THIS ROUTE IS FOR ────────────────────────────────────────────────────────────────────
  * It is the click target of the `duplicate_image` push: the runner is told the image he just
  * uploaded is already in his collection, and tapping the notification must show him THE ONE HE
- * ALREADY HAS. The service worker's `notificationclick` handler is already generic — it focuses or
- * navigates any same-origin path off the payload's `url` (`lib/service-worker.js:144-170`) — so
- * nothing there changes; this page is the other end of that navigation and the reason the payload's
- * `url` may finally be something other than `/nina`.
+ * ALREADY HAS. The service worker's `notificationclick` handler is already generic — it focuses the
+ * matching window and `postMessage`s any same-origin path off the payload's `url`
+ * (`lib/service-worker.js`), which `components/push/PushTapNavigator.tsx` turns into a
+ * `router.push` — so nothing there changes; this page is the other end of that navigation and the
+ * reason the payload's `url` may finally be something other than `/nina`.
  *
  * ── WHY IT IS A NEW ROUTE AND NOT ONE OF THE TWO EXISTING `photo` DEEP LINKS ──────────────────
  * `/nina?photo=<kind>:<id>` arms the composer, not a viewer. `/nina/about?photo=<section>.<id>`
