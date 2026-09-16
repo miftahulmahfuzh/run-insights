@@ -6,7 +6,7 @@
 **Worktree:** `/home/miftah/.worktrees/run-insights/composer-clipboard-image-paste`
 **Branch:** `feature/composer-clipboard-image-paste` (base: `origin/main` @ `924bb32`)
 **Phases:** 1
-**Status:** planned
+**Status:** complete
 **Coordinator:** —
 
 ---
@@ -62,7 +62,7 @@ are two thin entry points into one pipeline, not two implementations of it.
 
 | # | Title | Satisfies | Package | Files | Depends on | Difficulty | Plan | TaskID | Card |
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
-| 1 | Paste an image into the composer | R1 | `components/nina` | 3 | — | NORMAL | `.workflows/plan/composer-clipboard-image-paste/phase-1.md` | — | — |
+| 1 ✅ | Paste an image into the composer | R1 | `components/nina` | 3 | — | NORMAL | `.workflows/plan/composer-clipboard-image-paste/phase-1.md` | P1-CN-A006 | — |
 
 ### Phase 1 — Paste an image into the composer
 **Satisfies:** R1
