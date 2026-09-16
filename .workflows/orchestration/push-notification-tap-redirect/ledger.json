@@ -3,6 +3,12 @@
   "coordinator": "orch-push-notification-tap-redirect",
   "coordinator_session_id": "c350238a-705d-4910-85e4-883c4d3ced2d",
   "created": "2026-09-16T01:59:06+00:00",
+  "landed": {
+    "at": "2026-09-16T02:20:22+00:00",
+    "base": "main",
+    "commit": "44562759145f3ee62c53818afb63848e5f712691",
+    "machine": "pc"
+  },
   "phases": [
     {
       "card": null,
@@ -42,7 +48,7 @@
   "plan": "/home/miftah/.worktrees/run-insights/push-notification-tap-redirect/.workflows/orchestration/push-notification-tap-redirect/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "push-notification-tap-redirect",
-  "updated": "2026-09-16T02:19:41+00:00",
+  "updated": "2026-09-16T02:20:22+00:00",
   "verified_at": "2026-09-16T02:17:02+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/push-notification-tap-redirect"
 }
