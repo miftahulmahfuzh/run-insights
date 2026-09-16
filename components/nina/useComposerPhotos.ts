@@ -10,6 +10,7 @@ import {
   NINA_MAX_CHAT_IMAGES,
   ninaChatPathname,
   planNinaPicked,
+  type NinaPickCandidate,
   type NinaPickRejectionReason,
 } from '@/lib/nina/images'
 import type { NinaExistingPhoto } from '@/lib/nina/attach'
@@ -57,6 +58,26 @@ import { contentHashOf } from '@/lib/photos/contentHash'
  * may degrade to inactive on any single pick, but a pick never fails BECAUSE of dedup. The same
  * tolerance runs on the server, where an invalid hash is written as NULL rather than an error.
  *
+ * ── TWO ENTRY POINTS, ONE PIPELINE (clipboard paste, 2026-09-16) ──────────────────────────────
+ * A photograph arrives here two ways and is processed exactly one way. `onPick` is the camera
+ * button's hidden `<input type="file">`; `onPaste` is the textarea's clipboard, asked for by
+ * analogy — *"in whatsapp, i can hold down on a bubble containing image, select copy, then i can
+ * paste it directly into whatsapp text chat field input"*. Neither does anything but turn its own
+ * event into a `File[]` and hand it to `handleFiles`, which owns the whole decision: the
+ * `planNinaPicked` accept/reject, the tile construction, the notice, and the `process()` kickoff.
+ * So the three-photo cap, the 25 MB ceiling and the rejection copy are not re-stated per entry
+ * point and cannot drift apart — a third entry point (drag-and-drop, say) is another two-line
+ * adapter, not another pipeline.
+ *
+ * `onPaste` calls `preventDefault()` ONLY when the clipboard actually carries an image file.
+ * Pasting ordinary text has to stay ordinary: no interception, no notice, nothing — that path is
+ * the browser's and this hook must not be able to see it. When the clipboard carries BOTH an image
+ * and a text item (some screenshot tools do), the image wins and the default is prevented anyway,
+ * which is WhatsApp's own call; the alternative is a garbled bytes-string landing in the draft
+ * beside the tile. Non-image files in a paste are dropped SILENTLY rather than rejected with
+ * "That is not a photo." — the picker's notice answers a deliberate choice of a file in an OS
+ * dialog, and a paste of whatever happened to be on the clipboard is not one.
+ *
  * ── AND WHY `planNinaPicked` IS A PURE FUNCTION IN `lib/` ────────────────────────────────────
  * F17 measured what happens otherwise: `UploadPicker` decided from inside a `setState` updater,
  * Strict Mode double-invoked it, and one picked file minted two upload tokens and left a blob
@@ -68,8 +89,9 @@ import { contentHashOf } from '@/lib/photos/contentHash'
  * 400, not a write. Invariant 10 is about `NEXT_PUBLIC_`, not about props.
  *
  * The surface is the original component's, minus what only the component's render needed: the
- * tile list and the notice for rendering, `ready`/`inFlight` for `canSend`, `onPick`/`removeTile`
- * for the gestures — and two send-side verbs, `collectDraft` (the payload's discriminated union)
+ * tile list and the notice for rendering, `ready`/`inFlight` for `canSend`,
+ * `onPick`/`onPaste`/`removeTile` for the gestures — and two send-side verbs, `collectDraft`
+ * (the payload's discriminated union)
  * and `reset` (release the previews, drop the tiles and the notice), which the component's
  * `submit` calls in sequence after `useComposerDraft`'s own clear.
  */
@@ -259,22 +281,30 @@ export function useComposerPhotos({ userId }: { userId: string }) {
   )
 
   /**
-   * Decide, then set, then run. Nothing in here is inside an updater, so Strict Mode has nothing
-   * to double-invoke. See the header.
+   * The pipeline's one door. Decide, then set, then run — nothing in here is inside a `setState`
+   * updater, so Strict Mode has nothing to double-invoke (see the header's F17 note). Both entry
+   * points below call this and neither adds a rule of its own.
    */
-  function onPick(event: React.ChangeEvent<HTMLInputElement>) {
-    const picked = Array.from(event.target.files ?? [])
-    event.target.value = '' // so picking the same file twice in a row still fires onChange
-    if (picked.length === 0) return
+  function handleFiles(files: File[]) {
+    if (files.length === 0) return
 
-    const plan = planNinaPicked(
-      picked.map((f) => ({ name: f.name, type: f.type, size: f.size })),
-      { alreadyHeld: tiles.length },
-    )
+    /*
+     * Keyed by IDENTITY, not by `{name, size}`: `planNinaPicked` hands back the very candidate
+     * objects it was given, and a clipboard paste can carry several files the OS named identically
+     * (`image.png`), which a name+size lookup would collapse onto one `File`.
+     */
+    const byCandidate = new Map<NinaPickCandidate, File>()
+    const candidates: NinaPickCandidate[] = files.map((file) => {
+      const candidate = { name: file.name, type: file.type, size: file.size }
+      byCandidate.set(candidate, file)
+      return candidate
+    })
+
+    const plan = planNinaPicked(candidates, { alreadyHeld: tiles.length })
 
     const fresh: Array<{ tile: Tile; file: File }> = []
     for (const candidate of plan.accepted) {
-      const file = picked.find((f) => f.name === candidate.name && f.size === candidate.size)
+      const file = byCandidate.get(candidate)
       if (file == null) continue
       fresh.push({
         tile: {
@@ -296,6 +326,32 @@ export function useComposerPhotos({ userId }: { userId: string }) {
     const firstRejection = plan.rejected[0]
     setNotice(firstRejection != null ? REJECTION_TEXT[firstRejection.reason] : null)
     for (const { tile, file } of fresh) void process(tile, file)
+  }
+
+  /** The camera button's hidden `<input type="file">`. Everything that is not about an input
+   *  element lives in `handleFiles`. */
+  function onPick(event: React.ChangeEvent<HTMLInputElement>) {
+    const picked = Array.from(event.target.files ?? [])
+    event.target.value = '' // so picking the same file twice in a row still fires onChange
+    handleFiles(picked)
+  }
+
+  /**
+   * The textarea's clipboard. `preventDefault()` is called ONLY when an image file is actually on
+   * the clipboard, so a plain-text paste is never touched — see the header's paste section for
+   * that rule and for why a mixed image+text clipboard still counts as an image paste.
+   *
+   * Note the ordering: the interception is decided by "is there an image file here", BEFORE
+   * `planNinaPicked` gets a say. A pasted image that the three-photo cap then rejects still
+   * prevented the default — it has to, or the clipboard's bytes would be inserted as text into the
+   * draft as consolation for the rejection.
+   */
+  function onPaste(event: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const pasted = Array.from(event.clipboardData?.files ?? [])
+    const images = pasted.filter((file) => file.type.startsWith('image/'))
+    if (images.length === 0) return
+    event.preventDefault()
+    handleFiles(images)
   }
 
   function removeTile(id: string) {
@@ -335,5 +391,5 @@ export function useComposerPhotos({ userId }: { userId: string }) {
     setNotice(null)
   }
 
-  return { tiles, notice, ready, inFlight, onPick, removeTile, collectDraft, reset }
+  return { tiles, notice, ready, inFlight, onPick, onPaste, removeTile, collectDraft, reset }
 }

@@ -229,6 +229,7 @@ export function Composer({
     ready,
     inFlight,
     onPick,
+    onPaste,
     removeTile,
     collectDraft,
     reset: resetPhotos,
@@ -381,6 +382,11 @@ export function Composer({
             rows={1}
             value={value}
             onChange={handleChange}
+            /* The photo hook's second entry point: a clipboard image is attached as a tile,
+               exactly as a picked file is. It intercepts nothing else — a plain-text paste never
+               reaches `preventDefault()`, so `handleChange` sees it the ordinary way. See
+               `useComposerPhotos`'s header. */
+            onPaste={onPaste}
             onKeyDown={(event) => {
               /*
                * WhatsApp's split, asked for by name ("can you change the keyboard, so it has a

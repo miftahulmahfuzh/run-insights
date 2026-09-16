@@ -80,6 +80,22 @@ function imageFile(name = 'photo.jpg', type = 'image/jpeg') {
   return new File(['fake-bytes'], name, { type })
 }
 
+/**
+ * A synthetic clipboard paste on the textarea.
+ *
+ * `fireEvent` does not build a real `DataTransfer`: dom-testing-library defines the `clipboardData`
+ * key from the init object straight onto the event, so the handler sees this plain `{ files }`
+ * object verbatim and a plain array stands in for a `FileList` (`Array.from` takes either).
+ *
+ * The RETURN VALUE is the point of the helper: `fireEvent` returns `dispatchEvent`'s boolean —
+ * `false` exactly when a handler called `preventDefault()`. That is how these tests prove the
+ * text-paste path is left alone, which no amount of DOM inspection can show (fireEvent never
+ * performs the browser's own insertion).
+ */
+function pasteFiles(files: File[]) {
+  return fireEvent.paste(textbox(), { clipboardData: { files } })
+}
+
 /** Wires the happy-path pick pipeline (compress -> hash -> pre-check -> upload -> describe) to
  * resolve with no duplicate, so a picked tile reaches `ready` with an upload ticket. */
 function mockUploadPipeline(overrides?: {
@@ -404,5 +420,125 @@ describe('Composer', () => {
 
     await user.type(textbox(), 'hello')
     expect(sendButton()).toBeDisabled()
+  })
+
+  it('runs a pasted image through compress, hash, dedupe-check, upload and describe', async () => {
+    mockUploadPipeline()
+    render(<Composer {...baseProps()} />)
+
+    // image/png, not jpeg: the clipboard hands over whatever the source app copied, and
+    // `compressForNina` re-encodes to JPEG regardless — the server's jpeg-only check is
+    // post-compression and needs no widening.
+    expect(pasteFiles([imageFile('image.png', 'image/png')])).toBe(false)
+
+    await waitFor(() => expect(sendButton()).toBeEnabled())
+    expect(compressForNina).toHaveBeenCalledTimes(1)
+    expect(findNinaDuplicateChatImage).toHaveBeenCalledWith({
+      contentHash: 'a'.repeat(64),
+      sourceHash: 'a'.repeat(64),
+    })
+    expect(upload).toHaveBeenCalledWith(
+      expect.stringMatching(/^nina\/user-1\/chat\/[A-Za-z0-9_-]{12}\.jpg$/),
+      expect.anything(),
+      expect.objectContaining({ access: 'public', handleUploadUrl: '/api/upload' }),
+    )
+    expect(describeNinaImage).toHaveBeenCalledTimes(1)
+  })
+
+  it('sends a pasted image in the same upload shape a picked one sends', async () => {
+    mockUploadPipeline({ ticket: 'ticket-pasted' })
+    const user = userEvent.setup()
+    const onSend = vi.fn()
+    render(<Composer {...baseProps({ onSend })} />)
+
+    pasteFiles([imageFile('image.png', 'image/png')])
+    await waitFor(() => expect(sendButton()).toBeEnabled())
+    await user.click(sendButton())
+
+    expect(onSend).toHaveBeenCalledWith({
+      body: '',
+      images: [
+        {
+          source: 'upload',
+          ticket: 'ticket-pasted',
+          url: 'https://blob.example/nina/user-1/chat/abc-suffix.jpg',
+          pathname: 'nina/user-1/chat/abc-suffix.jpg',
+          contentHash: 'a'.repeat(64),
+        } satisfies ComposerDraftImage,
+      ],
+    })
+  })
+
+  it('rejects a paste past the three-photo cap, but still processes the accepted ones', async () => {
+    mockUploadPipeline()
+    render(<Composer {...baseProps()} />)
+
+    // All four are named `image.png` and carry identical bytes, which is what a multi-image
+    // clipboard actually looks like — and the positive control for the identity-keyed lookup in
+    // `handleFiles`: a `{name, size}` lookup would hand the same `File` to all three tiles.
+    const pasted = [
+      imageFile('image.png', 'image/png'),
+      imageFile('image.png', 'image/png'),
+      imageFile('image.png', 'image/png'),
+      imageFile('image.png', 'image/png'),
+    ]
+    pasteFiles(pasted)
+
+    expect(await screen.findByText('Nina takes 3 photos at a time.')).toBeInTheDocument()
+    await waitFor(() => expect(compressForNina).toHaveBeenCalledTimes(3))
+
+    const compressed = compressForNina.mock.calls.map((call) => call[0])
+    expect(new Set(compressed).size).toBe(3)
+    expect(compressed[0]).toBe(pasted[0])
+    expect(compressed[1]).toBe(pasted[1])
+    expect(compressed[2]).toBe(pasted[2])
+  })
+
+  it('counts a pasted image against the same three-photo cap the picker fills', async () => {
+    mockUploadPipeline()
+    const user = userEvent.setup()
+    const { container } = render(<Composer {...baseProps()} />)
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement
+
+    await user.upload(input, [imageFile('a.jpg'), imageFile('b.jpg'), imageFile('c.jpg')])
+    await waitFor(() => expect(compressForNina).toHaveBeenCalledTimes(3))
+
+    // Prevented even though the cap then rejects it: the interception is decided by "is there an
+    // image on the clipboard", before `planNinaPicked` gets a say — otherwise the refusal would
+    // come with the image's bytes pasted into the draft as text.
+    expect(pasteFiles([imageFile('image.png', 'image/png')])).toBe(false)
+
+    expect(await screen.findByText('Nina takes 3 photos at a time.')).toBeInTheDocument()
+    expect(compressForNina).toHaveBeenCalledTimes(3)
+  })
+
+  it('leaves a paste with no image on it completely alone', async () => {
+    render(<Composer {...baseProps()} />)
+
+    // A plain text paste: nothing on `clipboardData.files` at all.
+    expect(pasteFiles([])).toBe(true)
+    // And a non-image FILE is dropped silently rather than rejected — a paste is not a deliberate
+    // choice of a file, so it earns no "That is not a photo." notice the way the picker's does.
+    expect(pasteFiles([new File(['x'], 'notes.txt', { type: 'text/plain' })])).toBe(true)
+
+    await Promise.resolve()
+    expect(compressForNina).not.toHaveBeenCalled()
+    expect(screen.queryByText('That is not a photo.')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Remove photo' })).not.toBeInTheDocument()
+  })
+
+  it('takes the image and prevents the default when the clipboard carries text too', async () => {
+    mockUploadPipeline()
+    render(<Composer {...baseProps()} />)
+
+    expect(
+      pasteFiles([
+        new File(['some caption'], 'caption.txt', { type: 'text/plain' }),
+        imageFile('image.png', 'image/png'),
+      ]),
+    ).toBe(false)
+
+    await waitFor(() => expect(compressForNina).toHaveBeenCalledTimes(1))
+    expect(screen.queryByText('That is not a photo.')).not.toBeInTheDocument()
   })
 })
