@@ -30,6 +30,10 @@ vi.mock('@/lib/nina/vision', () => ({
   NinaVisionTransportError: class NinaVisionTransportError extends Error {},
 }))
 vi.mock('@/lib/nina/embedding', () => ({ embedNinaText: vi.fn() }))
+vi.mock('@/lib/nina/provenancePromotion', () => ({
+  promoteNinaAvatarDependents: vi.fn(),
+  promoteNinaImageDependents: vi.fn(),
+}))
 
 const BARREL_ACTIONS = [
   'createNinaAlbumFolderAction',

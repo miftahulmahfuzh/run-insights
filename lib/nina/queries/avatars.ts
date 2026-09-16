@@ -869,6 +869,49 @@ export async function renameNinaAvatarFolder(
 }
 
 /**
+ * The ids `deleteNinaAvatarsInFolderTree` is about to remove, read while the rows are still there.
+ *
+ * ── WHY THE DELETE'S OWN `RETURNING` CANNOT ANSWER THIS ─────────────────────────────────────
+ * It can, and too late. `nina_message_images.source_avatar_id` is `ON DELETE SET NULL`, so the
+ * dependents stop naming these ids inside the DELETE's own statement — by the time the refs come
+ * back, the rows that pointed at them have already been cut loose. The ghost-photo fix
+ * (`lib/nina/provenancePromotion.ts`) has to find them BEFORE, and "before" means a separate read.
+ *
+ * ── THE WHERE IS `deleteNinaAvatarsInFolderTree`'s, CLAUSE FOR CLAUSE ───────────────────────
+ * Same `user_id`, same `is_current = false`, same `folderSubtree(folder)` — deliberately, so the
+ * set this returns is exactly the set that statement will delete. The `is_current` clause is the
+ * load-bearing one: under `keepCurrent` her current photograph stays behind, and promoting the
+ * dependents of a row that is NOT going anywhere would spend a GET per object to write
+ * measurements nothing is waiting for. Any drift between the two WHEREs shows up as a dependent
+ * that was promoted for nothing (harmless) or one that was not promoted at all (the bug this fix
+ * exists to stop) — so if one of them ever changes, so does the other, in the same commit.
+ *
+ * Ids only. The caller hands them to a lookup keyed on `source_avatar_id`; it has no use for the
+ * blob refs, and `deleteNinaAvatarsInFolderTree`'s `RETURNING` is what carries those to the reap.
+ *
+ * A race is possible and is the tolerable direction: a row filed into the folder between this read
+ * and the delete is deleted un-promoted, which is exactly today's behaviour for that row, and the
+ * promotion is a best-effort optimisation by its own module's doctrine — never a gate on the
+ * operator's delete.
+ */
+export async function listNinaAvatarIdsInFolderTree(
+  userId: string,
+  folder: string,
+): Promise<string[]> {
+  const rows = await db
+    .select({ id: ninaAvatars.id })
+    .from(ninaAvatars)
+    .where(
+      and(
+        eq(ninaAvatars.userId, userId),
+        eq(ninaAvatars.isCurrent, false),
+        folderSubtree(ninaAvatars.folder, folder),
+      ),
+    )
+  return rows.map((row) => row.id)
+}
+
+/**
  * Delete a folder and everything under it, handing back every blob ref so the caller can remove
  * the objects.
  *

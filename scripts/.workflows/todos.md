@@ -2,12 +2,12 @@
 
 **Package Path**: `scripts`
 **Package Code**: SC
-**Last Updated**: 2026-09-15
-**Total Active Tasks**: 0
+**Last Updated**: 2026-09-16
+**Total Active Tasks**: 1
 
 ## Quick Stats
 - P0 Critical: 0
-- P1 High: 0
+- P1 High: 1
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
@@ -22,6 +22,16 @@
 ### [P0] Critical
 
 ### [P1] High
+
+- [ ] **P1-SC-A003** Phase 2: Phantom-original census + `fill-dimensions` in the existing sweep
+  - **Difficulty**: NORMAL
+  - **Type**: Update
+  - **Context**: Extends `scripts/nina-dedupe-plan.mjs` + `scripts/nina-dedupe-media.mjs` (no standalone script) with `isPhantomOriginal` / `classifyPhantomOriginals` — the census of "original" rows that arrived with `content_hash IS NULL` — and a new `fill-dimensions` op + `buildFillDimensionOps`, since `isPerceptualTwin` refuses any row with NULL width/height and nothing in this family has ever filled those columns; `signBytes` gains width/height via an added `img.metadata()` read. Writes exactly Phase 1's six columns, each op guarded on its own column; adds no flag, no `del()`, no `DELETE` under any flag. Exit: `npx tsc --noEmit` and the full suite green; the read-only production dry run correctly buckets phantom rows (recovered/partial/unrecoverable), never counts a live reference as a phantom, and ends with `DRY RUN — nothing written.`
+  - **Status**: `open`
+  - **Plan Set**: `NINA_GHOST_PHOTO_DEDUP_FIX_PLAN.md` (phase 2 of 2)
+  - **Satisfies**: R1 — Implement a robust fix for the dedup gap: a reference row losing its provenance must never become a permanently-invisible, potentially-broken duplicate in Media
+  - **Depends on**: P1-NIN-A051 — satisfied 2026-09-16: phase 1 landed on `feature/nina-ghost-photo-dedup-fix`; `lib/nina/provenancePromotion.ts` exists, the six promoted columns are fixed, and the barrel surface is at 96 names
+  - **Plan**: `.workflows/plan/P1-SC-A003.md`
 
 ### [P2] Medium
 

@@ -37,7 +37,10 @@ entry points into the turn are covered by a single call site — see The chat tu
 2026-09-15 for P2-DB-A001 (ADMIN_ALBUM_SEMANTIC_SEARCH phase 1 of 4): `embedding.ts` added —
 one string in, one 1536-wide `number[]` out, one `fetch`, no fallback ladder and no retry, the
 first OpenRouter path in this package with no z.ai primary in front of it; `openrouter.ts` gained
-`OPENROUTER_EMBEDDINGS_URL` and `NINA_EMBEDDING_MODEL` — see Embeddings.
+`OPENROUTER_EMBEDDINGS_URL` and `NINA_EMBEDDING_MODEL` — see Embeddings. Restated 2026-09-16 for
+P1-NIN-A051 (nina-ghost-photo-dedup-fix phase 1 of 2): `provenancePromotion.ts` added — a delete
+now MEASURES the rows it is about to orphan before it orphans them, and the three avatar-side blob
+deletes ask `isBlobPathnameReferenced` before `del()` — see Images' *Promote before delete*.
 **Documentation Created**: 2026-09-05 (`NINA_CHARACTER_TUNING_PLAN.md` phase 2)
 
 ## Overview
@@ -584,12 +587,71 @@ way to skip it) and re-asks at the insert — **the race is closed by asking twi
 a lookup fault degrades to put+original (the generation is already paid for; the photograph is
 never lost to a dedup read). The hash rides on reference rows too: `content_hash` means
 *identical hash ⟺ identical bytes in the store*; a NULL on an upload-path reference is a client
-CLAIM never landing on a row that does not own the bytes; `updateNinaChatPhotoBlob` coalesces a
+CLAIM never landing on a row that does not own the bytes — with ONE sanctioned exception, the
+promotion below, which fills it on a reference row in the milliseconds before that row stops being
+one; `updateNinaChatPhotoBlob` coalesces a
 new replace's hash to NULL in the same `.set()` (a stale claim is the one lie the lookup cannot
 survive). A deduped GENERATED row keeps its own description and prompt (`args.scene` truthfully
 describes ITS bytes); a deduped admin ADD copies the keeper's (the `resolveAttachment` case).
 Avatar is out of scope in both hosts. The sweep's `scripts/nina-dedupe-plan.mjs` restates policy
 in raw SQL with `REQUIRED_COLUMNS` naming every column it touches — drift takes the workflow red.
+
+**Promote before delete** (`provenancePromotion.ts`, since 2026-09-16, P1-NIN-A051) — the fourth
+module in the dedup family and the only one that is not a decision module: it is a WRITE that has
+to happen at one exact moment. A `nina_message_images` row may be a REFERENCE
+(`source_avatar_id`/`source_image_id` set) which by the column header's own doctrine carries NO
+measurements — `content_hash`, `perceptual_hash`, `perceptual_sig`, `width`, `height`, `bytes` all
+NULL, because the keeper owns them. Both provenance FKs are `ON DELETE SET NULL` **and that is
+correct** (*"the collection KEEPS the picture instead of losing it"*), but the instant the parent
+goes the row reclassifies: `isOriginalPhoto()` counts it, the Media grid shows it, and it carries
+nothing either dedup mechanism reads. A **ghost original** — a photograph that can never be
+recognised as a duplicate of anything, forever (measured on production 2026-09-16,
+`nina_message_images.id = 'Tdw_AkrJT0ks'`, byte-identical prose to a selfie four tiles away, every
+measurement NULL, its object already 404). The fix is not to change the FK; it is to make the row
+TRUE before the transition. Five rules, and the first is the one a new delete path gets wrong:
+
+- **The order is promote → delete the row → guarded blob delete, and none of the three may move.**
+  The promotion must run while the parent id still links the dependents (the FK fires INSIDE the
+  parent's own DELETE statement, so a `RETURNING` arrives too late — which is why
+  `deleteNinaAlbumFolderAction` reads `listNinaAvatarIdsInFolderTree` separately, carrying
+  `deleteNinaAvatarsInFolderTree`'s WHERE clause for clause, `is_current = false` included). The
+  blob question must run AFTER the row delete, so it observes the post-`SET NULL` state and needs
+  no "except this one" exclusion parameter. Five delete paths share the two entry points
+  (`promoteNinaAvatarDependents` / `promoteNinaImageDependents` — two functions, never one `kind`
+  parameter, so handing an avatar id to the image arm is a type error rather than a silent miss).
+- **It can never cost the operator their delete.** Nothing in the module rejects: the lookup, each
+  object's fetch/hash/sign and each write are wrapped individually, one dead object does not stop
+  the ones after it, and every failure degrades to exactly today's behaviour and logs. Same ladder
+  `storeNinaImage` walks and `dedupe.ts`'s header states for the family (rule 7). A dedup
+  optimisation failing must never fail the user's actual request.
+- **One GET per OBJECT, not per row, and sequential.** Rows sharing a `pathname` share bytes and
+  therefore share a measurement, so the pass groups by pathname and issues one `UPDATE … id IN (…)`
+  per group. The groups are walked in order rather than in `Promise.all`: each GET holds a whole
+  image in memory inside a duration-limited Server Action, and a folder delete can be hundreds of
+  objects. It also fetches ONCE — `fetchAndSignImage` is the obvious call and the wrong one, because
+  the hash and the signature must describe the same buffer.
+- **`promoteNinaImageMeasurements` is the one write in `queries/images.ts` that deliberately omits
+  `isOriginalPhoto()`**, and adding it back makes the statement a guaranteed no-op. Its rows are
+  references *for another few milliseconds*, and the window is provably inert: both dedup reads
+  (`findNinaImageByContentHash`, `findNinaSignedOriginals`) carry the predicate themselves, so
+  nothing can match against a row until it stops being a reference. Two guards instead:
+  `content_hash IS NULL` (idempotence against a concurrent promotion or the sweep's own `fill-hash`)
+  and **`pathname = $n`** — the 2026-09-15 ghost-signature lesson, the same clause
+  `updateNinaChatPhotoPerceptualSignature` carries: an admin Replace can repoint the row between the
+  read and the write, and writing THESE bytes' measurements onto THOSE bytes' row is how a ghost is
+  minted. A sharp failure leaves the perceptual pair and `width`/`height` UNTOUCHED rather than
+  NULLed — "could not measure" is not "has no value", and the sweep's `fill-perceptual` owns the
+  rest.
+- **The blob delete asks first, per object.** All three avatar-side deletes were unconditional
+  `del`s and are not any more: `deleteNinaAvatarAction` goes through the shared
+  `releaseBlobIfUnreferenced` (`blobRelease.ts` — the canonical version of the argument), and the
+  folder/bulk path's `reapAvatarBlobs` spells the same rule inline because batching is the reason it
+  exists, asking `isBlobPathnameReferenced` in windows of `ADMIN_BLOB_REF_CHECK_CONCURRENCY` (8 —
+  bounded concurrency, deliberately unrelated to `ADMIN_BLOB_DEL_BATCH`'s 100, which bounds blast
+  radius). A check that THROWS answers "referenced" and keeps the object — an orphan is recoverable,
+  a dead reference is not. Original and thumbnail are asked about SEPARATELY: a chat row can
+  reference the full-size photograph while nothing anywhere references its album thumbnail, so one
+  `del([both])` would have to take the weaker answer for both.
 
 **The reference picker's chat side skips a photograph her album already adopted** (since
 2026-09-12, P1-NIN-A039). `generatedChatPhotoScope` (`queries/images.ts`) is the one definition of "her
@@ -853,7 +915,7 @@ folder already open answers a question the operator could answer by looking.
 | Prompts | `prompts/index.ts`, `prompts/system.ts`, `prompts/tools.ts`, `prompts/distill.ts`, `prompts/describe.ts` (two witness prompts behind a `Record` — a third subject is a compile error, and `subject` defaults to `'runner'` so existing callers are byte-identical), `prompts/caption.ts` |
 | Character | `tuning.ts`, `persona.ts` (barrel) + `persona/` (bands, identity, appearance, voice, instructor, anger, verbosity, never-say, tuning-blocks) |
 | Memory/behaviour | `memory.ts`, `distill.ts`, `promise.ts`(T)/`promises.ts`, `nags.ts`, `patterns.ts`, `shortcuts.ts`(T), `title.ts`/`autotitle.ts` |
-| Images | `imagerecipe.ts`, `imagegen.ts`, `imageprefs.ts`, `imagejobs.ts`, `imagecall.ts`, `imageDedupe.ts`, `perceptual.ts`/`perceptualSign.ts`, `imagerun.ts`, `imagefail.ts`, `caption.ts`, `imagetools.ts`/`avatartools.ts`, `selfiegen.ts`/`avatargen.ts`/`imagetest.ts`, `jobview.ts`(T) |
+| Images | `imagerecipe.ts`, `imagegen.ts`, `imageprefs.ts`, `imagejobs.ts`, `imagecall.ts`, `imageDedupe.ts`, `perceptual.ts`/`perceptualSign.ts`, `imagerun.ts`, `imagefail.ts`, `caption.ts`, `imagetools.ts`/`avatartools.ts`, `selfiegen.ts`/`avatargen.ts`/`imagetest.ts`, `jobview.ts`(T), `provenancePromotion.ts` (2026-09-16 — the promote-before-delete pass; `blobRelease.ts` is the reference-checked release every single-object delete goes through; neither declares `server-only`, both are db-touching and neither is a Server Action) |
 | Vision/intake | `vision.ts`(T), `imageTicket.ts`(T) (HMAC carrier, `node:crypto`), `images.ts`(T), `crop.ts`(T) |
 | Provider constants | `openrouter.ts` (zero imports; the ONE home of `OPENROUTER_CHAT_URL` + `OPENROUTER_EMBEDDINGS_URL` and of all three model vocabularies — `NINA_VISION_FALLBACK_MODEL` hardcoded, `NINA_CHAT_FALLBACK_MODEL_IDS`/`_SPECS`/`_DEFAULT_MODEL` operator-picked, `NINA_EMBEDDING_MODEL` migration-locked; read by the vision fallback, the text-chat fallback client and `embedding.ts`) |
 | Embeddings | `embedding.ts`*(T) (one `fetch` to `OPENROUTER_EMBEDDINGS_URL`, no fallback ladder, no retry; the width guard gates the return against `NINA_EMBEDDING_DIMENSIONS`) |
@@ -890,6 +952,13 @@ not a (T): it is the barrel contract test, not a pure module's suite.
   When it cannot: `failNinaImageJob` (budget spent) or `sweepStaleNinaImageJobs` (20 min) →
   `postNinaApologyMessage` → apology row → `notifyNinaPush(…, 'photo_apology')`. An avatar job and
   a hidden job reach neither notify, because they reach neither writer.
+- **Photograph away** (since 2026-09-16): `promoteNinaAvatarDependents`/`promoteNinaImageDependents`
+  (measure everything that re-shows it, while the link still exists) → the row DELETE (where
+  `ON DELETE SET NULL` fires) → `releaseBlobIfUnreferenced` per object, or `reapAvatarBlobs`'
+  windowed `isBlobPathnameReferenced` + chunked `del` for the bulk paths. Five callers, one order:
+  `deleteNinaChatPhoto` (`albumActions.ts`), `removeChatPhotoAction`, `deleteNinaAvatarAction`,
+  `deleteNinaAlbumFolderAction` (via `listNinaAvatarIdsInFolderTree`, read BEFORE the delete) and
+  `removeNinaAvatarsAction`.
 - **Proactive**: cron per user → `resolveNinaPromises` → `evaluateAndEmitForUser` →
   `emitProactiveMessage` (trigger block from `system.ts`'s copy, push via `lib/push/send`).
 - **Character path**: `readNinaTuning` → `coerceNinaTuning` → `buildNinaSystemPrompt(tuning)`.
@@ -948,7 +1017,10 @@ treats a THROWN action as `'failed'`. Recovery paths degrade rather than 500: re
 swallow their own failures (the one deliberate exception is the revive's attempt-count read,
 which degrades OPEN); a superseded turn's metrics still land; a dedup fault degrades to
 put+original; a failed blob release leaves the object for the reaper (`releaseBlobIfUnreferenced`
-errs toward keep — an orphan is recoverable, a dead reference is not). `vision.ts` has two named
+errs toward keep — an orphan is recoverable, a dead reference is not; since 2026-09-16 the album
+side releases through it too, and `reapAvatarBlobs` restates the same erring-toward-keep rule for
+its batched form); a promotion that cannot measure a dependent before its parent's delete logs and
+leaves the row exactly as un-measured as it was (see Images' *Promote before delete*). `vision.ts` has two named
 error classes (`NinaVisionTokenFloorError` — text-aware, computed AFTER the prompt is chosen so
 the longer self prompt raises it toward "I could not see it"; `NinaVisionTransportError`); when
 the z.ai attempt and the OpenRouter fallback have BOTH failed, the describe orchestrator rethrows
@@ -1020,7 +1092,25 @@ and picks what she says — a failure is a message from Nina, never a stack trac
 - **Do not merge the three dedup decision modules**, and never grow `planNinaImageWrite` into
   the query layer (`lib/nina/queries/`) — the worker would lose its one shared decision.
 - **A NULL `content_hash` on a reference row is expected**, not drift; fill it by hand and you
-  have written a claim nobody made.
+  have written a claim nobody made. The ONE sanctioned filler is
+  `promoteNinaImageMeasurements`, and only from `provenancePromotion.ts`, and only immediately
+  before the parent delete that stops the row being a reference — it measures the object the row's
+  own `blob_url` already serves and will go on serving.
+- **A delete that can orphan a reference row runs promote → delete → guarded blob delete, in that
+  order.** Adding a sixth delete path means adding `promoteNinaAvatarDependents` /
+  `promoteNinaImageDependents` above its row delete and routing its `del` through
+  `releaseBlobIfUnreferenced` (or, if it batches, through `isBlobPathnameReferenced` per object)
+  below it. Running the promotion after the delete finds nothing — `ON DELETE SET NULL` fires
+  inside the parent's own statement — and running the blob check before it gets the wrong answer.
+  Neither step may throw at the operator: both are optimisations over a delete that must succeed.
+- **`promoteNinaImageMeasurements` must NOT grow an `isOriginalPhoto()` clause.** Every other write
+  in `queries/images.ts` carries it; this one is the deliberate exception and the predicate would
+  make it a guaranteed no-op. Its `pathname = $n` guard is equally load-bearing — drop it and a
+  concurrent admin Replace mints exactly the ghost signature the 2026-09-15 incident was about.
+- **A reference check that throws keeps the object.** `reapAvatarBlobs` answers "referenced" on a
+  failed `isBlobPathnameReferenced`, the same direction `releaseBlobIfUnreferenced` errs in: an
+  orphan is recoverable, a dead reference is not. And never collapse an original and its thumbnail
+  back into one `del([...])` — they have different answers.
 - **`bumpNinaShortcutUses` is telemetry** — `.catch()` it. **`matchNinaShortcuts` runs once per
   turn**; `actions.ts`/`turnrun.ts` read `firedShortcutIds`, they do not re-match.
 - **Do not delete the `U+FE0F` strip, and do not "also strip `U+200D` while you are there"** —
@@ -1206,6 +1296,17 @@ recursive — a new module under `queries/` does not automatically join the walk
   outcome, and `embedErrorText` keeping the `detail` that `String(cause)` drops). The `res.text()`-
   then-parse order is what makes the snippet assertable at all — copy it rather than "simplifying"
   to `res.json()`.
+- **The promotion is pinned as a degradation ladder, and its ORDER is pinned at the caller**
+  (2026-09-16). `tests/nina.provenancePromotion.test.ts` drives the module with a fake `fetch` and
+  asserts the properties a `vi.fn()` could not see: one GET however many rows share a pathname; the
+  UPDATE carrying BOTH guards; an unsignable object still getting its hash while the perceptual
+  columns stay untouched; a non-https `blob_url` refused before any request leaves; and each of the
+  four failure sites (lookup, fetch, measure, write) swallowed with the objects after it still
+  landing. `tests/admin.albumAvatarDelete.test.ts` carries the half the module cannot see — that the
+  promotion runs BEFORE the row delete, that a still-referenced object survives, that the thumbnail
+  is asked about separately, and that a promotion which cannot reach the store never costs the
+  operator the delete. Unlike the image push (whose ordering is held by docstring and review only),
+  this ordering IS asserted; keep it that way when a sixth delete path joins.
 - **Known-answer vectors** pin the perceptual gates in BOTH copies of the predicate
   (`tests/nina.perceptual.test.ts`, `tests/nina.dedupeMedia.test.ts`), so the two cannot drift.
 - **Real-module integration**: `tests/nina.resend.test.ts` and `tests/nina.burstCancel.test.ts`

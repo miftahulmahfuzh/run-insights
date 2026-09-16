@@ -9,8 +9,10 @@ import { chatPhotoSetAvatarSchema, type ChatPhotoSetAvatarInput } from '@/lib/ad
  *
  * `setChatPhotoAsAvatarAction` is the reverse of F37's share: a `nina_message_images` row becomes
  * a `nina_avatars` row, with its bytes COPIED into a new `avatar-` object rather than shared — the
- * album-side deletes (`deleteNinaAvatarAction`, `reapAvatarBlobs`) call `del` with no reference
- * check, so a shared object would break the chat photo the day the album row went away.
+ * album-side deletes (`deleteNinaAvatarAction`, `reapAvatarBlobs`) used to call `del` with no
+ * reference check at all, and although the ghost-photo fix made both of them ask
+ * `isBlobPathnameReferenced` first, the copy stays: it gives the album row its own lifetime, its
+ * own folder and its own framing, independent of the conversation the photograph came from.
  *
  * The properties, in the order they would hurt if they were wrong:
  *

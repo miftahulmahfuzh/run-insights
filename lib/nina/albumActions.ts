@@ -6,6 +6,7 @@ import { sendNinaMessage, type SendNinaMessageResult } from './actions'
 import { SESSION_PARAM } from './active'
 import { NINA_ATTACH_MAX_CHARS } from './album'
 import { releaseBlobIfUnreferenced } from './blobRelease'
+import { promoteNinaImageDependents } from './provenancePromotion'
 import { deleteNinaMessageImage, getNinaMessageImage } from './queries'
 import { createNinaChatSession } from './sessionActions'
 import { requireUserId } from '@/lib/auth/requireUserId'
@@ -202,6 +203,10 @@ export async function attachNinaPhotoToChat(input: NinaAttachInput): Promise<Nin
  * copy to patch, so the refresh must reach the server render, and
  * `revalidatePath('/nina/about')` is what turns `router.refresh()` into a fresh read rather than a
  * replay of the router cache.
+ *
+ * The one rule it does spell out is the ORDER, because only a caller can get it right: promote the
+ * rows that re-show this photograph (`promoteNinaImageDependents`) while this row still links
+ * them, THEN delete it, THEN release. The middle statement is where `ON DELETE SET NULL` fires.
  */
 export async function deleteNinaChatPhoto(input: { id: string }): Promise<{ ok: boolean }> {
   const userId = await requireUserId()
@@ -213,6 +218,12 @@ export async function deleteNinaChatPhoto(input: { id: string }): Promise<{ ok: 
   const row = await getNinaMessageImage(userId, input.id)
   if (row == null) return { ok: false }
   if (row.kind === 'generated') return { ok: false }
+
+  /* PROMOTE, THEN DELETE. Another chat row can re-show this photograph via `source_image_id`, and
+   * that FK is `ON DELETE SET NULL`: without this the dependent survives as an unmeasured
+   * "original" that neither dedup mechanism can ever match, which is the ghost-photo bug. Best
+   * effort by construction — it cannot throw and cannot refuse the runner's delete. */
+  await promoteNinaImageDependents(userId, [input.id])
 
   const deleted = await deleteNinaMessageImage(userId, input.id)
   if (deleted == null) return { ok: false }

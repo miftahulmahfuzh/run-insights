@@ -12,7 +12,7 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 52
+- Completed: 53
 - Archived: 36
 
 ---
@@ -34,6 +34,22 @@
 (all thirty-five completed tasks were archived on 2026-09-12 — see Archive; full
 per-task detail — Context, Drift, Decided, Files — survives in git history and in
 `.workflows/package_readme.md`)
+
+- [x] **P1-NIN-A051** Phase 1: Promote dependents before delete, guard the blob delete
+  - **Difficulty**: HARD
+  - **Type**: Bug
+  - **Context**: Owns new shared helper `lib/nina/provenancePromotion.ts` (`promoteNinaAvatarDependents`, `promoteNinaImageDependents`), new query functions `listUnmeasuredNinaImageDependents` / `promoteNinaImageMeasurements` (`lib/nina/queries/images.ts`) and `listNinaAvatarIdsInFolderTree` (`lib/nina/queries/avatars.ts`); wires the helper into all three avatar-delete call sites and both `deleteNinaMessageImage` callers, adding the missing `isBlobPathnameReferenced` guard to the avatar-delete blob deletes (also touches `lib/admin/ninaAlbumAvatarActions.ts`, `lib/admin/ninaAlbumFolderActions.ts`, `lib/admin/chatPhotoActions.ts`). Exit: `npx tsc --noEmit` and the full test suite pass; a reference row whose parent is deleted ends up with real `content_hash`/`perceptual_hash`/`perceptual_sig`/measurements and its shared blob object survives; barrel contract test passes at exactly 96 names; no line in the tree still states the reference-check gap in the present tense.
+  - **Status**: done
+  - **Plan Set**: `NINA_GHOST_PHOTO_DEDUP_FIX_PLAN.md` (phase 1 of 2)
+  - **Satisfies**: R1 — Implement a robust fix for the dedup gap: a reference row losing its provenance must never become a permanently-invisible, potentially-broken duplicate in Media
+  - **Plan**: `.workflows/plan/P1-NIN-A051.md`
+  - **Completed**: 2026-09-16 11:32
+  - **Method**: /do
+  - **Files**: lib/nina/provenancePromotion.ts, lib/nina/queries/images.ts, lib/nina/queries/avatars.ts, lib/nina/queries.test.ts, lib/admin/ninaAlbumAvatarActions.ts, lib/admin/ninaAlbumFolderActions.ts, lib/admin/chatPhotoActions.ts, lib/nina/albumActions.ts, tests/nina.provenancePromotion.test.ts, tests/admin.albumAvatarDelete.test.ts, tests/admin.folderActions.test.ts, tests/nina.galleryDelete.test.ts, tests/nina.attachTargets.test.ts, tests/admin.chatPhotos.test.ts, tests/admin.chatPhotoAdoption.test.ts, tests/admin.albumActionsBarrel.test.ts
+  - **Drift**: `tests/nina.provenancePromotion.test.ts`: the plan's `fake.enqueueError()` placement in the "a write that throws is swallowed" case didn't match the fake driver's real semantics — it drains queued errors in strict call order regardless of when `enqueue()`/`enqueueError()` ran in setup. Fixed by queuing the error as a side effect of the mocked `fetch` call instead, so it lands on the intended statement.
+    `tests/admin.folderActions.test.ts`: the "deletes rows, reaps both original and thumbnail blobs, and undeclares the empty subtree" case needed six explicit empty-array enqueues for the new `isBlobPathnameReferenced` reference-check statements; without them a later enqueued result meant for `deleteNinaFolderSubtree` was consumed out of order.
+    Step 12's two *conditional* suites (`tests/admin.albumAvatarActions.test.ts`, `tests/admin.albumDescribeEmbed.test.ts`) stayed green with no edit — the plan's own documented "first branch" outcome (D4: run-then-mock-if-red), not a skip. The unconditional barrel-suite mock was applied.
+  - **Verification**: `npx next typegen` (fresh worktree needed it) then `npx tsc --noEmit` clean; full `npm test` green (354 files / 6168 tests); `npx eslint lib tests --max-warnings=0` clean; `npx knip` clean of this phase's new exports.
 
 - [x] **P1-NIN-A050** Phase 1: Add `aggregate_runs` tool (schema, Zod, gateway, SQL, tests)
   - **Difficulty**: NORMAL
