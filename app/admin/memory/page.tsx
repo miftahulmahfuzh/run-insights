@@ -7,9 +7,11 @@ import { requireAdmin } from '@/lib/admin/requireAdmin'
 import { getAdminUser, listAdminUsers } from '@/lib/admin/users'
 import {
   NINA_SLOT_PENDING_PROMISES,
+  NINA_SLOT_REMINDERS,
   type NinaPendingPromise,
   type NinaPendingPromisesSlot,
 } from '@/lib/db/schema'
+import { activeReminders, parseRemindersSlot } from '@/lib/nina/reminders'
 
 /**
  * `/admin/memory` — R24 in full (*"admin can see the persistent memory that is collected for each
@@ -64,10 +66,11 @@ export default async function AdminMemoryPage(props: PageProps<'/admin/memory'>)
     )
   }
 
-  const [slotRows, factRows, promisesSlot] = await Promise.all([
+  const [slotRows, factRows, promisesSlot, remindersSlot] = await Promise.all([
     adminReadSlots(target.id),
     adminReadFacts(target.id, ADMIN_LEDGER_PAGE),
     adminReadSlot(target.id, NINA_SLOT_PENDING_PROMISES),
+    adminReadSlot(target.id, NINA_SLOT_REMINDERS),
   ])
 
   const promises: NinaPendingPromise[] = (() => {
@@ -76,9 +79,11 @@ export default async function AdminMemoryPage(props: PageProps<'/admin/memory'>)
     return Array.isArray(value?.promises) ? value.promises : []
   })()
 
+  const reminders = activeReminders(parseRemindersSlot(remindersSlot?.value))
+
   // `NinaSlotRow` and `NinaFactRow` carry `Date`s; a `MemoryRow` carries ISO strings, so nothing
   // about serialization depends on how the RSC boundary treats `Date` today.
-  const rows = buildMemoryRows({ slots: slotRows, facts: factRows, promises })
+  const rows = buildMemoryRows({ slots: slotRows, facts: factRows, promises, reminders })
   const hidden = Math.max(0, target.facts - factRows.length)
 
   return (
@@ -101,10 +106,10 @@ function Header() {
       <h1 className="text-[22px] font-bold tracking-[-0.02em] text-ink">Memory</h1>
       <p className="mt-1 max-w-[70ch] text-[13px] font-medium text-ink-2">
         Everything Nina has kept, in one table: the <strong>slots</strong> she is handed on every
-        turn, her pending <strong>promises</strong>, and the <strong>ledger</strong> of what she has
-        been told. A cell saves when you leave it and a row deletes on one click — no confirmation
-        anywhere. Edits here write production and she reads them on her very next message; there is
-        no distillation pass and no cache in between.
+        turn, her standing <strong>reminders</strong>, her pending <strong>promises</strong>, and
+        the <strong>ledger</strong> of what she has been told. A cell saves when you leave it and a
+        row deletes on one click — no confirmation anywhere. Edits here write production and she
+        reads them on her very next message; there is no distillation pass and no cache in between.
       </p>
     </header>
   )

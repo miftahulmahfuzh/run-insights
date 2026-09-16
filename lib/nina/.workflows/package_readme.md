@@ -976,7 +976,10 @@ folder already open answers a question the operator could answer by looking.
   `MAX_CANCELLED_KEPT` (3) only, so "you told me to stop" is answerable. Entries in one array are
   applied IN ORDER, which is load-bearing: an edit ("move it to 9") is a `cancel` followed by a
   `create`, and reordering them either refuses the create against a cap the cancel was about to
-  free or cancels the entry just made.
+  free or cancels the entry just made. Since 2026-09-16 (`/admin/memory` CRUD, `lib/admin`), a
+  fourth pure function, `patchReminder`, edits `label`/`message`/`timeOfDay` of one entry **in
+  place** — `id`/`createdOn`/`lastFiredOn` untouched — unlike the chat path's cancel-then-create;
+  the admin surface is its only caller.
 - **Proactive** (`proactive.ts`): `evaluateAndEmitForUser` (cron) and `emitRunCommitted` (fired
   by `lib/review/actions.ts` on commit). `clinginess` moves `SILENCE_NO_CHAT_DAYS` (4),
   `SILENCE_NO_RUN_DAYS` (5), `SILENCE_COOLDOWN_DAYS` (3) — the only day-counts, and the reason

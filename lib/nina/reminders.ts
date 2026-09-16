@@ -264,3 +264,67 @@ export function markReminderFired(
   })
   return { slot: { reminders }, changed }
 }
+
+/**
+ * In-place edit of one active reminder — the nina-natural-reminders-admin set, R2. Unlike
+ * `applyReminderWrites`'s cancel+create (the CHAT path's only edit mechanism — the plan's own Out
+ * of scope for what the MODEL may express in one turn), this keeps `id`, `createdOn`, `lastFiredOn`
+ * and `sourceMessageId` untouched: `/admin/memory`'s precedent for every other row
+ * (`saveSlotAction`, `editFactAction`) is a true in-place patch, and an admin fixing a typo in a
+ * label should not reset whether it already fired today.
+ *
+ * The same shape checks and the same duplicate-time-and-label guard as `applyReminderWrites`'
+ * create branch, run against every OTHER active entry — never against itself, or a no-op edit
+ * would refuse against its own unchanged row.
+ */
+export interface ReminderPatchInput {
+  slot: NinaRemindersSlot
+  id: string
+  timeOfDay: string
+  label: string
+  message: string
+}
+
+export interface ReminderPatchResult {
+  slot: NinaRemindersSlot
+  changed: boolean
+  /** Non-null means nothing was written; the caller reports it and moves on. */
+  refusal: string | null
+}
+
+export function patchReminder(input: ReminderPatchInput): ReminderPatchResult {
+  const timeOfDay = input.timeOfDay.trim()
+  const label = input.label.trim()
+  const message = input.message.trim()
+
+  if (!REMINDER_TIME_RE.test(timeOfDay) || label.length === 0 || message.length === 0) {
+    return { slot: input.slot, changed: false, refusal: 'needs a valid time, a label and a message' }
+  }
+
+  const target = input.slot.reminders.find(
+    (entry) => entry.id === input.id && entry.status === 'active',
+  )
+  if (target == null) {
+    return { slot: input.slot, changed: false, refusal: `no active reminder with id ${input.id}` }
+  }
+
+  const collides = input.slot.reminders.some(
+    (entry) =>
+      entry.id !== input.id &&
+      entry.status === 'active' &&
+      entry.timeOfDay === timeOfDay &&
+      entry.label === label,
+  )
+  if (collides) {
+    return { slot: input.slot, changed: false, refusal: `${label} at ${timeOfDay} already exists` }
+  }
+
+  if (target.timeOfDay === timeOfDay && target.label === label && target.message === message) {
+    return { slot: input.slot, changed: false, refusal: null }
+  }
+
+  const reminders = input.slot.reminders.map((entry) =>
+    entry.id === input.id ? { ...entry, timeOfDay, label, message } : entry,
+  )
+  return { slot: { reminders }, changed: true, refusal: null }
+}

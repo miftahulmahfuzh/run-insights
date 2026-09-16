@@ -224,6 +224,77 @@ describe('buildMemoryRows — R1s one table', () => {
     expect(promise?.hint).toContain('target 50')
   })
 
+  it('gives a reminder its own row, editable, and sits between orphans and promises', () => {
+    const rows = buildMemoryRows({
+      ...empty,
+      slots: [
+        {
+          key: 'favourite_shoe',
+          value: 'Novablast 4',
+          source: 'distilled',
+          sourceMessageId: null,
+          updatedAt: new Date('2026-09-01T00:00:00Z'),
+        },
+      ],
+      promises: [
+        {
+          id: 'p1',
+          text: 'a promise',
+          condition: 'a condition',
+          metric: 'free',
+          target: null,
+          targetKey: null,
+          byDate: null,
+          promisedOn: '2026-09-02',
+          status: 'pending',
+        },
+      ],
+      reminders: [
+        {
+          id: 'rem_1',
+          timeOfDay: '20:45',
+          label: 'tidur',
+          message: 'biar konsisten',
+          createdOn: '2026-09-10',
+          lastFiredOn: null,
+        },
+      ],
+    })
+
+    const reminder = rows.find((row) => row.kind === 'reminder')
+    expect(reminder?.rowId).toBe('reminder:rem_1')
+    expect(reminder?.target).toBe('rem_1')
+    expect(reminder?.label).toBe('tidur')
+    expect(reminder?.code).toBe('20:45')
+    expect(reminder?.text).toBe('biar konsisten')
+    expect(reminder?.editable).toBe(true)
+    expect(reminder?.deletable).toBe(true)
+    expect(reminder?.reappears).toBe(false)
+    expect(reminder?.note).toMatch(/never fired/)
+
+    const kinds = rows.map((row) => row.kind)
+    const firstOrphan = kinds.indexOf('slot', NON_STRUCTURED_SLOT_KEYS.length)
+    expect(firstOrphan).toBe(NON_STRUCTURED_SLOT_KEYS.length)
+    expect(kinds.indexOf('reminder')).toBeGreaterThan(firstOrphan)
+    expect(kinds.indexOf('promise')).toBeGreaterThan(kinds.indexOf('reminder'))
+  })
+
+  it('never renders the reminders slot key as an orphan row', () => {
+    const rows = buildMemoryRows({
+      ...empty,
+      slots: [
+        {
+          key: 'reminders',
+          value: '{"reminders":[]}',
+          source: 'distilled',
+          sourceMessageId: null,
+          updatedAt: new Date('2026-09-01T00:00:00Z'),
+        },
+      ],
+    })
+    expect(rows.some((row) => row.target === 'reminders')).toBe(false)
+  })
+
   it('makes every ledger row editable, including a distilled one, and says what that costs', () => {
     const rows = buildMemoryRows({
       ...empty,
@@ -443,23 +514,25 @@ describe('R1 — no confirmation, anywhere on this page', () => {
     }
   })
 
-  it('exports exactly the four actions the table calls', () => {
+  it('exports exactly the six actions the table calls', () => {
     const source = readFileSync(ACTIONS, 'utf8')
     const exported = [...source.matchAll(/^export async function (\w+)/gm)].map(([, name]) => name)
     expect(exported.sort()).toEqual([
+      'createReminderAction',
       'deleteMemoryRowAction',
       'editFactAction',
+      'editReminderAction',
       'insertFactAction',
       'saveSlotAction',
     ])
   })
 
-  it('keeps Zod at every one of those four boundaries — validation is not confirmation', () => {
+  it('keeps Zod at every one of those six boundaries — validation is not confirmation', () => {
     const source = readFileSync(ACTIONS, 'utf8')
-    expect(source.match(/\.safeParse\(input\)/g)).toHaveLength(4)
+    expect(source.match(/\.safeParse\(input\)/g)).toHaveLength(6)
     // Anchored to the STATEMENT form (start of line, two-space body indent) so the numbered list in
     // this module's own header does not count as a fifth call site.
-    expect(source.match(/^ {2}await requireAdmin\(\)$/gm)).toHaveLength(4)
+    expect(source.match(/^ {2}await requireAdmin\(\)$/gm)).toHaveLength(6)
   })
 })
 

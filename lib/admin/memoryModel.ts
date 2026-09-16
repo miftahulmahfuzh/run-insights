@@ -25,6 +25,11 @@ export const ADMIN_FACT_TEXT_MAX = 400
 /** A slot value before canonicalisation. The specs cap the stored form tighter (120–240). */
 export const ADMIN_SLOT_VALUE_MAX = 400
 
+/** Same number as `NinaReminderWriteSchema.label`'s cap (`lib/nina/schema.ts`) — one field, one cap. */
+export const ADMIN_REMINDER_LABEL_MAX = 60
+/** Same number as `NinaReminderWriteSchema.message`'s cap. */
+export const ADMIN_REMINDER_MESSAGE_MAX = 300
+
 /** How much of the ledger the page renders. The table is unbounded; the page is not. */
 export const ADMIN_LEDGER_PAGE = 200
 
@@ -81,7 +86,7 @@ export type SlotProtection = 'deferred' | 'sticky' | 'none'
  * Which table a row came out of. It decides what an edit MEANS at the storage layer; it no longer
  * decides what the row LOOKS like, which is the whole of R1's *"one simple table"*.
  */
-type MemoryRowKind = 'slot' | 'promise' | 'fact'
+type MemoryRowKind = 'slot' | 'promise' | 'fact' | 'reminder'
 
 /**
  * **One row of `/admin/memory`, whatever it is made of.** Three shapes across two tables — the
