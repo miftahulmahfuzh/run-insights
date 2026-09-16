@@ -315,6 +315,26 @@ describe('the prompt', () => {
     expect(text).toContain('--- prompt as sent ---')
   })
 
+  it('the sidecar records the actual URL once a caller resolved one', () => {
+    const anchored = sidecarText({
+      prompt: 'p',
+      seed: 42,
+      purpose: 'selfie',
+      model: NINA_IMAGE_MODEL,
+      referenceUrl: 'https://example.com/photo.png',
+    })
+    expect(anchored).toContain('reference:  https://example.com/photo.png')
+
+    const explicitNull = sidecarText({
+      prompt: 'p',
+      seed: 42,
+      purpose: 'selfie',
+      model: NINA_IMAGE_MODEL,
+      referenceUrl: null,
+    })
+    expect(explicitNull).toContain('reference:  none (RU-18)')
+  })
+
   it('the sidecar records the camera the job actually chose, not the module constant', () => {
     const text = sidecarText({
       prompt: 'p',
@@ -1004,24 +1024,75 @@ describe('the prompt', () => {
   it('still never claims a reference image is authoritative, at any setting', () => {
     /* RU-18. None of the new clauses may reintroduce the word — an instruction to defer to an
      * image that is not in the payload degrades the prompt, and phase 3 puts the reference in the
-     * PAYLOAD and not in the prose. */
+     * PAYLOAD and not in the prose. Looped over `hasReference` too: the face lock is the one new
+     * clause allowed to describe the attached photo, and even it must never say "reference". */
     for (const purpose of ['selfie', 'avatar'] as const) {
-      const prompt = buildNinaImagePrompt({
-        purpose,
-        scene: 'x',
-        mood: 'smug',
-        tuning: tuned({ traits: { ...NINA_TUNING_DEFAULTS.traits, steamy: 100, flirty: 100 } }),
-        prefs: prefsWith({
-          promptLength: 100,
-          focus: focusOnly(...NINA_IMAGE_FOCUS_KEYS),
-          wardrobe: 'a red bikini',
-          venue: 'Kuta streets in Bali',
-          time: 'sunny day',
-          notes: 'nina is full of sweat',
-        }),
-      })
-      expect(prompt.toLowerCase()).not.toContain('reference')
+      for (const hasReference of [false, true]) {
+        const prompt = buildNinaImagePrompt({
+          purpose,
+          scene: 'x',
+          mood: 'smug',
+          tuning: tuned({ traits: { ...NINA_TUNING_DEFAULTS.traits, steamy: 100, flirty: 100 } }),
+          prefs: prefsWith({
+            promptLength: 100,
+            focus: focusOnly(...NINA_IMAGE_FOCUS_KEYS),
+            wardrobe: 'a red bikini',
+            venue: 'Kuta streets in Bali',
+            time: 'sunny day',
+            notes: 'nina is full of sweat',
+          }),
+          hasReference,
+        })
+        expect(prompt.toLowerCase()).not.toContain('reference')
+      }
     }
+  })
+
+  describe('the face lock', () => {
+    it('renders only when Face is ticked AND a reference actually resolved', () => {
+      for (const purpose of ['selfie', 'avatar'] as const) {
+        const faceTickedAnchored = buildNinaImagePrompt({
+          purpose,
+          scene: 'x',
+          prefs: prefsWith({ focus: focusOnly('face') }),
+          hasReference: true,
+        })
+        expect(faceTickedAnchored, purpose).toContain(
+          'is an exact match for the woman in the attached photo',
+        )
+      }
+    })
+
+    it('does not render when Face is ticked but nothing resolved', () => {
+      for (const purpose of ['selfie', 'avatar'] as const) {
+        const noReference = buildNinaImagePrompt({
+          purpose,
+          scene: 'x',
+          prefs: prefsWith({ focus: focusOnly('face') }),
+        })
+        expect(noReference, purpose).not.toContain('attached photo')
+
+        const explicitlyFalse = buildNinaImagePrompt({
+          purpose,
+          scene: 'x',
+          prefs: prefsWith({ focus: focusOnly('face') }),
+          hasReference: false,
+        })
+        expect(explicitlyFalse, purpose).not.toContain('attached photo')
+      }
+    })
+
+    it('does not render when a reference resolved but Face is not ticked', () => {
+      for (const purpose of ['selfie', 'avatar'] as const) {
+        const prompt = buildNinaImagePrompt({
+          purpose,
+          scene: 'x',
+          prefs: prefsWith({ focus: focusOnly('skin') }),
+          hasReference: true,
+        })
+        expect(prompt, purpose).not.toContain('attached photo')
+      }
+    })
   })
 })
 

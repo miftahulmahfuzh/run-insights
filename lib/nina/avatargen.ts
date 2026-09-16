@@ -96,16 +96,24 @@ export async function generateNinaAvatar(request: NinaAvatarRequest): Promise<Ni
    * shipped, and it is preserved here on purpose rather than by luck.
    */
   const [tuning, prefs] = await Promise.all([readNinaTuning(userId), readNinaImagePrefs(userId)])
-  const prompt = buildNinaImagePrompt({ purpose: 'avatar', scene, mood, tuning, prefs })
-
-  /* The row's camera (§8), same one-coercion rule as `selfiegen.ts`. */
-  const model = coerceNinaImageModel(prefs.model)
 
   /* Same resolution `imagetest.ts` and `selfiegen.ts` do — the camera choice and the reference
    * apply to both purposes (imagegen.ts's own comment on the avatar template), so an avatar
    * generation is anchored exactly like a selfie is, even though its prompt template is not the
-   * operator-editable one. */
+   * operator-editable one. Resolved BEFORE the prompt so `hasReference` can gate the face lock. */
   const reference = await resolveNinaPhotoReference(userId, prefs.reference)
+
+  const prompt = buildNinaImagePrompt({
+    purpose: 'avatar',
+    scene,
+    mood,
+    tuning,
+    prefs,
+    hasReference: reference != null,
+  })
+
+  /* The row's camera (§8), same one-coercion rule as `selfiegen.ts`. */
+  const model = coerceNinaImageModel(prefs.model)
 
   const jobId = await openNinaImageJob(userId, {
     purpose: 'avatar',
@@ -119,7 +127,7 @@ export async function generateNinaAvatar(request: NinaAvatarRequest): Promise<Ni
     attempts: 0,
     referenceUrl: reference?.blobUrl ?? null,
     model,
-    sidecar: sidecarText({ prompt, seed, purpose: 'avatar', model }),
+    sidecar: sidecarText({ prompt, seed, purpose: 'avatar', model, referenceUrl: reference?.blobUrl ?? null }),
   })
 
   /* In-platform now — see `selfiegen.ts`'s note and `imagerun.ts`'s header. Nobody asked in chat,

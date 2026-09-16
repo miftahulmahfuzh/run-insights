@@ -98,17 +98,29 @@ export async function generateNinaSelfie(request: NinaSelfieRequest): Promise<Ni
    * fail independently in a way the other could recover from, so `Promise.all` is the honest shape.
    */
   const [tuning, prefs] = await Promise.all([readNinaTuning(userId), readNinaImagePrefs(userId)])
-  const prompt = buildNinaImagePrompt({ purpose: 'selfie', scene, mood, outfit, tuning, prefs })
-
-  /* The row's camera (§8), read off the prefs the prompt was just built from — one coercion here
-   * decides both the `nina_turns.model` stamp (inside `openNinaImageJob`) and the sidecar text. */
-  const model = coerceNinaImageModel(prefs.model)
 
   /* The operator's saved photo reference, resolved the same way `imagetest.ts` resolves it —
    * owner-scoped, `null` for 'none' or a since-deleted photo, never blocking the generation. A
    * chat-triggered selfie is exactly as anchorable as an admin test; there is no reason the
-   * picker on /admin/image-generation should only apply to one of the two paths that read it. */
+   * picker on /admin/image-generation should only apply to one of the two paths that read it.
+   *
+   * Resolved BEFORE the prompt, not after: `buildNinaImagePrompt`'s `hasReference` decides whether
+   * the face-lock sentence is even eligible to render, so the prompt cannot be built first. */
   const reference = await resolveNinaPhotoReference(userId, prefs.reference)
+
+  const prompt = buildNinaImagePrompt({
+    purpose: 'selfie',
+    scene,
+    mood,
+    outfit,
+    tuning,
+    prefs,
+    hasReference: reference != null,
+  })
+
+  /* The row's camera (§8), read off the prefs the prompt was just built from — one coercion here
+   * decides both the `nina_turns.model` stamp (inside `openNinaImageJob`) and the sidecar text. */
+  const model = coerceNinaImageModel(prefs.model)
 
   const jobId = await openNinaImageJob(userId, {
     purpose: 'selfie',
@@ -121,7 +133,7 @@ export async function generateNinaSelfie(request: NinaSelfieRequest): Promise<Ni
     attempts: 0,
     referenceUrl: reference?.blobUrl ?? null,
     model,
-    sidecar: sidecarText({ prompt, seed, purpose: 'selfie', model }),
+    sidecar: sidecarText({ prompt, seed, purpose: 'selfie', model, referenceUrl: reference?.blobUrl ?? null }),
   })
 
   /*

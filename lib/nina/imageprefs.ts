@@ -603,6 +603,7 @@ function compareNinaPhotoRefs(a: NinaPhotoRef, b: NinaPhotoRef): number {
 export const NINA_IMAGE_TEMPLATE_KEYS = [
   'wardrobe',
   'focus',
+  'faceLock',
   'presence',
   'venue',
   'time',
@@ -650,6 +651,11 @@ export const NINA_IMAGE_TEMPLATE_SPECS: Readonly<
     key: 'focus',
     description:
       'The ticked Focus-on terms, as one list. Nothing ticked, no line — the whole line goes.',
+  }),
+  faceLock: Object.freeze({
+    key: 'faceLock',
+    description:
+      'Only when Face is ticked AND a photo reference is actually attached to this generation: one sentence telling the model her face must match the attached photo exactly. Face ticked with no reference attached, no line — the whole line goes.',
   }),
   presence: Object.freeze({
     key: 'presence',

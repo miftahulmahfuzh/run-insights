@@ -287,10 +287,12 @@ export async function readNinaImageTestAction(
     readNinaImagePrefs(userId),
   ])
 
+  const referenceUrl = (await resolveNinaPhotoReference(userId, prefs.reference))?.blobUrl ?? null
+
   const base = {
     quotaLeft,
-    promptPreview: assembleNinaImageTestPrompt({ tuning, prefs }),
-    referenceUrl: (await resolveNinaPhotoReference(userId, prefs.reference))?.blobUrl ?? null,
+    promptPreview: assembleNinaImageTestPrompt({ tuning, prefs, hasReference: referenceUrl != null }),
+    referenceUrl,
   }
 
   if (!isValidId(jobId)) return { ...base, job: null }

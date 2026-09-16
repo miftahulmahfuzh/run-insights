@@ -88,6 +88,10 @@ const NINA_IMAGE_TEST_SCENE =
 export function assembleNinaImageTestPrompt(input: {
   tuning: NinaTuning
   prefs: NinaImagePrefs
+  /** Whether the caller has already resolved a photo reference for this test. Omitted (the mount
+   * preview's own default) means the preview under-claims rather than guesses — see
+   * `readNinaImageTestAction`, the one caller that actually knows and passes it through. */
+  hasReference?: boolean
 }): string {
   return buildNinaImagePrompt({
     /*
@@ -103,6 +107,7 @@ export function assembleNinaImageTestPrompt(input: {
     mood: null,
     tuning: input.tuning,
     prefs: input.prefs,
+    hasReference: input.hasReference,
   })
 }
 
@@ -128,8 +133,6 @@ export async function dispatchNinaImageTest(userId: string): Promise<NinaImageTe
    * saved on this very page thirty seconds ago is the thing being tested. This is also why the
    * operator must SAVE before testing: an unsaved draft is not in this row. */
   const [tuning, prefs] = await Promise.all([readNinaTuning(userId), readNinaImagePrefs(userId)])
-
-  const prompt = assembleNinaImageTestPrompt({ tuning, prefs })
 
   /*
    * ── THE SAVED PHOTO REFERENCE, THREADED ONTO PHASE 3'S FIELD ──────────────────────────────
@@ -157,6 +160,8 @@ export async function dispatchNinaImageTest(userId: string): Promise<NinaImageTe
    */
   const reference = await resolveNinaPhotoReference(userId, prefs.reference)
 
+  const prompt = assembleNinaImageTestPrompt({ tuning, prefs, hasReference: reference != null })
+
   try {
     /* The row's camera (§8), read off the row the test just assembled from — one coercion decides
      * the `nina_turns.model` stamp and the sidecar, exactly as in `selfiegen.ts`. */
@@ -179,7 +184,7 @@ export async function dispatchNinaImageTest(userId: string): Promise<NinaImageTe
       attempts: 0,
       referenceUrl: reference?.blobUrl ?? null,
       model,
-      sidecar: sidecarText({ prompt, seed, purpose: 'selfie', model }),
+      sidecar: sidecarText({ prompt, seed, purpose: 'selfie', model, referenceUrl: reference?.blobUrl ?? null }),
     })
 
     /*

@@ -377,6 +377,24 @@ const NINA_FOCUS_EMPHASIS: Readonly<
  */
 const NINA_AVATAR_FOCUS_KEYS: readonly NinaImageFocusKey[] = ['face', 'skin']
 
+/**
+ * **The face-identity lock. Only ever spent when a photo reference is actually attached to THIS
+ * generation, and only when the operator ticked Face.**
+ *
+ * RU-18 forbids describing a reference in prose when there is none in the payload — "an
+ * instruction to defer to an image that is not in the payload degrades the prompt". That rule is
+ * unchanged; this sentence does not violate it, because it is gated on `hasReference`, which is
+ * true only when `resolveNinaPhotoReference` actually resolved a Blob URL and the caller is
+ * sending it as `input_references`. When the picture genuinely is in the payload, describing it is
+ * no longer the contradiction RU-18 was written about — it is the one clause in this file allowed
+ * to say so, and the only one gated on whether it is true.
+ *
+ * The word "reference" does not appear, on purpose: `tests/nina.imagerecipe.test.ts` asserts it
+ * never does, and "the attached photo" says the same thing without it.
+ */
+const NINA_FACE_LOCK_SENTENCE =
+  'Her face in this photograph is an exact match for the woman in the attached photo: the same features, the same bone structure, unmistakably her and not a reinterpretation.'
+
 /** `a`, `a and b`, `a, b and c`. No Oxford comma, matching every other prose list in the canon. */
 function joinTerms(terms: readonly string[]): string {
   if (terms.length <= 1) return terms[0] ?? ''
@@ -467,6 +485,8 @@ export const NINA_PROMPT_TEMPLATE_DEFAULT = [
   '',
   'FOCUS: Emphasise {{focus}} above everything else in this photograph.',
   '',
+  '{{faceLock}}',
+  '',
   'POSE AND PRESENCE: {{presence}}',
   '',
   'VENUE: {{venue}}',
@@ -496,6 +516,8 @@ const NINA_AVATAR_PROMPT_TEMPLATE_DEFAULT = [
   '{{subject}}',
   '',
   '{{focus}}',
+  '',
+  '{{faceLock}}',
   '',
   '{{pose}}',
   '',
@@ -562,6 +584,9 @@ function renderNinaImagePrompt(template: string, blocks: Record<string, string>)
  *  3. **`FOCUS:`** — emphasis on the subject just described, so it sits immediately after the
  *     sentences it amplifies and BEFORE the pose: what to emphasise decides how she stands,
  *     rather than the other way round.
+ *  3b. **the face lock** — immediately after `FOCUS:`, since it is conditional on the SAME Face
+ *      tick and is the last word on who she is before the pose is decided. Empty unless Face is
+ *      ticked AND a photo reference actually reached the payload (`NINA_FACE_LOCK_SENTENCE`).
  *  4. **`POSE AND PRESENCE:`** — before the scene, because it is a standing property of the
  *     subject the operator set once and not a per-photograph note. UNCHANGED reasoning, and the
  *     ordering assertion that has always been in `tests/nina.imagerecipe.test.ts`.
@@ -608,6 +633,14 @@ export function buildNinaImagePrompt(input: {
   tuning?: NinaTuning | null
   /** The operator's image preferences. Absent renders `NINA_PROMPT_LENGTH_FALLBACK`'s rung. */
   prefs?: NinaImagePrefs | null
+  /**
+   * **Whether THIS generation actually attaches a photo reference as `input_references`.** Not
+   * "was one configured" — `prefs.reference` can name a photo that was since deleted, and only
+   * the caller who resolved it (`resolveNinaPhotoReference`) knows whether the resolution
+   * succeeded. Absent/false means no reference reaches the payload, which is every caller that
+   * predates this field and every 'none' preference — the ordinary case, unchanged.
+   */
+  hasReference?: boolean
 }): string {
   const tuning = input.tuning ?? null
   const prefs: NinaImagePrefs = input.prefs ?? {
@@ -616,6 +649,10 @@ export function buildNinaImagePrompt(input: {
   }
   const rung = ninaPromptRung(prefs.promptLength)
   const isAvatar = input.purpose === 'avatar'
+  /* Gated on BOTH: the operator's own opt-in (Face ticked) and the payload actually carrying a
+   * photograph (`hasReference`). Neither alone is enough — see `NINA_FACE_LOCK_SENTENCE`'s header. */
+  const faceLockValue =
+    prefs.focus.face && input.hasReference === true ? NINA_FACE_LOCK_SENTENCE : ''
 
   /*
    * TWO SHELLS, ONE RENDERER. The avatar keeps the built-in BLOCK assembly (see
@@ -643,6 +680,7 @@ export function buildNinaImagePrompt(input: {
       camera,
       subject: `SUBJECT:\n${ninaAppearance(prefs, detail)}`,
       focus: focusText != null ? `FOCUS: ${focusText}` : '',
+      faceLock: faceLockValue,
       pose: presenceText != null ? `POSE AND PRESENCE: ${presenceText}` : '',
       venue: ninaFreeTextBlock('VENUE', prefs.venue) ?? '',
       time: ninaFreeTextBlock('TIME', prefs.time) ?? '',
@@ -680,6 +718,7 @@ export function buildNinaImagePrompt(input: {
   const blocks: Record<string, string> = {
     wardrobe: withSentenceStop(wardrobeValue),
     focus: focusTerms,
+    faceLock: faceLockValue,
     presence: ninaPhotoPresence('selfie', tuning) ?? '',
     venue: prefs.venue.trim(),
     time: prefs.time.trim(),
@@ -691,13 +730,25 @@ export function buildNinaImagePrompt(input: {
   return renderNinaImagePrompt(effectiveNinaImageTemplate(prefs), blocks)
 }
 
-/** `gen_badge_art.py`'s `write_sidecar`, minus the file. Only a human ever reads this. */
+/**
+ * `gen_badge_art.py`'s `write_sidecar`, minus the file. Only a human ever reads this.
+ *
+ * `referenceUrl` defaults to `null` — every caller that predates the anchor-wiring fix, and every
+ * job with `prefs.reference` set to `'none'` or pointing at a since-deleted photo, still reads
+ * `reference:  none (RU-18)`. That line stops being the RU-18 placeholder and starts being the
+ * honest answer once a caller actually resolved one: this is the record of what the payload really
+ * carried for this job, six weeks later, and a sidecar that always claimed "none" the moment that
+ * stopped being universally true would be exactly the kind of quiet drift `sidecarText` exists to
+ * prevent.
+ */
 export function sidecarText(input: {
   prompt: string
   seed: number
   purpose: NinaImagePurpose
   /** The camera this sidecar describes — the job's coerced id, not the module constant. */
   model: string
+  /** The Blob URL actually sent as `input_references`, or `null` for an unanchored job. */
+  referenceUrl?: string | null
 }): string {
   return [
     `provider:   openrouter`,
@@ -705,7 +756,7 @@ export function sidecarText(input: {
     `purpose:    ${input.purpose}`,
     `resolution: ${NINA_IMAGE_RESOLUTION} ${NINA_IMAGE_ASPECT}`,
     `seed:       ${input.seed}`,
-    `reference:  none (RU-18)`,
+    `reference:  ${input.referenceUrl != null && input.referenceUrl !== '' ? input.referenceUrl : 'none (RU-18)'}`,
     '',
     '--- prompt as sent ---',
     input.prompt,
