@@ -1,0 +1,48 @@
+{
+  "branch": "feature/push-notification-tap-redirect",
+  "coordinator": "orch-push-notification-tap-redirect",
+  "coordinator_session_id": "c350238a-705d-4910-85e4-883c4d3ced2d",
+  "created": "2026-09-16T01:59:06+00:00",
+  "phases": [
+    {
+      "card": null,
+      "commit": "42e61ad8d4a3858f136d4d7aba69e8b93c520f83",
+      "depends_on": [],
+      "difficulty": "NORMAL",
+      "n": 1,
+      "note": "commits 6703ce4 (feat) + 42e61ad (docs fixup); verified on branch, matches origin",
+      "package": "lib/service-worker.js`, `components/push`, `app/",
+      "plan": ".workflows/plan/push-notification-tap-redirect/phase-1.md",
+      "reported_at": "2026-09-16T02:19:40+00:00",
+      "satisfies": [
+        "R1"
+      ],
+      "status": "done",
+      "task_id": "P1-RI-A042",
+      "title": "Make the tap work from anywhere"
+    },
+    {
+      "card": null,
+      "commit": "876b467b8193bab682330c96568fc56f3c227c35",
+      "depends_on": [],
+      "difficulty": "NORMAL",
+      "n": 2,
+      "note": "verified on branch, matches origin",
+      "package": "lib/push`, `lib/nina`, `lib/admin`, `scripts/nina-image-worker",
+      "plan": ".workflows/plan/push-notification-tap-redirect/phase-2.md",
+      "reported_at": "2026-09-16T02:19:41+00:00",
+      "satisfies": [
+        "R2"
+      ],
+      "status": "done",
+      "task_id": "P1-RI-A043",
+      "title": "Deep-link every chat push to its session and bubble"
+    }
+  ],
+  "plan": "/home/miftah/.worktrees/run-insights/push-notification-tap-redirect/.workflows/orchestration/push-notification-tap-redirect/PLAN.md",
+  "repo": "/home/miftah/run-insights",
+  "slug": "push-notification-tap-redirect",
+  "updated": "2026-09-16T02:19:41+00:00",
+  "verified_at": "2026-09-16T02:17:02+00:00",
+  "worktree": "/home/miftah/.worktrees/run-insights/push-notification-tap-redirect"
+}
