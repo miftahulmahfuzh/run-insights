@@ -8,7 +8,82 @@ Feature codes (`F01`–`F33`) refer to the plan files in [`docs/plans/archive/`]
 (`R-nn`) refer to `RECONCILIATION_v0.1.0.md`, the v0.1.0 arbitration record — removed from the
 tree in September 2026, readable in git history.
 
-## [Unreleased]
+## [v1.2.0] - 2026-09-16
+
+Nina got busier: she now pushes a notification for nearly everything she does — a photo
+landing or failing, a chat reply committing, an admin dropping a photo into her chat — and
+every one of those pushes deep-links back to the exact session and message bubble instead of
+just opening the app. The admin album gained real semantic search: a description embedding
+written alongside every photo, a search bar with a relevance threshold and a full-screen
+viewer, id+score visible on click. Duplicate-image detection now runs cross-table and pushes a
+notification wherever a dup lands, on both the admin and runner-side upload routes. Five
+multi-phase plan sets landed this cycle, three of which touched the database, the push queue,
+and the UI in the same breath.
+
+108 commits, 296 files changed (+90,600/-6,285 lines), 6,183 unit tests across 354 files — up
+from 5,758 tests at v1.1.0. Live at **[runins.site](https://runins.site)**.
+
+### Added
+
+- **Semantic search on the admin album** (`admin-album-semantic-search`, 4 phases). Every photo
+  gets a `description_embedding` written alongside its description (migration 0023, renumbered
+  off a landing-time collision with 0022), searchable through a query layer and Server Action, a
+  search bar + results grid + full-screen viewer on `/admin`, a relevance threshold with id+score
+  shown on click, an in-field Kosongkan clear button, and a jump straight from the full-screen
+  viewer to a photo's description panel. `search_keywords` and `negative_search_keywords` columns
+  feed and exclude rows from a named query.
+- **Push notifications for nearly everything Nina does** (`nina-push-every-message`, 5 phases). A
+  shared push seam every message writer can call now fires when her chat reply commits, when a
+  photo lands or fails to generate, when an admin adds a photo to her chat, and for both messages
+  the backstop worker sends.
+- **Every chat push deep-links to its session and bubble** (`push-notification-tap-redirect`, 2
+  phases) instead of opening the app to wherever it last was — delivered by focusing the existing
+  window and `postMessage`, since `WindowClient.navigate()` doesn't reliably land on the right
+  route.
+- **Cross-table duplicate-image detection, with a push wherever a dup lands**
+  (`dup-image-push-notify`, 4 phases). Schema and detection landed first, then a push
+  notification kind, wired into both the admin upload routes and the runner-side (extract)
+  upload routes.
+- **Paste a clipboard image straight into the composer** (`composer-clipboard-image-paste`).
+- A `search-analysis` skill and its unfiltered-ranking diagnostic script, for explaining why one
+  album photo ranked where it did for a given query.
+- An `aggregate_runs` tool letting Nina pull SQL-side run-metric aggregates instead of reasoning
+  over raw rows.
+- A quoted message's photo description now carries into Nina's reply context.
+- An admin-configurable chat fallback model for Nina, defaulting to Nemotron 3.5 Lightning.
+- `/nina/about` gained **Foto profil** and **Media** tabs, and dropped **Pembuatan foto**.
+- The schema now gates against the database it actually runs on, catching drift before it
+  reaches production.
+
+### Changed
+
+- The image-generation prompt that had been running as a hand-tuned admin override was promoted
+  to the shipped default.
+- Nina's default profile picture was swapped, with her README media regenerated to match.
+- Vercel preview deployments were disabled to stay under the Deployment Storage free-tier cap.
+- The photo dedupe sweep gained a phantom-original census and dimension backfill; a parent
+  photo's unmeasured dependents are now promoted before the parent itself is deleted.
+- `docs/readme` now explains Nina's typed tool-calling architecture; stray root-level plan and
+  analyzer markdown files were removed.
+
+### Fixed
+
+- **A byte swap in the photo dedupe pipeline defeated the perceptual twin scan.** Replacing a
+  photo's bytes without retracting its perceptual signature left a ghost pair the scanner still
+  matched against; the signature is now retracted on every swap.
+- Nina's image-generation prompt: selfie framing and head/body/calf proportion tuned, the
+  prompt-test scene stopped re-selfie-ing the earlier anti-selfie fix, `POSE AND PRESENCE` reads
+  sensual rather than playful-smiling, and the canon is caucasian and never smiling.
+- The schema drift guard no longer claims to have run a check it actually skipped.
+- Two migration-number collisions from concurrent plan sets, resolved by regenerating rather than
+  renaming: `admin-album-semantic-search`'s embedding migration (0022→0023) and
+  `dup-image-push-notify`'s own 0022, minted twice by concurrent work. A stranded
+  `0011_rare_blockbuster` migration that had never reached production was applied.
+- Personality's card spacing at `xs` is now actually even, without touching desktop; the
+  prompt-toggle separator no longer shows when its own button is hidden.
+- CI green-keeping: `embedding.test.ts`'s dummy `OPENROUTER_API_KEY` allowlisted,
+  `scheduleDescribeAll` mocked in the album-upload-actions test at landing, and a
+  `prettier --write` pass across 5 files that were failing `format:check`.
 
 ## [v1.1.0] - 2026-09-13
 
@@ -514,6 +589,7 @@ phone.
   excluded unless `VITEST_INTEGRATION=1` / `LLM_LIVE_TEST=1` are set, so a green `npm test` is not a
   statement about Postgres or about the model.
 
+[v1.2.0]: https://github.com/miftahulmahfuzh/run-insights/releases/tag/v1.2.0
 [v1.1.0]: https://github.com/miftahulmahfuzh/run-insights/releases/tag/v1.1.0
 [v1.0.0]: https://github.com/miftahulmahfuzh/run-insights/releases/tag/v1.0.0
 [v0.1.0]: https://github.com/miftahulmahfuzh/run-insights/releases/tag/v0.1.0
