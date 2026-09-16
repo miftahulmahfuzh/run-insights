@@ -956,11 +956,7 @@ export async function listUnmeasuredNinaImageDependents(
     })
     .from(ninaMessageImages)
     .where(
-      and(
-        eq(ninaMessageImages.userId, userId),
-        or(...arms),
-        isNull(ninaMessageImages.contentHash),
-      ),
+      and(eq(ninaMessageImages.userId, userId), or(...arms), isNull(ninaMessageImages.contentHash)),
     )
     .orderBy(asc(ninaMessageImages.pathname), asc(ninaMessageImages.id))
 }

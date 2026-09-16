@@ -228,7 +228,9 @@ async function rankByDistance(
    * relevance floor already does not move it. */
   const rows = ranked
     .filter((row) => row.score >= NINA_SEARCH_MIN_SCORE)
-    .filter((row) => queryText === null || !matchesNegativeKeyword(queryText, row.negativeSearchKeywords))
+    .filter(
+      (row) => queryText === null || !matchesNegativeKeyword(queryText, row.negativeSearchKeywords),
+    )
 
   return { rows, total: counted[0]?.total ?? 0 }
 }

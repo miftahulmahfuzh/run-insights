@@ -564,9 +564,7 @@ describe('PhotoDescription — negative keywords', () => {
       />,
     )
     await user.clear(negativeKeywordsBox())
-    expect(
-      screen.getByRole('button', { name: 'Clear the negative keywords' }),
-    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Clear the negative keywords' })).toBeInTheDocument()
   })
 
   it('caps the box at the negative-keyword ceiling', () => {

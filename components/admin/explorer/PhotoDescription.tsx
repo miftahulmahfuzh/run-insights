@@ -463,8 +463,8 @@ export function PhotoDescription({
           </div>
 
           <p className="mt-1.5 text-[12px] leading-relaxed font-medium text-ink-3">
-            Words, comma-separated. A search containing one of them as a whole word never shows
-            this photo — the description is not re-embedded, and nothing else changes.
+            Words, comma-separated. A search containing one of them as a whole word never shows this
+            photo — the description is not re-embedded, and nothing else changes.
           </p>
         </div>
       )}

@@ -148,10 +148,7 @@ interface AvatarBlobObject {
  * genuinely different answers: a chat row can reference the full-size photograph while nothing
  * anywhere references its album thumbnail.
  */
-async function reapAvatarBlobs(
-  userId: string,
-  rows: readonly NinaAvatarBlobRef[],
-): Promise<void> {
+async function reapAvatarBlobs(userId: string, rows: readonly NinaAvatarBlobRef[]): Promise<void> {
   const objects: AvatarBlobObject[] = rows.flatMap((row) => {
     const own: AvatarBlobObject = { pathname: row.pathname, url: row.blobUrl }
     if (row.thumbUrl == null) return [own]
