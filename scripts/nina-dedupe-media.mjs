@@ -48,6 +48,19 @@
  *      byte swaps left the perceptual pair standing — fixed in `updateNinaChatPhotoBlob`), and a
  *      singleton's stale signature defeats every FUTURE match with no group required. See the
  *      plan module's `perceptualVerifyCandidates` header for the full argument.
+ *  3e. PHANTOM ORIGINALS: a row that is an ORIGINAL by `isOriginalRow` yet arrived with
+ *      `content_hash` NULL. It is a reference row whose parent was hard-deleted: the FK's
+ *      deliberate `ON DELETE SET NULL` (`lib/db/schema/nina/chat.ts:614-618`) blanked its
+ *      provenance and silently reclassified it, while it had never been given the measurements an
+ *      original needs. Measured on production 2026-09-16: one such row, `Tdw_AkrJT0ks`, whose blob
+ *      already 404s — UNRECOVERABLE, so it is named in the report and left exactly where it is
+ *      (removing a ghost row is a human decision this script does not make under any flag). A
+ *      phantom whose object survives is promoted instead: pass 1 hashes it, pass 3c signs it, and
+ *      the NEW `fill-dimensions` op writes the `width`/`height` (+ `bytes` under `coalesce`) that
+ *      nothing in this family ever filled — without which `isPerceptualTwin` refuses the row on its
+ *      first line and the phantom stays a permanently invisible duplicate even with live bytes.
+ *      The perceptual pass is the only pass that can ever match one, because a phantom names the
+ *      avatar object's bytes while its twin names a separately-encoded selfie object.
  *  4. PASS 2 (merge): `buildMergePlan` groups by (user_id, content_hash), elects keepers among
  *      originals, and returns the ordered ops; `buildPerceptualMergePlan` then clusters the
  *      remaining originals at conservative gates (same dimensions, dHash ≤ 1, mean-abs ≤ 2 —
@@ -77,15 +90,20 @@
  * GET agrees with it and proposes nothing), the previously-merged groups are now
  * one-original-plus-same-URL-references = `tidy` (no ops), and releases only exist for rows that
  * were merged this run. Summary says 0 findings, 0 writes.
+ * `fill-dimensions` guards `width is null and height is null` (its OWN columns — a `content_hash
+ * is null` guard would never fire, since `fill-hash` fills that column earlier in the same op
+ * list), so a second run measures the same pixels and writes nothing.
  */
 import { createRequire } from 'node:module'
 import { pathToFileURL } from 'node:url'
 
 import {
+  buildFillDimensionOps,
   buildFillOps,
   buildFillPerceptualOps,
   buildMergePlan,
   buildPerceptualMergePlan,
+  classifyPhantomOriginals,
   decodeStoredSignature,
   isOriginalRow,
   isStoreUrl,
@@ -194,6 +212,13 @@ async function main() {
     perceptualSig: r.perceptual_sig,
     verifiedHash: null,
     hashFailed: false,
+    /* The load-time shape, captured before any pass writes to this object. `hadNullHashAtLoad` is
+     * deliberately NOT `hadNullHash`: pass 1 sets that one only after a SUCCESSFUL GET, and a
+     * phantom whose object is gone is precisely the row the census must not lose. `hadNullDims`
+     * drives `fill-dimensions`; `bytes` rides along under `coalesce` rather than gating the op,
+     * because a row may honestly carry a size without ever having been measured for pixels. */
+    hadNullHashAtLoad: r.content_hash == null,
+    hadNullDims: r.width == null && r.height == null,
   }))
   const rowById = new Map(rows.map((r) => [r.id, r]))
 
@@ -217,6 +242,10 @@ async function main() {
     const got = await fetchRowBytes(row)
     if (!got.ok) {
       row.hashFailed = true
+      /* Kept on the row, not only in `failed`: the phantom census reports the reason verbatim, and
+       * "GET 404" vs "not a store URL" is the difference between a deleted object and a malformed
+       * row — an operator needs to know which one they are looking at. */
+      row.fetchFailure = got.reason
       failed.push({ id: row.id, reason: got.reason })
       continue
     }
@@ -224,6 +253,7 @@ async function main() {
     row.contentHash = got.hash
     row.verifiedHash = got.hash // measured this run — no re-fetch needed for the verify gate
     row.bytesMismatch = row.bytes != null && got.size !== row.bytes
+    adoptMeasuredDimensions(row, null, got.size)
     fills.push({ id: row.id, hash: got.hash })
   }
 
@@ -268,6 +298,11 @@ async function main() {
       try {
         row.sig = await signBytes(got.bytes)
         row.perceptualSource = 'measured'
+        /* The dimensions ride the signature's own `metadata()` read. Adopting them onto the row
+         * NOW — not only into a `fill-dimensions` op — is what lets a phantom cluster in THIS run:
+         * `isPerceptualTwin` refuses any row with a NULL width/height, so a phantom that had to
+         * wait for the next run would stay a visible duplicate until somebody ran the sweep twice. */
+        adoptMeasuredDimensions(row, row.sig, got.size)
       } catch {
         unsigned++ // undecodable bytes — the row simply does not participate in the perceptual pass
       }
@@ -288,6 +323,10 @@ async function main() {
     }
     try {
       row.verifiedSig = await signBytes(got.bytes)
+      /* The rare shape pass 3c cannot reach: a row that already carried a STORED signature (so 3c
+       * skipped it) but whose dimensions are NULL. The verify GET measures them anyway; adopt them
+       * rather than throw the measurement away. */
+      adoptMeasuredDimensions(row, row.verifiedSig, got.size)
     } catch {
       verifyFailed++ // undecodable bytes — the stored value stands, no worse than before this gate
     }
@@ -307,6 +346,7 @@ async function main() {
   const ops = [
     ...buildFillOps(rows),
     ...buildFillPerceptualOps(rows),
+    ...buildFillDimensionOps(rows),
     ...plan.ops,
     ...perceptual.ops,
   ]
@@ -347,6 +387,33 @@ async function main() {
         `${repairedCount ? `  (${repairedCount} contradicted by a fresh GET — repaired)` : ''}` +
         `${verifyFailed ? `  (${verifyFailed} fetch/decode failures — stored value stands)` : ''}`,
     )
+  }
+
+  /* ── PHANTOM ORIGINALS — the 2026-09-16 defect's census, row by row ────────────────────────── */
+  const phantoms = classifyPhantomOriginals(rows)
+  const phantomTotal =
+    phantoms.recovered.length + phantoms.partial.length + phantoms.unrecoverable.length
+  console.log(
+    `phantom originals            ${phantoms.recovered.length} recovered / ` +
+      `${phantoms.partial.length} partial / ${phantoms.unrecoverable.length} unrecoverable` +
+      (phantomTotal === 0 ? '   (none — every original carries its own measurements)' : ''),
+  )
+  for (const p of phantoms.recovered) {
+    console.log(
+      `  + ${p.id}  ${p.pathname}  ${p.contentHash.slice(0, 16)}…  ` +
+        `${p.width}x${p.height}  ${kb(p.bytes)}  — promoted, fills queued`,
+    )
+  }
+  for (const p of phantoms.partial) {
+    console.log(
+      `  ~ ${p.id}  ${p.pathname}  hash recovered; still missing: ${p.missing.join(' + ')}`,
+    )
+  }
+  for (const p of phantoms.unrecoverable) {
+    console.log(`  ! ${p.id}  ${p.pathname}`)
+    console.log(`      ${p.reason} — UNRECOVERABLE: the object is gone, so no measurement of these`)
+    console.log(`      bytes can ever be taken. Reported, never removed: deleting the row is a`)
+    console.log(`      separate human decision this sweep does not make under any flag.`)
   }
 
   for (const g of findings) {
@@ -419,6 +486,13 @@ async function main() {
       console.log(
         `UPDATE nina_message_images SET perceptual_hash = '${op.dhash}', perceptual_sig = '<${op.sig.length} chars base64>' WHERE id = '${op.id}'  (perceptual fill — signature measured this run)`,
       )
+    if (op.op === 'fill-dimensions')
+      console.log(
+        `UPDATE nina_message_images SET width = ${op.width}, height = ${op.height}, ` +
+          `bytes = coalesce(bytes, ${op.bytes ?? 'null'}) WHERE id = '${op.id}'` +
+          `  (dimension fill — the columns were null; a phantom original cannot enter the` +
+          ` perceptual pass without them)`,
+      )
     if (op.op === 'hash-repair')
       console.log(
         `UPDATE nina_message_images SET content_hash = '${op.to}' WHERE id = '${op.id}'  (was '${op.from}')`,
@@ -467,6 +541,18 @@ async function main() {
         /* The same guard, over the signature pair the write paths now also write: a row signed
          * between plan and execute keeps ITS signature, never this run's over it. */
         await sql`update nina_message_images set perceptual_hash = ${op.dhash}, perceptual_sig = ${op.sig} where id = ${op.id} and perceptual_hash is null`
+      } else if (op.op === 'fill-dimensions') {
+        /* The guard is on the columns being FILLED, not on `content_hash`: `fill-hash` has already
+         * run in this same op list and filled that column, so a `content_hash is null` guard here
+         * would write nothing at all. `bytes` under `coalesce` — a stored size is never clobbered;
+         * a size that disagrees with the bytes stays a reported `bytes metadata mismatch`, which is
+         * a different finding this op must not quietly erase. */
+        await sql`
+          update nina_message_images
+             set width = ${op.width}, height = ${op.height},
+                 bytes = coalesce(bytes, ${op.bytes})
+           where id = ${op.id} and width is null and height is null
+        `
       } else if (op.op === 'hash-repair') {
         await sql`update nina_message_images set content_hash = ${op.to} where id = ${op.id}`
       } else if (op.op === 'perceptual-repair') {
@@ -551,13 +637,45 @@ async function fetchRowBytes(row) {
 }
 
 /**
+ * Move a measurement this run took onto the row object, for the report and for the perceptual
+ * pass, and remember it separately so `buildFillDimensionOps` can persist it.
+ *
+ * NEVER overwrites a stored value. A stored dimension or size that disagrees with the bytes is a
+ * DIFFERENT finding (the sweep's `bytes metadata mismatches` line, reported only) and is not this
+ * function's business — silently correcting one here would hide it.
+ */
+function adoptMeasuredDimensions(row, sig, size) {
+  if (
+    sig != null &&
+    typeof sig.width === 'number' &&
+    typeof sig.height === 'number' &&
+    row.width == null &&
+    row.height == null
+  ) {
+    row.width = sig.width
+    row.height = sig.height
+    row.measuredWidth = sig.width
+    row.measuredHeight = sig.height
+  }
+  if (typeof size === 'number' && Number.isFinite(size)) {
+    row.measuredBytes = size
+    if (row.bytes == null) row.bytes = size
+  }
+}
+
+/**
  * The perceptual pass's only inputs, measured off the same GET that hashed the row: a 64-bit
- * difference hash over a 9x8 grayscale thumbnail and the 16x16 grayscale signature itself.
- * Constant memory — the buffer is dropped the moment both are computed.
+ * difference hash over a 9x8 grayscale thumbnail and the 16x16 grayscale signature itself — plus
+ * the pixel dimensions, which `lib/nina/perceptualSign.ts:51-56` already reads from the same
+ * `metadata()` call and which `isPerceptualTwin` hard-requires. The three resize passes are
+ * unchanged and independent clones, so the signature values are byte-for-byte what they were
+ * before this read was added. Constant memory — the buffer is dropped the moment all three are
+ * computed.
  */
 async function signBytes(bytes) {
   const img = sharp(bytes, { failOn: 'none' })
-  const [sig16, dh] = await Promise.all([
+  const [meta, sig16, dh] = await Promise.all([
+    img.metadata(),
     img.clone().resize(16, 16, { fit: 'fill' }).grayscale().raw().toBuffer(),
     img.clone().resize(9, 8, { fit: 'fill' }).grayscale().raw().toBuffer(),
   ])
@@ -567,7 +685,12 @@ async function signBytes(bytes) {
       if (dh[y * 9 + x] > dh[y * 9 + x + 1]) dhash |= 1n << BigInt(y * 8 + x)
     }
   }
-  return { dhash, sig16: new Uint8Array(sig16) }
+  return {
+    dhash,
+    sig16: new Uint8Array(sig16),
+    width: typeof meta.width === 'number' ? meta.width : null,
+    height: typeof meta.height === 'number' ? meta.height : null,
+  }
 }
 
 /* Run only as the process entry point, so `tests/nina.dedupeMedia.test.ts` can import the pure

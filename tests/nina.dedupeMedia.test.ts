@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest'
 
 import { contentHashOf } from '@/lib/photos/contentHash'
 import {
+  buildFillDimensionOps,
   buildFillOps,
   buildFillPerceptualOps,
   buildMergePlan,
   buildPerceptualMergePlan,
+  classifyPhantomOriginals,
   compareKeeperCandidates,
   decodeStoredSignature,
   dhashHamming,
@@ -869,5 +871,197 @@ describe('buildFillPerceptualOps — pass 3c writes what it measured', () => {
         row({ id: 'nosource', sig: sigOf(0n, sig16) } as Parameters<typeof row>[0]),
       ]),
     ).toEqual([])
+  })
+})
+
+/* ── phantom originals (2026-09-16's measured defect) ─────────────────────────────────────────
+ * A reference row whose parent avatar was hard-deleted reclassifies to an ORIGINAL via the FK's
+ * `ON DELETE SET NULL` while still carrying no measurements at all. Measured on production
+ * 2026-09-16: exactly one, `Tdw_AkrJT0ks` — every measurement column NULL and its blob object
+ * already 404. Two REFERENCE rows also carried a null `content_hash` that day (`ETtycd0IgLMZ`,
+ * `9uMGPIZBIWwR`); neither is a phantom, and a census that swept them in would ask an operator to
+ * worry about rows that are behaving exactly as designed.
+ */
+type PhantomOver = Partial<Row> & Pick<Row, 'id'>
+
+const phantom = (over: PhantomOver): Row =>
+  row({
+    contentHash: null,
+    verifiedHash: null,
+    width: null,
+    height: null,
+    bytes: null,
+    hadNullHashAtLoad: true,
+    hadNullDims: true,
+    ...over,
+  } as PhantomOver)
+
+describe('classifyPhantomOriginals — the ghost census', () => {
+  it('names a dead-blob phantom under unrecoverable, with the fetch reason', () => {
+    const out = classifyPhantomOriginals([
+      phantom({
+        id: 'Tdw_AkrJT0ks',
+        pathname: `nina/${USER}/avatar-7pgf5f96AXK6.jpg`,
+        hashFailed: true,
+        fetchFailure: 'GET 404',
+      } as PhantomOver),
+    ])
+    expect(out.recovered).toEqual([])
+    expect(out.partial).toEqual([])
+    expect(out.unrecoverable).toEqual([
+      {
+        id: 'Tdw_AkrJT0ks',
+        pathname: `nina/${USER}/avatar-7pgf5f96AXK6.jpg`,
+        blobUrl: `https://store.public.blob.vercel-storage.com/nina/${USER}/chat/Tdw_AkrJT0ks.jpg`,
+        reason: 'GET 404',
+      },
+    ])
+  })
+
+  it('never counts a reference as a phantom, dead blob or not', () => {
+    const refs = [
+      phantom({
+        id: 'ETtycd0IgLMZ',
+        sourceImageId: 'keeper1',
+        hashFailed: true,
+        fetchFailure: 'GET 404',
+      } as PhantomOver),
+      phantom({
+        id: '9uMGPIZBIWwR',
+        sourceAvatarId: 'avatar1',
+        hashFailed: true,
+        fetchFailure: 'GET 404',
+      } as PhantomOver),
+    ]
+    expect(classifyPhantomOriginals(refs)).toEqual({
+      recovered: [],
+      partial: [],
+      unrecoverable: [],
+    })
+  })
+
+  it('reports a fully measured phantom as recovered', () => {
+    const h = 'f'.repeat(64)
+    const out = classifyPhantomOriginals([
+      phantom({
+        id: 'alive',
+        contentHash: h,
+        verifiedHash: h,
+        width: 576,
+        height: 1024,
+        bytes: 91_234,
+        sig: sigOf(0x484c6c62414e7e5fn, uniform16(9)),
+      } as PhantomOver),
+    ])
+    expect(out.unrecoverable).toEqual([])
+    expect(out.partial).toEqual([])
+    expect(out.recovered).toEqual([
+      {
+        id: 'alive',
+        pathname: `nina/${USER}/chat/alive.jpg`,
+        contentHash: h,
+        width: 576,
+        height: 1024,
+        bytes: 91_234,
+      },
+    ])
+  })
+
+  it('reports a hashed-but-unsigned phantom as partial, naming what is missing', () => {
+    const h = 'f'.repeat(64)
+    const out = classifyPhantomOriginals([
+      phantom({ id: 'nosharp', contentHash: h, verifiedHash: h } as PhantomOver),
+    ])
+    expect(out.recovered).toEqual([])
+    expect(out.unrecoverable).toEqual([])
+    expect(out.partial).toHaveLength(1)
+    expect(out.partial[0]!.id).toBe('nosharp')
+    expect(out.partial[0]!.missing).toEqual(['perceptual signature', 'dimensions'])
+  })
+
+  it('a row that already carried a hash is not a phantom — a second run reports nothing', () => {
+    expect(classifyPhantomOriginals([row({ id: 'normal' })])).toEqual({
+      recovered: [],
+      partial: [],
+      unrecoverable: [],
+    })
+  })
+
+  it('sorts every bucket by id, so two runs print the same report', () => {
+    const out = classifyPhantomOriginals([
+      phantom({ id: 'zz', hashFailed: true, fetchFailure: 'GET 404' } as PhantomOver),
+      phantom({ id: 'aa', hashFailed: true, fetchFailure: 'GET 404' } as PhantomOver),
+    ])
+    expect(out.unrecoverable.map((p) => p.id)).toEqual(['aa', 'zz'])
+  })
+})
+
+describe('buildFillDimensionOps — the measurement isPerceptualTwin hard-requires', () => {
+  /**
+   * `isPerceptualTwin`'s first line refuses any row with a null width or height, and nothing in
+   * this family ever filled those columns. A promoted phantom without them is hashed, signed, and
+   * still invisible to the ONLY pass that could ever match it.
+   */
+  it('ops an original whose dimensions were null at load and measured this run', () => {
+    expect(
+      buildFillDimensionOps([
+        phantom({
+          id: 'alive',
+          measuredWidth: 576,
+          measuredHeight: 1024,
+          measuredBytes: 91_234,
+        } as PhantomOver),
+      ]),
+    ).toEqual([{ op: 'fill-dimensions', id: 'alive', width: 576, height: 1024, bytes: 91_234 }])
+  })
+
+  it('carries a null bytes when the size was never measured — coalesce keeps the stored one', () => {
+    expect(
+      buildFillDimensionOps([
+        phantom({ id: 'nosize', measuredWidth: 8, measuredHeight: 8 } as PhantomOver),
+      ]),
+    ).toEqual([{ op: 'fill-dimensions', id: 'nosize', width: 8, height: 8, bytes: null }])
+  })
+
+  it('never ops a row that already carried dimensions — a second run writes nothing', () => {
+    expect(
+      buildFillDimensionOps([
+        row({ id: 'dimensioned', measuredWidth: 10, measuredHeight: 10 } as PhantomOver),
+      ]),
+    ).toEqual([])
+  })
+
+  it('never ops a row this run could not measure (the dead-blob phantom)', () => {
+    expect(
+      buildFillDimensionOps([
+        phantom({ id: 'gone', hashFailed: true, fetchFailure: 'GET 404' } as PhantomOver),
+      ]),
+    ).toEqual([])
+  })
+
+  it('never ops a reference — a reference carries no measurements by design', () => {
+    expect(
+      buildFillDimensionOps([
+        phantom({
+          id: 'ref',
+          sourceImageId: 'keeper1',
+          measuredWidth: 576,
+          measuredHeight: 1024,
+        } as PhantomOver),
+      ]),
+    ).toEqual([])
+  })
+
+  it('refuses to write a measurement that is not a positive integer', () => {
+    expect(() =>
+      buildFillDimensionOps([
+        phantom({ id: 'bad', measuredWidth: 0, measuredHeight: 1024 } as PhantomOver),
+      ]),
+    ).toThrow(/positive integers/)
+    expect(() =>
+      buildFillDimensionOps([
+        phantom({ id: 'bad2', measuredWidth: 576.5, measuredHeight: 1024 } as PhantomOver),
+      ]),
+    ).toThrow(/positive integers/)
   })
 })
