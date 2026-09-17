@@ -4,7 +4,7 @@ import { and, asc, desc, eq, gte, isNotNull, isNull, lt, or, sql } from 'drizzle
 
 import { db } from '@/lib/db'
 import { ninaTurns } from '@/lib/db/schema'
-import type { NinaTurnStatus } from '@/lib/db/schema'
+import type { NinaImageCostSource, NinaTurnStatus } from '@/lib/db/schema'
 import { notifyNinaPush } from '@/lib/push/send'
 
 import { ninaImageApology, type NinaImageFailure } from './imagefail'
@@ -417,7 +417,7 @@ export async function claimNinaImageJob(
 export async function completeNinaImageJob(
   userId: string,
   jobId: string,
-  result: { latencyMs: number; costMicroUsd: number },
+  result: { latencyMs: number; costMicroUsd: number; costSource: NinaImageCostSource },
 ): Promise<void> {
   await db
     .update(ninaTurns)
@@ -428,6 +428,9 @@ export async function completeNinaImageJob(
       /* `coalesce(cost_micro_usd, 0)` on the right-hand side of a SET is the OLD row value —
        * standard Postgres, and what makes the accumulation correct. */
       costMicroUsd: sql`coalesce(${ninaTurns.costMicroUsd}, 0) + ${result.costMicroUsd}`,
+      /* OVERWRITES, unlike the accumulator above — see `NinaImageCostSource`'s header. A success
+       * always knows its own provenance, so this is a plain SET, never a `coalesce`. */
+      costSource: result.costSource,
     })
     .where(
       and(eq(ninaTurns.userId, userId), eq(ninaTurns.id, jobId), eq(ninaTurns.status, 'pending')),
@@ -451,7 +454,17 @@ export async function completeNinaImageJob(
 export async function requeueNinaImageJob(
   userId: string,
   jobId: string,
-  result: { latencyMs: number; costMicroUsd: number | null },
+  result: {
+    latencyMs: number
+    costMicroUsd: number | null
+    /**
+     * The provenance of `costMicroUsd`, when it is a known, real spend — `undefined` when
+     * `costMicroUsd` is `null` (nothing added, nothing to attribute) or the caller has no opinion.
+     * `coalesce`d against the existing value below, so an unknown retry never blanks out what an
+     * earlier attempt recorded.
+     */
+    costSource?: NinaImageCostSource
+  },
 ): Promise<void> {
   await db
     .update(ninaTurns)
@@ -459,6 +472,7 @@ export async function requeueNinaImageJob(
       errorCode: JOB_PHASE_QUEUED,
       latencyMs: result.latencyMs,
       costMicroUsd: sql`coalesce(${ninaTurns.costMicroUsd}, 0) + ${result.costMicroUsd ?? 0}`,
+      costSource: sql`coalesce(${result.costSource ?? null}, ${ninaTurns.costSource})`,
     })
     .where(
       and(eq(ninaTurns.userId, userId), eq(ninaTurns.id, jobId), eq(ninaTurns.status, 'pending')),
@@ -552,6 +566,12 @@ export async function failNinaImageJob(input: {
    * `lib/nina/imagerun.ts` passes `0` when the request was never sent.
    */
   costMicroUsd?: number | null
+  /**
+   * Provenance of `costMicroUsd`, when the caller measured a real number itself (never set this
+   * for `null`/`undefined` — those cases derive their own source below, from the same three-case
+   * split that decides the addend).
+   */
+  costSource?: NinaImageCostSource
   replyToId?: string | null
   /** Never rendered. Log only. */
   detail?: string
@@ -587,6 +607,21 @@ export async function failNinaImageJob(input: {
         : NINA_IMAGE_COST_MICRO_USD
 
   /*
+   * The source, mirroring `addend`'s own three cases exactly — a `null` was substituted with
+   * `NINA_IMAGE_COST_MICRO_USD` (source: 'fallback'), a real number carries whatever the caller
+   * said it was (source: `input.costSource`, `undefined` when the caller had no opinion — e.g. the
+   * `0` "never sent" case), and `null` (stale, untouched) carries no source either.
+   */
+  const source: NinaImageCostSource | null =
+    input.costMicroUsd !== undefined
+      ? input.costMicroUsd === null
+        ? 'fallback'
+        : (input.costSource ?? null)
+      : kind === 'stale'
+        ? null
+        : 'fallback'
+
+  /*
    * ── THE LEDGER WRITES FIRST, AND UNCONDITIONALLY (PLAN INVARIANT 9) ────────────────────────
    * This used to apologise BEFORE this UPDATE. The analysis measured the app-side twin of that bug
    * in `scripts/nina-image-worker.ts`: `closeFailed` threw on its `nina_messages` INSERT and took
@@ -613,6 +648,10 @@ export async function failNinaImageJob(input: {
       ...(addend === null
         ? {}
         : { costMicroUsd: sql`coalesce(${ninaTurns.costMicroUsd}, 0) + ${addend}` }),
+      /* `costSource` OVERWRITES rather than accumulating (see its own header), so a plain
+       * `coalesce(new, old)` is enough — no need for the addend's separate "omit the key" branch,
+       * since `coalesce(null, old)` already leaves the column untouched. */
+      costSource: sql`coalesce(${source}, ${ninaTurns.costSource})`,
     })
     .where(and(eq(ninaTurns.userId, userId), eq(ninaTurns.id, jobId)))
     .returning({ deletedAt: ninaTurns.deletedAt })
@@ -959,6 +998,9 @@ export interface NinaImageJobRecord {
    * nothing was ever recorded — which is "we do not know", never "it was free".
    */
   costMicroUsd: number | null
+  /** The LATEST write's provenance — see `NinaImageCostSource`'s own header. `null` for a job
+   * whose ledger has never been written to, and for every row that predates this column. */
+  costSource: NinaImageCostSource | null
   purpose: NinaImagePurpose
   scene: string | null
   mood: string | null
@@ -987,6 +1029,7 @@ const JOB_COLUMNS = {
   createdAt: ninaTurns.createdAt,
   latencyMs: ninaTurns.latencyMs,
   costMicroUsd: ninaTurns.costMicroUsd,
+  costSource: ninaTurns.costSource,
   args: ninaTurns.args,
 }
 
@@ -998,6 +1041,7 @@ function toJobRecord(row: {
   createdAt: Date
   latencyMs: number | null
   costMicroUsd: number | null
+  costSource: NinaImageCostSource | null
   args: unknown
 }): NinaImageJobRecord {
   const args = (row.args ?? null) as Partial<NinaImageJobArgs> | null
@@ -1009,6 +1053,7 @@ function toJobRecord(row: {
     createdAt: row.createdAt,
     latencyMs: row.latencyMs,
     costMicroUsd: row.costMicroUsd,
+    costSource: row.costSource,
     /* `toJobRow`'s rule, kept verbatim so the two projections cannot disagree about a purpose. */
     purpose: args?.purpose === 'avatar' ? 'avatar' : 'selfie',
     scene: typeof args?.scene === 'string' ? args.scene : null,

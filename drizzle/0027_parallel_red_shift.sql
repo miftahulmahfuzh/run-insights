@@ -1,0 +1,1 @@
+ALTER TABLE "nina_turns" ADD COLUMN "cost_source" text;

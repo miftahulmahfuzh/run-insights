@@ -315,7 +315,7 @@ describe('finishSelfie — Finding 1', () => {
     contentHash: null as string | null,
     duplicateOf: null,
   }
-  const result = { costMicroUsd: 40_000, latencyMs: 78_200 }
+  const result = { costMicroUsd: 40_000, costSource: 'openrouter' as const, latencyMs: 78_200 }
 
   it('writes session_id, and writes the session it resolved', async () => {
     // THE REGRESSION. `nina_messages.session_id` is NOT NULL since migration 0004 and this INSERT
@@ -1195,7 +1195,7 @@ describe('finishSelfie — the push (nina-push-every-message R1)', () => {
     contentHash: null as string | null,
     duplicateOf: null,
   }
-  const result = { costMicroUsd: 40_000, latencyMs: 78_200 }
+  const result = { costMicroUsd: 40_000, costSource: 'openrouter' as const, latencyMs: 78_200 }
   const NO_PUSH: WorkerPushReport = {
     attempted: 0,
     delivered: 0,

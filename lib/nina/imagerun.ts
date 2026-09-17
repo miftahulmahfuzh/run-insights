@@ -3,6 +3,7 @@ import 'server-only'
 import { put } from '@vercel/blob'
 import { after } from 'next/server'
 
+import type { NinaImageCostSource } from '@/lib/db/schema'
 import { blobEnv } from '@/lib/env'
 import { newId } from '@/lib/id'
 import { contentHashOf } from '@/lib/photos/contentHash'
@@ -293,7 +294,7 @@ async function finishSelfie(
   jobId: string,
   args: NinaImageJobArgs,
   image: StoredImage,
-  result: { latencyMs: number; costMicroUsd: number },
+  result: { latencyMs: number; costMicroUsd: number; costSource: NinaImageCostSource },
 ): Promise<void> {
   const quoted =
     args.replyToId == null
@@ -529,7 +530,7 @@ async function finishAvatar(
   jobId: string,
   args: NinaImageJobArgs,
   image: StoredImage,
-  result: { latencyMs: number; costMicroUsd: number },
+  result: { latencyMs: number; costMicroUsd: number; costSource: NinaImageCostSource },
 ): Promise<void> {
   await insertNinaAvatarAsCurrent(userId, {
     blobUrl: image.blobUrl,
@@ -566,6 +567,14 @@ async function closeFailed(
     kind: NinaImageFailure
     latencyMs: number
     costMicroUsd: number | null
+    /**
+     * Provenance of `costMicroUsd`, when the caller already knows it — the store/finish-crash
+     * paths pass this through from a SUCCESSFUL generation's own `result.costSource`, because by
+     * then `costMicroUsd` may already be the fallback constant and no longer self-describing.
+     * `undefined` at the direct-failure call site, where `costMicroUsd` is `imagecall.ts`'s own
+     * unmodified figure and a positive value is unambiguously the provider's.
+     */
+    costSource?: NinaImageCostSource
     detail: string
   },
 ): Promise<'retry' | 'gave-up'> {
@@ -576,6 +585,13 @@ async function closeFailed(
     detail: outcome.detail,
   })
 
+  /* See the `outcome.costSource` doc above: an explicit source wins, and only when there is none
+   * do we fall back to reading it off the number — which is safe here because that inference only
+   * ever runs on `imagecall.ts`'s own unsubstituted figure. */
+  const costSource: NinaImageCostSource | undefined =
+    outcome.costSource ??
+    (outcome.costMicroUsd != null && outcome.costMicroUsd > 0 ? 'openrouter' : undefined)
+
   if (attempts < NINA_IMAGE_MAX_ATTEMPTS) {
     /* The spend travels with the requeue. Invariant 9: this attempt reached the provider and was
      * billed, and the retry must not erase it. `null` adds nothing rather than guessing — see
@@ -583,6 +599,7 @@ async function closeFailed(
     await requeueNinaImageJob(userId, jobId, {
       latencyMs: outcome.latencyMs,
       costMicroUsd: outcome.costMicroUsd,
+      costSource,
     })
     return 'retry'
   }
@@ -598,6 +615,7 @@ async function closeFailed(
      * is the "caller has no opinion" case that only the give-up sweep uses, and conflating the two
      * is what would let an unknown spend be recorded as nothing. Plan invariant 9 in one argument. */
     costMicroUsd: outcome.costMicroUsd,
+    costSource,
     replyToId: args.replyToId,
     detail: outcome.detail,
   })
@@ -737,9 +755,12 @@ async function attemptOnce(
   }
 
   /* The provider reported nothing, so the measured price stands in. ONE substitution point on this
-   * path — `imagecall.ts` deliberately does not do it too. */
+   * path — `imagecall.ts` deliberately does not do it too. Same test decides `costSource`: a
+   * positive number here is `outcome.costMicroUsd` unmodified (the provider's own figure), and
+   * anything else is the constant just substituted in. */
+  const costSource: NinaImageCostSource = outcome.costMicroUsd > 0 ? 'openrouter' : 'fallback'
   const costMicroUsd = outcome.costMicroUsd > 0 ? outcome.costMicroUsd : NINA_IMAGE_COST_MICRO_USD
-  const result = { latencyMs: outcome.latencyMs, costMicroUsd }
+  const result = { latencyMs: outcome.latencyMs, costMicroUsd, costSource }
 
   let image: StoredImage
   try {
@@ -755,6 +776,7 @@ async function attemptOnce(
         kind: 'transport',
         latencyMs: outcome.latencyMs,
         costMicroUsd,
+        costSource,
         detail: `store: ${String(cause)}`,
       }),
       anchored,
@@ -778,6 +800,7 @@ async function attemptOnce(
         kind: 'transport',
         latencyMs: outcome.latencyMs,
         costMicroUsd,
+        costSource,
         detail: `finish: ${String(cause)}`,
       }),
       anchored,

@@ -108,7 +108,7 @@ export async function finishSelfie(
   sql: NeonSql,
   job: ClaimedJob,
   image: WorkerStoredImage,
-  result: { costMicroUsd: number; latencyMs: number },
+  result: { costMicroUsd: number; costSource: 'openrouter' | 'fallback'; latencyMs: number },
   /** Test seam; see the header. Defaults to the real sender and `run.ts` never passes it. */
   notify: WorkerNotifier = sendWorkerPush,
 ): Promise<void> {
@@ -202,7 +202,8 @@ export async function finishSelfie(
   await sql`
     update nina_turns
     set status = 'ok', error_code = null, latency_ms = ${result.latencyMs},
-        cost_micro_usd = coalesce(cost_micro_usd, 0) + ${result.costMicroUsd}
+        cost_micro_usd = coalesce(cost_micro_usd, 0) + ${result.costMicroUsd},
+        cost_source = ${result.costSource}
     where id = ${jobId} and user_id = ${userId}
   `
 
@@ -273,7 +274,7 @@ export async function finishAvatar(
   sql: NeonSql,
   job: ClaimedJob,
   image: { blobUrl: string; pathname: string; bytes: number },
-  result: { costMicroUsd: number; latencyMs: number },
+  result: { costMicroUsd: number; costSource: 'openrouter' | 'fallback'; latencyMs: number },
 ): Promise<void> {
   const { jobId, userId, args } = job
   const avatarId = newId()
@@ -294,7 +295,8 @@ export async function finishAvatar(
   await sql`
     update nina_turns
     set status = 'ok', error_code = null, latency_ms = ${result.latencyMs},
-        cost_micro_usd = coalesce(cost_micro_usd, 0) + ${result.costMicroUsd}
+        cost_micro_usd = coalesce(cost_micro_usd, 0) + ${result.costMicroUsd},
+        cost_source = ${result.costSource}
     where id = ${jobId} and user_id = ${userId}
   `
 }
@@ -341,6 +343,14 @@ export async function closeFailed(
     detail: string
     /** Micro-USD this attempt is KNOWN to have spent. Null when the call returned no figure. */
     costMicroUsd: number | null
+    /**
+     * Provenance of `costMicroUsd`, when `runOneJob` already knows it — a successful generation
+     * that then failed to store or finish carries its own `costSource` through here, because by
+     * then `costMicroUsd` may already be the fallback constant and no longer self-describing.
+     * `undefined` when the generation itself failed (`costMicroUsd` is `null` there; the terminal
+     * branch below substitutes the constant and its source is always `'fallback'`).
+     */
+    costSource?: 'openrouter' | 'fallback'
   },
   /** Test seam; see `finishSelfie`'s header. Defaults to the real sender; `run.ts` never passes it. */
   notify: WorkerNotifier = sendWorkerPush,
@@ -358,7 +368,8 @@ export async function closeFailed(
       update nina_turns set
         error_code = 'queued',
         latency_ms = ${outcome.latencyMs},
-        cost_micro_usd = coalesce(cost_micro_usd, 0) + ${outcome.costMicroUsd ?? 0}
+        cost_micro_usd = coalesce(cost_micro_usd, 0) + ${outcome.costMicroUsd ?? 0},
+        cost_source = coalesce(${outcome.costSource ?? null}, cost_source)
       where id = ${jobId} and user_id = ${userId} and status = 'pending'
     `
     return 'retry'
@@ -414,7 +425,8 @@ export async function closeFailed(
     update nina_turns
     set status = 'failed', error_code = ${outcome.kind}, latency_ms = ${outcome.latencyMs},
         cost_micro_usd = coalesce(cost_micro_usd, 0)
-          + ${outcome.costMicroUsd ?? NINA_IMAGE_COST_MICRO_USD}
+          + ${outcome.costMicroUsd ?? NINA_IMAGE_COST_MICRO_USD},
+        cost_source = ${outcome.costSource ?? 'fallback'}
     where id = ${jobId} and user_id = ${userId} and status = 'pending'
   `
 

@@ -898,6 +898,14 @@ describe('nina_nags and nina_turns', () => {
     expect(sqlType(schema.ninaTurns, 'status')).toBe('text')
     expect(columns(schema.ninaTurns).get('status')?.notNull).toBe(true)
   })
+
+  it('cost_source is plain, nullable text — same additive-column and no-CHECK idiom as status', () => {
+    // NULL for every non-image turn, and for every image job whose ledger has never been written
+    // to (still pending, or predates this column). Additive, so no row moves.
+    expect(sqlType(schema.ninaTurns, 'cost_source')).toBe('text')
+    expect(columns(schema.ninaTurns).get('cost_source')?.notNull).toBe(false)
+    expect(columns(schema.ninaTurns).get('cost_source')?.hasDefault).toBe(false)
+  })
 })
 
 describe('push_subscriptions', () => {

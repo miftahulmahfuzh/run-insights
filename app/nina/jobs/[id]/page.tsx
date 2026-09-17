@@ -113,6 +113,7 @@ export default async function NinaJobDetailPage({ params }: PageProps<'/nina/job
         model={job.model}
         attempts={job.attempts}
         costMicroUsd={job.costMicroUsd}
+        costSource={job.costSource}
         latencyMs={job.latencyMs}
         createdAtMs={job.createdAt.getTime()}
         createdAtLabel={formatDayCompact(jakartaDayOf(job.createdAt))}

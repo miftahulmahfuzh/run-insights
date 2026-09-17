@@ -5,6 +5,7 @@ import {
   NINA_JOB_JUMP_NOTE,
   formatJobLatency,
   formatMicroUsd,
+  withCostSourceLine,
   type NinaJobJump,
   type NinaJobPhoto,
   type NinaJobStage,
@@ -72,6 +73,7 @@ export function NinaJobDetail({
   model,
   attempts,
   costMicroUsd,
+  costSource,
   latencyMs,
   createdAtMs,
   createdAtLabel,
@@ -90,6 +92,9 @@ export function NinaJobDetail({
   model: string
   attempts: number
   costMicroUsd: number | null
+  /** The latest write's provenance — see `nina_turns.cost_source`'s own header. Spliced into the
+   * "Catatan foto" text below "resolution:" by `withCostSourceLine`. */
+  costSource: 'openrouter' | 'fallback' | null
   latencyMs: number | null
   createdAtMs: number
   /** Formatted on the SERVER — a formatted instant in a client component is a hydration mismatch. */
@@ -202,6 +207,10 @@ export function NinaJobDetail({
           half this card inside the other half. `sidecar ?? prompt` is the type-honesty arm — every
           writer writes both args fields together (d61cdba onward), so the bare prompt renders only
           where a sidecar genuinely never existed.
+
+          `withCostSourceLine` inserts "cost source: …" right after "resolution:" — a fact
+          `sidecarText()` cannot know at job-open time, since it is written before the call that
+          decides it even runs. See its own header (`lib/nina/jobview.ts`) for the two no-ops.
         */}
         <h2 className="mb-2 text-[11px] font-semibold tracking-[0.06em] text-ink-3 uppercase">
           Catatan foto
@@ -212,7 +221,7 @@ export function NinaJobDetail({
           </p>
         ) : (
           <p className="text-[13px] leading-[1.55] font-medium whitespace-pre-wrap text-ink-2">
-            {sidecar ?? prompt}
+            {withCostSourceLine(sidecar, costSource) ?? prompt}
           </p>
         )}
       </Card>
