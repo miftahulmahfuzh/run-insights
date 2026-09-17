@@ -69,8 +69,14 @@ export const chatPhotoAddSchema = z
      * The row the browser's pre-check found, when the upload was SKIPPED. An id, so it gets the
      * shape check every id in this file gets; existence and ownership are the action's job, as
      * the header above says.
+     *
+     * `.nullable()`, not just `.optional()`: `uploadChatPhoto` (`chatPhotoUpload.ts`) types this
+     * `string | null` and sends a literal `null` on every fresh add, which is the common case —
+     * `.optional()` alone accepts a MISSING key or `undefined`, not `null`, so `safeParse` refused
+     * every non-duplicate add with "That upload did not describe a photo." (2026-09-17). The
+     * client was never wrong; the schema was stricter than the contract it was checking.
      */
-    duplicateOfId: chatPhotoId.optional(),
+    duplicateOfId: chatPhotoId.nullable().optional(),
   })
   .refine((value) => blobUrlMatchesPathname(value.blobUrl, value.pathname), {
     message: BLOB_MISMATCH,

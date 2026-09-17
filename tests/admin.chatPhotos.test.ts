@@ -261,6 +261,15 @@ describe('chatPhotoAddSchema', () => {
     expect(chatPhotoAddSchema.safeParse(goodBlob).success).toBe(true)
   })
 
+  it('accepts a literal null duplicateOfId — the shape every non-duplicate add actually sends', () => {
+    // `uploadChatPhoto` (components/admin/explorer/chatPhotoUpload.ts) types `duplicateOfId` as
+    // `string | null` and sends a real `null` on every fresh add — the common case, since a
+    // duplicate hit is the exception. `.optional()` alone accepts a missing key or `undefined`,
+    // not `null`, so this refused every ordinary add with "That upload did not describe a photo"
+    // (2026-09-17) despite the client sending exactly the shape it always sends.
+    expect(chatPhotoAddSchema.safeParse({ ...goodBlob, duplicateOfId: null }).success).toBe(true)
+  })
+
   it('refuses a blobUrl that disagrees with the pathname', () => {
     expect(
       chatPhotoAddSchema.safeParse({ ...goodBlob, blobUrl: 'https://example.com/cat.jpg' }).success,
