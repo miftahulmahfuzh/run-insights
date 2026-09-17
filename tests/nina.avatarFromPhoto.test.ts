@@ -4,23 +4,31 @@ import { installFakeDb, projectedRow, uninstallFakeDb, type FakeDb } from './sup
 import { NINA_TOOLS, SET_AVATAR_FROM_PHOTO_TOOL } from '@/lib/nina/prompts/tools'
 
 /**
- * **R2: an existing photograph becomes her profile picture, from inside a chat turn.**
+ * **R2: a photograph that already exists becomes her profile picture, from inside a chat turn —
+ * as a LINK, not a copy.** `media-album-unified-search` R3's chat-side twin of
+ * `tests/admin.chatPhotoAdoption.test.ts`.
  *
  * The production turn this is written against is on the record (2026-09-17 02:43 WIB): "ganti profpic
  * lu pake foto ini" reached `set_avatar`, the only avatar tool that existed, which invented a scene
- * and started a generation. The properties below are what makes that impossible now, in the order
- * they would hurt if they were wrong:
+ * and started a generation. A later report — the album kept showing an old photo after the Media
+ * original was Replaced in `/admin` — traced to this file: R3 rewrote the admin-side promotion
+ * (`setChatPhotoAsAvatarAction` → `linkChatPhotoIntoAlbum`) into a pointer, but never reached the
+ * chat-triggered path, which kept `fetch`ing the bytes into a brand-new `avatar-` object with no
+ * `sourceImageId` at all. The properties below are what makes both failure modes impossible now, in
+ * the order they would hurt if they were wrong:
  *
- *   1. **No generation, ever.** The adoption is a `fetch` + `put` + two row writes inside the
- *      request. Nothing in this file may reach `avatargen.ts` or a job row.
- *   2. **The referent is resolved from STRUCTURE.** The current message's attachment first; failing
+ *   1. **No generation, ever.** The adoption is a link (one INSERT) inside the request. Nothing in
+ *      this file may reach `avatargen.ts` or a job row.
+ *   2. **No `fetch`, no `put`, no second Blob object.** The whole of R3's storage claim, now true of
+ *      the chat path too.
+ *   3. **The referent is resolved from STRUCTURE.** The current message's attachment first; failing
  *      that, the most recent original photograph in the same session — a JOIN, not a guess.
- *   3. **A reference row is never copied.** The core refuses one outright; the resolver flattens one
- *      to whatever it points at, so a Media attach promotes the album row it re-shows and copies
- *      nothing at all.
- *   4. **Re-adoption is a constraint decision.** `source_key = 'chat-photo:<imageId>'`, found before
- *      any bytes move.
- *   5. **`announced_at` is written in the same operation.** The adoption is synchronous, she says so
+ *   4. **A reference row is never linked twice.** The core refuses one outright; the resolver
+ *      flattens one to whatever it points at, so a Media attach promotes the album row it re-shows
+ *      and links nothing at all.
+ *   5. **Re-adoption is a constraint decision.** `source_key = 'chat-photo:<imageId>'`, found before
+ *      any row is written.
+ *   6. **`announced_at` is written in the same operation.** The adoption is synchronous, she says so
  *      in the same reply, and the `avatar_changed` cron must not say it again tomorrow.
  */
 
@@ -36,13 +44,6 @@ const SOURCE_DESCRIPTION = 'A woman in ripped jeans leaning on a brick wall in a
 
 const sourcePathname = `nina/${USER}/selfie-${IMAGE_ID}.png`
 const sourceUrl = `${STORE}/${sourcePathname}`
-const adoptedPathname = `nina/${USER}/avatar-${AVATAR_ID}-yUFwuTN7o1ZNWvKU9FonuesJQKHQcQ.png`
-const adoptedUrl = `${STORE}/${adoptedPathname}`
-
-const put = vi.fn()
-const fetchMock = vi.fn()
-
-vi.mock('@vercel/blob', () => ({ put: (...args: unknown[]) => put(...args) }))
 
 type AvatarTools = typeof import('@/lib/nina/avatartools')
 type AvatarAdopt = typeof import('@/lib/nina/avatarAdopt')
@@ -59,7 +60,8 @@ function pick<T>(overrides: Record<string, unknown>, key: string, fallback: T): 
   return (key in overrides ? overrides[key] : fallback) as T
 }
 
-/** `imageColumns` in projection order — SEVENTEEN values. See the header's fixture note. */
+/** `imageColumns` in projection order — the first 14 values. The two keyword columns Step 1
+ *  appended sit past these 14, so this fixture costs nothing from that widening. */
 function imageRow(overrides: Record<string, unknown> = {}): unknown[] {
   return projectedRow(
     pick(overrides, 'id', IMAGE_ID),
@@ -82,12 +84,12 @@ function imageRow(overrides: Record<string, unknown> = {}): unknown[] {
   )
 }
 
-/** `avatarColumns` in projection order — TWENTY values. */
+/** `avatarColumns` in projection order — 21 values (`sourceImageId` appended after `createdAt`). */
 function avatarRow(overrides: Record<string, unknown> = {}): unknown[] {
   return projectedRow(
     pick(overrides, 'id', AVATAR_ID),
-    pick(overrides, 'blobUrl', adoptedUrl),
-    pick(overrides, 'pathname', adoptedPathname),
+    pick(overrides, 'blobUrl', sourceUrl),
+    pick(overrides, 'pathname', sourcePathname),
     pick(overrides, 'folder', ''),
     pick(overrides, 'filename', null),
     pick(overrides, 'thumbUrl', null),
@@ -99,12 +101,13 @@ function avatarRow(overrides: Record<string, unknown> = {}): unknown[] {
     pick(overrides, 'cropScale', null),
     pick(overrides, 'cropX', null),
     pick(overrides, 'cropY', null),
-    pick(overrides, 'description', SOURCE_DESCRIPTION),
+    pick(overrides, 'description', null),
     pick(overrides, 'searchKeywords', null),
     pick(overrides, 'negativeSearchKeywords', null),
     pick(overrides, 'isCurrent', false),
     pick(overrides, 'announcedAt', null),
     pick(overrides, 'createdAt', '2026-09-17 02:44:00+00'),
+    pick(overrides, 'sourceImageId', IMAGE_ID),
   )
 }
 
@@ -155,16 +158,12 @@ function announceStatement() {
 
 beforeEach(async () => {
   vi.resetModules()
-  vi.stubGlobal('fetch', fetchMock)
-  put.mockReset().mockResolvedValue({ url: adoptedUrl, pathname: adoptedPathname })
-  fetchMock.mockReset().mockResolvedValue({ ok: true, arrayBuffer: async () => new ArrayBuffer(8) })
   fake = installFakeDb()
   avatarAdopt = await import('@/lib/nina/avatarAdopt')
   avatarTools = await import('@/lib/nina/avatartools')
 })
 
 afterEach(() => {
-  vi.unstubAllGlobals()
   uninstallFakeDb()
   vi.resetModules()
 })
@@ -178,7 +177,7 @@ describe('SET_AVATAR_FROM_PHOTO_TOOL — the schema the model reads', () => {
       properties: Record<string, unknown>
     }
     /* The model never sees a photograph's id (`lib/nina/context.ts` gives it prose), so an
-     * id-shaped property could only ever be hallucinated. `because` is the only one. */
+     * id-shaped tool argument could only ever be hallucinated. `because` is the only one. */
     expect(Object.keys(schema.properties)).toEqual(['because'])
   })
 
@@ -198,8 +197,8 @@ describe('SET_AVATAR_FROM_PHOTO_TOOL — the schema the model reads', () => {
   })
 })
 
-describe('adoptNinaChatPhotoAsAvatar — the fresh adoption', () => {
-  it('copies the bytes into a new avatar- object and records the STORED refs as operator', async () => {
+describe('adoptNinaChatPhotoAsAvatar — the fresh link', () => {
+  it('links to the Media row’s own bytes — no fetch, no put, no second object', async () => {
     fake.enqueue([imageRow()]) // getNinaMessageImage
     fake.enqueue([]) // getNinaAvatarBySourceKey — never adopted
     fake.enqueue([avatarRow()]) // insertNinaAvatars RETURNING
@@ -208,40 +207,20 @@ describe('adoptNinaChatPhotoAsAvatar — the fresh adoption', () => {
     const result = await avatarAdopt.adoptNinaChatPhotoAsAvatar(USER, IMAGE_ID)
 
     expect(result).toEqual({ ok: true, avatarId: AVATAR_ID, changed: true })
-    expect(fetchMock).toHaveBeenCalledWith(sourceUrl)
-    expect(put).toHaveBeenCalledTimes(1)
-
-    const [pathname, body, options] = put.mock.calls[0] as unknown as [
-      string,
-      ArrayBuffer,
-      Record<string, unknown>,
-    ]
-    expect(pathname).toMatch(/^nina\/abc123XYZ_-9\/avatar-[A-Za-z0-9_-]{12}\.png$/)
-    expect(body).toBeInstanceOf(ArrayBuffer)
-    expect(options).toEqual({ access: 'public', addRandomSuffix: true, contentType: 'image/png' })
 
     const insert = insertStatement()
     expect(insert).toBeDefined()
-    expect(insert?.params).toContain(adoptedUrl) // put's RETURN, not the requested pathname
-    expect(insert?.params).toContain(adoptedPathname)
-    expect(insert?.params).toContain('operator') // the member with no previous writer
+    // The MEDIA row's own blob_url/pathname, verbatim — the two rows now name one object.
+    expect(insert?.params).toContain(sourceUrl)
+    expect(insert?.params).toContain(sourcePathname)
+    expect(insert?.params).toContain('operator') // the chat-triggered source, distinct from 'admin'
     expect(insert?.params).toContain(`chat-photo:${IMAGE_ID}`)
-    expect(insert?.params).toContain(SOURCE_DESCRIPTION) // seeded, no second vendor call
+    expect(insert?.params).toContain(IMAGE_ID) // sourceImageId — the link itself
     expect(insert?.params).toContain(768)
     expect(insert?.params).toContain(240_000)
-  })
-
-  it('derives the container from the SOURCE pathname, not a hard-coded png', async () => {
-    fake.enqueue([imageRow({ pathname: `nina/${USER}/chat-${IMAGE_ID}.jpg` })])
-    fake.enqueue([])
-    fake.enqueue([avatarRow()])
-    fake.enqueue([avatarRow()])
-
-    await avatarAdopt.adoptNinaChatPhotoAsAvatar(USER, IMAGE_ID)
-
-    const options = put.mock.calls[0]?.[2] as Record<string, unknown>
-    expect(options.contentType).toBe('image/jpeg')
-    expect(String(put.mock.calls[0]?.[0])).toMatch(/\.jpg$/)
+    /* Never a copied description: the source row's own prose must not appear among the insert's
+     * bound params — the Media row is the one place it lives. */
+    expect(insert?.params).not.toContain(SOURCE_DESCRIPTION)
   })
 
   it('sets announced_at in the SAME operation that promotes it, so the cron cannot re-announce', async () => {
@@ -263,27 +242,28 @@ describe('adoptNinaChatPhotoAsAvatar — the fresh adoption', () => {
     )
   })
 
-  it('refuses a re-share reference before any byte moves', async () => {
+  it('refuses a re-share reference before any row is written', async () => {
     fake.enqueue([imageRow({ sourceAvatarId: ALBUM_ID })])
 
     const result = await avatarAdopt.adoptNinaChatPhotoAsAvatar(USER, IMAGE_ID)
 
     expect(result).toEqual({ ok: false, kind: 'reference' })
-    expect(fetchMock).not.toHaveBeenCalled()
-    expect(put).not.toHaveBeenCalled()
     expect(insertStatement()).toBeUndefined()
   })
 
-  it('refuses a container the album does not accept, before any byte moves', async () => {
-    fake.enqueue([imageRow({ pathname: `nina/${USER}/chat-${IMAGE_ID}.gif` })])
+  it('links one of HIS uploads too — the link is kind-blind', async () => {
+    fake.enqueue([imageRow({ kind: 'upload' })])
+    fake.enqueue([])
+    fake.enqueue([avatarRow()])
+    fake.enqueue([avatarRow()])
 
     const result = await avatarAdopt.adoptNinaChatPhotoAsAvatar(USER, IMAGE_ID)
 
-    expect(result).toEqual({ ok: false, kind: 'unsupported' })
-    expect(put).not.toHaveBeenCalled()
+    expect(result).toEqual({ ok: true, avatarId: AVATAR_ID, changed: true })
+    expect(insertStatement()).toBeDefined()
   })
 
-  it('re-adopting the same photo copies nothing and inserts nothing', async () => {
+  it('re-adopting the same photo links nothing and inserts nothing', async () => {
     fake.enqueue([imageRow()]) // getNinaMessageImage
     fake.enqueue([avatarRow()]) // getNinaAvatarBySourceKey — already adopted
     fake.enqueue([avatarRow()]) // setCurrentNinaAvatar's pre-read
@@ -291,8 +271,6 @@ describe('adoptNinaChatPhotoAsAvatar — the fresh adoption', () => {
     const result = await avatarAdopt.adoptNinaChatPhotoAsAvatar(USER, IMAGE_ID)
 
     expect(result).toEqual({ ok: true, avatarId: AVATAR_ID, changed: true })
-    expect(fetchMock).not.toHaveBeenCalled()
-    expect(put).not.toHaveBeenCalled()
     expect(insertStatement()).toBeUndefined()
   })
 
@@ -397,10 +375,10 @@ describe('handleSetAvatarFromPhoto — what she is told', () => {
       note: avatarTools.SET_AVATAR_FROM_PHOTO_ANSWERS.done,
     })
     expect(avatarTools.SET_AVATAR_FROM_PHOTO_ANSWERS.done).not.toContain('Kamera')
-    expect(put).toHaveBeenCalledTimes(1)
+    expect(insertStatement()).toBeDefined()
   })
 
-  it('promotes the album row a Media attach re-shows, copying nothing at all', async () => {
+  it('promotes the album row a Media attach re-shows, linking nothing at all', async () => {
     fake.enqueue([imageRow({ sourceAvatarId: ALBUM_ID })]) // resolve → avatar branch
     fake.enqueue([avatarRow({ id: ALBUM_ID, source: 'admin' })]) // getNinaAvatar
     fake.enqueue([avatarRow({ id: ALBUM_ID, source: 'admin' })]) // setCurrentNinaAvatar's pre-read
@@ -411,8 +389,6 @@ describe('handleSetAvatarFromPhoto — what she is told', () => {
       answer: { ok: true, note: avatarTools.SET_AVATAR_FROM_PHOTO_ANSWERS.done },
       isError: false,
     })
-    expect(fetchMock).not.toHaveBeenCalled()
-    expect(put).not.toHaveBeenCalled()
     expect(insertStatement()).toBeUndefined()
     expect(announceStatement()?.params).toContain(ALBUM_ID)
   })
@@ -428,7 +404,6 @@ describe('handleSetAvatarFromPhoto — what she is told', () => {
       answer: { ok: false, note: avatarTools.SET_AVATAR_FROM_PHOTO_ANSWERS.none },
       isError: false,
     })
-    expect(put).not.toHaveBeenCalled()
   })
 
   it('tolerates a call with no arguments at all, because `because` reads nothing', async () => {

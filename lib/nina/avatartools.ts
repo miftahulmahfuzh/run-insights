@@ -92,9 +92,6 @@ export const SET_AVATAR_FROM_PHOTO_ANSWERS = {
   none:
     'Nggak ketahuan foto mana yang dia maksud di obrolan ini. Tanya balik fotonya yang mana, ' +
     'santai, satu kalimat. JANGAN mulai ambil foto baru.',
-  unsupported:
-    'Bentuk file foto itu nggak bisa dipakai buat profpic. Bilang apa adanya, singkat, ' +
-    'tanpa istilah teknis.',
   failed:
     'Gagal masang fotonya. Bilang apa adanya, singkat, tanpa istilah teknis, dan jangan ' +
     'janji ulang di kalimat yang sama.',
@@ -210,11 +207,9 @@ export const handleSetAvatarFromPhoto: NinaToolHandler = async (
   const note =
     result.kind === 'reference'
       ? SET_AVATAR_FROM_PHOTO_ANSWERS.reference
-      : result.kind === 'unsupported'
-        ? SET_AVATAR_FROM_PHOTO_ANSWERS.unsupported
-        : result.kind === 'none' || result.kind === 'missing'
-          ? SET_AVATAR_FROM_PHOTO_ANSWERS.none
-          : SET_AVATAR_FROM_PHOTO_ANSWERS.failed
+      : result.kind === 'none' || result.kind === 'missing'
+        ? SET_AVATAR_FROM_PHOTO_ANSWERS.none
+        : SET_AVATAR_FROM_PHOTO_ANSWERS.failed
 
   return { answer: { ok: false, note }, isError: false }
 }

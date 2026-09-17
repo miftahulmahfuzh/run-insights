@@ -285,13 +285,14 @@ export default async function AdminNinaPage(props: PageProps<'/admin/nina'>) {
     photos = listed.rows.map((row): AlbumExplorerPhoto => ({
       origin: 'album',
       id: row.id,
-      url: row.blobUrl,
+      /* `thumbUrl` stays the row's OWN column, deliberately outside the redirect below: a pointer
+       * never gets a thumbnail of its own (`linkChatPhotoIntoAlbum`/`linkChatPhotoIntoNinaAlbum`
+       * never write one) and `nina_message_images` has no thumbnail column to borrow either — so
+       * there is nothing to redirect to, and the grid's `thumbUrl ?? url` fallback already handles
+       * a permanent NULL correctly. */
       thumbUrl: row.thumbUrl,
       folder: row.folder,
       filename: row.filename ?? row.id,
-      width: row.width,
-      height: row.height,
-      bytes: row.bytes,
       source: row.source,
       isCurrent: row.isCurrent,
       /*
@@ -309,31 +310,38 @@ export default async function AdminNinaPage(props: PageProps<'/admin/nina'>) {
        */
       isPointer: row.sourceImageId !== null,
       /*
-       * ── THE THREE REDIRECTED FIELDS ─────────────────────────────────────────────────────────
-       * `linked.get(row.id)` is present ONLY for a pointer row, and when it is, its three values
-       * are the linked `nina_message_images` row's. `?? row` is therefore not a fallback for a
+       * ── THE SEVEN REDIRECTED FIELDS ─────────────────────────────────────────────────────────
+       * `linked.get(row.id)` is present ONLY for a pointer row, and when it is, its values are the
+       * linked `nina_message_images` row's CURRENT ones — `resolveNinaAvatarLinkedText` re-reads
+       * the Media row on every render, so a later Replace of its bytes shows up here too, not just
+       * a later edit to its description/keywords. `?? row` is therefore not a fallback for a
        * failure — it is the ordinary-album-row path, which is almost every row: an ordinary row's
        * own columns ARE the truth, so there is nothing to look up and nothing to override.
        *
-       * Spelled as one `text` binding rather than three `linked.get(row.id)?.x ?? row.x` reads so
-       * the three fields cannot drift apart — a pointer must borrow all three or none. A pointer
-       * whose target has somehow gone is absent from the map and degrades to its own NULL columns,
-       * i.e. "not described yet", which is a state this pane has always rendered. (The FK is
+       * Spelled as one `linked`/`row` binding rather than per-field `linked.get(row.id)?.x ?? row.x`
+       * reads so the fields cannot drift apart — a pointer must borrow all of them or none. A
+       * pointer whose target has somehow gone is absent from the map and degrades to its own
+       * (stale) columns, the same state an undescribed album row has always rendered. (The FK is
        * `ON DELETE RESTRICT`, so that is unreachable while the constraint holds.)
        *
-       * This is what makes the pane's new sentence true: the value shown and the value a save
-       * writes are the same row's, by construction rather than by a sync mechanism.
+       * This is what makes the pane's sentence true for the PICTURE too, not just its prose: the
+       * value shown is the same row's the Media pane shows, by construction rather than by a sync
+       * mechanism that could go stale the moment a Replace runs.
        */
       ...(() => {
-        const text = linked.get(row.id) ?? row
+        const linkedRow = linked.get(row.id) ?? row
         return {
-          description: text.description,
+          url: linkedRow.blobUrl,
+          width: linkedRow.width,
+          height: linkedRow.height,
+          bytes: linkedRow.bytes,
+          description: linkedRow.description,
           /* R2, 2026-09-15. Rendered and edited by the rail's keyword box. For an ordinary row this
            * is `avatarColumns`' own column; for a pointer it is the media row's. */
-          searchKeywords: text.searchKeywords,
+          searchKeywords: linkedRow.searchKeywords,
           /* R2 follow-up, 2026-09-15. Rendered and edited by the rail's negative-keyword box; same
            * per-row story as `searchKeywords` directly above. */
-          negativeSearchKeywords: text.negativeSearchKeywords,
+          negativeSearchKeywords: linkedRow.negativeSearchKeywords,
         }
       })(),
       crop: { scale: row.cropScale, x: row.cropX, y: row.cropY },

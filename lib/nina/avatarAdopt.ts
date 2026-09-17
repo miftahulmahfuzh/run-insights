@@ -1,9 +1,5 @@
 import 'server-only'
 
-import { put } from '@vercel/blob'
-
-import { newId } from '@/lib/id'
-import { NINA_BLOB_PREFIX } from '@/lib/nina/images'
 import {
   getNinaAvatar,
   getNinaAvatarBySourceKey,
@@ -26,22 +22,31 @@ import {
  *   · `setChatPhotoAsAvatarAction` (`lib/admin/`) — an operator adopts one from `/admin/photos`.
  *   · this — the runner points at one mid-conversation and she adopts it before the reply goes out.
  *
+ * ── LINK, NOT COPY (media-album-unified-search R3) ────────────────────────────────────────────
+ * This module used to `fetch` + `put` a second Blob object for every chat-triggered adoption. R3
+ * rewrote the admin-side twin, `linkChatPhotoIntoAlbum`, into a pointer (`nina_avatars.source_image_id`
+ * → `nina_message_images.id`, no second object, description/keywords/bytes all read live off the
+ * Media row) but never reached this file — a gap discovered from a real report: a chat-adopted
+ * profile picture kept showing an old photo after the Media original was replaced in `/admin`,
+ * because this row carried no link at all. `linkChatPhotoIntoNinaAlbum` below is the fix: same
+ * pointer shape as the admin path, so both the text redirect (`lib/nina/queries/avatarPointer.ts`)
+ * and the image-bytes redirect apply to a chat-adopted avatar exactly as they do to an admin one.
+ *
  * ── WHY THIS DOES NOT IMPORT THE ADMIN ONE ────────────────────────────────────────────────────
  * `lib/admin` depends on `lib/nina`, never the reverse — every file read while planning this phase
  * obeys it, and `setChatPhotoAsAvatarAction` is a `'use server'` action behind `requireAdmin()`
  * besides, so it is not callable from a chat turn even if the layering allowed it. What is
- * duplicated is a CLOSED three-case lookup table (`jpg|png|webp` -> content type) and one pathname
- * template. That is a bounded, stable copy of a pure mapping, not of a business rule; the two are
- * held together by tests, exactly as `'chat-photo:'` already is across
- * `lib/nina/queries/images.ts:578` and `lib/admin/ninaAlbumAvatarActions.ts:145`.
+ * duplicated is one INSERT shape, held together by tests, exactly as `'chat-photo:'` already is
+ * across `lib/nina/queries/images.ts:578` and `lib/admin/ninaAlbumAvatarActions.ts:145`.
  *
  * ── AND WHY IT MARKS THE ROW ANNOUNCED IN THE SAME BREATH ─────────────────────────────────────
  * `set_avatar` must NOT let her claim the change happened: the photograph does not exist yet, and
  * `announced_at IS NULL` is what `getUnannouncedCurrentNinaAvatar` polls so phase 10's cron can
- * speak once the camera lands. Here there is no camera. The bytes exist, the copy is synchronous,
- * and she answers in the same turn — so leaving `announced_at` NULL would queue the cron to announce
- * a change she has already described a moment earlier. `setCurrentNinaAvatar` re-arms it to NULL by
- * design; `markNinaAvatarAnnounced` immediately after is what closes it, and the order matters.
+ * speak once the camera lands. Here there is no camera. The bytes already exist, the link is
+ * synchronous, and she answers in the same turn — so leaving `announced_at` NULL would queue the
+ * cron to announce a change she has already described a moment earlier. `setCurrentNinaAvatar`
+ * re-arms it to NULL by design; `markNinaAvatarAnnounced` immediately after is what closes it, and
+ * the order matters.
  */
 
 /**
@@ -56,38 +61,6 @@ import {
  * Exported so the test can pin it against the literal rather than re-spell it.
  */
 export const NINA_CHAT_PHOTO_SOURCE_KEY_PREFIX = 'chat-photo:'
-
-/** The three containers the album accepts — `ADMIN_AVATAR_EXTS`' set, spelled on this side of the
- * layering. See the module header for why it is copied and not imported. */
-const NINA_AVATAR_EXTS = ['jpg', 'png', 'webp'] as const
-type NinaAvatarExt = (typeof NINA_AVATAR_EXTS)[number]
-
-/** `contentTypeForAvatarExt`'s three pairs, so the `put` names the type the container actually is. */
-function contentTypeForNinaAvatarExt(ext: NinaAvatarExt): string {
-  switch (ext) {
-    case 'jpg':
-      return 'image/jpeg'
-    case 'png':
-      return 'image/png'
-    case 'webp':
-      return 'image/webp'
-  }
-}
-
-/** The container a chat photograph arrives in, or `null` if it is not one the album accepts. */
-function ninaAvatarExtFor(pathname: string): NinaAvatarExt | null {
-  const ext = pathname.slice(pathname.lastIndexOf('.') + 1).toLowerCase()
-  return (NINA_AVATAR_EXTS as readonly string[]).includes(ext) ? (ext as NinaAvatarExt) : null
-}
-
-/**
- * `nina/<userId>/avatar-<id>.<ext>` — `adminAvatarPathname`'s form, same prefix, same `avatar-`
- * segment, same id length, so `scripts/blob-reap.mjs` will one day be taught one pattern and not
- * two. `NINA_BLOB_PREFIX` is IMPORTED (ruling A6: one definition, in `lib/nina/images.ts`).
- */
-function ninaAdoptedAvatarPathname(userId: string, id: string, ext: NinaAvatarExt): string {
-  return `${NINA_BLOB_PREFIX}${userId}/avatar-${id}.${ext}`
-}
 
 /**
  * Which photograph "this one" is, resolved from STRUCTURE and never from a model-supplied id — the
@@ -109,7 +82,7 @@ export type NinaAdoptTarget =
  */
 export type NinaAvatarAdoptResult =
   | { ok: true; avatarId: string; changed: boolean }
-  | { ok: false; kind: 'missing' | 'reference' | 'unsupported' | 'copy_failed' }
+  | { ok: false; kind: 'missing' | 'reference' | 'link_failed' }
 
 /**
  * Resolve the referent, in the one order that matches how a person points at a photograph:
@@ -159,11 +132,27 @@ function flattenToOriginal(row: NinaImageRow): NinaAdoptTarget {
 
 /**
  * **The core, and the function the phase's exit criteria are written against.** Given ONE
- * `nina_message_images.id`: refuse a reference, find-or-copy into `nina_avatars`, promote, announce.
+ * `nina_message_images.id`: refuse a reference, find-or-link into `nina_avatars`, promote, announce.
  *
  * The row is re-read here even when the resolver just held it. One extra indexed point read per
  * adoption buys a core that is correct when called with an id from anywhere — and an id is a claim
  * until `getNinaMessageImage`'s `user_id` predicate has proved it.
+ *
+ * ── LINK, NOT COPY — `media-album-unified-search` R3 ────────────────────────────────────────
+ * This used to `fetch` the chat photograph and `put` it into a fresh `avatar-` object; that made
+ * "ganti profpic lu pake foto ini" the one adoption path R3 never reached, because it lives in
+ * `lib/nina` and R3's rewrite landed only in `lib/admin/ninaAlbumAvatarActions.ts`'s
+ * `linkChatPhotoIntoAlbum` — same idea, different table's caller, never wired to this one. That gap
+ * is what let a chat-adopted profile picture drift silently out of sync with a later Media Replace:
+ * the album row it produced owned an independent copy of the bytes, with no `source_image_id` at
+ * all, so nothing could have kept it current no matter how the read side redirected. `linkChatPhotoIntoNinaAlbum`
+ * below is the chat-side twin of that same rewrite, not a new idea — no `fetch`, no `put`, no second
+ * Blob object, and the row carries `sourceImageId` so the description/keyword redirect
+ * (`lib/nina/queries/avatarPointer.ts`) and the image-bytes redirect both apply to it exactly as they
+ * do to an admin-side link.
+ *
+ * No extension check any more either: that gate existed only to pick a `put` content type for a copy
+ * that no longer happens, and the admin-side link has never had one.
  */
 export async function adoptNinaChatPhotoAsAvatar(
   userId: string,
@@ -180,18 +169,15 @@ export async function adoptNinaChatPhotoAsAvatar(
     return { ok: false, kind: 'reference' }
   }
 
-  const ext = ninaAvatarExtFor(row.pathname)
-  if (ext == null) return { ok: false, kind: 'unsupported' }
-
   const sourceKey = `${NINA_CHAT_PHOTO_SOURCE_KEY_PREFIX}${row.id}`
 
   /* RE-ADOPTION IS A CONSTRAINT DECISION, NOT A COUNT. The lookup is the policy — a second "pakai
-   * foto ini" finds the first copy BEFORE any bytes move and just re-wears it. The
+   * foto ini" finds the first link BEFORE any insert and just re-currents it. The
    * `nina_avatars_user_source_key_unq` index is the backstop for the race the lookup cannot close;
-   * `copyChatPhotoIntoNinaAlbum` re-reads by key when the INSERT conflicts away. */
+   * `linkChatPhotoIntoNinaAlbum` re-reads by key when the INSERT conflicts away. */
   const existing = await getNinaAvatarBySourceKey(userId, sourceKey)
-  const avatar = existing ?? (await copyChatPhotoIntoNinaAlbum(userId, row, sourceKey, ext))
-  if (avatar == null) return { ok: false, kind: 'copy_failed' }
+  const avatar = existing ?? (await linkChatPhotoIntoNinaAlbum(userId, row, sourceKey))
+  if (avatar == null) return { ok: false, kind: 'link_failed' }
 
   return promoteAndAnnounce(userId, avatar)
 }
@@ -232,71 +218,49 @@ async function promoteAndAnnounce(
 }
 
 /**
- * `fetch` the chat photograph and `put` it beside her album as `avatar-`, then insert the row.
- * **BYTES FIRST, ROWS SECOND** — a failed copy writes nothing, while a failed insert at worst leaves
- * an orphan object, which is the recoverable direction and `scripts/blob-reap.mjs`' domain.
+ * Insert the album row that POINTS at a chat photograph. No `fetch`, no `put`, no second Blob
+ * object, no second copy of the prose. `media-album-unified-search` R3 — the chat-triggered twin of
+ * `linkChatPhotoIntoAlbum` (`lib/admin/ninaAlbumAvatarActions.ts`), duplicated rather than imported
+ * for the layering reason this module's header already states (`lib/admin` depends on `lib/nina`,
+ * never the reverse, and that module is `'use server'` besides — it may export only actions).
  *
- * The row records `put`'s RETURN and never the requested pathname: `addRandomSuffix: true` rewrites
- * it, and a row pointing at the requested form would point at an object that does not exist.
+ * `blobUrl`/`pathname` are the MEDIA row's own, verbatim: the two rows now name one object.
+ * `sourceImageId` is the link itself, read by both the description/keyword redirect
+ * (`lib/nina/queries/avatarPointer.ts`) and the image-bytes redirect. No `description` is seeded —
+ * a pointer holds none; the Media row is the one place it lives.
  *
- * `source: 'operator'` — the `NinaAvatarSource` member that had zero writers until now
- * (`lib/db/schema/nina/avatars.ts:16`), and the semantically exact one: a PERSON, not the generator,
- * picked this exact photograph. `'generated'` is the model-authored path and `'admin'` is
- * `/admin`'s; neither is true here.
+ * `source: 'operator'` — the `NinaAvatarSource` member for a PERSON, via chat, picking this exact
+ * photograph; distinct from `'admin'`, `/admin`'s own promotion action.
  *
- * `description` is seeded from the chat row — the same bytes `glm-4.6v` already described, so
- * adopting a described photograph costs no second vendor call. A NULL simply stays NULL: the album's
- * deferred describe lives in `lib/admin/ninaAlbumDeferredDescribe.ts` and this layer must not reach
- * for it. See Handoffs.
- *
- * Never throws. A vendor-shaped failure becomes `null`, becomes `{ ok: false, kind: 'copy_failed' }`,
- * becomes one sentence she says in her own voice — an unhandled rejection inside a chat turn would
- * cost the whole reply over one tool call.
+ * Never throws in the way the old byte-copying version had to guard against: there is no vendor
+ * call left to fail. The one non-exceptional outcome — the unique index racing the lookup — is
+ * handled the same way `linkChatPhotoIntoAlbum` handles it, by re-reading the row the winner wrote.
  */
-async function copyChatPhotoIntoNinaAlbum(
+async function linkChatPhotoIntoNinaAlbum(
   userId: string,
   row: NinaImageRow,
   sourceKey: string,
-  ext: NinaAvatarExt,
 ): Promise<NinaAvatarRow | null> {
-  try {
-    const response = await fetch(row.blobUrl)
-    if (!response.ok) return null
-    const bytes = await response.arrayBuffer()
+  const [inserted] = await insertNinaAvatars(userId, [
+    {
+      blobUrl: row.blobUrl,
+      pathname: row.pathname,
+      source: 'operator',
+      folder: '',
+      filename: null,
+      sourceKey,
+      sourceImageId: row.id,
+      width: row.width,
+      height: row.height,
+      bytes: row.bytes,
+    },
+  ])
+  if (inserted != null) return inserted
 
-    const stored = await put(ninaAdoptedAvatarPathname(userId, newId(), ext), bytes, {
-      access: 'public',
-      addRandomSuffix: true,
-      contentType: contentTypeForNinaAvatarExt(ext),
-    })
-
-    const [inserted] = await insertNinaAvatars(userId, [
-      {
-        blobUrl: stored.url,
-        pathname: stored.pathname,
-        source: 'operator',
-        folder: '',
-        filename: null,
-        sourceKey,
-        width: row.width,
-        height: row.height,
-        bytes: row.bytes,
-        description: row.description,
-      },
-    ])
-    if (inserted != null) return inserted
-
-    /* The unique index raced the lookup — something adopted this photograph between the read and the
-     * insert. The existing row is what he meant; the second object is the reaper's. */
-    return getNinaAvatarBySourceKey(userId, sourceKey)
-  } catch (cause) {
-    console.error(
-      '[nina] chat-photo avatar adoption copy failed',
-      { id: row.id, pathname: row.pathname },
-      cause,
-    )
-    return null
-  }
+  // The unique index raced the lookup — another turn adopted this photograph between the read and
+  // the insert. The row the winner wrote is what he meant, and it points at the same object and the
+  // same prose, so there is nothing to reconcile and nothing to reap.
+  return getNinaAvatarBySourceKey(userId, sourceKey)
 }
 
 /**
