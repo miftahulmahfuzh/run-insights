@@ -4,6 +4,7 @@ import { put } from '@vercel/blob'
 import { revalidatePath } from 'next/cache'
 
 import {
+  ADMIN_AVATAR_CACHE_MAX_AGE,
   ADMIN_AVATAR_EXTS,
   adminAvatarPathname,
   contentTypeForAvatarExt,
@@ -209,6 +210,16 @@ async function copyChatPhotoIntoAlbum(
       access: 'public',
       addRandomSuffix: true,
       contentType: contentTypeForAvatarExt(ext),
+      /*
+       * The one gap the `cacheControlMaxAge` sweep found (2026-09-17): every other Nina Blob write
+       * — the upload route's token, the generated-image store, the worker, `/update-nina-profpic`
+       * — already sets this to `ADMIN_AVATAR_CACHE_MAX_AGE` and left the browser unable to cache
+       * ANY Nina photograph without it (measured: `public, max-age=0, must-revalidate`, no ETag, so
+       * a re-request re-downloads the full object every time). `addRandomSuffix: true` above is why
+       * a year-long, effectively-immutable max-age is safe here specifically: the object this call
+       * returns is never overwritten in place — a NEW random pathname, or nothing.
+       */
+      cacheControlMaxAge: ADMIN_AVATAR_CACHE_MAX_AGE,
     })
 
     const [inserted] = await insertNinaAvatars(userId, [

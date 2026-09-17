@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { installFakeDb, projectedRow, uninstallFakeDb, type FakeDb } from './support/fakeDb'
-import { clampCrop, NINA_CROP_MAX_ABS_OFFSET } from '@/lib/nina/crop'
+import { ADMIN_AVATAR_CACHE_MAX_AGE } from '@/lib/admin/avatars'
 import { chatPhotoSetAvatarSchema, type ChatPhotoSetAvatarInput } from '@/lib/admin/chatPhotoSchema'
+import { clampCrop, NINA_CROP_MAX_ABS_OFFSET } from '@/lib/nina/crop'
 
 /**
  * **Chat photo → her profile picture, across the two tables.**
@@ -234,6 +235,7 @@ describe('setChatPhotoAsAvatarAction — the fresh adoption', () => {
       access: 'public',
       addRandomSuffix: true,
       contentType: 'image/png',
+      cacheControlMaxAge: ADMIN_AVATAR_CACHE_MAX_AGE,
     })
 
     // The INSERT carries put's RETURN, not the requested pathname, plus the seeded description
