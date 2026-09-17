@@ -1,7 +1,10 @@
 # Package: admin
 
 **Location**: `lib/admin`
-**Last Updated**: 2026-09-16 (the Reminders group on `/admin/memory` — full add/edit/delete over
+**Last Updated**: 2026-09-17 (the media collection joins the search — merged album+media ranking,
+the Media describe/embed pipeline, keyword actions, promotion-as-a-link and the deletion guard,
+P2-NIN-A002, phase 2 of 4 of `MEDIA_ALBUM_UNIFIED_SEARCH_PLAN.md`).
+Previously: 2026-09-16 (the Reminders group on `/admin/memory` — full add/edit/delete over
 the `reminders` slot, P1-ADM-R6XQ, phase 2 of 2 of `NINA_NATURAL_REMINDERS_PLAN.md`).
 Previously: 2026-09-15 (`search_keywords` — the album's second embedding input — plus the
 `nina:backfill-embeddings` script, P1-ADM-T8RM; same day, the album's describe-and-embed write side
@@ -49,6 +52,24 @@ exactly one definition — `schema.ts` imports every bound it enforces rather th
 - Since 2026-09-15, own the rule that **a re-describe must never touch `search_keywords`**. The
   keywords are the operator's correction of exactly the model's opinion; a pass that cleared them
   would erase the correction every time it was needed.
+- Since 2026-09-17, own the same rule **one table over**: `nina_message_images` now carries
+  `description_embedding`, `search_keywords` and `negative_search_keywords`, so every media path
+  that writes prose or keywords also decides about the vector in the same statement, and
+  `ninaMediaDeferredDescribe.ts` is that table's single choke point for what a vector is computed
+  FROM. The two pipelines are siblings, never one parameterised worker — the fork is a *witness*
+  (`photoSideOf(kind)` here, hard-coded `'hers'` there), not a table name.
+- Since 2026-09-17, own the rule that **promotion links, it never copies**.
+  `setChatPhotoAsAvatarAction` inserts a `nina_avatars` row carrying the media row's own
+  `blob_url`/`pathname` plus `source_image_id` — no `fetch`, no `put`, no second Blob object, no
+  second copy of the prose. A pointer row's `description`, `search_keywords`,
+  `negative_search_keywords` and `description_embedding` are **permanently NULL**: the four album
+  prose/keyword actions redirect their writes to the linked media row, which is what makes "edit in
+  one place, it changes everywhere" true by construction rather than by a sync mechanism.
+- Since 2026-09-17, own **both halves of the guard that a link needs**: `deleteNinaAvatarAction`
+  releases no blob at all for a pointer (it never owned the object), and `removeChatPhotoAction`
+  REFUSES — with a sentence naming the fix — while an album pointer still names the media row.
+  Neither cascades and neither silently orphans; the `ON DELETE RESTRICT` FK is the backstop for
+  the race the read cannot close.
 - Own the media collection's write side: add (with write-time dedupe, and the push notification
   that tells his phone either that the bubble exists or that the photograph was already in the
   collection), replace, remove (with blob release), describe, and the hand-written description
@@ -85,10 +106,12 @@ exactly one definition — `schema.ts` imports every bound it enforces rather th
 | `ninaAlbumActions.ts` | barrel (plain ESM) + `AdminActionResult`, `AdminSearchHit`, `AdminSearchResult`, `AdminSearchMode` | The album's write side: 16 actions — describe/edit prose, edit search keywords, face, crop, delete, folder register/manifest, folder maintenance. Since the `nina-queries-split` session the implementations live behind it in `ninaAlbumDescribeActions.ts`, `ninaAlbumAvatarActions.ts`, `ninaAlbumUploadActions.ts` (register + manifest), `ninaAlbumFolderActions.ts` and the plain `ninaAlbumDeferredDescribe.ts`; every importer still names the barrel. Since 2026-09-15 it also declares the album search's result types beside `AdminActionResult` — a `'use server'` module may not export a type at all. |
 | `ninaAlbumDeferredDescribe.ts` | plain server module (no `'use server'`, no pill) | The deferred describe-**and-embed** pre-pass: the three `after()` schedulers, the lane worker, the wall-clock budget, and `embedNinaAvatarDescription` — the one choke point that turns a row's `(description, searchKeywords)` pair into a vector, via `lib/nina/avatarEmbedText.ts`. A synchronous scheduler cannot be exported from a `'use server'` module, which is why it has a file of its own. |
 | `ninaAlbumSearchSchema.ts` | pure (zod) | The album search's payload: the typed-query ceiling, the data-URI ceiling and allow-list, and the one cross-field rule (a search with neither arm is not a search). Its own file, like `chatPhotoSchema.ts`. |
-| `ninaAlbumSearchActions.ts` | `'use server'` | The album's READ side, and the layer's only read action: one `searchNinaAvatarsAction` covering text, image and both. Writes nothing, stores nothing, revalidates nothing. |
+| `ninaAlbumSearchActions.ts` | `'use server'` | The READ side, and the layer's only read action: one `searchNinaAvatarsAction` covering text, image and both. Since 2026-09-17 it ranks **album AND media** into one list (the name is unchanged, the scope is not). Writes nothing, stores nothing, revalidates nothing. |
 | `chatPhotos.ts` | pure | The media collection's vocabulary: pathname shapes, ceilings, id regexes, the carrier-message rule, `planChatPhotoAddWrite`'s types. |
 | `chatPhotoSchema.ts` | pure | Every Zod schema the media collection accepts. Separate from `schema.ts` (different table, different route). `schema.ts` imports from it. |
-| `chatPhotoActions.ts` | `'use server'` | Six actions: add (the only one that mints a message), replace, find-duplicate, remove, describe, edit description. Add and replace are the two that push; the other four mint nothing and notify nothing. |
+| `chatPhotoActions.ts` | `'use server'` | Six actions: add (the only one that mints a message), replace, find-duplicate, remove, describe, edit description. Add and replace are the two that push; the other four mint nothing and notify nothing. Since 2026-09-17 describe and edit-description also write the vector, and remove carries the album-pointer refusal. |
+| `chatPhotoKeywordActions.ts` | `'use server'` | The media collection's KEYWORD half (2026-09-17): `editNinaMessageImageSearchKeywordsAction` and `editNinaMessageImageNegativeSearchKeywordsAction`, and nothing else. Its own file for the reason the album side split `ninaAlbumDescribeActions.ts` off `ninaAlbumAvatarActions.ts` — `chatPhotoActions.ts` is already four seams wide. |
+| `ninaMediaDeferredDescribe.ts` | plain server module (no `'use server'`, no pill) | The MEDIA twin of `ninaAlbumDeferredDescribe.ts` (2026-09-17): `embedNinaMessageImageDescription` — the one place that decides what a media row's vector is computed FROM — the two `after()` schedulers, the lane worker and the budget. A sibling module rather than a `kind` parameter; see its section. |
 | `users.ts` | `server-only` | The unscoped account enumeration the memory page's picker (and others) need. |
 | `memoryModel.ts` | pure | Memory bounds (including the two reminder caps), the seven categories, and `MemoryRow` — the one row model of `/admin/memory`. |
 | `memoryVocab.ts` | `server-only` in practice (no pill; a test imports it) | The bridge from the closed slot vocabulary to the page's rows: `buildMemoryRows` (slots, orphans, reminders, promises, facts), `canonicaliseSlotValue`. |
@@ -497,21 +520,58 @@ is derived from these words too. Three things about it are rules rather than sha
   That asymmetry is the point — a re-describe overwrites the model's own previous opinion, and the
   keywords are the operator's correction OF that opinion.
 
+**All four prose/keyword actions REDIRECT for a pointer row** (2026-09-17). An album row with
+`source_image_id` set holds no prose of its own, so `describeNinaAvatarAction`,
+`editNinaAvatarDescriptionAction`, `editNinaAvatarSearchKeywordsAction` and
+`editNinaAvatarNegativeSearchKeywordsAction` each branch on `row.sourceImageId == null` and write
+the LINKED `nina_message_images` row instead, re-embedding through `scheduleMediaEmbed`. Four rules
+hold the shape:
+
+- **The branch is spelled at each of the four sites, not hidden in a helper.** Each action writes a
+  different column pair, and a helper taking "which column" would be precisely the merged writer
+  `setNinaAvatarSearchKeywordsAndEmbedding`'s docstring argues against.
+- **`describeNinaAvatarAction` DELEGATES rather than re-implements** — it calls
+  `describeChatPhotoAction({ id: row.sourceImageId })` and returns its result unchanged. That keeps
+  one vision call, one witness choice (`photoSideOf` there, never `'hers'` here) and one suite, and
+  it is what makes "re-describe from the album pane" and "re-describe from the Media pane" the same
+  operation. The return types are structurally identical and the delegate's revalidate target
+  (`ADMIN_CHAT_PHOTOS_PATH`) **is** `/admin/nina`, so nothing is lost in the hand-off.
+- **The keywords branch schedules the re-embed UNCONDITIONALLY**, where the album branch still
+  guards on `row.description != null`. A pointer's own `description` is NULL by construction, so the
+  "only a row that HAS prose has a vector to re-earn" test has to be asked of the *linked* row —
+  and `scheduleMediaEmbed` asks it itself inside its `after()`. One fewer read on the request path,
+  same authoritative skip.
+- **There is no dual write and nothing reconciles.** That is the design, not an omission: the only
+  arrangement that cannot drift is the one with a single row holding the data.
+
 **`setChatPhotoAsAvatarAction`** adopts a media-collection photograph as her face: it refuses
 reference rows (`source_avatar_id`/`source_image_id` — make the original hers instead), clamps
-the framing against the row's REAL dimensions server-side, copies the row into the album under
+the framing against the row's REAL dimensions server-side, and files the album row under
 the stable `sourceKey` `` `chat-photo:<id>` `` (idempotent — a second adoption finds the existing
-row via `getNinaAvatarBySourceKey`), and schedules the describe-and-embed pass **unconditionally**.
-The `if (avatar.description == null)` guard came off on 2026-09-15 and the reason is worth keeping:
-`copyChatPhotoIntoAlbum` seeds the album row with the CHAT row's description, and a chat row has
-never carried a `description_embedding` — so the guarded form described the photograph (already
-done) and never embedded it, leaving it permanently invisible to the album search with nothing on
-screen to say so. `scheduleDescribe` re-reads the row inside its own `after()` and skips a
-prose-plus-vector row with zero vendor calls, so the caller has no business guessing.
-Since 2026-09-12 (P1-NIN-A039) that key has a second reader: the admin image-reference picker's
+row via `getNinaAvatarBySourceKey`, and `nina_avatars_user_source_key_unq` backs the race).
+
+**Since 2026-09-17 it LINKS rather than copies, and that reversal is the phase's centre.** The
+private helper is `linkChatPhotoIntoAlbum` (it was `copyChatPhotoIntoAlbum`): one INSERT carrying
+the media row's own `blobUrl`/`pathname` verbatim plus `sourceImageId`, with **no `fetch`, no
+`put`, no second Blob object and no `description`**. The old design's two stated reasons survive
+without the copy — the crop was never in the bytes (`crop_*` are the album row's own columns), and
+reference-checked shared-blob deletion already exists (`releaseBlobIfUnreferenced` /
+`isBlobPathnameReferenced`) with this phase's two row-level guards closing the rest. What the copy
+bought and the link does not is a second source of truth for the prose, which is exactly what had
+to go. The `try`/`catch` went with the `fetch`/`put`: there is no vendor call left to convert into
+a sentence, and the only non-exceptional failure — losing the unique-index race — is still handled
+by re-reading the winner's row, which now needs no reconciling and leaves no object to reap.
+
+It then schedules **`scheduleMediaDescribe(userId, row.id)` — the MEDIA row, not the album row.**
+The pointer will never carry a vector, so scheduling the album worker on it would be a read that
+finds a NULL description it must not invent prose for, every time. Scheduling stays
+**unconditional** for the reason the 2026-09-15 guard removal established: the scheduler re-reads
+inside its own `after()` and a prose-plus-vector row is an authoritative skip at zero vendor calls,
+so the caller has no business guessing. Since 2026-09-12 (P1-NIN-A039) that key has a second reader: the admin image-reference picker's
 chat side (`lib/nina/queries.ts`'s `generatedChatPhotoScope`) reads it in a correlated
 `NOT EXISTS` to exclude the adopted original, so the picker offers the photograph once — as its
-album copy.
+album entry (a pointer since 2026-09-17, which changes nothing about that read: it keys on
+`source_key`, not on who owns the bytes).
 
 **`registerNinaAvatarsAction`** — the album's *only* writer of new rows (the singular action was
 deleted with `UploadAvatar.tsx`; nothing lands a row without a `folder` and a `source_key`).
@@ -560,6 +620,17 @@ is the only record that the thumbnail object exists (its stored pathname carries
 suffix and is not derivable). The current photo cannot be removed — the query's WHERE refuses it,
 which makes "zero current avatars" unreachable rather than repaired. A failed `del` logs and still
 reports success: a recoverable orphan beats a permanently broken image under a live row.
+
+Since 2026-09-17 it has a **pointer branch**, and the shape of it is the rule. A single-row
+`getNinaAvatar` runs BEFORE the delete — `deleteNinaAvatar`'s `RETURNING` projection is the
+blob-ref shape and does not carry `source_image_id`, and after the DELETE there is nothing left to
+ask. Step 1 (`promoteNinaAvatarDependents`) runs for a pointer **too**: a chat row can re-show an
+album row whatever its provenance, that FK is `ON DELETE SET NULL` and fires inside the DELETE, so
+skipping the promotion would mint exactly the ghost `lib/nina/provenancePromotion.ts` exists to
+bury. Step 3 (the blob release) is skipped **entirely** for a pointer: it owns no object and has no
+thumbnail. Asking anyway would be *safe* rather than wrong (`isBlobPathnameReferenced` reads both
+tables and would answer `'shared'`), so the skip is about cost and clarity — the absence of the
+call is the clearest statement of the invariant there is.
 
 **`listNinaAlbumManifestAction`** — every stored dedupe key under a folder subtree, called before
 walking a drop so `planFolderUpload` has something to diff against. A Server Action (not a Route
@@ -722,17 +793,41 @@ description is not read at all — inventing prose is the describe sweep's job.
 - Run for real 2026-09-15: **53/53 rows re-embedded, 0 failed** (a count of that album on that day,
   not a property of the script).
 
-### `ninaAlbumSearchSchema.ts` / `ninaAlbumSearchActions.ts` — the album's read side
+### `ninaAlbumSearchSchema.ts` / `ninaAlbumSearchActions.ts` — the read side (album **and** media)
 
 ```ts
 export type AdminSearchMode = 'text' | 'image' | 'both'        // declared on the ninaAlbumActions barrel
-export interface AdminSearchHit { /* ExplorerPhotoBase + score */ }
+export interface AdminSearchHit {          // ExplorerPhotoBase + score, since 2026-09-17 plus:
+  origin: 'album' | 'media'                // which collection — mirrors ExplorerPhoto's own discriminant
+  searchKeywords: string | null            // carried so the pane shows both boxes without a round trip
+  negativeSearchKeywords: string | null
+  /* … id, url, thumbUrl, folder, filename, width, height, bytes, source, isCurrent,
+     description, crop, createdAt, score — unchanged */
+}
 export interface AdminSearchResult extends AdminActionResult { hits; searched; mode; caption? }
 
 export async function searchNinaAvatarsAction(input): Promise<AdminSearchResult>
 ```
 
-Added 2026-09-15. **The only READ action in the layer**, and the rules that follow from that: it
+Added 2026-09-15; **merged across both collections 2026-09-17**. The action's NAME is unchanged and
+its scope is not: it calls `searchNinaPhotosBy{Text,ImageCaption,TextAndCaption}` (the renamed
+`searchNinaAvatarsBy*` family) and gets back one ranked list in which every physical photograph
+appears at most once. Three rules came with the merge:
+
+- **One mapper, not two, because the query layer already resolved the differences.** A media row
+  has no folder, no framing, no thumbnail and can never be her current face, and
+  `lib/nina/queries/avatarsearch.ts` fills each of those with the Media view's own documented
+  constant (`''`, three NULLs, `null`, `false`) rather than leaving the convention to be
+  re-invented here. `toHit` therefore stays the field-for-field narrowing it always was, now typed
+  on `NinaPhotoSearchRow` instead of an inline structural type.
+- **`filename: row.filename ?? row.id` does double duty.** A media row carries `null` (that table
+  has no filename column) and so prints its id, which is a truthful name. The Media view's nicer
+  date-and-id form is built in `app/admin/nina/page.tsx` and is the UI phase's to reuse.
+- **A POINTER album row never appears in results at all** — its vector is permanently NULL, so
+  `albumSearchScope` excludes it, and the media row it points at is the one that ranks. That is why
+  `AdminSearchHit.searchKeywords` is never a borrowed value and never NULL-because-linked.
+
+**The only READ action in the layer**, and the rules that follow from that: it
 stores nothing, writes nothing, and must NOT `revalidatePath` — a search that re-rendered the grid
 underneath its own results fights the screen it is on.
 
@@ -759,9 +854,11 @@ underneath its own results fights the screen it is on.
   `nina_error_logs` rows by the time an error arrives, so this catch reports rather than re-logs.
   The vision error classes get their own sentence because they name the half of the query the
   operator can change — a token-floor refusal means "a different photo", never "retry".
-- **`searched` is coverage, not the album's size.** It counts the rows that carried an embedding and
-  were therefore compared; a results pane that reads it as a total will tell the operator a photo is
-  missing when it is only un-described.
+- **`searched` is coverage, not the collection's size.** It counts the rows that carried an
+  embedding and were therefore compared; a results pane that reads it as a total will tell the
+  operator a photo is missing when it is only un-described. Since 2026-09-17 it is the SUM across
+  both collections — album rows plus media rows carrying a `description_embedding` and not
+  superseded by a legacy copy.
 - **The schema refuses rather than truncates, and normalises whitespace before the vendor.**
   `.max()` before `.transform()` (this repo's ordering rule), so an over-long paste is reported, not
   silently half-searched; the transform folds whitespace runs so `"  red   dress \n"` and
@@ -784,6 +881,8 @@ export const ADMIN_CHAT_PHOTO_MAX_UPLOAD_BYTES = 2 * 1024 * 1024
 export const ADMIN_CHAT_PHOTO_MAX_EDGE_PX = 12_000
 export const ADMIN_CHAT_PHOTO_MAX_URL_CHARS = 2048
 export const ADMIN_CHAT_PHOTO_MAX_DESCRIPTION_CHARS = 2000
+export const ADMIN_CHAT_PHOTO_MAX_SEARCH_KEYWORDS_CHARS = 500           // 2026-09-17
+export const ADMIN_CHAT_PHOTO_MAX_NEGATIVE_SEARCH_KEYWORDS_CHARS = 500  // 2026-09-17
 export function adminChatPhotoPathname(userId: string, id: string): string
 export function isAdminChatPhotoPathname(pathname: string, userId: string): boolean
 export function isHttpsBlobUrl(value: string): boolean
@@ -802,6 +901,10 @@ export const chatPhotoDescribeSchema       // { id }
 export const chatPhotoDescriptionField     // .max(2000) then transform
 export const chatPhotoDescriptionSchema    // { id, description }
 export const chatPhotoSetAvatarSchema      // { id, scale, x, y } — adoption framing, all required
+export const chatPhotoSearchKeywordsField          // 2026-09-17: .max(500) then transform
+export const chatPhotoSearchKeywordsSchema         // { id, searchKeywords }
+export const chatPhotoNegativeSearchKeywordsField  // 2026-09-17: .max(500) then transform
+export const chatPhotoNegativeSearchKeywordsSchema // { id, negativeSearchKeywords }
 
 // chatPhotoActions.ts
 export async function addChatPhotoAction(input): Promise<ChatPhotoActionResult>
@@ -810,7 +913,20 @@ export async function findChatPhotoDuplicateAction(contentHash, sourceHash?): Pr
 export async function removeChatPhotoAction(input): Promise<ChatPhotoActionResult>
 export async function editChatPhotoDescriptionAction(input): Promise<ChatPhotoActionResult>
 export async function describeChatPhotoAction(input): Promise<ChatPhotoActionResult>
+
+// chatPhotoKeywordActions.ts — 2026-09-17, its own module
+export async function editNinaMessageImageSearchKeywordsAction(input): Promise<ChatPhotoActionResult>
+export async function editNinaMessageImageNegativeSearchKeywordsAction(input): Promise<ChatPhotoActionResult>
 ```
+
+**The two keyword constants are SIBLINGS of the album's, never imports of it.** 500 each, and the
+duplication is the decision: `ADMIN_AVATAR_MAX_SEARCH_KEYWORDS_CHARS`' own docstring already
+declined to cross this boundary in the other direction, and *two constants that agree beats one
+shared across a boundary the file next door refused*. The positive one's NUMBER is still derived —
+`NINA_EMBEDDING_MAX_CHARS` truncates at 8 000 and the combined text is
+`description + "\n\nKeywords: " + searchKeywords`, so 2 000 + 13 + 500 = 2 513 and the keywords can
+never be the half that gets cut. The negative one's is not derived at all (that column never joins
+the embedded text); it is the "a human types this" ceiling, agreeing today without promising to.
 
 **Write-time dedupe** (`planChatPhotoAddWrite` + `findChatPhotoDuplicateAction`, the
 media-dedupe set): the browser pre-checks `findChatPhotoDuplicateAction(contentHash, sourceHash)`
@@ -895,15 +1011,115 @@ runner-authored carrier message is protected by `isNinaPhotoCarrierMessage`). Or
 blob is released via `releaseBlobIfUnreferenced` — the same object may sit behind another row or
 her current profile picture, and the shared case is reported in the result's `note`.
 
+**Remove also REFUSES while an album pointer names the row** (2026-09-17).
+`countNinaAvatarsLinkedToImage(userId, id)` runs above `loadPhotoCarrier` and above
+`promoteNinaImageDependents`, for the same reason the reference-row refusal does: nothing may be
+measured, promoted or deleted on behalf of a remove that is not going to happen. It does **not**
+cascade and it does **not** silently orphan — the `source_image_id` FK is `ON DELETE RESTRICT` and
+Postgres would refuse this delete either way; the count exists to turn a constraint violation
+(a framework error page) into the one sentence the operator already knows from
+`deleteNinaAvatarAction`: *"An album entry shows this photo — remove it from the album first"*,
+pluralised against the count. The constraint stays the backstop for the race the read cannot close,
+exactly as `nina_avatars_user_source_key_unq` is for re-adoption's.
+
 **Describe/prose**: `describeChatPhotoAction` is the on-demand vision pass (refuses reference
 rows — describe the original instead; the token-floor error is logged LOUDLY, its own class of
-incident). `editChatPhotoDescriptionAction` is the hand-written one: NO model call, NO
-`after()`, no re-caption — **editing what she SAW is not editing what she SAID** — and an empty
-box clears to NULL (D1: refusing empty would make a wrong description un-erasable).
-`chatPhotoDescriptionField` caps the RAW string (`.max()`) BEFORE normalising (`.transform()`) —
-a 4000-char paste is refused and reported, never sliced into range. No `.min(1)`: an
-all-whitespace box normalises to `''` and parses clean — the schema hands that decision to the
-action.
+incident). `editChatPhotoDescriptionAction` is the hand-written one: NO model call, NO re-caption —
+**editing what she SAW is not editing what she SAID** — and an empty box clears to NULL (D1:
+refusing empty would make a wrong description un-erasable). `chatPhotoDescriptionField` caps the
+RAW string (`.max()`) BEFORE normalising (`.transform()`) — a 4000-char paste is refused and
+reported, never sliced into range. No `.min(1)`: an all-whitespace box normalises to `''` and
+parses clean — the schema hands that decision to the action.
+
+**Since 2026-09-17 both of them write the VECTOR too**, because the column exists now — the fact
+that they never embedded anything was an absence, not a decision. The album's rule applies verbatim:
+*a stale vector is worse than a missing one, because a missing one is visible in the backlog count
+and a stale one is invisible until a search returns the wrong photo.*
+
+- `editChatPhotoDescriptionAction` writes the new prose with a **NULL vector in the same UPDATE**
+  (`setNinaMessageImageDescriptionAndEmbedding(userId, id, next, null)`) and `scheduleMediaEmbed`
+  re-earns it after the response. `scheduleMediaEmbed`, never `scheduleMediaDescribe` — a cleared
+  box must not summon `glm-4.6v` to invent prose the operator just removed — and a cleared box
+  schedules nothing at all. Its "no `after()`" line is therefore retired; "no re-caption" is not.
+- `describeChatPhotoAction` embeds **in band**, not in `after()`: the operator is already waiting
+  ~8–11 s for the vision call they clicked and an embedding is one small text request with no image
+  in it. `embedNinaMessageImageDescription` never throws, so an embedding outage writes
+  prose-with-no-vector and phase 4's sweep collects it; the describe never fails over an embedding.
+  It **reads** `row.searchKeywords` and hands it to the embedder so the new vector keeps the tags,
+  and never writes that column — structurally, since
+  `setNinaMessageImageDescriptionAndEmbedding` sets two columns and `search_keywords` is not one.
+  The retraction lives on the ACTION rather than inside `updateNinaChatPhotoDescription`, because
+  that statement's docstring makes the columns it touches (and the ones it does not) its contract,
+  and `scheduleChatPhotoCaption` writes prose through a different statement for a different reason.
+
+**The keyword actions** (`chatPhotoKeywordActions.ts`, 2026-09-17) are the album twins' policy one
+table over: `requireAdmin()` on line 1, Zod for the shape then an owner-scoped re-read then a write
+whose own WHERE carries `user_id` and `isOriginalPhoto()`, an empty box clears to `NULL`, and NO
+model call and NO `after()` vision pass — these are the human's words. Three rules of their own:
+
+- **The positive one NULLs the vector in the same UPDATE and re-earns it**
+  (`setNinaMessageImageSearchKeywordsAndEmbedding` + `scheduleMediaEmbed`), because
+  `buildNinaAvatarEmbedText` folds these words into the embedded text. The negative one touches no
+  vector at all and schedules nothing: `negative_search_keywords` never joins that text, and
+  `matchesNegativeKeyword` reads the column fresh at search time.
+- **A row with no prose schedules nothing.** The embedded text is anchored on the description;
+  there is no keywords-only vector, and such a row is already in
+  `listNinaMessageImageDescribeBacklog`, where the sweep writes prose and then embeds the pair.
+- **A REFERENCE row is refused.** A row carrying `source_avatar_id`/`source_image_id` re-shows a
+  photograph living elsewhere and is excluded from every collection read and from the merged
+  search, so keywords on it would be words nothing can match. `getNinaMessageImage` deliberately
+  does not filter (it is the bubble and viewer read too), so each action enforces membership at its
+  own seam — `isChatPhotoReference` stays private to `chatPhotoActions.ts`, and the two-field test
+  is held to one rule by tests rather than by imports.
+
+### `ninaMediaDeferredDescribe.ts` — the MEDIA describe-and-embed pre-pass
+
+```ts
+export const NINA_MEDIA_DEFERRED_DESCRIBE_CONCURRENCY = 4
+export const NINA_MEDIA_DEFERRED_DESCRIBE_BUDGET_MS = 240_000
+export const NINA_MEDIA_BACKFILL_BUDGET_MS = 240_000
+export const NINA_MEDIA_BACKFILL_SLICE = 200
+export async function embedNinaMessageImageDescription(description, searchKeywords, userId): Promise<number[] | null>
+export async function fillNinaMessageImageDescribeTargets(userId, targets, budgetMs): Promise<NinaDescribeFillOutcome>
+export function scheduleMediaDescribe(userId, id): void   // describe if needed, then embed
+export function scheduleMediaEmbed(userId, id): void      // embed only — never a vision call
+```
+
+Added 2026-09-17. `ninaAlbumDeferredDescribe.ts`'s twin, one table over, and everything about it
+that is not a rule below is deliberately that module's unchanged: the same `after()` posture, the
+same four lanes over a shared index, the same wall-clock budget against `/admin/nina`'s 300 s
+segment, the same non-fatal-failure contract, and the same `NinaDescribeFillOutcome` shape —
+**imported rather than re-declared**, so the two pipelines report in one vocabulary.
+
+- **It is a sibling module, NOT a `kind` parameter on the album one, and the reason is behavioural.**
+  A table discriminant would have to thread through `fillOne`, `runFillLanes`, `scheduleFill` and
+  `embedNinaAvatarDescription` — five signatures changed so one of them can pick a table. And the
+  fork is not a table swap: every `nina_avatars` row is a photograph of HER, so the album worker
+  hard-codes `describeSubjectForSide('hers')`, while this table holds **both sides** and reads
+  `photoSideOf(target.kind)`. Picking the wrong witness is a measured defect with a name — *the
+  prompt went looking for a man who is not in the frame*. Different function body, not a different
+  table name.
+- **`embedNinaMessageImageDescription` is the only place that decides what a media row's vector is
+  computed FROM**, and it must agree with `embedNinaAvatarDescription` byte for byte — which is why
+  both call `buildNinaAvatarEmbedText` rather than either spelling the join. That function is
+  **reused as-is, name and all**, despite the word "Avatar": its own header names the failure a
+  second spelling causes, and both corpora are now ranked against ONE query vector, so the two texts
+  must be built identically or the merged ranking compares apples to a different join.
+- **It never throws.** An embedding outage must not cost the prose; `null` writes a NULL vector,
+  which is exactly the state `listNinaMessageImageDescribeBacklog` picks up next sweep.
+- **It embeds the keywords and never writes them.** `setNinaMessageImageDescriptionAndEmbedding`
+  sets two columns and `search_keywords` is not one of them, so the omission is structural — and
+  that is what makes `describe: false` the re-earn path after a keyword save: keywords already
+  written, vector NULL, recompute from the pair with no vendor image call.
+- **`describe: false` leaves a NULL description alone.** An operator who CLEARED the box asked for
+  silence, and the embed-only worker must never invent prose to fill it.
+- **Prose and vector both present is an authoritative skip** at zero vendor calls, decided inside
+  the `after()` against a fresh read — which is what lets every caller schedule unconditionally.
+
+`fillNinaMessageImageDescribeTargets` has **no `after()`**: it is the entry point for a caller
+already off the request path that wants the outcome in its own return value, which is phase 4's
+Media backfill route. `NINA_MEDIA_BACKFILL_SLICE`/`_BUDGET_MS` are declared here for that route,
+ahead of it.
 
 ### `users.ts` — the unscoped read, behind the boundary
 
@@ -1277,7 +1493,11 @@ backfill route to finish. The other describes are in-band (the two describe acti
 ### External
 
 - `zod` — `schema.ts`, `folderOps.ts`, `chatPhotoSchema.ts`, `textModelActions.ts`.
-- `@vercel/blob` — `del()` in `ninaAlbumActions.ts` and the media remove path.
+- `@vercel/blob` — `del()` in `ninaAlbumActions.ts` and the media remove path. The `put()` in
+  `ninaAlbumAvatarActions.ts` went away on 2026-09-17 with the adoption copy; no action in this
+  package mints an object for a promotion any more, and none of them calls `del()` directly —
+  every delete path goes through `releaseBlobIfUnreferenced`, and a pointer row makes no blob call
+  at all.
 - `drizzle-orm` — `users.ts` only (`asc`, `eq`, `sql`).
 - `next/cache`, `next/navigation`, `next/server` — `revalidatePath`, `redirect`/`notFound`, `after`.
 - `server-only` — the pill on exactly `requireAdmin.ts`, `users.ts`, `memoryStore.ts`,
@@ -1303,11 +1523,13 @@ backfill route to finish. The other describes are in-band (the two describe acti
   `captionNinaPhoto`), the slot vocabulary read, the trigger caps and normaliser, the
   photo-param grammar.
 - `@/lib/nina/avatarEmbedText` — `buildNinaAvatarEmbedText`, the one combine function, reached from
-  `ninaAlbumDeferredDescribe.ts` alone. It is zero-import by contract so `scripts/` can load it
-  under `--experimental-strip-types`; adding an import here breaks a consumer outside this repo's
-  Next runtime.
+  `ninaAlbumDeferredDescribe.ts` and (since 2026-09-17) `ninaMediaDeferredDescribe.ts`, and from
+  nowhere else. Two callers, one join: the merged search ranks both corpora against one query
+  vector, so a second spelling would compare apples to a different join. It is zero-import by
+  contract so `scripts/` can load it under `--experimental-strip-types`; adding an import here
+  breaks a consumer outside this repo's Next runtime.
 - `@/lib/nina/embedding` — `embedNinaText`, the only embedding seam this package touches, reached
-  from `ninaAlbumDeferredDescribe.ts` alone. It writes its own `nina_error_logs` row, so the
+  from the two deferred-describe modules alone. It writes its own `nina_error_logs` row, so the
   wrapper here logs a console line and nothing else — and it is passed `userId` deliberately:
   `nina_error_logs.user_id` is nullable, and a row that cannot say whose album it came from is a
   row nobody can act on.
@@ -1407,12 +1629,15 @@ No thread primitives; the relevant facts are the runtime's:
   batches instead of calling per file, and why the parallel work (blob PUTs) goes through a Route
   Handler.
 - **`after()`** defers every private scheduler (`scheduleDescribeAll`, `scheduleDescribe`,
-  `scheduleEmbed`, `scheduleChatPhotoCaption`, `scheduleAvatarDuplicateScan`) until the response is
+  `scheduleEmbed`, `scheduleMediaDescribe`, `scheduleMediaEmbed`, `scheduleChatPhotoCaption`,
+  `scheduleAvatarDuplicateScan`) until the response is
   finished. Nothing awaits them, nothing in them revalidates, every failure is swallowed and
   logged. All are synchronous, which a `'use server'` module may not export — so
   `scheduleChatPhotoCaption` and `scheduleAvatarDuplicateScan` stay module-private in the action
-  files that use them, and the describe/embed trio, needed by more than one caller, lives in the
-  plain `ninaAlbumDeferredDescribe.ts` instead.
+  files that use them, and the two describe/embed families, each needed by more than one caller,
+  live in the plain `ninaAlbumDeferredDescribe.ts` and `ninaMediaDeferredDescribe.ts` instead.
+  The one call that is NOT deferred is `describeChatPhotoAction`'s embed: in band, beside a vision
+  call the operator is already waiting on.
 - **`after()` runs on the ROUTE SEGMENT's `maxDuration`, not the action's.** That is a runtime
   fact with a cost: `/admin/nina` declares 300 and the deferred worker stops STARTING rows at 240
   so an in-flight describe can land its UPDATE. Deferred work is bounded by a start gate, never
@@ -1469,6 +1694,10 @@ No thread primitives; the relevant facts are the runtime's:
   two `FILTER` counts, so "how much is left" costs a single round trip and splits by which half of
   the work (prose, or vector only) is missing.
 - **One read per batch, not one per file** (current-row lookup, folder declaration).
+- **Promotion copies zero bytes** since 2026-09-17. It used to be a `fetch` plus a `put` of the
+  whole object (~100–500 KB per adoption, plus a second Blob object kept for the album row's
+  lifetime); it is now one INSERT. The delete side pays for that with one extra single-row
+  `getNinaAvatar` and one `countNinaAvatarsLinkedToImage` — both indexed, both on human-paced paths.
 - **The thumbnail is the grid's whole performance story** (a derived 256 px blob beside each
   original; `next/image` transforms on Blob cost paid quota).
 - `planFolderUpload` is O(files) with two `Set`s; `folderCounts`/`buildTree` are single passes;
@@ -1527,11 +1756,51 @@ export default async function Page() {
   only the full sweep found it. Grep for the projection's *neighbouring* field names (`cropY`,
   `announcedAt`) across `tests/` and co-located suites before touching a `*Columns` object, and
   never trust a plan's file list as the census.
+- **Do not write a MEDIA row's `description` or `search_keywords` without deciding about its
+  `description_embedding` either.** Since 2026-09-17 `nina_message_images` carries the vector too;
+  use `setNinaMessageImageDescriptionAndEmbedding` /
+  `setNinaMessageImageSearchKeywordsAndEmbedding` and pass the vector or an explicit `null`.
+  `setNinaMessageImageDescription` remains correct only where no vector is meant.
+- **Do not widen `ninaAlbumDeferredDescribe.ts` to cover both tables.** The fork is a witness, not
+  a table name: the album worker is hard-coded to `describeSubjectForSide('hers')` because every
+  album row is a photograph of her, while the media worker reads `photoSideOf(target.kind)` because
+  that table holds both sides. A `kind` parameter would change five signatures so one of them can
+  pick a table, and put the wrong-witness defect back within reach.
+- **Do not rename or fork `buildNinaAvatarEmbedText` because "Avatar" is in the name.** Both
+  corpora are now ranked against ONE query vector, so the two texts must be built identically; a
+  second spelling of the join puts half the corpus in a different space with no error anywhere.
+- **Do not seed a pointer row's `description` from the media row.** A copied description is exactly
+  the second source of truth the link exists to remove. A pointer's prose, keywords and vector stay
+  permanently NULL, and the four album prose/keyword actions redirect their writes to the linked
+  row — that is the synchronisation, and there is deliberately no other.
+- **Do not schedule the ALBUM describe on a pointer row.** `scheduleMediaDescribe(userId, row.id)`
+  on the media row is the whole point: the pointer will never carry a vector, so the album worker
+  would find a NULL description it must not invent prose for, every time.
+- **Do not release a blob for a pointer row, and do not skip `promoteNinaAvatarDependents` for one.**
+  Opposite answers to the two steps of the same delete: a pointer minted no object (and asking
+  anyway would be a correct question with a wasted answer), but a chat row can re-share it, and
+  that FK is `ON DELETE SET NULL` firing inside the DELETE — skipping the promotion mints a ghost.
+- **Do not make `removeChatPhotoAction` cascade, and do not move its linked-album check below
+  `loadPhotoCarrier` or `promoteNinaImageDependents`.** The FK is `ON DELETE RESTRICT`; the count is
+  there to turn the constraint violation into a sentence, and nothing may be measured, promoted or
+  deleted on behalf of a remove that is not going to happen.
+- **Do not `del()` a blob from an action here.** Every delete path goes through
+  `releaseBlobIfUnreferenced` — one object can now sit behind a media row AND an album pointer.
+- **Do not guard the keyword redirect on the album row's own `description`.** A pointer's is NULL by
+  construction, so the "has prose to re-earn" test must be asked of the LINKED row, and
+  `scheduleMediaEmbed` asks it itself inside its `after()`.
 - **Do not re-caption after a hand-written edit** — `editChatPhotoDescriptionAction`,
   `editNinaAvatarDescriptionAction`. A hand-written description exists to override the vision
   pass; re-captioning the bubble rewrites a sentence Nina already said. Re-EMBEDDING it is the
-  opposite of that and is required: `scheduleEmbed`, never `scheduleDescribe`, and never for a
-  cleared box.
+  opposite of that and is required: `scheduleEmbed` / `scheduleMediaEmbed`, never the describe
+  twin, and never for a cleared box.
+- **A wholesale `vi.mock` factory is a CENSUS, and adding an import to an action breaks it
+  silently.** `tests/admin.chatPhotos.test.ts` mocks `@/lib/nina/queries` with an explicit-key
+  factory: a newly imported query name resolves to `undefined` and every case in the file throws,
+  and the failure looks nothing like the change that caused it. That file now needs a second such
+  factory for `@/lib/admin/ninaMediaDeferredDescribe`, for exactly the same reason. When you add an
+  import to an action, grep `tests/` for factories mocking the module you imported FROM and add the
+  key there in the same commit.
 - **Do not re-add the `if (avatar.description == null)` guard before a `scheduleDescribe`.** The
   scheduler's own re-read is the authoritative skip (prose + vector = zero vendor calls); a
   caller-side guard cannot see the vector and silently strands adopted chat photos out of the
@@ -1631,6 +1900,41 @@ the browser and so never survive an upload; the orphaned-blob window (blob PUT a
 registered) is real and belongs to the reaper, not to this package.
 
 ## Recent Changes
+
+- **2026-09-17** — `media-album-unified-search` phase 2 of 4 (P2-NIN-A002): the query/action layer
+  for one search over both collections. In this package, four movements. **(1) The media collection
+  earns a vector.** New `ninaMediaDeferredDescribe.ts` — `embedNinaMessageImageDescription` (the one
+  choke point for what a media row's vector is computed from, through the shared
+  `buildNinaAvatarEmbedText`), `scheduleMediaDescribe`, `scheduleMediaEmbed`,
+  `fillNinaMessageImageDescribeTargets` and the four bounds — a SIBLING of
+  `ninaAlbumDeferredDescribe.ts` rather than a widened copy, because the fork is the witness
+  (`photoSideOf(kind)` vs hard-coded `'hers'`), not the table. `describeChatPhotoAction` now embeds
+  in band and `editChatPhotoDescriptionAction` NULLs the vector in the same UPDATE and re-earns it
+  after the response. **(2) Keywords, one table over.** New `chatPhotoKeywordActions.ts` with
+  `editNinaMessageImageSearchKeywordsAction` and
+  `editNinaMessageImageNegativeSearchKeywordsAction`; new
+  `ADMIN_CHAT_PHOTO_MAX_SEARCH_KEYWORDS_CHARS` / `…_NEGATIVE_…` (500 each, siblings of the album's
+  and deliberately not imports of them) in `chatPhotos.ts` and their four schemas in
+  `chatPhotoSchema.ts`. **(3) Promotion links, it never copies.**
+  `copyChatPhotoIntoAlbum` → `linkChatPhotoIntoAlbum` in `ninaAlbumAvatarActions.ts`: one INSERT
+  carrying the media row's `blobUrl`/`pathname` plus `sourceImageId`, no `fetch`, no `put`, no
+  `description`, and no `try`/`catch` left to wrap a vendor call that no longer happens; the
+  promotion now schedules the MEDIA describe. The four album prose/keyword actions in
+  `ninaAlbumDescribeActions.ts` branch on `row.sourceImageId` and write the linked media row instead
+  (`describeNinaAvatarAction` delegates outright to `describeChatPhotoAction`), which is what makes
+  "edit in one place" true without a sync mechanism. **(4) Both halves of the deletion guard.**
+  `deleteNinaAvatarAction` reads the row before the DELETE and releases no blob for a pointer while
+  still promoting its dependents; `removeChatPhotoAction` calls `countNinaAvatarsLinkedToImage` above
+  everything else and refuses with a pluralised sentence rather than letting the `ON DELETE RESTRICT`
+  FK surface as an error page. Also: `ninaAlbumSearchActions.ts` moved onto the renamed
+  `searchNinaPhotosBy*` family and `AdminSearchHit` gained `origin`, `searchKeywords` and
+  `negativeSearchKeywords`, with `searched` now summing both collections. Covered by
+  `tests/admin.mediaDescribeEmbed.test.ts`, `tests/admin.mediaKeywords.test.ts`,
+  `tests/admin.albumAvatarDelete.test.ts`, `tests/admin.albumDescribeEmbed.test.ts`,
+  `tests/admin.albumSearch.test.ts`, `tests/admin.chatPhotoAdoption.test.ts`,
+  `tests/admin.chatPhotos.test.ts` and `tests/admin.albumAvatarActions.test.ts`. Phase 4 owns the
+  Media backfill route the two `NINA_MEDIA_BACKFILL_*` constants are declared for; the UI phase owns
+  the panes that call the keyword actions (nothing outside `lib/admin` imports them yet).
 
 - **2026-09-16** — `nina-natural-reminders` phase 2 of 2 (P1-ADM-R6XQ), satisfying R2 (*"add a
   section to `/admin/memory` so an admin can manually add a new reminder, edit an existing one, or

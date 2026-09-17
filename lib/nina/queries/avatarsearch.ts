@@ -1,9 +1,10 @@
-import { and, asc, desc, eq, isNotNull, sql, type SQL } from 'drizzle-orm'
+import { and, asc, desc, eq, isNotNull, isNull, notExists, sql, type SQL } from 'drizzle-orm'
 
 import { db } from '@/lib/db'
-import { ninaAvatars } from '@/lib/db/schema'
-import type { NinaAvatarSearchPage } from './shapes'
+import { ninaAvatars, ninaMessageImages } from '@/lib/db/schema'
+import type { NinaPhotoSearchPage, NinaPhotoSearchRow } from './shapes'
 import { avatarColumns } from './columns'
+import { isOriginalPhoto } from './images'
 
 /**
  * §9d Semantic search over the album — R2/R3/R4 of the admin image-search set.
@@ -38,8 +39,11 @@ import { avatarColumns } from './columns'
  * and its encoding is `JSON.stringify`, which is byte-for-byte what drizzle's own
  * `PgVector.mapToDriverValue` writes for the column, so query and column cannot disagree.
  *
- * Imports foundation-wards only (`./shapes`, `./columns`) plus `db` and the one table — never the
- * barrel `@/lib/nina/queries`, which re-exports this module.
+ * Imports foundation-wards (`./shapes`, `./columns`) plus `db`, the two tables, and ONE sibling
+ * domain module: `./images`' `isOriginalPhoto`. That one edge is deliberate — the media arm's
+ * "not a re-share" rule must be the SAME predicate every other collection read uses, and a second
+ * spelling of it here is how the two would one day disagree about which photographs exist. Never
+ * the barrel `@/lib/nina/queries`, which re-exports this module.
  */
 
 /**
@@ -127,9 +131,16 @@ function queryVector(embedding: readonly number[]): SQL {
   return sql`${JSON.stringify([...embedding])}::vector`
 }
 
-/** Cosine DISTANCE (0 = identical, 2 = opposed) between the column and one query vector. */
-function cosineDistanceTo(embedding: readonly number[]): SQL {
+/** Cosine DISTANCE (0 = identical, 2 = opposed) between the ALBUM column and one query vector. */
+function albumDistanceTo(embedding: readonly number[]): SQL {
   return sql`(${ninaAvatars.descriptionEmbedding} <=> ${queryVector(embedding)})`
+}
+
+/** The same, against the MEDIA column. Two functions and not one parameterised by a column,
+ *  because the two are used in two different statements against two different tables and a shared
+ *  one would have to take the column as an argument — which is a way of spelling "get it wrong". */
+function mediaDistanceTo(embedding: readonly number[]): SQL {
+  return sql`(${ninaMessageImages.descriptionEmbedding} <=> ${queryVector(embedding)})`
 }
 
 /**
@@ -165,15 +176,92 @@ function matchesNegativeKeyword(queryText: string, negativeSearchKeywords: strin
 }
 
 /**
- * "Yours, and searchable." Both statements of every search share it, so the ranked page and the
- * coverage total can never disagree about what the candidate set was — the argument
- * `generatedChatPhotoScope` makes for the picker's page and its count.
+ * "Yours, searchable, and not a pointer." The ALBUM arm's candidate set, shared by its ranked page
+ * and its coverage count so the two can never disagree about what was compared.
+ *
+ * ── THE `source_image_id IS NULL` ARM IS INSURANCE, AND IT IS SAID OUT LOUD ─────────────────
+ * `media-album-unified-search` R3. A pointer row's `description_embedding` is permanently NULL by
+ * the plan index's Decision (its prose lives on the Media row it names), so `IS NOT NULL` above
+ * already excludes it and this arm is technically redundant. It is here anyway, in the same spirit
+ * as `nina_avatars`' HNSW index note about a predicate that is *"insurance rather than a
+ * requirement"*: it is the one place in the ranking that STATES the dedup invariant — one physical
+ * photograph, one hit — rather than relying on a NULL somewhere else to imply it. If a future
+ * writer ever fills a pointer's vector by mistake, this line is what keeps the album from
+ * returning the same photograph twice, and the failure shows up as a review comment instead of as
+ * a duplicate tile.
  */
-function searchScope(userId: string) {
-  // Return type inferred (`SQL<unknown> | undefined`, what `and()` gives) rather than annotated
-  // `SQL` with a cast — `listNinaAvatarsInFolder` builds its `scope` the same way and hands it
-  // straight to `.where()`, which accepts the union.
-  return and(eq(ninaAvatars.userId, userId), isNotNull(ninaAvatars.descriptionEmbedding))
+function albumSearchScope(userId: string) {
+  return and(
+    eq(ninaAvatars.userId, userId),
+    isNotNull(ninaAvatars.descriptionEmbedding),
+    isNull(ninaAvatars.sourceImageId),
+  )
+}
+
+/**
+ * The MEDIA arm's candidate set. Yours, searchable, an ORIGINAL — and not a photograph a LEGACY
+ * album COPY already stands in for.
+ *
+ * ── `isOriginalPhoto()`, FOR THE REASON EVERY OTHER COLLECTION READ HAS IT ──────────────────
+ * A row carrying `source_avatar_id`/`source_image_id` RE-SHOWS a photograph that lives elsewhere.
+ * It is excluded from `/nina/about`'s feed, from the Media view and from the picker; a search that
+ * returned it would be the one surface in the app that shows the same photograph twice.
+ *
+ * ── THE `NOT EXISTS` ARM, AND WHY IT IS QUALIFIED THE WAY IT IS ─────────────────────────────
+ * `isOriginalPhoto()` catches ALBUM → CHAT only. The other direction, CHAT → ALBUM, is
+ * `generatedChatPhotoScope`'s problem and this is its answer, borrowed whole: 18 `nina_avatars`
+ * rows in production carry `source_key LIKE 'chat-photo:%'` from before this set — real, byte-copied
+ * album rows with their own descriptions and their own vectors, whose chat originals are still
+ * ordinary rows. Once phase 4 embeds those originals, each of those 18 photographs would rank
+ * TWICE, which is exactly what the user ruled out (*"we need to make sure there are no duplicates
+ * in the search result"*). `generatedChatPhotoScope` already decided which half survives —
+ * *"the copy is the survivor and the original is the one hidden, because the copy is the row the
+ * operator just made current"* — and this follows it rather than inventing a second rule.
+ *
+ * **`and ... source_image_id is null` inside the subquery is the whole of the correctness.** A
+ * POINTER row carries `source_key = 'chat-photo:<id>'` too (step 6 keeps it, because it is what
+ * makes re-adoption a constraint decision), so an unqualified `NOT EXISTS` would hide the Media
+ * row of every newly linked photograph — the one half of the pair that IS ranked, since the
+ * pointer's own vector is permanently NULL. Result: a photograph promoted to her profile picture
+ * would silently vanish from search. The qualifier says the rule exactly: only a COPY hides its
+ * original; a LINK does not, because a link is not a second photograph.
+ *
+ * The outer parentheses are load-bearing and hand-written for `generatedChatPhotoScope`'s measured
+ * reason: `notExists()` emits its argument's chunks verbatim, and a raw `sql` template does not
+ * bracket itself. It is scoped (`nina_avatars.user_id` inside the subquery) and index-backed
+ * (`nina_avatars_user_source_key_unq`), so it is an equality probe per candidate row, not a scan.
+ */
+function mediaSearchScope(userId: string) {
+  const supersededByALegacyCopy = sql`(
+    select 1
+      from ${ninaAvatars}
+     where ${ninaAvatars.userId} = ${userId}
+       and ${ninaAvatars.sourceKey} = 'chat-photo:' || ${ninaMessageImages.id}
+       and ${ninaAvatars.sourceImageId} is null
+  )`
+
+  return and(
+    eq(ninaMessageImages.userId, userId),
+    isNotNull(ninaMessageImages.descriptionEmbedding),
+    isOriginalPhoto(),
+    notExists(supersededByALegacyCopy),
+  )
+}
+
+/** The MEDIA arm's projection. Deliberately NOT `imageColumns`: `prompt`, the two provenance ids,
+ *  the two hashes and `sortOrder` are of no use to a ranked tile, and the vector is never SELECTed
+ *  anywhere (`queries/imageEmbeddings.ts`'s header). */
+const mediaSearchColumns = {
+  id: ninaMessageImages.id,
+  blobUrl: ninaMessageImages.blobUrl,
+  kind: ninaMessageImages.kind,
+  width: ninaMessageImages.width,
+  height: ninaMessageImages.height,
+  bytes: ninaMessageImages.bytes,
+  description: ninaMessageImages.description,
+  searchKeywords: ninaMessageImages.searchKeywords,
+  negativeSearchKeywords: ninaMessageImages.negativeSearchKeywords,
+  createdAt: ninaMessageImages.createdAt,
 }
 
 /** `NINA_SEARCH_LIMIT` is the default AND the ceiling; a junk number falls back to the default. */
@@ -183,25 +271,24 @@ function clampLimit(limit: number | undefined): number {
 }
 
 /**
- * The shared core: rank by a distance expression, and count the candidates that were ranked.
+ * The ALBUM arm: rank by a distance expression, and count the candidates that were ranked.
  *
- * Two statements in one `Promise.all` rather than a `count(*) OVER ()` window, for
- * `listNinaAvatarsInFolder`'s reason — the count is about the CANDIDATE SET, not about the page, so
- * a window function over the limited result would report the page size and mean nothing.
+ * Two statements rather than a `count(*) OVER ()` window, for `listNinaAvatarsInFolder`'s reason —
+ * the count is about the CANDIDATE SET, not the page, so a window over the limited result would
+ * report the page size and mean nothing.
  *
- * The tiebreak is `(created_at desc, id desc)`, the album's own ordering. Exact ties in a float
- * distance need two identical descriptions, which the "make a duplicate folder" workflow does
- * produce; without the tiebreak those two tiles swap places between renders for no reason. The cost
- * is that Postgres may follow the index scan with an incremental sort, which at the requirement's
- * scale (*"hundreds of profile pics"*) is not measurable.
+ * The per-arm tiebreak is `(created_at desc, id desc)`, the album's own ordering, and it stays
+ * INSIDE the arm rather than being deferred to the merge. That is not redundant with the merged
+ * sort below: it is what makes the arm's own `LIMIT` deterministic — which 48 of 300 equally
+ * distant rows come back is decided here, and without it two renders could fetch two different
+ * sets before the merge ever sees them.
  */
-async function rankByDistance(
+async function rankAlbum(
   userId: string,
   distance: SQL,
   limit: number,
-  queryText: string | null,
-): Promise<NinaAvatarSearchPage> {
-  const scope = searchScope(userId)
+): Promise<{ rows: NinaPhotoSearchRow[]; total: number }> {
+  const scope = albumSearchScope(userId)
 
   const [ranked, counted] = await Promise.all([
     db
@@ -216,92 +303,251 @@ async function rankByDistance(
       .where(scope),
   ])
 
-  /* The relevance floor, applied to the fetched page — see `NINA_SEARCH_MIN_SCORE` for why the
-   * cut lives here and not in a `WHERE`. Ordering is untouched: the rows arrive ranked and leave
-   * ranked, some of them gone.
-   *
-   * The negative-keyword exclusion rides the SAME filter, for the SAME reason: `queryText` is
-   * `null` for `searchNinaAvatarsByImageCaption` (a vision-model caption has no typed words a
-   * hand-written phrase could be checked against), so that search is untouched by construction —
-   * no branch, no flag, the `null` says it all. `total` is deliberately NOT reduced by either
-   * filter: it answers "how many rows were compared", not "how many passed", exactly as the
-   * relevance floor already does not move it. */
-  const rows = ranked
-    .filter((row) => row.score >= NINA_SEARCH_MIN_SCORE)
-    .filter(
-      (row) => queryText === null || !matchesNegativeKeyword(queryText, row.negativeSearchKeywords),
-    )
+  const rows: NinaPhotoSearchRow[] = ranked.map((row) => ({
+    origin: 'album',
+    id: row.id,
+    blobUrl: row.blobUrl,
+    thumbUrl: row.thumbUrl,
+    folder: row.folder,
+    filename: row.filename,
+    width: row.width,
+    height: row.height,
+    bytes: row.bytes,
+    source: row.source,
+    isCurrent: row.isCurrent,
+    description: row.description,
+    searchKeywords: row.searchKeywords,
+    negativeSearchKeywords: row.negativeSearchKeywords,
+    cropScale: row.cropScale,
+    cropX: row.cropX,
+    cropY: row.cropY,
+    createdAt: row.createdAt,
+    score: row.score,
+  }))
 
   return { rows, total: counted[0]?.total ?? 0 }
 }
 
 /**
- * **R2 — "we use semantic search to search to every image description we have".**
+ * The MEDIA arm. The same two statements, the same tiebreak, the same reasons — and five constant
+ * fields, each of which is `MediaExplorerPhoto`'s own existing convention rather than a new
+ * opinion invented for search:
+ *
+ *   · `folder: ''` — a Media row is filed nowhere, and `''` is what `ExplorerPhotoBase.folder`
+ *     already documents as *"the only value a media row ever carries"*.
+ *   · `isCurrent: false` — *"a message image is never itself her face"*; only an album row carries
+ *     `is_current`, and a pointer to this photograph would be a different hit that this arm's
+ *     `NOT EXISTS`/the album arm's `IS NULL` have already resolved.
+ *   · `thumbUrl: null` — the table has no thumbnail column; every consumer falls back to `url`.
+ *   · the three crop fields `null` — `resolveCrop` folds all-null to centred `object-cover`.
+ *   · `source: row.kind` — `ExplorerPhotoBase.source` documents exactly this: *"Media: the row's
+ *     own `kind`, which on that table IS the provenance."*
+ *
+ * `filename: null` — the Media view DERIVES a display name from the row's date and id in
+ * `app/admin/nina/page.tsx`, and the data layer does not know that format. The consumer's existing
+ * `row.filename ?? row.id` fallback gives the id, which is a truthful name; a nicer one is the UI
+ * phase's to build if it wants one.
+ */
+async function rankMedia(
+  userId: string,
+  distance: SQL,
+  limit: number,
+): Promise<{ rows: NinaPhotoSearchRow[]; total: number }> {
+  const scope = mediaSearchScope(userId)
+
+  const [ranked, counted] = await Promise.all([
+    db
+      .select({ ...mediaSearchColumns, score: sql<number>`1 - ${distance}`.mapWith(Number) })
+      .from(ninaMessageImages)
+      .where(scope)
+      .orderBy(asc(distance), desc(ninaMessageImages.createdAt), desc(ninaMessageImages.id))
+      .limit(limit),
+    db
+      .select({ total: sql<number>`count(*)`.mapWith(Number) })
+      .from(ninaMessageImages)
+      .where(scope),
+  ])
+
+  const rows: NinaPhotoSearchRow[] = ranked.map((row) => ({
+    origin: 'media',
+    id: row.id,
+    blobUrl: row.blobUrl,
+    thumbUrl: null,
+    folder: '',
+    filename: null,
+    width: row.width,
+    height: row.height,
+    bytes: row.bytes,
+    source: row.kind,
+    isCurrent: false,
+    description: row.description,
+    searchKeywords: row.searchKeywords,
+    negativeSearchKeywords: row.negativeSearchKeywords,
+    cropScale: null,
+    cropX: null,
+    cropY: null,
+    createdAt: row.createdAt,
+    score: row.score,
+  }))
+
+  return { rows, total: counted[0]?.total ?? 0 }
+}
+
+/**
+ * **The merge — R1's whole answer.** Both arms, concurrently, then one ranking.
+ *
+ * ── FOUR STATEMENTS IN ONE `Promise.all`, NOT TWO ROUND TRIPS ───────────────────────────────
+ * `rankAlbum` and `rankMedia` each run their page and their count together; running the two ARMS
+ * together as well makes the whole search one round trip's latency instead of two. Nothing in
+ * either arm depends on the other, so serialising them would buy nothing and cost a search's worth
+ * of perceived speed on a click the operator is watching.
+ *
+ * ── WHY NOT ONE SQL `UNION ALL` ─────────────────────────────────────────────────────────────
+ * Because the two tables have different column sets, and a `UNION ALL` would need a
+ * lowest-common-denominator projection with NULL padding on both sides — the merge would move into
+ * SQL and the per-table `LIMIT` would move with it, at which point neither arm's HNSW index can
+ * answer its own ordering cleanly. Two indexed top-N reads plus a JS merge of at most 96 rows is
+ * the cheaper and the more legible shape, and it is the shape
+ * `searchNinaAvatarsByTextAndCaption`'s own docstring already reasons about for the mirror case.
+ *
+ * ── THE ORDER OF THE FOUR JS STEPS IS THE CONTRACT ──────────────────────────────────────────
+ *   1. **Concatenate**, tagged with `origin`. Nothing is deduplicated here and nothing needs to be:
+ *      the two scopes are disjoint by construction (a pointer's album row is excluded by
+ *      `IS NULL`, a legacy copy's media row by `NOT EXISTS`), which is what makes "every physical
+ *      photograph at most once" a property of the PREDICATES rather than of a post-hoc filter.
+ *   2. **The relevance floor**, `NINA_SEARCH_MIN_SCORE`, applied identically to both origins.
+ *      Identically is the point: one floor over one comparison against one query vector in one
+ *      space, so a Media hit at 0.21 and an album hit at 0.21 are the same statement about
+ *      relevance and are treated as such.
+ *   3. **The negative-keyword exclusion**, on the same pass, reading each row's OWN
+ *      `negative_search_keywords` whichever table it came from. `queryText === null` (the
+ *      image-only arm) exempts both origins by construction — no branch, no flag.
+ *   4. **The merged sort, then the clamp.** `score desc`, then `created_at desc`, then `id desc`,
+ *      over the COMBINED set — deliberately NOT a stable sort over the concatenation order, which
+ *      would make the album arm silently win every exact tie for no reason a reader could name.
+ *      `id desc` is the final decider, so the rule is total and two renders of the same corpus
+ *      cannot disagree. An id collision across the two tables is possible in principle (both are
+ *      `newId()`), and harmless: the pair is already ordered by score and date.
+ *
+ *      The clamp is LAST and it is `NINA_SEARCH_LIMIT` over the WHOLE result, not per table. Each
+ *      arm is asked for the full limit and the merged 96 is trimmed to 48 — asking each arm for 24
+ *      would silently under-serve any query one collection dominates, which is most of them.
+ *
+ * `total` is the SUM of the two candidate counts, keeping `searched`'s meaning exactly what it has
+ * always been: *"how many rows were compared"*, not how many passed and not the page size.
+ */
+async function rankMerged(
+  userId: string,
+  albumDistance: SQL,
+  mediaDistance: SQL,
+  limit: number,
+  queryText: string | null,
+): Promise<NinaPhotoSearchPage> {
+  const [album, media] = await Promise.all([
+    rankAlbum(userId, albumDistance, limit),
+    rankMedia(userId, mediaDistance, limit),
+  ])
+
+  const merged = [...album.rows, ...media.rows]
+    .filter((row) => row.score >= NINA_SEARCH_MIN_SCORE)
+    .filter(
+      (row) => queryText === null || !matchesNegativeKeyword(queryText, row.negativeSearchKeywords),
+    )
+    .sort(
+      (a, b) =>
+        b.score - a.score ||
+        b.createdAt.getTime() - a.createdAt.getTime() ||
+        (a.id < b.id ? 1 : a.id > b.id ? -1 : 0),
+    )
+    .slice(0, limit)
+
+  return { rows: merged, total: album.total + media.total }
+}
+
+/**
+ * **R1/R2 — "every single picture in any directory must be able to be image searched."**
  *
  * `queryEmbedding` is `embedNinaText(<what the operator typed>)`. This function does not embed and
  * does not know what a model is: the data layer takes vectors, the Server Action owns the vendor
  * call. That is what lets the whole ranking be unit-tested against generated SQL with no network.
+ *
+ * Renamed from `searchNinaAvatarsByText` by `media-album-unified-search`: it stopped being about
+ * avatars the moment it grew a second arm, and a name that says "avatars" over a merged ranking is
+ * the kind of half-truth that survives three refactors.
  */
-export async function searchNinaAvatarsByText(
+export async function searchNinaPhotosByText(
   userId: string,
   queryEmbedding: readonly number[],
   queryText: string | null = null,
   opts: { limit?: number } = {},
-): Promise<NinaAvatarSearchPage> {
-  return rankByDistance(userId, cosineDistanceTo(queryEmbedding), clampLimit(opts.limit), queryText)
+): Promise<NinaPhotoSearchPage> {
+  return rankMerged(
+    userId,
+    albumDistanceTo(queryEmbedding),
+    mediaDistanceTo(queryEmbedding),
+    clampLimit(opts.limit),
+    queryText,
+  )
 }
 
 /**
- * **R3 — "admin can search using image only … output the most similar images".**
+ * **R3 — "admin can search using image only … output the most similar images."**
  *
- * `captionEmbedding` is `embedNinaText(<what glm-4.6v saw in the uploaded photo>)`. The statement
- * this builds is IDENTICAL to `searchNinaAvatarsByText`'s, and that is the design rather than a
+ * `captionEmbedding` is `embedNinaText(<what glm-4.6v saw in the uploaded photo>)`. The statements
+ * this builds are IDENTICAL to `searchNinaPhotosByText`'s, and that is the design rather than a
  * duplication: image search in this app IS text search, run against a caption instead of a typed
- * phrase (plan index, Decision "Image-only search mechanism"). It exists as its own name so that
- * the Server Action's three-way branch reads as the three things the user asked for, and so that
- * a future divergence — a different limit for image queries, say — has a place to land that is not
- * an `if` inside the text search.
+ * phrase. It exists as its own name so the Server Action's three-way branch reads as the three
+ * things the user asked for, and so a future divergence has a place to land that is not an `if`.
  */
-export async function searchNinaAvatarsByImageCaption(
+export async function searchNinaPhotosByImageCaption(
   userId: string,
   captionEmbedding: readonly number[],
   opts: { limit?: number } = {},
-): Promise<NinaAvatarSearchPage> {
+): Promise<NinaPhotoSearchPage> {
   /* `queryText: null` — an uploaded photo's caption is `glm-4.6v`'s prose, not a phrase the
    * operator typed, so there is nothing a hand-written negative keyword could be checked against.
-   * See `rankByDistance`'s note. */
-  return rankByDistance(userId, cosineDistanceTo(captionEmbedding), clampLimit(opts.limit), null)
+   * See `rankMerged`'s step 3. */
+  return rankMerged(
+    userId,
+    albumDistanceTo(captionEmbedding),
+    mediaDistanceTo(captionEmbedding),
+    clampLimit(opts.limit),
+    null,
+  )
 }
 
 /**
  * **R4 — "think of a way to resolve the scoring between these 2."**
  *
- * The resolution is a weighted average of the two cosine SIMILARITIES, and it is computed as a
- * weighted average of the two DISTANCES, which is the same number because the weights sum to 1:
+ * The resolution is a weighted average of the two cosine SIMILARITIES, computed as a weighted
+ * average of the two DISTANCES, which is the same number because the weights sum to 1:
  *
  *     w·(1 − d_text) + (1 − w)·(1 − d_caption)  =  1 − ( w·d_text + (1 − w)·d_caption )
  *
  * So one expression is both the ranking key (ascending) and, via `1 − x`, the reported score — and
- * the weights cannot drift between the two, because there is only one of them.
+ * the weights cannot drift between the two, because there is only one of them. It is built TWICE
+ * here, once per table, and that is not a second opinion: it is the same expression over each
+ * table's own column, which is the only way two columns can be ranked by one identity.
  *
- * ONE statement, not two ranked passes merged in JS. Both signals are already comparable (same
- * column, same space), which is exactly the precondition reciprocal rank fusion exists to work
- * around; using RRF here would discard the magnitudes for no gain and would need two round trips.
+ * ONE statement per arm, not two ranked passes merged in JS per arm. Both signals are already
+ * comparable (same model, same space), which is exactly the precondition reciprocal rank fusion
+ * exists to work around; using RRF here would discard the magnitudes for no gain.
  *
- * The HNSW index cannot answer this ordering — it is a sum over two different query vectors — so
- * this one read is a scan of the user's embedded rows. At *"hundreds of profile pics"* that is a
- * few hundred 1536-float dot products, which Postgres does in single-digit milliseconds; this is
- * stated so nobody "fixes" it into two indexed passes and a merge.
+ * Neither HNSW index can answer this ordering — it is a sum over two different query vectors — so
+ * each arm is a scan of that user's embedded rows. At the requirement's scale (~70 album rows and
+ * ~154 media rows today) that is a few hundred 1536-float dot products, single-digit milliseconds;
+ * stated so nobody "fixes" it into indexed passes and a merge.
  */
-export async function searchNinaAvatarsByTextAndCaption(
+export async function searchNinaPhotosByTextAndCaption(
   userId: string,
   textEmbedding: readonly number[],
   captionEmbedding: readonly number[],
   queryText: string | null = null,
   opts: { limit?: number } = {},
-): Promise<NinaAvatarSearchPage> {
-  const weighted = sql`(${NINA_SEARCH_TEXT_WEIGHT}::float8 * ${cosineDistanceTo(textEmbedding)} + ${NINA_SEARCH_CAPTION_WEIGHT}::float8 * ${cosineDistanceTo(captionEmbedding)})`
-  /* `queryText` here is the TYPED half only (R4's own text arm) — see the docstring's note on
-   * why the caption half is exempt: nothing the operator wrote is being checked against it. */
-  return rankByDistance(userId, weighted, clampLimit(opts.limit), queryText)
+): Promise<NinaPhotoSearchPage> {
+  const albumWeighted = sql`(${NINA_SEARCH_TEXT_WEIGHT}::float8 * ${albumDistanceTo(textEmbedding)} + ${NINA_SEARCH_CAPTION_WEIGHT}::float8 * ${albumDistanceTo(captionEmbedding)})`
+  const mediaWeighted = sql`(${NINA_SEARCH_TEXT_WEIGHT}::float8 * ${mediaDistanceTo(textEmbedding)} + ${NINA_SEARCH_CAPTION_WEIGHT}::float8 * ${mediaDistanceTo(captionEmbedding)})`
+  /* `queryText` here is the TYPED half only (R4's own text arm) — see the docstring's note on why
+   * the caption half is exempt: nothing the operator wrote is being checked against it. */
+  return rankMerged(userId, albumWeighted, mediaWeighted, clampLimit(opts.limit), queryText)
 }

@@ -15,6 +15,10 @@ import { installFakeDb, projectedRow, uninstallFakeDb, type FakeDb } from './sup
  *      the production row found on 2026-09-16 came to point at a 404. It now goes through
  *      `releaseBlobIfUnreferenced`, the ONE reference-checked release, once per object.
  *
+ * `media-album-unified-search` R3 added a third: the action now reads the row BEFORE promoting
+ * (`getNinaAvatar`, since `deleteNinaAvatar`'s RETURNING shape does not carry `source_image_id`),
+ * and step 3 is skipped ENTIRELY for a pointer row — it never owned the object it shows.
+ *
  * The recording driver answers the real statements, so "the promotion SELECT ran BEFORE the DELETE"
  * is read off `fake.queries` in execution order rather than off a spy's call count.
  */
@@ -66,6 +70,37 @@ function removedRow(thumb = false): unknown[] {
   )
 }
 
+/**
+ * `avatarColumns` in projection order — 21 values (Step 1 appended `sourceImageId`). This is the
+ * action's own pre-read (`getNinaAvatar`), which now runs BEFORE the promotion because
+ * `deleteNinaAvatar`'s RETURNING shape does not carry `source_image_id`.
+ */
+function existingRow(sourceImageId: string | null = null): unknown[] {
+  return projectedRow(
+    AVATAR_ID,
+    BLOB_URL,
+    PATHNAME,
+    '', // folder
+    null, // filename
+    null, // thumbUrl
+    null, // thumbPathname
+    1024, // width
+    1536, // height
+    500_000, // bytes
+    'admin', // source
+    null, // cropScale
+    null, // cropX
+    null, // cropY
+    null, // description
+    null, // searchKeywords
+    null, // negativeSearchKeywords
+    false, // isCurrent
+    null, // announcedAt
+    '2026-09-01 09:00:00+00', // createdAt
+    sourceImageId,
+  )
+}
+
 beforeEach(async () => {
   vi.resetModules()
   vi.stubGlobal('fetch', fetchMock)
@@ -86,6 +121,7 @@ afterEach(() => {
 
 describe('deleteNinaAvatarAction', () => {
   it('promotes the dependent BEFORE the row delete, then keeps the blob it still needs', async () => {
+    fake.enqueue([existingRow()]) // getNinaAvatar — the pre-read
     fake.enqueue([projectedRow(DEP_ID, BLOB_URL, PATHNAME)]) // the dependent lookup
     fetchMock.mockResolvedValue({ ok: true, arrayBuffer: async () => BYTES.slice().buffer })
     fake.enqueue([{ id: DEP_ID }]) // the promotion UPDATE RETURNING
@@ -110,6 +146,7 @@ describe('deleteNinaAvatarAction', () => {
   })
 
   it('deletes the object when nothing points at it any more', async () => {
+    fake.enqueue([existingRow()]) // getNinaAvatar
     fake.enqueue([]) // no dependents
     fake.enqueue([removedRow()])
     fake.enqueue([], []) // isBlobPathnameReferenced: neither table
@@ -122,6 +159,7 @@ describe('deleteNinaAvatarAction', () => {
   })
 
   it('asks about the thumbnail SEPARATELY — two objects, two answers', async () => {
+    fake.enqueue([existingRow()])
     fake.enqueue([])
     fake.enqueue([removedRow(true)])
     fake.enqueue([[{ id: DEP_ID }]], []) // the full-size object is still referenced
@@ -134,6 +172,7 @@ describe('deleteNinaAvatarAction', () => {
   })
 
   it('still refuses her current photo, and nothing is released', async () => {
+    fake.enqueue([existingRow()]) // getNinaAvatar
     fake.enqueue([]) // the promotion runs first and finds nothing
     fake.enqueue([]) // deleteNinaAvatar → no row (is_current = true)
 
@@ -143,6 +182,16 @@ describe('deleteNinaAvatarAction', () => {
     expect(result).toHaveProperty('error', expect.stringContaining('current photo'))
     expect(del).not.toHaveBeenCalled()
     expect(revalidatePath).not.toHaveBeenCalled()
+  })
+
+  it('refuses an id not in the album, before any promotion or delete', async () => {
+    fake.enqueue([]) // getNinaAvatar → null
+
+    const result = await actions.deleteNinaAvatarAction(AVATAR_ID)
+
+    expect(result).toEqual({ ok: false, error: 'That photo is not in the album.' })
+    expect(fake.queries).toHaveLength(1)
+    expect(del).not.toHaveBeenCalled()
   })
 
   it('refuses a malformed id before reading, promoting or fetching anything', async () => {
@@ -161,6 +210,7 @@ describe('deleteNinaAvatarAction', () => {
   })
 
   it('a promotion that cannot reach the store never stops the delete', async () => {
+    fake.enqueue([existingRow()])
     fake.enqueue([projectedRow(DEP_ID, BLOB_URL, PATHNAME)])
     fetchMock.mockRejectedValue(new Error('store unreachable'))
     fake.enqueue([removedRow()])
@@ -174,5 +224,25 @@ describe('deleteNinaAvatarAction', () => {
       false,
     )
     expect(del).not.toHaveBeenCalled()
+  })
+
+  describe('a pointer row (media-album-unified-search R3)', () => {
+    it('still runs the dependent promotion and the row DELETE, but releases no blob at all', async () => {
+      fake.enqueue([existingRow('img123XYZ_-9')]) // getNinaAvatar — a pointer
+      fake.enqueue([]) // the promotion lookup — no dependents
+      fake.enqueue([removedRow()]) // deleteNinaAvatar RETURNING
+
+      const result = await actions.deleteNinaAvatarAction(AVATAR_ID)
+
+      expect(result).toEqual({ ok: true })
+
+      /* Exactly three statements: the pre-read, the promotion lookup, the delete — no
+       * `isBlobPathnameReferenced` SELECT and no `del`, because a pointer never owned the object
+       * it shows. */
+      expect(fake.queries).toHaveLength(3)
+      expect(fake.queries.some((query) => query.sql.includes('"pathname" = $'))).toBe(false)
+      expect(del).not.toHaveBeenCalled()
+      expect(revalidatePath).toHaveBeenCalledWith('/admin/nina')
+    })
   })
 })

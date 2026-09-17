@@ -10,9 +10,10 @@ import { requireAdmin } from '@/lib/admin/requireAdmin'
 import { describeSubjectForSide } from '@/lib/nina/album'
 import { embedNinaText } from '@/lib/nina/embedding'
 import {
-  searchNinaAvatarsByImageCaption,
-  searchNinaAvatarsByText,
-  searchNinaAvatarsByTextAndCaption,
+  searchNinaPhotosByImageCaption,
+  searchNinaPhotosByText,
+  searchNinaPhotosByTextAndCaption,
+  type NinaPhotoSearchRow,
 } from '@/lib/nina/queries'
 import {
   describeNinaImagesWithFallback,
@@ -83,33 +84,31 @@ async function runSearch(
   typed: string | null,
 ) {
   if (textEmbedding !== null && captionEmbedding !== null) {
-    return searchNinaAvatarsByTextAndCaption(userId, textEmbedding, captionEmbedding, typed)
+    return searchNinaPhotosByTextAndCaption(userId, textEmbedding, captionEmbedding, typed)
   }
-  if (textEmbedding !== null) return searchNinaAvatarsByText(userId, textEmbedding, typed)
-  if (captionEmbedding !== null) return searchNinaAvatarsByImageCaption(userId, captionEmbedding)
+  if (textEmbedding !== null) return searchNinaPhotosByText(userId, textEmbedding, typed)
+  if (captionEmbedding !== null) return searchNinaPhotosByImageCaption(userId, captionEmbedding)
   throw new Error('searchNinaAvatarsAction: no query arm — the schema should have refused this')
 }
 
-/** One ranked row, narrowed for the browser. The album arm of `app/admin/nina/page.tsx`, inlined. */
-function toHit(row: {
-  id: string
-  blobUrl: string
-  thumbUrl: string | null
-  folder: string
-  filename: string | null
-  width: number | null
-  height: number | null
-  bytes: number | null
-  source: string
-  isCurrent: boolean
-  description: string | null
-  cropScale: number | null
-  cropX: number | null
-  cropY: number | null
-  createdAt: Date
-  score: number
-}): AdminSearchHit {
+/**
+ * One ranked row, narrowed for the browser — for EITHER collection.
+ *
+ * ── ONE MAPPER AND NOT TWO, BECAUSE THE QUERY LAYER ALREADY RESOLVED THE DIFFERENCES ────────
+ * `media-album-unified-search` R1. A media row has no folder, no framing, no thumbnail and can
+ * never be her current face, and `lib/nina/queries/avatarsearch.ts`'s `rankMedia` fills each of
+ * those with `MediaExplorerPhoto`'s own documented constant (`''`, three NULLs, `null`, `false`)
+ * rather than leaving the convention to be re-invented here. So this stays the field-for-field
+ * narrowing it has always been, plus `origin` and the two keyword columns.
+ *
+ * `filename: row.filename ?? row.id` is unchanged and now does double duty: a media row carries
+ * `null` (that table has no filename column) and therefore prints its id, which is a truthful
+ * name. The Media view's nicer date-and-id form is built in `app/admin/nina/page.tsx` and is the
+ * UI phase's to reuse here if it wants it.
+ */
+function toHit(row: NinaPhotoSearchRow): AdminSearchHit {
   return {
+    origin: row.origin,
     id: row.id,
     url: row.blobUrl,
     thumbUrl: row.thumbUrl,
@@ -121,6 +120,8 @@ function toHit(row: {
     source: row.source,
     isCurrent: row.isCurrent,
     description: row.description,
+    searchKeywords: row.searchKeywords,
+    negativeSearchKeywords: row.negativeSearchKeywords,
     crop: { scale: row.cropScale, x: row.cropX, y: row.cropY },
     createdAt: row.createdAt.toISOString(),
     score: row.score,
@@ -128,7 +129,8 @@ function toHit(row: {
 }
 
 /**
- * **Search the album.** `{ text?, imageDataUri? }` in, a ranked top-48 out.
+ * **Search the whole collection — album AND media.** `{ text?, imageDataUri? }` in, a ranked
+ * top-48 out, every physical photograph at most once.
  *
  * `requireAdmin()` is line 1 and the `userId` it returns is the only one any statement below sees —
  * the action never reads an id from its own argument, so a hand-crafted POST cannot search someone

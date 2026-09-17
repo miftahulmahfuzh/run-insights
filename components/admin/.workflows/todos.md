@@ -11,7 +11,7 @@
 - P2 Medium: 1
 - P3 Low: 0
 - P4 Backlog: 0
-- Blocked: 1
+- Blocked: 0
 - Completed: 7
 - Archived: 6
 
@@ -29,7 +29,7 @@
   - **Difficulty**: NORMAL
   - **Type**: Feature
   - **Context**: Owns `components/admin/explorer/model.ts`, `MediaPane.tsx`, `SelectionPane.tsx`, `PhotoDescription.tsx` (comment only), `PhotoSearchBar.tsx` (comment only), `SearchResultsGrid.tsx`, their four co-located test suites, `lib/admin/albumDeepLink.ts` (`hrefForMediaView`), and `app/admin/nina/page.tsx`. Exit criteria: vitest component suite green plus three pinned suites unbroken; manual dev-server verification of keyword box, merged search, and pointer-row linked text. (Cross-package note: also touches `app/admin/nina/page.tsx` under the `app` package, which is not filed a separate task for this phase.)
-  - **Status**: blocked
+  - **Status**: open
   - **Plan Set**: `MEDIA_ALBUM_UNIFIED_SEARCH_PLAN.md` (phase 3 of 4)
   - **Satisfies**: R1, R2, R3 — R1: every picture in every directory is semantically searchable, merged into one deduplicated ranked result set; R2: every picture can carry hand-written search keywords and negative search keywords; R3: promoting a Media photo to Album creates a pointer (no byte copy) instead of a copy, with synchronized description/keywords
   - **Depends on**: P2-DB-A002, P2-NIN-A002

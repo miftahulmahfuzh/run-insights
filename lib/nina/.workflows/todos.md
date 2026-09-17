@@ -3,16 +3,16 @@
 **Package Path**: `lib/nina`
 **Package Code**: NIN
 **Last Updated**: 2026-09-17
-**Total Active Tasks**: 1
+**Total Active Tasks**: 0
 
 ## Quick Stats
 - P0 Critical: 0
 - P1 High: 0
-- P2 Medium: 1
+- P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 55
+- Completed: 56
 - Archived: 36
 
 ---
@@ -22,16 +22,6 @@
 ### [P1] High
 
 ### [P2] Medium
-
-- [ ] **P2-NIN-A002** Phase 2: Query/action layer: merged search, media embedding pipeline, link-not-copy promotion, deletion guard
-  - **Difficulty**: HARD
-  - **Type**: Feature
-  - **Context**: Owns `lib/nina/queries/*` (avatarColumns + imageColumns widenings), media embedding read/write helpers, merged search ranking, `copyChatPhotoIntoAlbum` → `linkChatPhotoIntoAlbum`, new media keyword actions in `lib/admin/chatPhotoKeywordActions.ts`, `deleteNinaAvatarAction`'s pointer-row branch, `removeChatPhotoAction`'s pointer-guard refusal, four album actions' write-redirection, `AdminSearchHit`'s three new fields. Exit criteria: full equivalent unit-test coverage; vitest and tsc green including `tests/admin.chatPhotos.test.ts`; `lib/nina/queries.test.ts` frozen barrel is 104 names; `listNinaMediaPhotos` rows carry both keyword columns. (Cross-package note: this phase also touches `lib/admin/chatPhotoKeywordActions.ts` and related `lib/admin` action files — `lib/nina` is the primary package as it owns the bulk of the query-layer files; `lib/admin` is not filed a separate task for this phase.)
-  - **Status**: open
-  - **Plan Set**: `MEDIA_ALBUM_UNIFIED_SEARCH_PLAN.md` (phase 2 of 4)
-  - **Satisfies**: R1, R2, R3 — R1: every picture in every directory is semantically searchable, merged into one deduplicated ranked result set; R2: every picture can carry hand-written search keywords and negative search keywords; R3: promoting a Media photo to Album creates a pointer (no byte copy) instead of a copy, with synchronized description/keywords
-  - **Depends on**: P2-DB-A002
-  - **Plan**: `.workflows/plan/P2-NIN-A002.md`
 
 ### [P3] Low
 
@@ -44,6 +34,24 @@
 (all thirty-five completed tasks were archived on 2026-09-12 — see Archive; full
 per-task detail — Context, Drift, Decided, Files — survives in git history and in
 `.workflows/package_readme.md`)
+
+- [x] **P2-NIN-A002** Phase 2: Query/action layer: merged search, media embedding pipeline, link-not-copy promotion, deletion guard
+  - **Difficulty**: HARD
+  - **Type**: Feature
+  - **Context**: Owns `lib/nina/queries/*` (avatarColumns + imageColumns widenings), media embedding read/write helpers, merged search ranking, `copyChatPhotoIntoAlbum` → `linkChatPhotoIntoAlbum`, new media keyword actions in `lib/admin/chatPhotoKeywordActions.ts`, `deleteNinaAvatarAction`'s pointer-row branch, `removeChatPhotoAction`'s pointer-guard refusal, four album actions' write-redirection, `AdminSearchHit`'s three new fields. Exit criteria: full equivalent unit-test coverage; vitest and tsc green including `tests/admin.chatPhotos.test.ts`; `lib/nina/queries.test.ts` frozen barrel is 104 names; `listNinaMediaPhotos` rows carry both keyword columns. (Cross-package note: this phase also touches `lib/admin/chatPhotoKeywordActions.ts` and related `lib/admin` action files — `lib/nina` is the primary package as it owns the bulk of the query-layer files; `lib/admin` is not filed a separate task for this phase.)
+  - **Status**: done
+  - **Plan Set**: `MEDIA_ALBUM_UNIFIED_SEARCH_PLAN.md` (phase 2 of 4)
+  - **Satisfies**: R1, R2, R3 — R1: every picture in every directory is semantically searchable, merged into one deduplicated ranked result set; R2: every picture can carry hand-written search keywords and negative search keywords; R3: promoting a Media photo to Album creates a pointer (no byte copy) instead of a copy, with synchronized description/keywords
+  - **Depends on**: P2-DB-A002
+  - **Plan**: `.workflows/plan/P2-NIN-A002.md`
+  - **Completed**: 2026-09-17 10:54
+  - **Method**: /do
+  - **Files**: lib/nina/queries/columns.ts, lib/nina/queries/shapes.ts, lib/nina/queries/avatars.ts, lib/nina/queries/imageEmbeddings.ts, lib/nina/queries/avatarPointer.ts, lib/nina/queries/images.ts, lib/nina/queries/avatarsearch.ts, lib/nina/queries.ts, lib/nina/queries.test.ts, lib/admin/ninaMediaDeferredDescribe.ts, lib/admin/chatPhotos.ts, lib/admin/chatPhotoSchema.ts, lib/admin/chatPhotoKeywordActions.ts, lib/admin/chatPhotoActions.ts, lib/admin/ninaAlbumDescribeActions.ts, lib/admin/ninaAlbumAvatarActions.ts, lib/admin/ninaAlbumSearchActions.ts, lib/admin/ninaAlbumActions.ts, tests/nina.avatarSearch.test.ts, tests/nina.mediaSearch.test.ts, tests/nina.mediaEmbeddings.test.ts, tests/admin.mediaDescribeEmbed.test.ts, tests/admin.mediaKeywords.test.ts, tests/admin.chatPhotoAdoption.test.ts, tests/admin.albumAvatarDelete.test.ts, tests/admin.albumDescribeEmbed.test.ts, tests/admin.albumAvatarActions.test.ts, tests/admin.albumSearch.test.ts, tests/admin.chatPhotos.test.ts, components/admin/explorer/SearchResultsGrid.test.tsx, tests/nina.gateway.window.test.ts
+  - **Verified**: `npx tsc --noEmit` clean; the plan's specified test list green (274 tests across 13 files); full `npx vitest run` green (361 files, 6292 tests); `npm run lint` clean (after removing one unused import); `npm run knip` shows only pre-existing findings plus two new ones that mirror an already-accepted pattern (`chatPhotoSearchKeywordsField`/`chatPhotoNegativeSearchKeywordsField` exported for symmetry with the pre-existing, already-flagged `avatarSearchKeywordsField`/`avatarNegativeSearchKeywordsField` — not a new class of issue).
+  - **Drift**: components/admin/explorer/SearchResultsGrid.test.tsx (Phase 3's file) needed a mechanical fixture fix — AdminSearchHit's new required origin/searchKeywords/negativeSearchKeywords fields broke its HIT literal. Fixed minimally (3 fields added) to keep tsc --noEmit green per invariant 1; Phase 3 still owns this file's real coverage.
+    tests/nina.gateway.window.test.ts (unowned by any phase) broke because imageColumns' widening added two non-optional NinaImageRow fields its object-literal image() helper didn't carry. Added both as null defaults, one line, no behavior change.
+    tests/admin.albumAvatarDelete.test.ts required updating every pre-existing case (not just the new pointer case 14g asked for): Step 7's own code block added a getNinaAvatar pre-read before the promotion, shifting every test's enqueue sequence by one. Updated all cases plus added the pointer case.
+    tests/admin.chatPhotos.test.ts needed more than Step 14l's documented one-line fix: Step 11 (this phase's own step) added chatPhotoActions.ts imports of setNinaMessageImageDescriptionAndEmbedding (from @/lib/nina/queries, wholesale-mocked in this file) and embedNinaMessageImageDescription/scheduleMediaEmbed (from the new @/lib/admin/ninaMediaDeferredDescribe, unmocked). Added the missing forwards, a new wholesale mock for ninaMediaDeferredDescribe, and updated 3 stale assertions in describeChatPhotoAction/editChatPhotoDescriptionAction that referenced the old setNinaMessageImageDescription write path.
 
 - [x] **P1-NIN-A053** Phase 1: Natural-language recurring reminders
   - **Difficulty**: HARD

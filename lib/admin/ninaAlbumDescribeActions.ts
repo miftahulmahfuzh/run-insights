@@ -7,8 +7,10 @@ import {
   ADMIN_AVATAR_MAX_NEGATIVE_SEARCH_KEYWORDS_CHARS,
   ADMIN_AVATAR_MAX_SEARCH_KEYWORDS_CHARS,
 } from '@/lib/admin/avatars'
+import { describeChatPhotoAction } from '@/lib/admin/chatPhotoActions'
 import type { AdminActionResult } from '@/lib/admin/ninaAlbumActions'
 import { embedNinaAvatarDescription, scheduleEmbed } from '@/lib/admin/ninaAlbumDeferredDescribe'
+import { scheduleMediaEmbed } from '@/lib/admin/ninaMediaDeferredDescribe'
 import { requireAdmin } from '@/lib/admin/requireAdmin'
 import {
   avatarDescriptionSchema,
@@ -22,6 +24,9 @@ import {
   setNinaAvatarDescriptionAndEmbedding,
   setNinaAvatarNegativeSearchKeywords,
   setNinaAvatarSearchKeywordsAndEmbedding,
+  setNinaMessageImageDescriptionAndEmbedding,
+  setNinaMessageImageNegativeSearchKeywords,
+  setNinaMessageImageSearchKeywordsAndEmbedding,
 } from '@/lib/nina/queries'
 import { describeNinaImages } from '@/lib/nina/vision'
 
@@ -42,6 +47,23 @@ import { describeNinaImages } from '@/lib/nina/vision'
  * one — the same rule that keeps `isChatPhotoReference` private to
  * `lib/admin/chatPhotoActions.ts`. Nothing outside the layer imports this module; everything
  * reaches it through the `lib/admin/ninaAlbumActions.ts` barrel.
+ *
+ * ── AND ALL FOUR REDIRECT FOR A POINTER ROW ─────────────────────────────────────────────────
+ * `media-album-unified-search` R3. An album row with `source_image_id` set is a POINTER: its own
+ * `description`, `search_keywords`, `negative_search_keywords` and `description_embedding` columns
+ * are dead — see the FK's header in `lib/db/schema/nina/avatars.ts` and the rule's home,
+ * `lib/nina/queries/avatarPointer.ts`. So every write below lands on the `nina_message_images` row
+ * it names, through this phase's media setters, and the re-embed it schedules is the MEDIA one.
+ *
+ * That is not a sync mechanism, it is the absence of one, and that is the point: the user asked
+ * that *"editing image description, search keyword, negative keyword in one place will
+ * automatically synchronize it with other location"*, and the only design that cannot drift is the
+ * one where there is a single row holding the data. Nothing here dual-writes and nothing reconciles.
+ *
+ * The branch is `row.sourceImageId == null ? <album write> : <media write>` and it is spelled at
+ * each of the four sites rather than hidden in a helper: each action writes a DIFFERENT column
+ * pair, and a helper taking "which column" would be the merged writer
+ * `setNinaAvatarSearchKeywordsAndEmbedding`'s docstring argues against.
  */
 
 /**
@@ -68,6 +90,18 @@ export async function describeNinaAvatarAction(rawId: string): Promise<AdminActi
 
   const row = await getNinaAvatar(userId, parsed.data)
   if (row == null) return { ok: false, error: 'That photo is not in the album.' }
+
+  /* A POINTER shows the MEDIA row's photograph, so the media row is what gets described and the
+   * media row is where the prose belongs. Delegating rather than re-implementing keeps one vision
+   * call, one witness choice (`photoSideOf` there, not `'hers'` here) and one suite — and it is
+   * what makes "re-describe from the album pane" and "re-describe from the media pane" literally
+   * the same operation, which is R3's ask. See the module header. */
+  if (row.sourceImageId != null) {
+    const result = await describeChatPhotoAction({ id: row.sourceImageId })
+    /* `ChatPhotoActionResult` and `AdminActionResult` are the same four optional fields; the
+     * revalidate the delegate ran is `ADMIN_CHAT_PHOTOS_PATH`, which IS `/admin/nina`. */
+    return result
+  }
 
   try {
     const { description } = await describeNinaImages(
@@ -150,24 +184,22 @@ export async function editNinaAvatarDescriptionAction(input: unknown): Promise<A
   /* The empty box IS the clear — the same policy line `editChatPhotoDescriptionAction` runs. */
   const next = description.length === 0 ? null : description
 
-  /*
-   * ── THE VECTOR IS CLEARED HERE AND RE-EARNED AFTERWARDS ─────────────────────────────────────
-   * `admin-album-semantic-search` R2. The docstring above says this action makes NO model call,
-   * and that rule is kept for the call that matters — nothing re-describes prose a human just
-   * typed. But `description_embedding` is DERIVED from that prose, so leaving the old vector
-   * behind would leave the photo searchable under the words the operator just deleted: a stale
-   * derived column, invisible until a search returns the wrong photo.
-   *
-   * So the vector is set to NULL in the SAME UPDATE as the new prose — the row is never, for any
-   * window, a pair of columns that disagree — and `scheduleEmbed` re-earns it after the response
-   * has gone out. NULL is the honest intermediate state and it is the one the backlog read already
-   * looks for, so a callback that never runs costs a sweep, not a correction.
-   *
-   * `scheduleEmbed` and not `scheduleDescribe`: a CLEARED box must not summon `glm-4.6v` to
-   * invent prose the operator just removed. The embed-only worker leaves a NULL description alone.
-   */
-  await setNinaAvatarDescriptionAndEmbedding(userId, id, next, null)
-  if (next != null) scheduleEmbed(userId, id)
+  /* A POINTER's prose lives on the media row. See the module header. */
+  if (row.sourceImageId != null) {
+    await setNinaMessageImageDescriptionAndEmbedding(userId, row.sourceImageId, next, null)
+    if (next != null) scheduleMediaEmbed(userId, row.sourceImageId)
+  } else {
+    /*
+     * ── THE VECTOR IS CLEARED HERE AND RE-EARNED AFTERWARDS ─────────────────────────────────
+     * (unchanged — see the original block for the full argument: the vector is DERIVED from this
+     * prose, so leaving the old one behind would leave the photo searchable under the words the
+     * operator just deleted. One UPDATE of both columns has no window; `scheduleEmbed` re-earns
+     * the vector after the response. `scheduleEmbed` and not `scheduleDescribe`: a CLEARED box
+     * must not summon `glm-4.6v` to invent prose the operator just removed.)
+     */
+    await setNinaAvatarDescriptionAndEmbedding(userId, id, next, null)
+    if (next != null) scheduleEmbed(userId, id)
+  }
 
   revalidatePath('/admin/nina')
   return {
@@ -229,9 +261,22 @@ export async function editNinaAvatarSearchKeywordsAction(
   /* The empty box IS the clear — the same policy line the description edit runs. */
   const next = searchKeywords.length === 0 ? null : searchKeywords
 
-  await setNinaAvatarSearchKeywordsAndEmbedding(userId, id, next, null)
-  /* Only a row that HAS prose has a vector to re-earn. See the docstring's last block. */
-  if (row.description != null) scheduleEmbed(userId, id)
+  /* A POINTER's keywords live on the media row. See the module header.
+   *
+   * `row.description` is NULL for every pointer (its prose is not here), so the "only a row that
+   * HAS prose has a vector to re-earn" test has to be asked of the LINKED row, not of this one.
+   * `scheduleMediaEmbed` asks it itself — it re-reads the target inside its `after()` and its
+   * `describe: false` worker leaves a NULL description alone — so scheduling unconditionally here
+   * is correct and is one fewer read on the request path. That is the same authoritative-skip
+   * property `scheduleDescribe`'s docstring claims for the album side. */
+  if (row.sourceImageId != null) {
+    await setNinaMessageImageSearchKeywordsAndEmbedding(userId, row.sourceImageId, next, null)
+    scheduleMediaEmbed(userId, row.sourceImageId)
+  } else {
+    await setNinaAvatarSearchKeywordsAndEmbedding(userId, id, next, null)
+    /* Only a row that HAS prose has a vector to re-earn. See the docstring's last block. */
+    if (row.description != null) scheduleEmbed(userId, id)
+  }
 
   revalidatePath('/admin/nina')
   return {
@@ -280,7 +325,13 @@ export async function editNinaAvatarNegativeSearchKeywordsAction(
   /* The empty box IS the clear — the same policy line the description and keyword edits run. */
   const next = negativeSearchKeywords.length === 0 ? null : negativeSearchKeywords
 
-  await setNinaAvatarNegativeSearchKeywords(userId, id, next)
+  /* A POINTER's exclusions live on the media row. No vector on either side of this branch — the
+   * column never joins the embedded text. See the module header. */
+  if (row.sourceImageId != null) {
+    await setNinaMessageImageNegativeSearchKeywords(userId, row.sourceImageId, next)
+  } else {
+    await setNinaAvatarNegativeSearchKeywords(userId, id, next)
+  }
 
   revalidatePath('/admin/nina')
   return {

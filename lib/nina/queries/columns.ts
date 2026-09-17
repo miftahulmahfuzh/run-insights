@@ -66,6 +66,20 @@ export const imageColumns = {
   perceptualSig: ninaMessageImages.perceptualSig,
   sortOrder: ninaMessageImages.sortOrder,
   createdAt: ninaMessageImages.createdAt,
+  /* media-album-unified-search R2, 2026-09-17. The media twin of `avatarColumns`' keyword pair, and
+   * read for the same two reasons: the Media pane edits it, and `ninaMediaDeferredDescribe`'s embed
+   * pass folds it into the text the vector is computed from. Never ranked against directly — see
+   * the column's own header in `lib/db/schema/nina/chat.ts`.
+   *
+   * APPENDED rather than placed beside `description`, where it belongs semantically: two positional
+   * `imageRow()` fixtures project this list and an insertion would silently re-assign every field
+   * after it, including the two provenance ids the adoption guard reads. `avatarColumns` makes this
+   * exact argument for `sourceImageId` two blocks up. */
+  searchKeywords: ninaMessageImages.searchKeywords,
+  /* media-album-unified-search R2, 2026-09-17. Read by the Media pane (to edit) and by the merged
+   * ranker's `matchesNegativeKeyword` pass (to exclude a row from a query it names). Never folded
+   * into the embedded text. Appended for its neighbour's reason. */
+  negativeSearchKeywords: ninaMessageImages.negativeSearchKeywords,
 }
 
 /** Internal — shared with sibling query modules; never re-exported by the barrel. */
@@ -97,4 +111,19 @@ export const avatarColumns = {
   isCurrent: ninaAvatars.isCurrent,
   announcedAt: ninaAvatars.announcedAt,
   createdAt: ninaAvatars.createdAt,
+  /**
+   * media-album-unified-search R3. The `nina_message_images` row this album entry is a POINTER to,
+   * or NULL for an ordinary album row that owns its own bytes.
+   *
+   * **APPENDED, deliberately, rather than placed beside `description` where it belongs
+   * semantically.** Every `avatarRow()` fixture under `tests/` is a positional
+   * `projectedRow(...)` over this list, so an insertion in the middle would silently re-assign
+   * every field after it; an append costs each fixture one extra value and nothing else.
+   *
+   * Non-null means all four of `description`, `search_keywords`, `negative_search_keywords` and
+   * `description_embedding` on THIS row are permanently NULL and the truth lives on the Media row
+   * — see `lib/nina/queries/avatarPointer.ts` and the column's own header in
+   * `lib/db/schema/nina/avatars.ts`.
+   */
+  sourceImageId: ninaAvatars.sourceImageId,
 }

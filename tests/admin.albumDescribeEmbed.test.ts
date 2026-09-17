@@ -61,7 +61,8 @@ let deferred: Deferred
 let route: Route
 let fake: FakeDb
 
-/** `avatarColumns` in projection order — 20 values, `getNinaAvatar`'s own shape. */
+/** `avatarColumns` in projection order — 21 values, `getNinaAvatar`'s own shape (Step 1 of
+ *  `media-album-unified-search` appended `sourceImageId` after `createdAt`). */
 function avatarRow(overrides: Record<string, unknown> = {}): unknown[] {
   return projectedRow(
     'id' in overrides ? overrides.id : ID,
@@ -84,6 +85,7 @@ function avatarRow(overrides: Record<string, unknown> = {}): unknown[] {
     'isCurrent' in overrides ? overrides.isCurrent : false,
     'announcedAt' in overrides ? overrides.announcedAt : null,
     '2026-09-01 09:00:00+00',
+    'sourceImageId' in overrides ? overrides.sourceImageId : null,
   )
 }
 
@@ -522,5 +524,97 @@ describe('editNinaAvatarSearchKeywordsAction', () => {
 
     expect(result.ok).toBe(false)
     expect(fake.queries).toHaveLength(0)
+  })
+})
+
+/* ── media-album-unified-search R3: a POINTER row redirects all four actions ──────────────── */
+
+const IMAGE_ID = 'img123XYZ_-9'
+const IMAGE_BLOB_URL = 'https://abc123store.public.blob.vercel-storage.com/nina/abc123XYZ_-9/x.jpg'
+const IMAGE_PATHNAME = 'nina/abc123XYZ_-9/x.jpg'
+
+/** `imageColumns` in projection order — 19 values (Step 1 of `media-album-unified-search`
+ *  appended `searchKeywords`/`negativeSearchKeywords` after `createdAt`). */
+function imageRow(overrides: Record<string, unknown> = {}): unknown[] {
+  return projectedRow(
+    'id' in overrides ? overrides.id : IMAGE_ID,
+    'messageId' in overrides ? overrides.messageId : 'msg123XYZ_-9',
+    'kind' in overrides ? overrides.kind : 'generated',
+    'blobUrl' in overrides ? overrides.blobUrl : IMAGE_BLOB_URL,
+    'pathname' in overrides ? overrides.pathname : IMAGE_PATHNAME,
+    'width' in overrides ? overrides.width : 1024,
+    'height' in overrides ? overrides.height : 768,
+    'bytes' in overrides ? overrides.bytes : 200_000,
+    'description' in overrides ? overrides.description : 'she is on a beach',
+    'prompt' in overrides ? overrides.prompt : null,
+    'sourceAvatarId' in overrides ? overrides.sourceAvatarId : null,
+    'sourceImageId' in overrides ? overrides.sourceImageId : null,
+    'contentHash' in overrides ? overrides.contentHash : null,
+    'perceptualHash' in overrides ? overrides.perceptualHash : null,
+    'perceptualSig' in overrides ? overrides.perceptualSig : null,
+    'sortOrder' in overrides ? overrides.sortOrder : 0,
+    '2026-09-01 09:00:00+00',
+    'searchKeywords' in overrides ? overrides.searchKeywords : null,
+    'negativeSearchKeywords' in overrides ? overrides.negativeSearchKeywords : null,
+  )
+}
+
+describe('a POINTER album row redirects all four actions to the linked Media row', () => {
+  it('describeNinaAvatarAction delegates to describeChatPhotoAction for the linked image', async () => {
+    fake.enqueue([avatarRow({ sourceImageId: IMAGE_ID })]) // getNinaAvatar — a pointer
+    fake.enqueue([imageRow()]) // the delegate's own getNinaMessageImage
+    fake.enqueue([{ id: IMAGE_ID }]) // setNinaMessageImageDescriptionAndEmbedding RETURNING
+
+    const result = await actions.describeNinaAvatarAction(ID)
+
+    expect(result).toEqual({ ok: true, id: IMAGE_ID, description: 'fresh prose' })
+    const update = fake.last()
+    expect(update.sql).toContain('update "nina_message_images"')
+    expect(afterCallbacks).toHaveLength(0) // the delegate embeds in band, same as the album path
+  })
+
+  it('editNinaAvatarDescriptionAction writes the Media row and schedules the media re-embed', async () => {
+    fake.enqueue([avatarRow({ sourceImageId: IMAGE_ID })]) // getNinaAvatar
+    fake.enqueue([{ id: IMAGE_ID }]) // setNinaMessageImageDescriptionAndEmbedding RETURNING
+
+    const result = await actions.editNinaAvatarDescriptionAction({ id: ID, description: 'new words' })
+
+    expect(result.ok).toBe(true)
+    const update = fake.last()
+    expect(update.sql).toContain('update "nina_message_images"')
+    expect(update.sql).not.toContain('update "nina_avatars"')
+    expect(afterCallbacks).toHaveLength(1) // scheduleMediaEmbed
+  })
+
+  it('editNinaAvatarSearchKeywordsAction writes the Media row and always schedules the media re-embed', async () => {
+    fake.enqueue([avatarRow({ sourceImageId: IMAGE_ID })]) // getNinaAvatar — description NULL on the pointer itself
+    fake.enqueue([{ id: IMAGE_ID }]) // setNinaMessageImageSearchKeywordsAndEmbedding RETURNING
+
+    const result = await actions.editNinaAvatarSearchKeywordsAction({
+      id: ID,
+      searchKeywords: 'tete, putih',
+    })
+
+    expect(result.ok).toBe(true)
+    const update = fake.last()
+    expect(update.sql).toContain('update "nina_message_images"')
+    expect(update.sql).toContain('search_keywords')
+    expect(afterCallbacks).toHaveLength(1) // scheduled unconditionally — the linked row decides for itself
+  })
+
+  it('editNinaAvatarNegativeSearchKeywordsAction writes the Media row and schedules nothing', async () => {
+    fake.enqueue([avatarRow({ sourceImageId: IMAGE_ID })]) // getNinaAvatar
+    fake.enqueue([{ id: IMAGE_ID }]) // setNinaMessageImageNegativeSearchKeywords RETURNING
+
+    const result = await actions.editNinaAvatarNegativeSearchKeywordsAction({
+      id: ID,
+      negativeSearchKeywords: 'tete',
+    })
+
+    expect(result.ok).toBe(true)
+    const update = fake.last()
+    expect(update.sql).toContain('update "nina_message_images"')
+    expect(update.sql).toContain('negative_search_keywords')
+    expect(afterCallbacks).toHaveLength(0)
   })
 })

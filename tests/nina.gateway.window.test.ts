@@ -81,6 +81,10 @@ function image(id: string, messageId: string, description: string | null, sortOr
     contentHash: null,
     perceptualHash: null,
     perceptualSig: null,
+    /* media-album-unified-search phase 2 — `imageColumns` widened `NinaImageRow` with these two;
+     * this file's window read never touches keywords, so both are the untagged default. */
+    searchKeywords: null,
+    negativeSearchKeywords: null,
     sortOrder,
     createdAt: new Date('2026-09-10T02:14:00.000Z'),
   }

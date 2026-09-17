@@ -1,21 +1,14 @@
 'use server'
 
-import { put } from '@vercel/blob'
 import { revalidatePath } from 'next/cache'
 
-import {
-  ADMIN_AVATAR_EXTS,
-  adminAvatarPathname,
-  contentTypeForAvatarExt,
-  type AdminAvatarExt,
-} from '@/lib/admin/avatars'
 import { ADMIN_CHAT_PHOTOS_PATH } from '@/lib/admin/chatPhotos'
 import { chatPhotoSetAvatarSchema } from '@/lib/admin/chatPhotoSchema'
 import type { AdminActionResult } from '@/lib/admin/ninaAlbumActions'
 import { scheduleDescribe } from '@/lib/admin/ninaAlbumDeferredDescribe'
+import { scheduleMediaDescribe } from '@/lib/admin/ninaMediaDeferredDescribe'
 import { requireAdmin } from '@/lib/admin/requireAdmin'
 import { avatarIdSchema, cropWriteSchema } from '@/lib/admin/schema'
-import { newId } from '@/lib/id'
 import { clampCrop, cropForWrite, isIdentityCrop, resolveCrop } from '@/lib/nina/crop'
 import {
   deleteNinaAvatar,
@@ -35,17 +28,18 @@ import { promoteNinaAvatarDependents } from '@/lib/nina/provenancePromotion'
  * The face itself: make a photograph hers, keep her in it, reframe it, and take it away.
  *
  *   · `setCurrentNinaAvatarAction` promotes an album row to current.
- *   · `setChatPhotoAsAvatarAction` adopts a chat photograph — the bytes are copied, not shared.
+ *   · `setChatPhotoAsAvatarAction` adopts a chat photograph — as a LINK, not a copy.
  *   · `saveNinaAvatarCropAction` saves the framing an operator dragged.
  *   · `deleteNinaAvatarAction` removes one photo — promoting anything that re-shows it first, and
  *     then releasing its blob(s) only if nothing else still points at them.
  *
  * The bulk forms of move and remove live in `lib/admin/ninaAlbumFolderActions.ts`; the deferred
- * describe that promotion schedules lives in `lib/admin/ninaAlbumDeferredDescribe.ts`. The
- * adoption helpers (`copyChatPhotoIntoAlbum`, `avatarExtFor`) stay private here because a
- * `'use server'` module exports actions, not predicates or copy routines
- * (`lib/nina/album.ts:144-148` states the rule). Nothing outside the layer imports this module;
- * everything reaches it through the `lib/admin/ninaAlbumActions.ts` barrel.
+ * describe that promotion schedules lives in `lib/admin/ninaMediaDeferredDescribe.ts` (the MEDIA
+ * one — a pointer row never earns a vector of its own). The adoption helper
+ * (`linkChatPhotoIntoAlbum`) stays private here because a `'use server'` module exports actions,
+ * not predicates or insert routines (`lib/nina/album.ts:144-148` states the rule). Nothing outside
+ * the layer imports this module; everything reaches it through the
+ * `lib/admin/ninaAlbumActions.ts` barrel.
  */
 
 /**
@@ -75,49 +69,62 @@ export async function setCurrentNinaAvatarAction(rawId: string): Promise<AdminAc
 }
 
 /**
- * "Set as her profile picture", from a CHAT photograph — the reverse of F37's share. The
- * `/admin/photos` rail's framing panel sends a chat-photo id and its whole crop draft; this makes
- * the photograph hers, exactly as `setCurrentNinaAvatarAction` does for an album row.
+ * "Set as her profile picture", from a CHAT photograph — the reverse of F37's share. The Media
+ * pane's framing panel sends a chat-photo id and its whole crop draft; this makes the photograph
+ * hers, exactly as `setCurrentNinaAvatarAction` does for an album row.
  *
- * ── THE BYTES ARE COPIED, NOT SHARED, AND THAT IS THE DECISION ────────────────────────────────
- * The two candidate designs were a `nina_avatars` row pointing at the chat photo's object, and
- * this: `fetch` + `put` into a fresh `avatar-` object. Sharing would win on storage and lose on
- * everything else. The original argument was that the album-side deletes called `del` with NO
- * reference check, so a shared object would break the day the operator removed the album row —
- * that half is fixed (the ghost-photo fix routes this file's delete through
- * `releaseBlobIfUnreferenced` and `reapAvatarBlobs` through `isBlobPathnameReferenced`), and the
- * decision survives it unchanged for the reasons that were always the stronger ones: a copy gives
- * the album row its OWN lifetime, its own folder and its own framing, so re-cropping her profile
- * picture cannot re-crop a photograph sitting in a conversation, and deleting either side cannot
- * turn the other into a row whose bytes are kept alive only by someone else's reference. A copy
- * costs one duplicate object (~100-500 KB). The adopted row also appears in `/admin/nina` (root
- * folder), where its framing can be re-tuned — which is a feature, not a leak.
+ * ══ THE BYTES ARE SHARED, NOT COPIED. THE OLD DECISION IS REVERSED, ON PURPOSE. ═════════════
+ * This function used to `fetch` the chat photograph and `put` a fresh `avatar-` object, and its
+ * docstring argued for that at length. **That argument is withdrawn** by the user's own input
+ * (`media-album-unified-search` R3): *"if admin set a picture from Media, we wouldn't copy paste a
+ * new duplicate image into Album directory … the image in Album is just a pointer to the real file
+ * in Media … this way, storage usage will be lower, and editing image description, search keyword,
+ * negative keyword in one place will automatically synchronize it with other location."*
  *
- * ── RE-ADOPTION IS A CONSTRAINT DECISION, NOT A COUNT ────────────────────────────────────────
- * The row is written with `source_key = 'chat-photo:<imageId>'`, so a second "set as her profile
- * picture" finds the FIRST adoption through `getNinaAvatarBySourceKey` before any bytes move and
- * just re-currents it — a re-frame-and-re-wear click costs one UPDATE, not a second copy. The
- * `nina_avatars_user_source_key_unq` index is the backstop for the race the lookup cannot close:
- * if the INSERT lands `ON CONFLICT DO NOTHING`, the copy is re-read by key and the orphaned
- * object joins the reaper's domain, the same exposure every upload already has.
+ * The old decision's two stated reasons are both answered by mechanisms that have nothing to do
+ * with whether bytes are copied, which is why reversing it reopens neither:
  *
- * ── THE GUARDS ARE REPLACE'S AND REMOVE'S, VERBATIM ──────────────────────────────────────────
- * `getNinaMessageImage` deliberately does not filter (it is the bubble and viewer read too), so
- * this action enforces here what Replace and Remove enforce at their own seams. The old
- * `kind !== 'generated'` refusal is gone with the merge — one of HIS uploads is adoptable like any
- * other original, which is R1's literal ask ("bahkan image yang diupload user secara manual di
- * chat session bisa ... di jadiin profpic nina juga"). What still refuses, before any bytes move,
- * is a row carrying `source_avatar_id`/`source_image_id`: a re-SHOW of a photograph that lives
- * elsewhere, and adopting it would file a second copy of bytes the original still owns.
- * `isChatPhotoReference` stays private to `lib/admin/chatPhotoActions.ts` (a `'use server'` module
- * exports actions, not predicates), so the two-field test is spelled here; the actions' refusals
- * stay one rule by tests, not by imports.
+ *   · *"its own framing"* — `crop_scale`/`crop_x`/`crop_y` are this row's OWN columns and stay so.
+ *     Re-cropping her profile picture still cannot re-crop the bubble; the crop was never in the
+ *     bytes.
+ *   · *"deleting either side cannot turn the other into a row whose bytes are kept alive only by
+ *     someone else's reference"* — `releaseBlobIfUnreferenced`/`isBlobPathnameReferenced` already
+ *     do reference-checked shared-blob deletion across BOTH tables, and this set adds the two
+ *     guards that close the row-level half: `deleteNinaAvatarAction` releases nothing for a
+ *     pointer (it never owned the object) and `removeChatPhotoAction` refuses to delete a Media
+ *     row an album pointer still names (`source_image_id` is `ON DELETE RESTRICT`).
  *
- * ── THE DESCRIPTION IS SEEDED, AND ONLY A NULL EARNS A VENDOR CALL ───────────────────────────
- * `insertNinaAvatars` writes the chat row's own `description` into the album row — the same
- * bytes `glm-4.6v` already described, so promoting a described photograph costs no second call
- * and no second token-floor exposure. A NULL description behaves exactly as it does on the
- * album path: `scheduleDescribe` fills it after the response, non-fatally.
+ * A live cross-table read with no copy is already proven in production by
+ * `resolveNinaPhotoReference` (`lib/nina/queries/imageprefs.ts`), which resolves a stored
+ * `{source, id}` against whichever table `source` names, at generation time, copying nothing.
+ *
+ * ── AND THE POINTER ROW CARRIES NO PROSE OF ITS OWN ─────────────────────────────────────────
+ * `description` is deliberately NOT seeded from the chat row any more — the line that did it is
+ * gone rather than kept. A pointer row's `description`, `search_keywords`,
+ * `negative_search_keywords` and `description_embedding` are all permanently NULL and the truth
+ * lives on the Media row (`lib/nina/queries/avatarPointer.ts`). That is what makes R3's *"editing
+ * in one place automatically synchronize"* true by construction rather than by a sync mechanism
+ * that could get it wrong.
+ *
+ * ── RE-ADOPTION IS STILL A CONSTRAINT DECISION ──────────────────────────────────────────────
+ * Unchanged: the row is written with `source_key = 'chat-photo:<imageId>'`, so a second click
+ * finds the first adoption through `getNinaAvatarBySourceKey` and just re-currents it, and
+ * `nina_avatars_user_source_key_unq` is the backstop for the race the lookup cannot close. What
+ * changes is the cost of losing that race: nothing. There is no orphaned object to reap any more,
+ * because no object was minted.
+ *
+ * ── THE GUARDS ARE REPLACE'S AND REMOVE'S, VERBATIM ─────────────────────────────────────────
+ * Unchanged. `getNinaMessageImage` deliberately does not filter (it is the bubble and viewer read
+ * too), so this action enforces here what Replace and Remove enforce at their own seams: a row
+ * carrying `source_avatar_id`/`source_image_id` is a re-SHOW, and pointing an album entry at a
+ * pointer would be a link to a link.
+ *
+ * ── AND THE DESCRIBE IT SCHEDULES IS THE **MEDIA** ONE ──────────────────────────────────────
+ * `scheduleMediaDescribe(userId, row.id)`, not `scheduleDescribe(userId, avatar.id)`. The pointer
+ * row will never carry a vector, so scheduling the album worker on it would be a read that finds
+ * a NULL description it must not invent prose for, every single time. The row that needs prose and
+ * a vector is the MEDIA row — and after this phase that row is the one the merged search ranks,
+ * so this is also what makes a freshly-promoted photograph findable at all.
  */
 export async function setChatPhotoAsAvatarAction(input: unknown): Promise<AdminActionResult> {
   const { userId } = await requireAdmin()
@@ -138,18 +145,17 @@ export async function setChatPhotoAsAvatarAction(input: unknown): Promise<AdminA
   /*
    * The schema can only reject nonsense; the clamp against the row's REAL dimensions is what
    * guarantees the stored numbers keep the circle covered — `saveNinaAvatarCropAction`'s
-   * server-side guarantee, same reason. Identity stays three NULLs by never being written: the
-   * fresh row's crop columns default to NULL and `isIdentityCrop` skips the UPDATE.
+   * server-side guarantee, same reason. Identity stays three NULLs by never being written.
    */
   const crop = clampCrop({ width: row.width, height: row.height }, resolveCrop({ scale, x, y }))
   const sourceKey = `chat-photo:${row.id}`
 
   let avatar = await getNinaAvatarBySourceKey(userId, sourceKey)
   if (avatar == null) {
-    avatar = await copyChatPhotoIntoAlbum(userId, row, sourceKey)
+    avatar = await linkChatPhotoIntoAlbum(userId, row, sourceKey)
   }
   if (avatar == null) {
-    return { ok: false, error: 'The copy into her album did not land. Try again.' }
+    return { ok: false, error: 'The link into her album did not land. Try again.' }
   }
 
   if (!isIdentityCrop(crop)) {
@@ -158,92 +164,72 @@ export async function setChatPhotoAsAvatarAction(input: unknown): Promise<AdminA
 
   await setCurrentNinaAvatar(userId, avatar.id)
   /*
-   * UNCONDITIONAL, since `admin-album-semantic-search`. The `if (avatar.description == null)`
-   * guard that used to be here was a caller's guess at whether work was needed, and the seeding
-   * two paragraphs up is exactly what made it wrong: `copyChatPhotoIntoAlbum` writes the CHAT
-   * row's description into the album row, and a chat row has never carried a
-   * `description_embedding`. Guarded, that photograph would be described (it already is) and never
-   * embedded — permanently invisible to R2's search, with nothing in the album to indicate it.
-   *
-   * `scheduleDescribe` re-reads the row inside its `after()` and decides for itself: prose and
-   * vector both present is an authoritative skip with no vendor call, which is the property its
-   * own docstring has always claimed ("the skip is authoritative at the moment the work would
-   * actually run"). Deleting the guard restores that claim rather than weakening it.
+   * The MEDIA row, not the album row — see the docstring's last block. `scheduleMediaDescribe`
+   * re-reads inside its `after()` and decides for itself: prose and vector both present is an
+   * authoritative skip with no vendor call, which is the property the scheduler's own docstring
+   * claims. So promoting an already-described, already-embedded photograph costs one indexed read.
    */
-  scheduleDescribe(userId, avatar.id)
+  scheduleMediaDescribe(userId, row.id)
 
   revalidatePath(ADMIN_CHAT_PHOTOS_PATH)
   return { ok: true, id: avatar.id }
 }
 
 /**
- * `fetch` the chat photograph and `put` it beside her album as `avatar-`, then insert the row.
- * BYTES FIRST, ROWS SECOND — the create-side mirror of "row first, blob second": a failed copy
- * writes nothing, while a failed insert at worst leaves an orphan object, which is the recoverable
- * direction and `scripts/blob-reap.mjs`'s domain. Not exported: a `'use server'` module may export
- * only async actions, and this is a helper with a caller.
+ * Insert the album row that POINTS at a chat photograph. No `fetch`, no `put`, no second Blob
+ * object, no second copy of the prose. `media-album-unified-search` R3.
  *
- * The row records `put`'s RETURN, never the requested pathname — `addRandomSuffix: true` rewrites
- * it, and a row pointing at the requested form would point at an object that does not exist.
+ * ── WHAT IT WRITES, FIELD BY FIELD, AND WHY EACH IS WHAT IT IS ──────────────────────────────
+ *   · `blobUrl` / `pathname` — the MEDIA row's own, verbatim. The two rows now name one object,
+ *     which is the storage saving R3 asked for and the reason both deletes grew a guard.
+ *   · `sourceImageId` — the link itself, and the flag that marks this row a pointer. Every read of
+ *     this row's prose goes through it (`lib/nina/queries/avatarPointer.ts`).
+ *   · `description` — ABSENT. A pointer holds none; see the action's docstring. The line that used
+ *     to read `description: row.description` is deleted, not commented out, because a copied
+ *     description is exactly the second source of truth R3 exists to remove.
+ *   · `sourceKey` — still `chat-photo:<imageId>`, so the re-adoption idempotency the unique index
+ *     backs keeps working completely unchanged.
+ *   · `width`/`height`/`bytes` — plain numbers copied from the row, as they always were: they
+ *     describe the bytes, and the bytes are the same bytes.
+ *   · `folder: ''` and `filename: null` — unchanged. A linked entry is an ordinary album entry for
+ *     every purpose except where its bytes and its prose live: the operator can move it between
+ *     folders, re-frame it and make it current exactly like any other.
+ *
+ * ── NO `try`/`catch` LEFT, AND THAT IS NOT AN OMISSION ──────────────────────────────────────
+ * The old body wrapped a `fetch` and a `put` — two vendor calls whose failure had to become one
+ * `{ ok: false }` sentence rather than a framework error page. There is no vendor call here any
+ * more; what remains is one INSERT through the query layer, which is exactly as exceptional as
+ * every other statement this module runs unguarded. The one non-exceptional failure — the unique
+ * index racing the lookup — is still handled, below, by re-reading the row the winner wrote.
+ *
+ * Not exported: a `'use server'` module may export only async actions, and this is a helper with
+ * one caller.
  */
-async function copyChatPhotoIntoAlbum(
+async function linkChatPhotoIntoAlbum(
   userId: string,
   row: NinaImageRow,
   sourceKey: string,
 ): Promise<NinaAvatarRow | null> {
-  const ext = avatarExtFor(row.pathname)
-  if (ext == null) return null
+  const [inserted] = await insertNinaAvatars(userId, [
+    {
+      blobUrl: row.blobUrl,
+      pathname: row.pathname,
+      source: 'admin',
+      folder: '',
+      filename: null,
+      sourceKey,
+      sourceImageId: row.id,
+      width: row.width,
+      height: row.height,
+      bytes: row.bytes,
+    },
+  ])
+  if (inserted != null) return inserted
 
-  /*
-   * `describeNinaAvatarAction`'s posture for a vendor-shaped call inside an action: the failure is
-   * caught here and reported as one `{ ok: false }` sentence, not thrown — an unhandled rejection
-   * in a Server Action is a framework error page, and "the store could not be reached" is an
-   * operator-actionable state, not a bug report.
-   */
-  try {
-    const response = await fetch(row.blobUrl)
-    if (!response.ok) return null
-    const bytes = await response.arrayBuffer()
-
-    const stored = await put(adminAvatarPathname(userId, newId(), ext), bytes, {
-      access: 'public',
-      addRandomSuffix: true,
-      contentType: contentTypeForAvatarExt(ext),
-    })
-
-    const [inserted] = await insertNinaAvatars(userId, [
-      {
-        blobUrl: stored.url,
-        pathname: stored.pathname,
-        source: 'admin',
-        folder: '',
-        filename: null,
-        sourceKey,
-        width: row.width,
-        height: row.height,
-        bytes: row.bytes,
-        description: row.description,
-      },
-    ])
-    if (inserted != null) return inserted
-
-    // The unique index raced the lookup — another tab adopted this photograph between the read
-    // and the insert. The album row is what the operator meant; the second copy is the reaper's.
-    return getNinaAvatarBySourceKey(userId, sourceKey)
-  } catch (cause) {
-    console.error(
-      '[f34] chat-photo adoption copy failed',
-      { id: row.id, pathname: row.pathname },
-      cause,
-    )
-    return null
-  }
-}
-
-/** The container a chat photograph arrives in, or `null` if it is not one the album accepts. */
-function avatarExtFor(pathname: string): AdminAvatarExt | null {
-  const ext = pathname.slice(pathname.lastIndexOf('.') + 1).toLowerCase()
-  return (ADMIN_AVATAR_EXTS as readonly string[]).includes(ext) ? (ext as AdminAvatarExt) : null
+  // The unique index raced the lookup — another tab adopted this photograph between the read and
+  // the insert. The row the winner wrote is what the operator meant, and it points at the same
+  // object and the same prose, so there is nothing to reconcile and nothing to reap.
+  return getNinaAvatarBySourceKey(userId, sourceKey)
 }
 
 /**
@@ -320,13 +306,37 @@ export async function saveNinaAvatarCropAction(input: unknown): Promise<AdminAct
  * (`scripts/nina-dedupe-plan.mjs` hashes every row, references included), and both dedup reads
  * filter references — so the only cost is a GET that bought nothing. Buying a pre-read to avoid it
  * would cost one every time, for the common case that succeeds.
+ *
+ * ── AND A POINTER ROW RELEASES NOTHING, BECAUSE IT NEVER OWNED ANYTHING ─────────────────────
+ * `media-album-unified-search` R3. A row with `source_image_id` set shows the MEDIA row's object;
+ * it minted none of its own and it has no thumbnail (nothing generates one for a link). So step 3
+ * is skipped entirely for it.
+ *
+ * Asking anyway would be SAFE rather than wrong — `isBlobPathnameReferenced` reads both tables, the
+ * Media row still names the pathname, the answer would be `'shared'` and the object would be kept.
+ * It is skipped because it is two SELECTs and a `del`-adjacent code path spent re-deriving a fact
+ * the `ON DELETE RESTRICT` FK already guarantees, and because the absence of the call is the
+ * clearest statement of the invariant there is.
+ *
+ * **Step 1 is NOT skipped for a pointer, and that is deliberate.** `promoteNinaAvatarDependents`
+ * looks for `nina_message_images` rows whose `source_avatar_id` names THIS avatar — a chat re-share
+ * of it (F37 R3), which a pointer row can have exactly like any other album row. That FK is
+ * `ON DELETE SET NULL` and it fires inside the DELETE below, so skipping the promotion would mint
+ * precisely the unmeasured ghost `lib/nina/provenancePromotion.ts` exists to bury.
  */
 export async function deleteNinaAvatarAction(rawId: string): Promise<AdminActionResult> {
   const { userId } = await requireAdmin()
   const parsed = avatarIdSchema.safeParse(rawId)
   if (!parsed.success) return { ok: false, error: 'Not an avatar id.' }
 
-  /* STEP 1 — while `parsed.data` still links them. Never throws; see the module's header. */
+  /* Read BEFORE the delete, because `deleteNinaAvatar`'s RETURNING projection is the blob-ref
+   * shape and does not carry `source_image_id` — and after the DELETE there is nothing left to
+   * ask. One indexed single-row read on a human-paced path. */
+  const existing = await getNinaAvatar(userId, parsed.data)
+  if (existing == null) return { ok: false, error: 'That photo is not in the album.' }
+
+  /* STEP 1 — while `parsed.data` still links them. Never throws; see the module's header. Run for
+   * a pointer row too: a chat row can re-show it, and that link is about to be cut. */
   await promoteNinaAvatarDependents(userId, [parsed.data])
 
   /* STEP 2 — the row. This is the statement inside which `ON DELETE SET NULL` fires. */
@@ -335,21 +345,24 @@ export async function deleteNinaAvatarAction(rawId: string): Promise<AdminAction
     return { ok: false, error: 'That is her current photo — make another one current first.' }
   }
 
-  /* STEP 3 — the bytes, per object, and only if nothing else names them. */
-  await releaseBlobIfUnreferenced(userId, {
-    blobUrl: removed.blobUrl,
-    pathname: removed.pathname,
-  })
-  if (removed.thumbUrl != null) {
-    /* `thumb_pathname` and `thumb_url` are written together by `registerNinaAvatarsAction`, so a
-     * URL with no pathname is not a state this table produces. If one ever appeared, asking about
-     * the URL under both parameters is still a correct question — `isBlobPathnameReferenced` ORs
-     * the pathname columns with the URL columns, and a pathname that matches nothing simply
-     * contributes nothing to the answer. */
+  /* STEP 3 — the bytes, per object, and only if nothing else names them. A POINTER OWNS NO BYTES,
+   * so it releases nothing at all; see the docstring's own block. */
+  if (existing.sourceImageId == null) {
     await releaseBlobIfUnreferenced(userId, {
-      blobUrl: removed.thumbUrl,
-      pathname: removed.thumbPathname ?? removed.thumbUrl,
+      blobUrl: removed.blobUrl,
+      pathname: removed.pathname,
     })
+    if (removed.thumbUrl != null) {
+      /* `thumb_pathname` and `thumb_url` are written together by `registerNinaAvatarsAction`, so a
+       * URL with no pathname is not a state this table produces. If one ever appeared, asking about
+       * the URL under both parameters is still a correct question — `isBlobPathnameReferenced` ORs
+       * the pathname columns with the URL columns, and a pathname that matches nothing simply
+       * contributes nothing to the answer. */
+      await releaseBlobIfUnreferenced(userId, {
+        blobUrl: removed.thumbUrl,
+        pathname: removed.thumbPathname ?? removed.thumbUrl,
+      })
+    }
   }
 
   revalidatePath('/admin/nina')

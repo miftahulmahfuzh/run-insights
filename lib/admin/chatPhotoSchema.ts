@@ -3,6 +3,8 @@ import { z } from 'zod'
 import {
   ADMIN_CHAT_PHOTO_MAX_DESCRIPTION_CHARS,
   ADMIN_CHAT_PHOTO_MAX_EDGE_PX,
+  ADMIN_CHAT_PHOTO_MAX_NEGATIVE_SEARCH_KEYWORDS_CHARS,
+  ADMIN_CHAT_PHOTO_MAX_SEARCH_KEYWORDS_CHARS,
   ADMIN_CHAT_PHOTO_MAX_UPLOAD_BYTES,
   ADMIN_CHAT_PHOTO_MAX_URL_CHARS,
   blobUrlMatchesPathname,
@@ -145,6 +147,51 @@ export const chatPhotoDescriptionField = z
 export const chatPhotoDescriptionSchema = z.object({
   id: chatPhotoId,
   description: chatPhotoDescriptionField,
+})
+
+/**
+ * **"Tag this photograph with the words it should be findable by", as a field.**
+ * `media-album-unified-search` R2 — the media twin of `avatarSearchKeywordsField`
+ * (`lib/admin/schema.ts`), and normalised identically for the identical reason.
+ *
+ * `\s+` folded to one space and trimmed — this is a LINE, not a paragraph, unlike
+ * `chatPhotoDescriptionField` above, which preserves blank lines because it holds prose. Nothing
+ * is split, sorted, de-duplicated or case-folded: the commas are a human's convention, and
+ * `buildNinaAvatarEmbedText` embeds what the operator typed.
+ *
+ * `.max()` before `.transform()`, this file's rule: an over-long paste is REFUSED and reported
+ * inline, never silently truncated into range. No `.min(1)`, also this file's rule: an
+ * all-whitespace box normalises to `''`, this accepts it, and the action turns it into `NULL`.
+ */
+export const chatPhotoSearchKeywordsField = z
+  .string()
+  .max(ADMIN_CHAT_PHOTO_MAX_SEARCH_KEYWORDS_CHARS)
+  .transform((value) => value.replace(/\s+/g, ' ').trim())
+
+/** The hand-edit write. `chatPhotoDescriptionSchema`'s exact shape for the other free-text column. */
+export const chatPhotoSearchKeywordsSchema = z.object({
+  id: chatPhotoId,
+  searchKeywords: chatPhotoSearchKeywordsField,
+})
+
+/**
+ * **"Tell the search what this photograph should never match", as a field.**
+ * `media-album-unified-search` R2 — the media twin of `avatarNegativeSearchKeywordsField`.
+ *
+ * Same normalisation as the field above and for the same reason: it is about to be checked
+ * word-for-word against a typed query. `matchesNegativeKeyword`
+ * (`lib/nina/queries/avatarsearch.ts`) owns the comma split and the case-insensitive compare; this
+ * schema only bounds the shape.
+ */
+export const chatPhotoNegativeSearchKeywordsField = z
+  .string()
+  .max(ADMIN_CHAT_PHOTO_MAX_NEGATIVE_SEARCH_KEYWORDS_CHARS)
+  .transform((value) => value.replace(/\s+/g, ' ').trim())
+
+/** The hand-edit write. `chatPhotoSearchKeywordsSchema`'s exact twin for the other column. */
+export const chatPhotoNegativeSearchKeywordsSchema = z.object({
+  id: chatPhotoId,
+  negativeSearchKeywords: chatPhotoNegativeSearchKeywordsField,
 })
 
 /**

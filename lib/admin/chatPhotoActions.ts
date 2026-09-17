@@ -27,6 +27,7 @@ import { releaseBlobIfUnreferenced } from '@/lib/nina/blobRelease'
 import { promoteNinaImageDependents } from '@/lib/nina/provenancePromotion'
 import { ninaImageCaption } from '@/lib/nina/imagefail'
 import {
+  countNinaAvatarsLinkedToImage,
   deleteNinaMessage,
   deleteNinaMessageImage,
   findNinaImageByContentHash,
@@ -37,6 +38,7 @@ import {
   insertNinaMessages,
   readNinaTuning,
   setNinaMessageImageDescription,
+  setNinaMessageImageDescriptionAndEmbedding,
   updateNinaChatPhotoBlob,
   updateNinaChatPhotoDescription,
   updateNinaChatPhotoPerceptualSignature,
@@ -44,6 +46,7 @@ import {
   type NinaImageRow,
   type NinaMessageRow,
 } from '@/lib/nina/queries'
+import { embedNinaMessageImageDescription, scheduleMediaEmbed } from '@/lib/admin/ninaMediaDeferredDescribe'
 import { resolveNinaWriteSession } from '@/lib/nina/sessionResolve'
 import { fetchAndSignImage } from '@/lib/nina/perceptualSign'
 import { NinaVisionTokenFloorError, describeNinaImages } from '@/lib/nina/vision'
@@ -619,6 +622,23 @@ export async function findChatPhotoDuplicateAction(
  * It sits ABOVE `loadPhotoCarrier` for a reason worth one line: an ORPHANED reference row would
  * otherwise take the `{ message: null, siblings: [] }` short-circuit straight into
  * `deleteNinaMessageImage`, which is exactly the delete this paragraph forbids.
+ *
+ * ── AND A PHOTOGRAPH AN ALBUM ENTRY POINTS AT CANNOT LEAVE ─────────────────────────────────
+ * `media-album-unified-search` R3. Since the promotion became a LINK, a `nina_avatars` row can
+ * name this row through `source_image_id` and show its object without owning a byte. The FK is
+ * `ON DELETE RESTRICT` — the plan index's Decision argues why, against `SET NULL` (a pointer with
+ * no bytes, unrecoverable) and `CASCADE` (silently losing the "current profile picture"
+ * designation) — so Postgres refuses this delete either way.
+ *
+ * The check below turns that refusal into the shape the operator already knows from
+ * `deleteNinaAvatarAction`'s *"That is her current photo — make another one current first."*: one
+ * sentence naming the fix, instead of a constraint violation surfaced as a framework error page.
+ * The constraint stays the backstop for the race this read cannot close, exactly as
+ * `nina_avatars_user_source_key_unq` is for re-adoption's.
+ *
+ * It sits ABOVE `loadPhotoCarrier` and above `promoteNinaImageDependents` for
+ * `isChatPhotoReference`'s stated reason, one refusal over: nothing may be measured, promoted or
+ * deleted on behalf of a remove that is not going to happen.
  */
 export async function removeChatPhotoAction(input: unknown): Promise<ChatPhotoActionResult> {
   const { userId } = await requireAdmin()
@@ -633,6 +653,17 @@ export async function removeChatPhotoAction(input: unknown): Promise<ChatPhotoAc
     return {
       ok: false,
       error: 'That one re-shows a photo that lives elsewhere. Remove the original instead.',
+    }
+  }
+
+  const linked = await countNinaAvatarsLinkedToImage(userId, id)
+  if (linked > 0) {
+    return {
+      ok: false,
+      error:
+        linked === 1
+          ? 'An album entry shows this photo — remove it from the album first.'
+          : `${linked} album entries show this photo — remove them from the album first.`,
     }
   }
 
@@ -740,6 +771,30 @@ export async function editChatPhotoDescriptionAction(
   const updated = await updateNinaChatPhotoDescription(userId, id, next)
   if (updated == null) return { ok: false, error: 'That photo is not in the collection.' }
 
+  /*
+   * ── AND THE VECTOR, WHICH THIS ACTION COULD NOT TOUCH UNTIL TODAY ───────────────────────────
+   * `media-album-unified-search` R1. `nina_message_images.description_embedding` did not exist
+   * when this action was written, which is why it has never embedded anything — not a decision,
+   * an absence. Now that the column is real, the rule is the album's:
+   * `editNinaAvatarDescriptionAction`'s *"a stale vector is worse than a missing one, because a
+   * missing one is visible in the backlog count and a stale one is invisible until a search
+   * returns the wrong photo."*
+   *
+   * The vector is retracted HERE rather than inside `updateNinaChatPhotoDescription`, and the
+   * difference matters: that statement's docstring makes the columns it touches (and the ones it
+   * does NOT) its contract, and `scheduleChatPhotoCaption`'s HALF ONE writes prose through a
+   * different statement for a different reason. So the retraction is one explicit call on the
+   * path that has the human's new words, and `scheduleMediaEmbed` re-earns the vector after the
+   * response has gone out.
+   *
+   * `null` in, `null` out: a CLEARED box leaves prose and vector both NULL, which is the honest
+   * state and the one `listNinaMessageImageDescribeBacklog` already looks for. `scheduleMediaEmbed`
+   * and never `scheduleMediaDescribe`: a cleared box must not summon `glm-4.6v` to invent prose the
+   * operator just removed.
+   */
+  await setNinaMessageImageDescriptionAndEmbedding(userId, id, next, null)
+  if (next != null) scheduleMediaEmbed(userId, id)
+
   revalidatePath(ADMIN_CHAT_PHOTOS_PATH)
   return {
     ok: true,
@@ -813,7 +868,36 @@ export async function describeChatPhotoAction(input: unknown): Promise<ChatPhoto
       [{ blobUrl: row.blobUrl, pathname: row.pathname }],
       { subject: describeSubjectForSide(photoSideOf(row.kind)) },
     )
-    const written = await setNinaMessageImageDescription(userId, id, description)
+    /*
+     * ── AND THE VECTOR, IN THE SAME UPDATE ──────────────────────────────────────────────────
+     * `media-album-unified-search` R1, and `describeNinaAvatarAction`'s argument one table over:
+     * this action OVERWRITES whatever was stored, so leaving the old vector in place would leave
+     * the photo searchable under prose it just stopped having.
+     *
+     * IN BAND rather than `after()`, for that action's arithmetic: the operator is already waiting
+     * ~8-11 s for the vision call they clicked, and an embedding is one small text request with no
+     * image in it. `embedNinaMessageImageDescription` never throws — an embedding outage must not
+     * turn a successful describe into a failed one; it answers `null`, the row is written
+     * prose-with-no-vector, and phase 4's sweep picks it up.
+     *
+     * ── AND IT READS `search_keywords` WITHOUT WRITING IT ───────────────────────────────────
+     * The keywords are the operator's correction of exactly this model's opinion, and a pass that
+     * cleared them would erase the correction every time it was needed. The row's stored value is
+     * read here and handed to the embedder so the new vector still carries the tags;
+     * `setNinaMessageImageDescriptionAndEmbedding` sets two columns and `search_keywords` is not
+     * one of them, so the omission is structural.
+     *
+     * The statement changes from `setNinaMessageImageDescription` to the embedding twin, and the
+     * reason the old one was chosen still holds for its remaining caller: a vision pass that
+     * produced nothing writes nothing, and NULL is not among this path's outcomes.
+     */
+    const embedding = await embedNinaMessageImageDescription(description, row.searchKeywords, userId)
+    const written = await setNinaMessageImageDescriptionAndEmbedding(
+      userId,
+      id,
+      description,
+      embedding,
+    )
     if (!written) return { ok: false, error: 'That photo is not in the collection.' }
 
     revalidatePath(ADMIN_CHAT_PHOTOS_PATH)

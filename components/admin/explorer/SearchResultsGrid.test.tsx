@@ -23,6 +23,10 @@ import type { AdminSearchHit } from '@/lib/admin/ninaAlbumActions'
  * ignores it.
  */
 const HIT: AdminSearchHit = {
+  /* media-album-unified-search phase 2 — `AdminSearchHit` grew `origin` and the two keyword
+   * fields; a partial literal no longer typechecks. Mechanical fixture fix only, so this phase's
+   * `tsc --noEmit` stays green; Phase 3 owns this file's own coverage. */
+  origin: 'album',
   id: 'a1',
   url: 'https://blob.example/nina/avatar-a1.jpg',
   thumbUrl: 'https://blob.example/nina/avatar-a1-thumb.jpg',
@@ -34,6 +38,8 @@ const HIT: AdminSearchHit = {
   source: 'upload',
   isCurrent: false,
   description: 'She is on a trail at sunrise.',
+  searchKeywords: null,
+  negativeSearchKeywords: null,
   crop: { scale: null, x: null, y: null },
   createdAt: '2026-09-01T02:30:00.000Z',
   score: 0.81,

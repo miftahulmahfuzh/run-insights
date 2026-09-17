@@ -19,7 +19,9 @@
  *   queries/turns.ts       §8               the turn audit trail
  *   queries/avatars.ts     §9 + §9b         her album and its file-manager reads
  *   queries/avatarEmbeddings.ts §9c    the description_embedding writes (semantic search)
- *   queries/avatarsearch.ts     §9d    the album's semantic search (R2/R3/R4)
+ *   queries/imageEmbeddings.ts  §5c    the MEDIA description_embedding writes (unified search)
+ *   queries/avatarPointer.ts    §9e    where a linked album row's prose actually lives
+ *   queries/avatarsearch.ts     §9d    the MERGED semantic search over both tables (R1/R2/R3)
  *   queries/tuning.ts      §10              character tuning
  *   queries/imageprefs.ts  §10b             image-gen prefs + photo references
  *   queries/jobphotos.ts   §11 + §12        the job → photograph link
@@ -68,6 +70,8 @@ export * from './queries/nags'
 export * from './queries/turns'
 export * from './queries/avatars'
 export * from './queries/avatarEmbeddings'
+export * from './queries/imageEmbeddings'
+export * from './queries/avatarPointer'
 export * from './queries/avatarsearch'
 export * from './queries/tuning'
 export * from './queries/imageprefs'

@@ -92,6 +92,17 @@ export type AdminSearchMode = 'text' | 'image' | 'both'
  * reads only seven of these fields and prints none of the prose.
  */
 export interface AdminSearchHit {
+  /**
+   * **Which collection this photograph lives in.** `media-album-unified-search` R1 — search now
+   * ranks `nina_avatars` and `nina_message_images` into one list, and the two need different deep
+   * links and different pane affordances.
+   *
+   * It mirrors `ExplorerPhoto`'s own discriminant (`components/admin/explorer/model.ts`) by name
+   * and by value, so `{ ...hit }` still lands as a drawable explorer row — which is the property
+   * this type's own note calls deliberate: *"add `origin: 'album'` and this IS an
+   * `AlbumExplorerPhoto`"*. It is now carried rather than added at the call site.
+   */
+  origin: 'album' | 'media'
   id: string
   /** The ORIGINAL blob — what the full-screen viewer reads. */
   url: string
@@ -107,6 +118,16 @@ export interface AdminSearchHit {
   isCurrent: boolean
   /** Carried, never rendered — `components/admin/explorer/model.ts:49`, invariant 5. */
   description: string | null
+  /**
+   * The operator's hand-written search phrases, or `null`. Carried so a result opened in the pane
+   * shows the same two boxes the browsing grid does, without a second round trip. For an ALBUM
+   * hit this is the row's own column; a POINTER album row never appears in results at all (its
+   * vector is permanently NULL — `lib/nina/queries/avatarsearch.ts`'s `albumSearchScope`), so this
+   * is never the borrowed value and never NULL-because-linked.
+   */
+  searchKeywords: string | null
+  /** The operator's hand-written EXCLUSION phrases, or `null`. Same carriage, same reason. */
+  negativeSearchKeywords: string | null
   crop: NinaCropInput
   /** ISO 8601. A `Date` does not survive the RSC boundary. */
   createdAt: string
@@ -126,6 +147,9 @@ export interface AdminSearchResult extends AdminActionResult {
    * How many album rows carried an embedding and were therefore actually compared. The coverage
    * number, not the album's size: while phase 2's backfill has not run, this is small and the
    * results pane should say so rather than let the operator conclude the photo is not there.
+   *
+   * Since `media-album-unified-search` it is the SUM across BOTH collections — album rows plus
+   * media rows that carry a `description_embedding` and are not superseded by a legacy copy.
    */
   searched: number
   mode: AdminSearchMode

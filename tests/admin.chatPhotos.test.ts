@@ -389,11 +389,16 @@ const { FakeVisionTokenFloorError } = vi.hoisted(() => ({
 }))
 
 const requireAdmin = vi.fn()
+const countNinaAvatarsLinkedToImage = vi.fn()
 const getNinaMessageImage = vi.fn()
 const findNinaImageByContentHash = vi.fn()
 const insertNinaMessages = vi.fn()
 const insertNinaMessageImages = vi.fn()
 const setNinaMessageImageDescription = vi.fn()
+const setNinaMessageImageDescriptionAndEmbedding = vi.fn()
+const embedNinaMessageImageDescription = vi.fn()
+const scheduleMediaEmbed = vi.fn()
+const scheduleMediaDescribe = vi.fn()
 const updateNinaChatPhotoBlob = vi.fn()
 const updateNinaChatPhotoDescription = vi.fn()
 const updateNinaChatPhotoPerceptualSignature = vi.fn()
@@ -434,6 +439,7 @@ vi.mock('@/lib/nina/caption', () => ({
   captionNinaPhoto: (...args: unknown[]) => captionNinaPhoto(...args),
 }))
 vi.mock('@/lib/nina/queries', () => ({
+  countNinaAvatarsLinkedToImage: (...args: unknown[]) => countNinaAvatarsLinkedToImage(...args),
   deleteNinaMessage: vi.fn(),
   deleteNinaMessageImage: vi.fn(),
   findNinaImageByContentHash: (...args: unknown[]) => findNinaImageByContentHash(...args),
@@ -445,6 +451,8 @@ vi.mock('@/lib/nina/queries', () => ({
   isBlobPathnameReferenced: vi.fn(),
   readNinaTuning: (...args: unknown[]) => readNinaTuning(...args),
   setNinaMessageImageDescription: (...args: unknown[]) => setNinaMessageImageDescription(...args),
+  setNinaMessageImageDescriptionAndEmbedding: (...args: unknown[]) =>
+    setNinaMessageImageDescriptionAndEmbedding(...args),
   updateNinaChatPhotoBlob: (...args: unknown[]) => updateNinaChatPhotoBlob(...args),
   updateNinaChatPhotoDescription: (...args: unknown[]) => updateNinaChatPhotoDescription(...args),
   updateNinaChatPhotoPerceptualSignature: (...args: unknown[]) =>
@@ -455,6 +463,18 @@ vi.mock('@/lib/nina/blobRelease', () => ({ releaseBlobIfUnreferenced: vi.fn() })
 vi.mock('@/lib/nina/provenancePromotion', () => ({
   promoteNinaImageDependents: (...args: unknown[]) => promoteNinaImageDependents(...args),
   promoteNinaAvatarDependents: vi.fn(),
+}))
+/*
+ * media-album-unified-search phase 2: the MEDIA re-embed edge — `editChatPhotoDescriptionAction`
+ * and `describeChatPhotoAction` now schedule/embed through this module. Mocked wholesale, same
+ * posture as `@/lib/nina/queries` above: this file asserts wiring, not the embed pipeline's own
+ * behaviour (that is `tests/admin.mediaDescribeEmbed.test.ts`'s job).
+ */
+vi.mock('@/lib/admin/ninaMediaDeferredDescribe', () => ({
+  embedNinaMessageImageDescription: (...args: unknown[]) =>
+    embedNinaMessageImageDescription(...args),
+  scheduleMediaEmbed: (...args: unknown[]) => scheduleMediaEmbed(...args),
+  scheduleMediaDescribe: (...args: unknown[]) => scheduleMediaDescribe(...args),
 }))
 
 /**
@@ -541,6 +561,10 @@ beforeEach(async () => {
     finishReason: 'stop',
   })
   setNinaMessageImageDescription.mockResolvedValue(undefined)
+  setNinaMessageImageDescriptionAndEmbedding.mockResolvedValue(true)
+  embedNinaMessageImageDescription.mockResolvedValue(null)
+  scheduleMediaEmbed.mockReset()
+  scheduleMediaDescribe.mockReset()
   readNinaTuning.mockResolvedValue(NINA_TUNING_DEFAULTS)
   captionNinaPhoto.mockResolvedValue(CAPTION)
   updateNinaMessage.mockResolvedValue({ id: MESSAGE_ID })
@@ -1262,16 +1286,22 @@ describe('editChatPhotoDescriptionAction', () => {
     expect(result.note).toMatch(/could not see it/)
   })
 
-  it('pays for no model call, schedules no after() pass, and does not re-caption the bubble', async () => {
+  it('pays for no VISION model call, and does not re-caption the bubble', async () => {
     // Invariant 5 of the plan set, asserted rather than reviewed. And the last assertion is the
     // phase's own rule: editing what she SAW is not editing what she SAID.
+    //
+    // media-album-unified-search phase 2: this action now nulls `description_embedding` in the
+    // same UPDATE and schedules `scheduleMediaEmbed` to re-earn it — that IS a real `after()` pass
+    // in production, mocked wholesale here (see the module mock above) since this file's posture
+    // is wiring, not the embed pipeline's own behaviour.
     await actions.editChatPhotoDescriptionAction({ id: IMAGE_ID, description: PROSE })
 
-    expect(afterCallbacks).toHaveLength(0)
     expect(describeNinaImages).not.toHaveBeenCalled()
     expect(captionNinaPhoto).not.toHaveBeenCalled()
     expect(updateNinaMessage).not.toHaveBeenCalled()
     expect(setNinaMessageImageDescription).not.toHaveBeenCalled()
+    expect(setNinaMessageImageDescriptionAndEmbedding).toHaveBeenCalledWith(USER, IMAGE_ID, PROSE, null)
+    expect(scheduleMediaEmbed).toHaveBeenCalledWith(USER, IMAGE_ID)
   })
 
   it('refuses a row that is not in the collection', async () => {
@@ -1390,6 +1420,9 @@ beforeEach(() => {
   // The caption suite's shared beforeEach leaves `setNinaMessageImageDescription` resolving
   // `undefined` (its callback never reads the answer); these actions DO, so they need the row.
   setNinaMessageImageDescription.mockResolvedValue({ id: IMAGE_ID })
+  // media-album-unified-search phase 2 (R3): 0 is "no album entry points at this photograph" —
+  // what every pre-existing removeChatPhotoAction case here assumes.
+  countNinaAvatarsLinkedToImage.mockResolvedValue(0)
   releaseBlobIfUnreferenced.mockResolvedValue('deleted')
   promoteNinaImageDependents.mockResolvedValue({ found: 0, fetched: 0, promoted: 0 })
   deleteNinaMessage.mockResolvedValue({ id: MESSAGE_ID })
@@ -1584,7 +1617,19 @@ describe('describeChatPhotoAction — the vision button, for both kinds', () => 
       [{ blobUrl: storedUrl, pathname: storedPathname }],
       { subject: 'self' },
     )
-    expect(setNinaMessageImageDescription).toHaveBeenCalledWith(USER, IMAGE_ID, STORED_DESCRIPTION)
+    /* media-album-unified-search phase 2: writes prose AND vector in one statement now — the
+     * embedding twin of the old write, since this action overwrites whatever was stored. */
+    expect(embedNinaMessageImageDescription).toHaveBeenCalledWith(
+      STORED_DESCRIPTION,
+      undefined, // the fixture `imageRow` carries no `searchKeywords` field
+      USER,
+    )
+    expect(setNinaMessageImageDescriptionAndEmbedding).toHaveBeenCalledWith(
+      USER,
+      IMAGE_ID,
+      STORED_DESCRIPTION,
+      null,
+    )
     expect(revalidatePath).toHaveBeenCalledWith(ADMIN_CHAT_PHOTOS_PATH)
     expect(afterCallbacks).toHaveLength(0) // no re-caption: what she SAID is not rewritten
   })
@@ -1614,7 +1659,7 @@ describe('describeChatPhotoAction — the vision button, for both kinds', () => 
   })
 
   it('a write that misses is the not-in-the-collection refusal', async () => {
-    setNinaMessageImageDescription.mockResolvedValue(undefined)
+    setNinaMessageImageDescriptionAndEmbedding.mockResolvedValue(false)
 
     const result = await actions.describeChatPhotoAction({ id: IMAGE_ID })
 
@@ -1627,7 +1672,7 @@ describe('describeChatPhotoAction — the vision button, for both kinds', () => 
     const result = await actions.describeChatPhotoAction({ id: IMAGE_ID })
 
     expect(result).toEqual({ ok: false, error: 'The description call failed. Try again.' })
-    expect(setNinaMessageImageDescription).not.toHaveBeenCalled()
+    expect(setNinaMessageImageDescriptionAndEmbedding).not.toHaveBeenCalled()
 
     describeNinaImages.mockRejectedValue(new Error('vendor 500'))
     expect(await actions.describeChatPhotoAction({ id: IMAGE_ID })).toEqual({

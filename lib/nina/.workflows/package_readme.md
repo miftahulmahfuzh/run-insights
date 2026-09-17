@@ -80,12 +80,17 @@ modules into `'use client'` components.
 - **Images** — her selfies and avatars, prompt → job row → Blob, plus the caption she writes
   under a photograph of hers from what is actually in it.
 - **Embeddings** — one string to one 1536-wide vector (`embedding.ts`, since 2026-09-15), the
-  vendor seam the album's semantic search reads and writes through.
-- **Album semantic search** — the three cosine-similarity reads that rank `nina_avatars` against a
-  query vector (`queries/avatarsearch.ts`, since 2026-09-15). The package ranks; it does not embed
-  and does not caption — the vectors arrive as arguments from the Server Action
-  (`lib/admin/ninaAlbumSearchActions.ts`), which is what lets the whole ranking be asserted against
-  generated SQL with no network.
+  vendor seam BOTH searchable tables read and write through: `nina_avatars.description_embedding`
+  (`queries/avatarEmbeddings.ts`) and, since 2026-09-17, `nina_message_images.description_embedding`
+  (`queries/imageEmbeddings.ts` — the media twin, function for function).
+- **Unified photo search** — the three cosine-similarity reads that rank `nina_avatars` AND
+  `nina_message_images` against the same query vector and merge them into one ranked list
+  (`queries/avatarsearch.ts`; album-only from 2026-09-15, merged since 2026-09-17). The package
+  ranks; it does not embed and does not caption — the vectors arrive as arguments from the Server
+  Action (`lib/admin/ninaAlbumSearchActions.ts`), which is what lets the whole ranking be asserted
+  against generated SQL with no network. **Every physical photograph appears in a result at most
+  once**, whichever table's embedding matched it, and that is a property of the two arms'
+  predicates rather than of a post-hoc filter.
 - **Chat UI logic** — the pure, node-testable decisions the chat screen makes (grouping, reveal
   timing, idempotent appends, scroll, gestures, chrome geometry), kept out of the components.
 - **Persistence** — the `queries/` directory is the single home for every `nina_*` table access
@@ -123,9 +128,15 @@ modules into `'use client'` components.
 5. **Every bubble in her mouth was written by the model.** No app-authored prose, no apology
    bubbles, no `insertNinaMessages` on the resend path — the sweep closes a dead turn `failed`
    and retries nothing. This is the plan-set "invariant 7" and it is asserted, not intended.
-6. **The image description is the vision model's private prose.** `nina_message_images.description`
-   (from `describeNinaImages`, `glm-4.6v`) is never selected by a render read — projections name
-   `{ id }` or go through `galleryPhotos`, which strips it — and never crosses into client props.
+6. **The image description is the vision model's private prose — on the RUNNER's side of the app.**
+   `nina_message_images.description` (from `describeNinaImages`, `glm-4.6v`) is never selected by a
+   chat or gallery render read: projections name `{ id }` or go through `galleryPhotos`, which
+   strips it, and it never crosses into a `/nina` client prop. **The admin surface is the stated
+   exception, and it is the only one**: the operator is the person who writes and corrects that
+   prose, so the Media pane reads it to edit it and — since 2026-09-17 — a merged search hit
+   carries it to the results grid. The rule that still holds without exception is the one that
+   matters: it is never shown to the runner, and the 1536-float `description_embedding` beside it
+   is never selected by ANY read, admin included.
 7. **Server Actions return typed result unions and degrade instead of throwing.** Coercers
    (`coerceNinaTuning`, `coerceNinaEnabled`) never throw; recovery paths (resend, cancel, revive,
    dedup lookups) swallow their own failures, because the acceptable blast radius is a duplicate
@@ -848,7 +859,7 @@ operator's query at read time — and both are this one call.
   `openai/text-embedding-3-small`, PROBED LIVE 2026-09-15 (200 OK on the first candidate,
   `data[0].embedding.length` 1536, every element finite) rather than assumed — the plan set's own
   exit criterion. It is deliberately NOT admin-configurable, unlike the chat fallback: its id fixes
-  the width of `nina_avatars.description_embedding`, two embedding models do not share a vector
+  the width of `description_embedding` on both searchable tables, two embedding models do not share a vector
   space, and a mixed column ranks nonsense. Changing it is a new dimension constant, a new
   migration and a full re-embed, in one commit. pgvector's HNSW ceiling is 2000 dimensions, which is
   why "a bigger model" is not simply better here.
@@ -874,6 +885,26 @@ operator's query at read time — and both are this one call.
   truncation would put words in the vector the photograph does not contain. `encoding_format:
   'float'` is named explicitly: several providers behind this broker default to a base64-packed
   vector, which arrives as a string and fails the array check with a confusing message.
+- **The write side is TWO modules with one shape, not one module with a table parameter**
+  (since 2026-09-17). `queries/avatarEmbeddings.ts` fills `nina_avatars.description_embedding`;
+  `queries/imageEmbeddings.ts` (§5c) fills `nina_message_images.description_embedding` — function
+  for function, docstring argument for docstring argument, because the choice made was *mirror the
+  album pattern* rather than unify the two tables. Two deltas, both forced by the table and neither
+  optional: a media describe target carries `kind`, since that table holds both sides and the
+  vision witness is picked with `describeSubjectForSide(photoSideOf(kind))` where an album row is
+  always hers; and `isOriginalPhoto()` is in every media WHERE, because a row that re-shows a
+  photograph living elsewhere must never be paid for a vector nothing can rank.
+- **The 1536-float vector is NEVER selected — on either table.** No read projects
+  `description_embedding`; every statement either writes it or projects `IS NOT NULL`
+  (`(… IS NOT NULL)::int` with `.mapWith(Number)`, never a bare `sql<boolean>`, because a driver
+  that hands back the STRING `'f'` is truthy and would silently skip every unembedded row as
+  already done). In particular it is not in `imageColumns`, which `listNinaMediaPhotos` reads 48
+  rows at a time, nor in `avatarColumns`.
+- **A description write and a description+embedding write are different statements, deliberately.**
+  `setNinaMessageImageDescription` / `updateNinaChatPhotoDescription` (`queries/images.ts`) are
+  untouched and keep their callers: they are the right statements for a write that is knowingly NOT
+  accompanied by a vector — the chat-caption path describes a photograph so Nina's prompt can read
+  the prose, at a moment when whether search can find it is nobody's question.
 - **`embedNinaText` has a caller as of 2026-09-15 — the read side.**
   `lib/admin/ninaAlbumSearchActions.ts` calls it once per query arm (the typed phrase, the query
   photo's caption, or both in one `Promise.all`), which is why `npm run knip` no longer flags it.
@@ -882,32 +913,96 @@ operator's query at read time — and both are this one call.
   choke point, and a second call site that skipped them would put a wrong-width vector into a
   ranking nobody could explain.
 
-## Album semantic search
+## Unified photo search (album + media)
 
-**`queries/avatarsearch.ts` (§9d, since 2026-09-15) is three reads, one predicate, one column.**
-`searchNinaAvatarsByText`, `searchNinaAvatarsByImageCaption` and `searchNinaAvatarsByTextAndCaption`
-each rank `nina_avatars` by cosine similarity between a caller-supplied query vector and the row's
-stored `description_embedding`. Like every other read in the layer they take `userId` first and put
-it in the `WHERE` (rule 1) — and they search across EVERY folder, because a search confined to the
-folder already open answers a question the operator could answer by looking.
+**`queries/avatarsearch.ts` (§9d) is three reads over TWO tables, merged into one ranked list.**
+`searchNinaPhotosByText`, `searchNinaPhotosByImageCaption` and `searchNinaPhotosByTextAndCaption`
+each rank `nina_avatars` AND `nina_message_images` by cosine similarity between a caller-supplied
+query vector and each row's stored `description_embedding`. Like every other read in the layer they
+take `userId` first and put it in the `WHERE` (rule 1) — and they search across EVERY folder,
+because a search confined to the folder already open answers a question the operator could answer
+by looking.
 
+The three names were RENAMED from `searchNinaAvatarsBy*` on 2026-09-17: they stopped being about
+avatars the moment they grew a second arm, and a name that says "avatars" over a merged ranking is
+the kind of half-truth that survives three refactors. The row shape moved with them —
+`NinaAvatarSearchRow`/`Page` → `NinaPhotoSearchRow`/`Page`.
+
+- **Every physical photograph appears at most once, and that is a property of the two arms'
+  PREDICATES, not of a dedup pass.** Nothing is deduplicated at merge time and nothing needs to be,
+  because the two candidate sets are disjoint by construction:
+  - the album arm carries `source_image_id IS NULL`, so a POINTER row is never a candidate (its
+    vector is permanently NULL anyway — that arm is the one place the invariant is STATED rather
+    than implied, and it is what keeps a mistakenly-filled pointer vector from doubling a tile);
+  - the media arm carries `isOriginalPhoto()` (no album→chat re-share) AND a `NOT EXISTS` against
+    an album row whose `source_key = 'chat-photo:<id>'` **and whose `source_image_id IS NULL`** —
+    a legacy byte-COPY hides its original, following `generatedChatPhotoScope`'s existing "the copy
+    is the survivor" rule rather than inventing a second one.
+  - **That `source_image_id is null` qualifier inside the subquery is the whole of the
+    correctness.** A pointer row keeps `source_key = 'chat-photo:<id>'` too (that is what makes
+    re-adoption a constraint decision), so an unqualified `NOT EXISTS` would hide the Media row of
+    every newly linked photograph — the one half of the pair that IS ranked. A photo promoted to
+    her profile picture would silently vanish from search. Only a COPY hides its original; a LINK
+    does not, because a link is not a second photograph.
+- **Four statements, one `Promise.all`, and the JS merge is four ORDERED steps that are the
+  contract.** Each arm runs its page and its count together; the two arms run together as well, so
+  a search costs one round trip's latency, not two. Then: (1) concatenate, tagged with `origin`;
+  (2) the relevance floor applied IDENTICALLY to both origins — one floor over one comparison
+  against one query vector in one space, so a media hit and an album hit at the same score are the
+  same statement about relevance; (3) the negative-keyword exclusion on the same pass, reading each
+  row's OWN `negative_search_keywords` whichever table it came from (`queryText === null`, the
+  image-only arm, exempts both origins by construction — no branch, no flag); (4) sort `score desc,
+  created_at desc, id desc` over the COMBINED set, then clamp. Reordering those steps changes
+  results.
+- **The clamp is LAST and it is over the WHOLE result, not per table.** Each arm is asked for the
+  full limit and the merged ~2× is trimmed once. Splitting the budget per arm would silently
+  under-serve any query one collection dominates, which is most of them.
+- **The merged sort is a TOTAL order, deliberately — not a stable sort over concatenation order**,
+  which would make the album arm win every exact tie for no reason a reader could name. `id desc`
+  is the final decider, so two renders of one corpus cannot disagree. An id collision across the
+  two tables is possible in principle (both are `newId()`) and harmless: that pair is already
+  ordered by score and date.
+- **The cross-origin score comparison is legitimate rather than lucky.** One embedding model, one
+  vector space, one column shape on both tables — which is why the merged sort may put a media row
+  above an album row at all. Break that (a second model on one table) and the merge becomes
+  nonsense with no error anywhere.
+- **Negative keywords are a LITERAL whole-word match, not a second semantic layer.**
+  Case-insensitive, comma-split, each phrase regex-escaped and wrapped in `\b…\b`. The cosine
+  ranking already answers "what is this semantically near"; a fuzzy negative would stack a second
+  tunable floor on the one the min-score already is, for a feature whose whole point is a hard,
+  predictable exclusion the operator can explain by reading the two boxes in the panel. The `\b`
+  ASCII word boundary is an accepted limitation for non-Latin scripts.
+- **The media arm's projection is NOT `imageColumns`**, and its five constant fields are each
+  `MediaExplorerPhoto`'s own existing convention rather than an opinion invented for search:
+  `folder: ''` (a media row is filed nowhere), `isCurrent: false` (a message image is never itself
+  her face), `thumbUrl: null` (no such column; consumers fall back to `url`), the three crop fields
+  `null` (all-null folds to centred `object-cover`), `source: row.kind` (on that table the kind IS
+  the provenance). `filename` is `null` because the display name is DERIVED from date and id in the
+  UI and the data layer does not know that format; the consumer's `?? id` fallback is truthful.
+- **`NinaPhotoSearchRow` is a FLAT shape and not a discriminated union**, because the consumer maps
+  every hit to one `AdminSearchHit` (the grid draws one kind of tile). A union would make that a
+  two-branch `switch` whose branches wrote the same object, and would push the media conventions
+  above into the consumer instead of into the query that knows them. `origin` rides along for the
+  deep link and the pane to open, not because the type varies by it.
 - **The vectors arrive as arguments; this module does not know what a model is.** No embed call, no
   vision call, no `fetch`. The Server Action owns the vendor edge, which is the property that lets
-  `tests/nina.avatarSearch.test.ts` assert the whole ranking against generated SQL through
-  `tests/support/fakeDb` with nothing mocked and nothing on the network.
-- **There is ONE embedding column, and image search still works, because an image query becomes
-  text first.** No CLIP-style image embedding exists in this repo's vendor arsenal (both z.ai base
-  URLs are chat/completions-shaped), so a query photo is captioned by the same `glm-4.6v` witness
-  prompt that wrote every row's `description` — same `subject: 'self'` mapping, or cosine similarity
-  would be measuring prompt register as much as content — and the caption is then embedded as text.
-  Both query vectors therefore live in the SAME space as the column. That is not a nicety: it is the
-  precondition that makes the combined read's weighted average legitimate rather than two scores
-  from two systems that happen to be numbers.
+  `tests/nina.avatarSearch.test.ts` and `tests/nina.mediaSearch.test.ts` assert the whole ranking
+  against generated SQL through `tests/support/fakeDb` with nothing mocked and nothing on the
+  network.
+- **There is ONE EMBEDDING SPACE — two columns, one model — and image search still works, because
+  an image query becomes text first.** No CLIP-style image embedding exists in this repo's vendor
+  arsenal (both z.ai base URLs are chat/completions-shaped), so a query photo is captioned by the
+  same `glm-4.6v` witness prompt that wrote every row's `description` — same `subject: 'self'`
+  mapping, or cosine similarity would be measuring prompt register as much as content — and the
+  caption is then embedded as text. Every query vector and both tables' columns therefore live in
+  the SAME space. That is not a nicety: it is the precondition that makes both the combined read's
+  weighted average AND the cross-origin merged sort legitimate rather than two (now four) scores
+  from systems that happen to be numbers.
 - **`ORDER BY <distance> ASC` is the one spelling a pgvector HNSW `vector_cosine_ops` index can
   answer.** `ORDER BY 1 - (...) DESC` is the identical ordering and forces a sort. So the ordering
   is on the raw distance and the PROJECTION computes `1 - distance`, because the human-facing number
   is the similarity. The direction is pinned by a test; do not "simplify" it into the DESC form.
-- **The combined search is ONE statement, not two ranked passes merged in JS.** A weighted average
+- **The combined search is ONE statement PER ARM, not two ranked passes merged in JS.** A weighted average
   of the two distances is the same number as the weighted average of the two similarities (the
   weights sum to 1), so one expression is both the ranking key and, via `1 - x`, the reported score,
   and the weights cannot drift between them. The weights are module-private constants at an even
@@ -915,14 +1010,15 @@ folder already open answers a question the operator could answer by looking.
   two different query vectors) and is a scan of the user's embedded rows; at the requirement's scale
   that is a few hundred 1536-float dot products, and it is stated so nobody converts it back into
   two indexed passes and a merge.
-- **`description_embedding IS NOT NULL` is in the candidate predicate of BOTH statements** — the
-  ranked page and the count share one `searchScope`, so the page and its total can never describe
-  different sets.
-- **`NinaAvatarSearchPage.total` is a COVERAGE number, not an album size and not a pager
-  denominator.** It counts the rows that carried an embedding and were therefore compared: "48 shown,
-  out of the photos that have been described". Search returns one flat top-N list and has no pager.
-  A results pane that reads this as the album's size will tell the operator a photo is missing when
-  it is only un-embedded.
+- **`description_embedding IS NOT NULL` is in the candidate predicate of EVERY statement** — within
+  each arm the ranked page and the count share one scope function (`albumSearchScope`,
+  `mediaSearchScope`), so a page and its total can never describe different sets.
+- **`NinaPhotoSearchPage.total` is a COVERAGE number, not a collection size and not a pager
+  denominator.** It is the SUM of both arms' candidate counts: the rows that carried an embedding,
+  were not excluded by their arm's dedup predicate, and were therefore compared — "48 shown, out of
+  the photos that have been described". Search returns one flat top-N list and has no pager. A
+  results pane that reads this as the collection's size will tell the operator a photo is missing
+  when it is only un-embedded. A Media backfill is what moves it.
 - **The top-N cap is module-private and is a UI number.** It is both the default and the ceiling
   (`listNinaAvatarsInFolder`'s posture — a caller may ask for fewer, never for more, so nothing can
   turn a ranked search into an unpaginated read of the album), and its value is the length of
@@ -936,9 +1032,52 @@ folder already open answers a question the operator could answer by looking.
   something else. Two cheap guards run before the bind — an empty array and a non-finite value are
   caller bugs that Postgres would otherwise report as a dimension mismatch or a parse error naming a
   column the function never mentioned.
-- **The tiebreak is the album's own `(created_at desc, id desc)`.** Exact ties in a float distance
-  need two identical descriptions, which the "duplicate the folder" workflow really does produce;
-  without the tiebreak those tiles swap places between renders for no reason.
+- **The tiebreak is the album's own `(created_at desc, id desc)`, and it stays INSIDE each arm.**
+  Exact ties in a float distance need two identical descriptions, which the "duplicate the folder"
+  workflow really does produce; without the tiebreak those tiles swap places between renders for no
+  reason. Per-arm is not redundant with the merged sort: it is what makes each arm's own `LIMIT`
+  deterministic — WHICH rows of many equally distant ones come back is decided before the merge
+  ever sees them.
+
+## Linked album rows — the pointer redirection
+
+**An album row whose `source_image_id` is non-null is a POINTER, and a pointer owns no prose.**
+Since 2026-09-17 an adopted chat photograph is LINKED into the album rather than byte-copied into
+it: the album row shows the `nina_message_images` row's bytes and names it in `source_image_id`.
+
+- **The rule, in one sentence: a pointer row's own `description`, `search_keywords`,
+  `negative_search_keywords` and `description_embedding` are DEAD.** All four are NULL on that row,
+  permanently, and the values the operator sees and edits belong to the media row its
+  `source_image_id` names. That is not a synchronisation mechanism, it is the ABSENCE of one, which
+  is exactly why it cannot drift: editing in one place shows up in the other because there is only
+  ever one row holding the data. A dual write would have a failure mode; this has none to have.
+- **Reads redirect through an EXPLICIT second call — `resolveNinaAvatarLinkedText(userId, rows)`
+  (`queries/avatarPointer.ts`, §9e).** It is deliberately NOT folded into `listNinaAvatarsInFolder`:
+  the folder read stays one statement and every caller that does not render prose pays nothing. The
+  call is a BATCH — one `inArray` statement for a whole page, so 120 tiles cost one extra indexed
+  read rather than 120 — and it is keyed by the AVATAR id, so the caller's lookup is
+  `linked.get(row.id) ?? row` with no second mapping. Rows that are not pointers are absent from
+  the result (their own columns are the truth); a pointer whose target has gone is absent too,
+  degrading to "no description" rather than throwing a 500 into an admin page.
+- **Writes redirect too, and that is why the redirection lives in the query layer and not in a join
+  in the page.** The four description/keyword edit actions all have to land on the linked media row
+  for a pointer. They do not call `resolveNinaAvatarLinkedText` — they already hold the row and read
+  `row.sourceImageId` off it — but they and it share one rule and one docstring, which is the point.
+- **Nothing may render `row.description` for a pointer without going through the redirection
+  first.** It will be NULL, and the photograph will look undescribed while its description sits one
+  row away.
+- **The pointer index is spelled `nina_avatars_source_image_id_idx`.** Every read that finds album
+  rows by the image they point at is an index-backed equality on that name.
+- **Deleting a media row is GUARDED before the FK refuses it.** `countNinaAvatarsLinkedToImage`
+  (`queries/images.ts`, beside `isBlobPathnameReferenced` — that one asks "is anything pointing at
+  these BYTES", this one "is anything pointing at this ROW", and a reader looking for either should
+  find both without leaving the file) returns a COUNT and not a boolean, because the refusal's
+  sentence says a number: *"2 album entries still show this photo."* An existence probe would make
+  the operator open the album to find out how much work the refusal is asking for, and the count is
+  index-backed so it costs what the probe would. The FK is `ON DELETE RESTRICT` and stays the
+  backstop for the race this read cannot close — the pre-check exists to turn a constraint
+  violation naming a constraint the operator has never heard of into the `{ ok: false }` + one
+  sentence shape the delete action already uses.
 
 ## Memory, promises, patterns, proactive
 
@@ -1008,7 +1147,7 @@ folder already open answers a question the operator could answer by looking.
 | Embeddings | `embedding.ts`*(T) (one `fetch` to `OPENROUTER_EMBEDDINGS_URL`, no fallback ladder, no retry; the width guard gates the return against `NINA_EMBEDDING_DIMENSIONS`) |
 | Album/attachments | `album.ts`(T), `albumActions.ts`, `attach.ts`(T) |
 | Chat UI logic | `chatview.ts`(T), `reply.ts`(T), `reveal.ts`(T), `scroll.ts`(T), `live.ts`(T), `edit.ts`(T), `chrome.ts`(T) |
-| Persistence | `queries/` — one module per domain area + module-internal `columns.ts` behind the `queries.ts` barrel (`export *` per module, zero imports; every `nina_*` access; `queries/avatarsearch.ts` (§9d, 2026-09-15) is the album's ranked read and the only module that hand-writes a pgvector operator; `tuningFromRow`/`tuningToColumns` in `queries/tuning.ts` are the one place the flat row and the nested model meet), `errorlogs.ts` (`nina_error_logs` write/read — the deliberate unscoped exception, server-side db-touching; its writers are `vision.ts`'s fallback orchestrator, category `multimodal`, `imagerun.ts`'s `recordImageCallFailure`, category `image_generation`, and `llmFallbackText.ts`'s `ninaFallbackTextClient`, category `text` — all three 2026-09-12) |
+| Persistence | `queries/` — one module per domain area + module-internal `columns.ts` behind the `queries.ts` barrel (`export *` per module, zero imports; every `nina_*` access; `queries/avatarsearch.ts` (§9d) is the MERGED ranked read over both photo tables and the only module that hand-writes a pgvector operator — and the only one that imports a sibling DOMAIN module, `./images`' `isOriginalPhoto`, deliberately, so the media arm's "not a re-share" rule is the same predicate every other collection read uses; `queries/avatarEmbeddings.ts` (§9c) and `queries/imageEmbeddings.ts` (§5c, 2026-09-17) are the two `description_embedding` write sides, one per table, same shape; `queries/avatarPointer.ts` (§9e, 2026-09-17) is where a LINKED album row's prose actually lives; `tuningFromRow`/`tuningToColumns` in `queries/tuning.ts` are the one place the flat row and the nested model meet), `errorlogs.ts` (`nina_error_logs` write/read — the deliberate unscoped exception, server-side db-touching; its writers are `vision.ts`'s fallback orchestrator, category `multimodal`, `imagerun.ts`'s `recordImageCallFailure`, category `image_generation`, and `llmFallbackText.ts`'s `ninaFallbackTextClient`, category `text` — all three 2026-09-12) |
 
 \* server-only, not Server Actions. (T) = colocated `*.test.ts` (29 as of 2026-09-15 —
 `embedding.test.ts` is the newest and the one exception to "all over the pure modules": the module
@@ -1057,13 +1196,23 @@ not a (T): it is the barrel contract test, not a pure module's suite.
   the marker — `markNinaReminderFired` for a reminder, a `nina_nags` upsert for the others).
 - **Character path**: `readNinaTuning` → `coerceNinaTuning` → `buildNinaSystemPrompt(tuning)`.
   Live every turn; no cache; no invalidation step anywhere.
-- **Album search** (read-only, since 2026-09-15): `/admin/nina` → `searchNinaAvatarsAction`
-  (`lib/admin/`) → `requireAdmin()` → schema parse → a query photo, if any, through
-  `describeNinaImagesWithFallback` (`subject: 'self'`, never stored, no Blob PUT) → `embedNinaText`
-  on each arm in one `Promise.all` → `searchNinaAvatarsByText` / `…ByImageCaption` /
-  `…ByTextAndCaption` → ranked rows + a coverage total. The path writes NOTHING and deliberately
-  does not `revalidatePath` — a search that re-rendered the grid under its own results fights the
-  screen it is on.
+- **Photo search** (read-only; album-only from 2026-09-15, merged since 2026-09-17): `/admin/nina` →
+  the search Server Action (`lib/admin/`) → `requireAdmin()` → schema parse → a query photo, if any,
+  through `describeNinaImagesWithFallback` (`subject: 'self'`, never stored, no Blob PUT) →
+  `embedNinaText` on each arm in one `Promise.all` → `searchNinaPhotosByText` / `…ByImageCaption` /
+  `…ByTextAndCaption` → **album arm and media arm concurrently, then one merged sort and one clamp**
+  → ranked rows (each tagged `origin`) + a coverage total summed over both arms. The path writes
+  NOTHING and deliberately does not `revalidatePath` — a search that re-rendered the grid under its
+  own results fights the screen it is on. Each hit carries `origin`, `searchKeywords` and
+  `negativeSearchKeywords` through to the consumer's `AdminSearchHit`, where all three are REQUIRED
+  fields.
+- **Adopting a chat photo into the album** (since 2026-09-17): the adopt action LINKS rather than
+  copies — one `nina_avatars` row whose `source_image_id` names the `nina_message_images` row,
+  written by exactly ONE writer and by nothing else ever, with `description` left unset because a
+  pointer's prose lives on the row it names. `(user_id, source_key)` stays the only key that
+  statement conflicts on, which is what keeps re-adoption a constraint decision rather than a second
+  pointer row. Reads of that row's prose go through `resolveNinaAvatarLinkedText`; a delete of the
+  media row goes through `countNinaAvatarsLinkedToImage` first.
 
 ## Dependencies
 
@@ -1134,6 +1283,14 @@ and picks what she says — a failure is a message from Nina, never a stack trac
 
 ## Gotchas
 
+- **A new column in `avatarColumns` or `imageColumns` is APPENDED, never inserted where it belongs
+  semantically.** Both lists are projected POSITIONALLY by `projectedRow(...)` fixtures under
+  `tests/` (`avatarRow()`, `imageRow()`), so an insertion in the middle silently RE-ASSIGNS every
+  field after it — including the provenance ids the adoption guard and the dedup predicates read,
+  which then fail as a wrong photograph rather than as a type error. An append costs each fixture
+  one extra value and nothing else. This is why `searchKeywords`/`negativeSearchKeywords` sit after
+  `createdAt` in `imageColumns` instead of beside `description`, and why `sourceImageId` is last in
+  `avatarColumns` and last in `NinaAvatarRow`. Adding one anyway is a fixture audit, not an edit.
 - **Only an explicit `false` disables a tuning key**; `enabled[key] === true` mutes a
   pre-migration row's personality on deploy. `isNinaKeyEnabled`/`coerceNinaEnabled` are the readers.
 - **Never hard-code seventeen.** `NINA_TUNING_KEYS` is a spread; the migrations' `ADD COLUMN`
@@ -1294,9 +1451,12 @@ and picks what she says — a failure is a message from Nina, never a stack trac
   `process.env.OPENROUTER_API_KEY` directly passes the grep and breaks the invariant it stands for.
 - **`NINA_EMBEDDING_MODEL` and `NINA_EMBEDDING_DIMENSIONS` are one decision spelled in two files.**
   Never move one alone, and never give the embedding model a dropdown the way the chat fallback has
-  one: the id fixes the width of `nina_avatars.description_embedding`, and two embedding models do
-  not share a vector space, so a mixed column ranks nonsense rather than failing. Changing it is a
-  new constant, a new migration and a full re-embed, in one commit. The width guard in
+  one: the id fixes the width of `description_embedding` on BOTH searchable tables
+  (`nina_avatars` and `nina_message_images`), and two embedding models do not share a vector space,
+  so a mixed column ranks nonsense rather than failing — and since 2026-09-17 the merged search
+  sorts the two tables' scores against each other, so a model swap on one table alone is a ranking
+  that is wrong with no error anywhere. Changing it is a new constant, TWO re-embeds and a
+  migration, in one commit. The width guard in
   `embedding.ts` exists so that mistake surfaces at the call with both numbers named, not as an
   opaque pgvector INSERT error inside an `after()` hours later.
 - **`embedNinaText` is an unused export on purpose** (knip flags it, measured 2026-09-15). It is the
@@ -1333,7 +1493,10 @@ files carry the integration side; plus the barrel contract test `lib/nina/querie
 freezes the barrel's exact runtime value-export LIST and is not a (T): the barrel is not a pure
 module. **That list is the contract, not its length** — every landing that adds a query moves the
 number, so the rule is that the list is re-sorted and extended in the SAME commit as the new export,
-never weakened to a `toContain`. The guards that can actually catch a regression, by mechanism:
+never weakened to a `toContain`. (It stood at 104 names on 2026-09-17, after the merged search
+renamed three and added eight; read the file, not that number.) A RENAME is two edits in that one
+commit, not a `toContain` escape hatch. The guards that can actually catch a regression, by
+mechanism:
 
 `tests/admin.memory.test.ts` asserts admin-memory isolation with a ONE-LEVEL
 `readdirSync('lib/nina')` walk: since 2026-09-12's queries split, `lib/nina/queries/` is a
@@ -1368,11 +1531,20 @@ recursive — a new module under `queries/` does not automatically join the walk
 - **SQL-shape tests** (`tests/support/fakeDb`) split emitted statements into SET/WHERE halves:
   the soft-delete predicate per function, the supersede WHERE, the claim's state machine,
   `getNinaJobPhoto`'s two-table owner scope and `{ id }` projection. `tests/nina.avatarSearch.test.ts`
-  (2026-09-15) is the newest and the technique is worth copying: every property it pins is one a
+  (2026-09-15) established the technique and it is worth copying: every property it pins is one a
   `vi.fn()` could not see — that BOTH statements of a search carry the ownership scope AND the
   `IS NOT NULL`, that the ORDER BY is the raw distance ASCENDING (the index-answerable spelling),
   that the combined read carries both vectors and both weights in ONE statement (a JS merge would
   pass a behaviour test and fail this one), and that an oversized `limit` comes back capped.
+  `tests/nina.mediaSearch.test.ts` and `tests/nina.mediaEmbeddings.test.ts` (2026-09-17) extend it
+  to the merged read and the media write side, and each pins something only a SQL-shape test can
+  reach: that the media arm's `NOT EXISTS` is QUALIFIED with `source_image_id is null` (unqualified,
+  every behaviour test still passes and every newly linked photograph vanishes from search); that
+  the merge interleaves the two origins by score and breaks an exact tie by `created_at`/`id` and
+  NEVER by origin; that the relevance floor cuts a 0.19 media row exactly as it cuts a 0.19 album
+  row; that the clamp happens AFTER the merge, with both origins still represented; that each
+  `…AndEmbedding` writer touches exactly its two columns and no third; and that both batch reads are
+  empty-safe (zero statements, not a round trip to say nothing).
 - **The failure log is pinned at both ends**: `tests/db.schema.errorlogs.test.ts` holds the table
   to its promised shape (`user_id` nullable in the generated SQL too, exactly one index and not
   on the user, `category` text with no CHECK) and `tests/nina.errorlogs.test.ts` holds the writer
