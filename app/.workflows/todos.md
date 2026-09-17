@@ -11,7 +11,7 @@
 - P2 Medium: 1
 - P3 Low: 0
 - P4 Backlog: 0
-- Blocked: 1
+- Blocked: 0
 - Completed: 1
 - Archived: 0
 
@@ -29,7 +29,7 @@
   - **Difficulty**: NORMAL
   - **Type**: Feature
   - **Context**: Owns the backfill route, `scripts/backfill-media-embeddings.mjs` + its package.json line, `tests/admin.mediaBackfillRoute.test.ts`, `tests/integration/mediaAlbumUnifiedSearch.int.test.ts`, four new `removeChatPhotoAction` cases. Exit criteria: read-only count reports `missing_description=0`/`missing_embedding=0`; backfill route reports `remaining:0`; full vitest green; integration suite passes with `VITEST_INTEGRATION=1`; tsc/format:check/lint/knip green. (Cross-package note: also touches `scripts/backfill-media-embeddings.mjs` under `scripts` and `tests/**`, neither of which is filed a separate task for this phase.)
-  - **Status**: blocked
+  - **Status**: open
   - **Plan Set**: `MEDIA_ALBUM_UNIFIED_SEARCH_PLAN.md` (phase 4 of 4)
   - **Satisfies**: R1, R2, R3 — R1: every picture in every directory is semantically searchable, merged into one deduplicated ranked result set; R2: every picture can carry hand-written search keywords and negative search keywords; R3: promoting a Media photo to Album creates a pointer (no byte copy) instead of a copy, with synchronized description/keywords
   - **Depends on**: P2-DB-A002, P2-NIN-A002, P2-CA-A006

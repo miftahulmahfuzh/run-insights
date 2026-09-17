@@ -3,16 +3,16 @@
 **Package Path**: `components/admin`
 **Package Code**: CA
 **Last Updated**: 2026-09-17
-**Total Active Tasks**: 1
+**Total Active Tasks**: 0
 
 ## Quick Stats
 - P0 Critical: 0
 - P1 High: 0
-- P2 Medium: 1
+- P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 7
+- Completed: 8
 - Archived: 6
 
 ---
@@ -24,16 +24,6 @@
 ### [P1] High
 
 ### [P2] Medium
-
-- [ ] **P2-CA-A006** Phase 3: UI: Media keyword box, merged search results, pointer-row messaging
-  - **Difficulty**: NORMAL
-  - **Type**: Feature
-  - **Context**: Owns `components/admin/explorer/model.ts`, `MediaPane.tsx`, `SelectionPane.tsx`, `PhotoDescription.tsx` (comment only), `PhotoSearchBar.tsx` (comment only), `SearchResultsGrid.tsx`, their four co-located test suites, `lib/admin/albumDeepLink.ts` (`hrefForMediaView`), and `app/admin/nina/page.tsx`. Exit criteria: vitest component suite green plus three pinned suites unbroken; manual dev-server verification of keyword box, merged search, and pointer-row linked text. (Cross-package note: also touches `app/admin/nina/page.tsx` under the `app` package, which is not filed a separate task for this phase.)
-  - **Status**: open
-  - **Plan Set**: `MEDIA_ALBUM_UNIFIED_SEARCH_PLAN.md` (phase 3 of 4)
-  - **Satisfies**: R1, R2, R3 — R1: every picture in every directory is semantically searchable, merged into one deduplicated ranked result set; R2: every picture can carry hand-written search keywords and negative search keywords; R3: promoting a Media photo to Album creates a pointer (no byte copy) instead of a copy, with synchronized description/keywords
-  - **Depends on**: P2-DB-A002, P2-NIN-A002
-  - **Plan**: `.workflows/plan/P2-CA-A006.md`
 
 ### [P3] Low
 
@@ -48,6 +38,20 @@
 (all six completed tasks were archived on 2026-09-12 — see Archive; full
 per-task detail — Context, Drift, Decided, Files — survives in git history and
 in `.workflows/package_readme.md`)
+
+- [x] **P2-CA-A006** Phase 3: UI: Media keyword box, merged search results, pointer-row messaging
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns `components/admin/explorer/model.ts`, `MediaPane.tsx`, `SelectionPane.tsx`, `PhotoDescription.tsx` (comment only), `PhotoSearchBar.tsx` (comment only), `SearchResultsGrid.tsx`, their four co-located test suites, `lib/admin/albumDeepLink.ts` (`hrefForMediaView`), and `app/admin/nina/page.tsx`. Exit criteria: vitest component suite green plus three pinned suites unbroken; manual dev-server verification of keyword box, merged search, and pointer-row linked text. (Cross-package note: also touches `app/admin/nina/page.tsx` under the `app` package, which is not filed a separate task for this phase.)
+  - **Status**: completed
+  - **Plan Set**: `MEDIA_ALBUM_UNIFIED_SEARCH_PLAN.md` (phase 3 of 4)
+  - **Satisfies**: R1, R2, R3 — R1: every picture in every directory is semantically searchable, merged into one deduplicated ranked result set; R2: every picture can carry hand-written search keywords and negative search keywords; R3: promoting a Media photo to Album creates a pointer (no byte copy) instead of a copy, with synchronized description/keywords
+  - **Depends on**: P2-DB-A002, P2-NIN-A002
+  - **Plan**: `.workflows/plan/P2-CA-A006.md`
+  - **Completed**: 2026-09-17 11:21
+  - **Method**: /implement
+  - **Files**: components/admin/explorer/model.ts, components/admin/explorer/MediaPane.tsx, components/admin/explorer/SelectionPane.tsx, components/admin/explorer/PhotoDescription.tsx, components/admin/explorer/PhotoSearchBar.tsx, components/admin/explorer/SearchResultsGrid.tsx, lib/admin/albumDeepLink.ts, app/admin/nina/page.tsx, components/admin/explorer/MediaPane.test.tsx, components/admin/explorer/SelectionPane.test.tsx, components/admin/explorer/SearchResultsGrid.test.tsx, components/admin/explorer/PhotoSearchBar.test.tsx
+  - **Verified**: `npx next typegen` clean; `npx tsc --noEmit` zero errors; targeted suite 15 files / 228 tests passed; full `npm test` 361 files / 6299 tests passed. Manual verification on a local dev server (port 3417, minted admin cookie) against production data confirmed: Media keyword boxes save and persist across reload; "Set as her profile picture" creates a pointer whose Album pane shows the "link to a photo in Media" sentence with all controls enabled; the pointer's keyword box loads the Media row's stored value (read redirection via `resolveNinaAvatarLinkedText`) and editing it from the Album pointer shows through on the Media original (write redirection); a text search returned an album hit and a media hit in one sheet, media tile labeled "... in Media" with its header link pointing at `/admin/nina?view=media`. All production DB side effects (pointer avatar row, reassigned `is_current`, test keyword values) were reverted via SQL and verified back to their original state; `git status --porcelain` shows only the 12 intended files.
 
 - [x] **P2-CA-A001** Phase 4: Admin UI: search bar, results grid, full-screen viewer
   - **Difficulty**: NORMAL

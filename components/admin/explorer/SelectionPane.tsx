@@ -395,29 +395,52 @@ function AlbumSelectionPane({
       </div>
 
       {/*
-       * THE DESCRIBE SECTION (R3). The stored prose, editable by hand, and the vision model one
-       * click away — always available, overwriting, no confirmation. The ALBUM closures are
-       * spelled here because this component already knows its table: `AlbumSelectionPane` receives
-       * an `AlbumExplorerPhoto` (Phase 2's dispatcher narrowed it), so no `origin` read and no
-       * branch is needed — the media arm's twin mount lives in `MediaPane.tsx`.
+       * ── R3, 2026-09-17: A POINTER ROW SAYS WHAT IT IS ─────────────────────────────────────
+       * When this album entry was minted by "Set as her profile picture" over a Media photograph it
+       * is a LINK, not a file of its own (`nina_avatars.source_image_id`): the bytes, the
+       * description and both keyword lines live on the `nina_message_images` row it names, and the
+       * read layer hands them here already redirected. So the three boxes below are showing the
+       * MEDIA photograph's values, and saving any of them writes to that row — which is exactly the
+       * user's ask, *"editing image description, search keyword, negative keyword in one place will
+       * automatically synchronize it with other location"*, and is therefore worth one sentence
+       * rather than being left to be discovered.
        *
-       * R2 adds the keyword box to THIS arm only, and R2's follow-up adds the negative-keyword
-       * box beside it for the same fact: an album row has `search_keywords` and
-       * `negative_search_keywords`, a media row's table has neither.
+       * Informational and nothing else. Editing is not blocked, no control is disabled, and no
+       * confirmation is added — the write-through is the feature, not a hazard. The pane's own
+       * verbs (framing, make current, share, download, remove) are untouched for a pointer: R3
+       * changed where the bytes and the prose live, not what an album row can do.
+       */}
+      {photo.isPointer && (
+        <p className="mt-4 text-[12px] leading-relaxed font-medium text-ink-3">
+          This one is a link to a photo in Media — its description and keywords are stored there, so
+          editing them here changes that photo too.
+        </p>
+      )}
+
+      {/*
+       * THE DESCRIBE SECTION (R3 of the explorer round). The stored prose, editable by hand, and
+       * the vision model one click away — always available, overwriting, no confirmation. The
+       * ALBUM closures are spelled here because this component already knows its table:
+       * `AlbumSelectionPane` receives an `AlbumExplorerPhoto` (Phase 2's dispatcher narrowed it),
+       * so no `origin` read and no branch is needed — the media arm's twin mount lives in
+       * `MediaPane.tsx`.
+       *
+       * R2 added the keyword box to this arm and R2's follow-up the negative-keyword box beside it.
+       * Since media-album-unified-search R2 (2026-09-17) the media arm mounts BOTH boxes too, from
+       * its own table's columns and its own table's actions — so these props are no longer what
+       * distinguishes the two arms, and the closures below are what does: they name
+       * `nina_avatars`' actions, and for a pointer row those actions redirect the write to the
+       * linked media row rather than storing anything here.
        */}
       <PhotoDescription
         description={photo.description}
         emptyNote="She cannot talk about this photo until it is described — it fills in on its own once the photo is hers, or write it yourself."
         onSave={(text) => editNinaAvatarDescriptionAction({ id: photo.id, description: text })}
         onRedescribe={() => describeNinaAvatarAction(photo.id)}
-        /* R2, 2026-09-15. The album arm supplies these; the media arm's twin mount in
-         * `MediaPane.tsx` does not, because `nina_message_images` has no keywords column — absent,
-         * not disabled. The two props travel together by the component's own contract. */
         searchKeywords={photo.searchKeywords}
         onSaveKeywords={(text) =>
           editNinaAvatarSearchKeywordsAction({ id: photo.id, searchKeywords: text })
         }
-        /* R2 follow-up, 2026-09-15. Same album-only reasoning as the pair above. */
         negativeSearchKeywords={photo.negativeSearchKeywords}
         onSaveNegativeKeywords={(text) =>
           editNinaAvatarNegativeSearchKeywordsAction({ id: photo.id, negativeSearchKeywords: text })

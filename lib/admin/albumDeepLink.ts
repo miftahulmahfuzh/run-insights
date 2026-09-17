@@ -13,15 +13,24 @@
  * That barrel's runtime surface is FROZEN by `tests/admin.filetreeBarrel.test.ts` at the 35 names
  * the pre-split single file had — no fewer, and explicitly no more, because a barrel that lazily
  * grows would undo the 2026-09-11 dead-export audit through the back door. So the deep link gets
- * its own module rather than a 36th name there.
+ * its own module rather than a 36th name there — and, since 2026-09-17, so does the media arm's
+ * view link, for the same reason and in the same file.
  *
- * ── ZERO IMPORTS, WHICH IS THE RULE THIS FILE INHERITS ──────────────────────────────────────
- * `lib/admin/filetree/`'s purity rule, restated for one file: a client component and a Server
- * Component both import this, so it may not reach anything server-only. The id's SHAPE check is
- * deliberately NOT here — `ADMIN_AVATAR_ID_RE` (`lib/admin/avatars.ts`) is applied by the page,
- * beside the `?folder=` and `?page=` validation that already lives there, so this module stays a
- * grammar and never becomes a validator.
+ * ── ONE IMPORT, AND IT IS THE RULE RATHER THAN AN EXCEPTION TO IT ────────────────────────────
+ * This module was written with zero imports, under `lib/admin/filetree/`'s purity rule: a client
+ * component and a Server Component both import it, so it may not reach anything server-only. That
+ * rule is intact — `lib/admin/filetree` is the import-pure grammar directory, checked as such by
+ * `tests/admin.filetreeBarrel.test.ts`'s purity half — and taking the two `?view=media` constants
+ * from it is what the rule is FOR: `hrefForMediaView` below writes the parameter that
+ * `readExplorerView` reads, and a grammar that re-spelled the key or the value here would be
+ * exactly the drift this module's header opens by arguing against.
+ *
+ * The id's SHAPE check is deliberately NOT here — `ADMIN_AVATAR_ID_RE` (`lib/admin/avatars.ts`) is
+ * applied by the page, beside the `?folder=` and `?page=` validation that already lives there, so
+ * this module stays a grammar and never becomes a validator.
  */
+
+import { NINA_MEDIA_VIEW_PARAM, NINA_MEDIA_VIEW_VALUE } from '@/lib/admin/filetree'
 
 /**
  * `?avatar=<id>` — "load whichever folder and page this photograph is on, and select it".
@@ -45,4 +54,23 @@ export const NINA_AVATAR_PARAM = 'avatar'
  */
 export function hrefForAvatar(id: string): string {
   return `/admin/nina?${NINA_AVATAR_PARAM}=${encodeURIComponent(id)}`
+}
+
+/**
+ * `/admin/nina?view=media` — the Media collection, page one, with nothing pre-selected.
+ *
+ * The media arm's answer to `hrefForAvatar`, and deliberately NOT its twin. An album hit can be
+ * deep-linked to the row because `locateNinaAvatar` turns an id into a folder and an offset; there
+ * is no such read for `nina_message_images`, and adding one is a query-layer change rather than a
+ * URL grammar. So this names the COLLECTION: the operator lands where the photograph is, on the
+ * page the pager calls one, and finds it there.
+ *
+ * No `?page=`, for `FileExplorer`'s `hrefForMediaView(1)`'s reason: page 1 is the ABSENCE of the
+ * parameter, so the canonical `/admin/nina?view=media` and a navigated-back-to first page are one
+ * URL rather than two that mean the same thing.
+ */
+export function hrefForMediaView(): string {
+  const params = new URLSearchParams()
+  params.set(NINA_MEDIA_VIEW_PARAM, NINA_MEDIA_VIEW_VALUE)
+  return `/admin/nina?${params.toString()}`
 }

@@ -17,17 +17,16 @@ import type { AdminSearchHit } from '@/lib/admin/ninaAlbumActions'
 
 /*
  * EVERY field of `AdminSearchHit`, not only the seven this grid reads: the type is
- * `ExplorerPhotoBase` + `score` (phase 3's barrel), so a partial literal does not typecheck. The
- * unread ones are set to plausible values and asserted nowhere — `description` in particular is
- * carried and never rendered, which is `model.ts:49`'s rule and worth one fixture proving the grid
- * ignores it.
+ * `ExplorerPhotoBase` + `score` + `origin` + the two keyword columns (phase 2 widened it), and all
+ * of them are REQUIRED, so a partial literal does not typecheck. The unread ones are set to
+ * plausible values and asserted nowhere — `description` in particular is carried and never
+ * rendered, which is `model.ts:49`'s rule and worth one fixture proving the grid ignores it. The
+ * two keyword fields are the same story: the search action carries them so a result opened in the
+ * pane needs no second round trip, and this grid never reads either one.
  */
 const HIT: AdminSearchHit = {
-  /* media-album-unified-search phase 2 — `AdminSearchHit` grew `origin` and the two keyword
-   * fields; a partial literal no longer typechecks. Mechanical fixture fix only, so this phase's
-   * `tsc --noEmit` stays green; Phase 3 owns this file's own coverage. */
-  origin: 'album',
   id: 'a1',
+  origin: 'album',
   url: 'https://blob.example/nina/avatar-a1.jpg',
   thumbUrl: 'https://blob.example/nina/avatar-a1-thumb.jpg',
   folder: '2026/bali',
@@ -38,7 +37,7 @@ const HIT: AdminSearchHit = {
   source: 'upload',
   isCurrent: false,
   description: 'She is on a trail at sunrise.',
-  searchKeywords: null,
+  searchKeywords: 'trail, sunrise',
   negativeSearchKeywords: null,
   crop: { scale: null, x: null, y: null },
   createdAt: '2026-09-01T02:30:00.000Z',
@@ -54,6 +53,25 @@ const SECOND: AdminSearchHit = {
   filename: 'DSC_0044.jpg',
   isCurrent: true,
   score: 0.64,
+}
+
+/*
+ * media-album-unified-search R1, 2026-09-17: the ranked set is merged across both tables now, so a
+ * hit can be a `nina_message_images` row. `folder` is `''` on that arm by construction (a message
+ * image is filed nowhere) and `isCurrent` is `false` by the query layer's contract — a media row is
+ * never itself her face, and a pointer album row is never itself ranked.
+ */
+const MEDIA_HIT: AdminSearchHit = {
+  ...HIT,
+  id: 'm1',
+  origin: 'media',
+  url: 'https://blob.example/nina/selfie-m1.jpg',
+  thumbUrl: null,
+  folder: '',
+  filename: '2026-09-01 m1',
+  source: 'generated',
+  isCurrent: false,
+  score: 0.72,
 }
 
 describe('the sheet', () => {
@@ -174,5 +192,38 @@ describe('R1 — the open result links to its own description panel', () => {
       screen.getByRole('link', { name: "Open this photo's description" }).getAttribute('href') ?? ''
     expect(href).not.toContain('folder=')
     expect(href).not.toContain('page=')
+  })
+})
+
+describe('R1 — a merged set holds both collections, and says which is which', () => {
+  it('names a media hit by its collection, never by a folder it is not in', () => {
+    render(<SearchResultsGrid hits={[MEDIA_HIT]} />)
+    // `in Album` would name the album root, where this photograph is not.
+    expect(screen.getByRole('button', { name: '2026-09-01 m1 in Media' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /in Album/ })).toBeNull()
+  })
+
+  it('draws both origins in one sheet, in the order the ranker gave them', () => {
+    render(<SearchResultsGrid hits={[HIT, MEDIA_HIT]} />)
+    const tiles = screen.getAllByRole('listitem')
+    expect(tiles).toHaveLength(2)
+    const names = screen.getAllByRole('button').map((b) => b.getAttribute('aria-label'))
+    expect(names).toEqual(['DSC_0031.jpg in 2026/bali', '2026-09-01 m1 in Media'])
+  })
+
+  it('sends a media hit to the Media collection, not to a dead ?avatar= deep link', () => {
+    render(<SearchResultsGrid hits={[HIT, MEDIA_HIT]} />)
+    fireEvent.click(screen.getByRole('button', { name: '2026-09-01 m1 in Media' }))
+
+    const link = screen.getByRole('link', { name: 'Open Media, where this photo lives' })
+    expect(link).toHaveAttribute('href', '/admin/nina?view=media')
+    // The album's own name must not be borrowed for a destination that does not open a pane.
+    expect(screen.queryByRole('link', { name: "Open this photo's description" })).toBeNull()
+
+    // And the album branch is unchanged, in the same mounted set: paging back proves it.
+    fireEvent.keyDown(document, { key: 'ArrowRight' })
+    expect(
+      screen.getByRole('link', { name: "Open this photo's description" }),
+    ).toHaveAttribute('href', '/admin/nina?avatar=a1')
   })
 })

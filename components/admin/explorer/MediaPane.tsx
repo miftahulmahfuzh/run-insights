@@ -12,6 +12,10 @@ import {
   describeChatPhotoAction,
   editChatPhotoDescriptionAction,
 } from '@/lib/admin/chatPhotoActions'
+import {
+  editNinaMessageImageNegativeSearchKeywordsAction,
+  editNinaMessageImageSearchKeywordsAction,
+} from '@/lib/admin/chatPhotoKeywordActions'
 import { setChatPhotoAsAvatarAction } from '@/lib/admin/ninaAlbumActions'
 import { cn } from '@/lib/cn'
 import { resolveCrop, type NinaCrop } from '@/lib/nina/crop'
@@ -29,14 +33,21 @@ import type { ExplorerPhoto, MediaExplorerPhoto } from './model'
  * the old eye toggle retired with the seam it fed).
  *
  * ── THE FRAMING HALF IS ADOPTION, AND THE DRAFT HAS NOWHERE TO PERSIST ──────────────────────
- * A media row has no crop columns (`nina_message_images` has none — no migration), so there is
- * nothing for a "Save framing" to write to. `CropStudio` + the two sanity circles render with a
- * DRAFT crop that starts at identity and resets to identity, and the draft's ONE consumer is
- * `setChatPhotoAsAvatarAction`, which receives `scale`/`x`/`y` at click time and copies the bytes
- * into a fresh `avatar-` object (`ChatPhotoProfilePicture`'s body, unchanged in mechanism). The
- * `worn` latch disables the button once the action answered `ok` — a live button under a face she
- * already wears would be a lie; a second click would not duplicate anything (the source-key lookup
- * sees to that), but the operator should not have to know that.
+ * A media row has no crop columns (`nina_message_images` has none — and
+ * media-album-unified-search Phase 1 added keyword and embedding columns to this table, not crop
+ * ones), so there is nothing for a "Save framing" to write to. `CropStudio` + the two sanity
+ * circles render with a DRAFT crop that starts at identity and resets to identity, and the draft's
+ * ONE consumer is `setChatPhotoAsAvatarAction`, which receives `scale`/`x`/`y` at click time.
+ *
+ * What that action does with them changed on 2026-09-17 (R3): it no longer fetches these bytes and
+ * `put()`s a second Blob object. It mints an `nina_avatars` row that POINTS at this one — same
+ * bytes, one object, and the album row stores the crop while this row stores the photograph. The
+ * pane is unchanged by that: the draft it hands over is the same three numbers, and the album row
+ * is still the only side that can keep them.
+ *
+ * The `worn` latch disables the button once the action answered `ok` — a live button under a face
+ * she already wears would be a lie; a second click would not duplicate anything (the source-key
+ * lookup sees to that), but the operator should not have to know that.
  *
  * ── R2: THE PROMPT AFFORDANCE EXISTS ONLY WHILE THE SIDECAR DOES ────────────────────────────
  * The old rail's brush toggle ALWAYS rendered and dimmed on `prompt == null` — the defect the user
@@ -284,12 +295,33 @@ export function MediaPane({
        * THE DESCRIBE SECTION (R3) — the media arm's twin of `AlbumSelectionPane`'s mount. Same
        * component, same section, this table's actions; after an Add or Replace the `after()` pass
        * fills the field in moments, which is what the empty note promises.
+       *
+       * ── THE KEYWORD BOXES ARE NEW HERE, AND THAT IS THE WHOLE OF R2's UI ──────────────────
+       * media-album-unified-search R2, 2026-09-17, in the user's words: *"every single picture in
+       * any directory must be able to be image searched and we must be able to add search keyword
+       * and negative search keyword to each of them."* Until Phase 1 this table had no such
+       * columns, so this mount passed neither prop and `PhotoDescription` rendered neither block —
+       * absent, not disabled. It has them now, so the props travel, and the shape of the wiring is
+       * `AlbumSelectionPane`'s verbatim (`SelectionPane.tsx`): the value prop and its save closure
+       * are handed in together, and the closure names THIS table's action so a rename in either
+       * action family fails at this call site rather than inside a component that guessed.
        */}
       <PhotoDescription
         description={photo.description}
         emptyNote="She cannot talk about this photo until it is described — reload in a moment if it was just added or replaced, or write it yourself."
         onSave={(text) => editChatPhotoDescriptionAction({ id: photo.id, description: text })}
         onRedescribe={() => describeChatPhotoAction({ id: photo.id })}
+        searchKeywords={photo.searchKeywords}
+        onSaveKeywords={(text) =>
+          editNinaMessageImageSearchKeywordsAction({ id: photo.id, searchKeywords: text })
+        }
+        negativeSearchKeywords={photo.negativeSearchKeywords}
+        onSaveNegativeKeywords={(text) =>
+          editNinaMessageImageNegativeSearchKeywordsAction({
+            id: photo.id,
+            negativeSearchKeywords: text,
+          })
+        }
       />
     </aside>
   )

@@ -22,6 +22,7 @@ import {
   listNinaAvatarsInFolder,
   listNinaMediaPhotos,
   locateNinaAvatar,
+  resolveNinaAvatarLinkedText,
   type NinaAvatarFolderCount,
 } from '@/lib/nina/queries'
 import { shareOrigin } from '@/lib/share/origin'
@@ -210,10 +211,16 @@ export default async function AdminNinaPage(props: PageProps<'/admin/nina'>) {
       /* On this table the kind IS the provenance: 'generated' from her worker, 'upload' from his
          composer. Rendered as the pane's Source row, never assumed. */
       source: row.kind,
-      /* Never her current face: adoption COPIES the bytes into `nina_avatars`, and it is the copy
-         that carries `is_current`. */
+      /* Never her current face: adoption mints an `nina_avatars` row — since 2026-09-17 a POINTER
+         at this one rather than a byte copy — and it is that row which carries `is_current`. */
       isCurrent: false,
       description: row.description,
+      /* media-album-unified-search R2, 2026-09-17. `nina_message_images` carries both keyword
+         columns now (Phase 1), so the Media pane mounts the same two boxes the album rail has and
+         this arm has a value to put in them. When an album pointer names this row, these are the
+         single stored values BOTH panes show. */
+      searchKeywords: row.searchKeywords,
+      negativeSearchKeywords: row.negativeSearchKeywords,
       /* Identity crop — `resolveCrop` folds the three nulls to centred object-cover. Framing
          arrives only when adoption mints an avatar row that can store one. */
       crop: { scale: null, x: null, y: null },
@@ -248,6 +255,24 @@ export default async function AdminNinaPage(props: PageProps<'/admin/nina'>) {
     ])
     folders = treeFolders
 
+    /*
+     * media-album-unified-search R3, 2026-09-17. A POINTER album row
+     * (`nina_avatars.source_image_id` non-null) stores NO description and NO keywords of its own —
+     * all four of those columns are permanently NULL on it, and the operator's real values live on
+     * the `nina_message_images` row it names (plan invariant 3). This is the one read that follows
+     * the link, and the map below is where it is applied.
+     *
+     * ONE statement for the whole page, not one per row: `resolveNinaAvatarLinkedText` filters to
+     * the pointers itself, de-duplicates the image ids and issues a single `inArray`. A page with no
+     * pointer on it — every page in the album today — issues ZERO statements and costs nothing, so
+     * this is not paid for by the common case.
+     *
+     * It is NOT folded into `listNinaAvatarsInFolder`: that read is the file-manager projection over
+     * `avatarColumns` and stays one indexed statement. The redirect is a property of how this SCREEN
+     * renders a pointer, not of what an album row is.
+     */
+    const linked = await resolveNinaAvatarLinkedText(userId, listed.rows)
+
     /* The row -> prop mapping is here rather than in the client component for the reason it always
      * was: `NinaAvatarRow` carries `announcedAt`, `pathname`, `sourceKey` and `thumbPathname`, none
      * of which a browser has any use for, and none of which should cross the serialization boundary
@@ -269,14 +294,48 @@ export default async function AdminNinaPage(props: PageProps<'/admin/nina'>) {
       bytes: row.bytes,
       source: row.source,
       isCurrent: row.isCurrent,
-      description: row.description,
-      /* R2, 2026-09-15. Rendered and edited by the rail's keyword box; `avatarColumns` carries it
-       * now, and the Media arm has no counterpart because that table has no such column. */
-      searchKeywords: row.searchKeywords,
-      /* R2 follow-up, 2026-09-15. Rendered and edited by the rail's negative-keyword box;
-       * `avatarColumns` carries it now, and the Media arm has no counterpart because that table
-       * has no such column. */
-      negativeSearchKeywords: row.negativeSearchKeywords,
+      /*
+       * media-album-unified-search R3, 2026-09-17. `nina_avatars.source_image_id` non-null is what
+       * makes this row a POINTER at a `nina_message_images` original: same bytes, no second Blob
+       * object, and the description and both keyword lines stored on that row rather than this one.
+       * The rail reads it to say so in a sentence and for nothing else — every verb is unchanged.
+       *
+       * The BOOLEAN crosses the boundary, not the id: no link is minted from it and no second read
+       * is issued, so the id would be a field with no reader — the same argument `pathname`,
+       * `announcedAt`, `sourceKey` and `thumbPathname` lose two comments above.
+       *
+       * NOT the same column as `nina_message_images.source_image_id` (`imageColumns`, the media arm
+       * above), which is F37's chat-row re-share provenance. Two tables, two meanings, one spelling.
+       */
+      isPointer: row.sourceImageId !== null,
+      /*
+       * ── THE THREE REDIRECTED FIELDS ─────────────────────────────────────────────────────────
+       * `linked.get(row.id)` is present ONLY for a pointer row, and when it is, its three values
+       * are the linked `nina_message_images` row's. `?? row` is therefore not a fallback for a
+       * failure — it is the ordinary-album-row path, which is almost every row: an ordinary row's
+       * own columns ARE the truth, so there is nothing to look up and nothing to override.
+       *
+       * Spelled as one `text` binding rather than three `linked.get(row.id)?.x ?? row.x` reads so
+       * the three fields cannot drift apart — a pointer must borrow all three or none. A pointer
+       * whose target has somehow gone is absent from the map and degrades to its own NULL columns,
+       * i.e. "not described yet", which is a state this pane has always rendered. (The FK is
+       * `ON DELETE RESTRICT`, so that is unreachable while the constraint holds.)
+       *
+       * This is what makes the pane's new sentence true: the value shown and the value a save
+       * writes are the same row's, by construction rather than by a sync mechanism.
+       */
+      ...(() => {
+        const text = linked.get(row.id) ?? row
+        return {
+          description: text.description,
+          /* R2, 2026-09-15. Rendered and edited by the rail's keyword box. For an ordinary row this
+           * is `avatarColumns`' own column; for a pointer it is the media row's. */
+          searchKeywords: text.searchKeywords,
+          /* R2 follow-up, 2026-09-15. Rendered and edited by the rail's negative-keyword box; same
+           * per-row story as `searchKeywords` directly above. */
+          negativeSearchKeywords: text.negativeSearchKeywords,
+        }
+      })(),
       crop: { scale: row.cropScale, x: row.cropX, y: row.cropY },
       createdAt: row.createdAt.toISOString(),
     }))
