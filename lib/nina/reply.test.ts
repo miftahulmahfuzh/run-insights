@@ -223,6 +223,31 @@ describe('quoteContextBlock', () => {
     expect(block).toContain('- a sunrise over a track')
     expect(block).toContain('- a finisher medal on a table')
   })
+
+  it('tells her not to read a leaked clock in a quoted photo as the real time', () => {
+    // The witness (lib/nina/prompts/describe.ts) is told never to mention a clock, but it does
+    // not reliably obey. This is the backstop for a quoted message's photo, mirroring the one
+    // `userTurnText` carries for the current message's.
+    const block = quoteContextBlock({
+      id: 'm6',
+      mine: true,
+      text: 'ini larian gw',
+      sentAtLabel: null,
+      imageDescriptions: ['a phone screen; the time 05:26 is visible at the bottom'],
+    })
+    expect(block).toContain('not the time now and not when the photo was taken')
+  })
+
+  it('says nothing about a leaked clock when the quoted message had no photo', () => {
+    const block = quoteContextBlock({
+      id: 'm7',
+      mine: true,
+      text: 'gw lari 10k',
+      sentAtLabel: null,
+      imageDescriptions: [],
+    })
+    expect(block).not.toContain('on-screen figure')
+  })
 })
 
 /* ── decideReplySwipe ──────────────────────────────────────────────────────────────────────── */

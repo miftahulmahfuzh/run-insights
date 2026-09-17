@@ -498,6 +498,26 @@ describe('runNinaTurnWith — the request envelope', () => {
     expect(serialised).toContain('nasi goreng')
   })
 
+  it('tells her not to read a leaked clock in a photo as the real time', async () => {
+    // The witness (lib/nina/prompts/describe.ts) is told never to mention a clock, but it does
+    // not reliably obey (2026-09-17: "the time 05:26 is visible" survived it). This is the
+    // backstop at the one place a leaked digit turns into her actually saying it.
+    const client = scriptedClient([sendMessage(GOOD)])
+    await runNinaTurnWith(
+      fakeTurnDeps(client),
+      input({ imageDescriptions: ['a phone screen; the time 05:26 is visible at the bottom'] }),
+    )
+    const userTurn = client.calls[0]!.messages[0]!.content as string
+    expect(userTurn).toContain('not the time now and not when the photo was taken')
+  })
+
+  it('says nothing about a leaked clock when no photo was sent', async () => {
+    const client = scriptedClient([sendMessage(GOOD)])
+    await runNinaTurnWith(fakeTurnDeps(client), input({ imageDescriptions: [] }))
+    const userTurn = client.calls[0]!.messages[0]!.content as string
+    expect(userTurn).not.toContain('on-screen figure')
+  })
+
   it('puts the attached run’s precomputed facts in the user turn and asks for no lookup', async () => {
     const history = runHistoryFixture()
     const attached = history.runs[0]

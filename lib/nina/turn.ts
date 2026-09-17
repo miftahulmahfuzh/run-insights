@@ -601,6 +601,17 @@ function userTurnText(input: NinaTurnInput, hits: NinaShortcutHits): string {
         (input.imageDescriptions.length === 1 ? 'it' : 'them') +
         ' — react to the picture, never to this description as a description:',
       input.imageDescriptions.map((description) => `- ${description}`).join('\n'),
+      /*
+       * The witness is told never to mention a clock, but it does not reliably obey — a phone's
+       * status bar is legible text and the vendor sometimes names it anyway (2026-09-17: "the
+       * time 05:26 is visible" survived into a description after the prompt was hardened against
+       * exactly that). This is the backstop, at the one place a leaked digit turns into her
+       * actually saying it: if one slips through, she must not read it as when the photo was
+       * taken or sent, the way she once turned a stray "05:26" into "you're reading at 5:26 AM".
+       */
+      'If that description names a clock, a battery level or any other on-screen figure, it is ' +
+        'not the time now and not when the photo was taken — you have no idea when that was. ' +
+        'Never turn a number you happened to notice in a photo into a claim about time.',
     )
   }
 

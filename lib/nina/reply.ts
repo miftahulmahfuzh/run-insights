@@ -250,6 +250,12 @@ export function quoteContextBlock(quoted: QuotedMessageInput): string {
     lines.push(
       `${plural ? 'IT HAD IMAGES' : 'IT HAD AN IMAGE'} ATTACHED. This is what ${plural ? 'they' : 'it'} showed — react to the picture, never to this description as a description:`,
       ...quoted.imageDescriptions.map((description) => `- ${description}`),
+      /* Same backstop `lib/nina/turn.ts`'s `userTurnText` carries for the current message's photo —
+       * the witness leaks a clock reading occasionally despite being told not to, and this is the
+       * one place a leaked digit turns into her actually saying it. */
+      'If that description names a clock, a battery level or any other on-screen figure, it is ' +
+        'not the time now and not when the photo was taken — you have no idea when that was. ' +
+        'Never turn a number you happened to notice in a photo into a claim about time.',
     )
   }
 
