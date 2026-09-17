@@ -224,7 +224,7 @@ export function PhotoReferencePicker({
           </ul>
 
           <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-            <p className="text-[12px] font-medium text-ink-3 tabular-nums">
+            <p className="text-[10px] font-medium text-ink-3 tabular-nums sm:text-[12px]">
               {selectedId !== '' && <>selected #{selectedId} &middot; </>}
               Showing {items.length} of {total} &middot; page {page} of {pageCount}
             </p>
