@@ -5,9 +5,14 @@ import { revalidatePath } from 'next/cache'
 import { requireUserId } from '@/lib/auth/requireUserId'
 import { isValidId } from '@/lib/id'
 
-import { reopenNinaImageJob, softDeleteNinaImageJob } from './imagejobs'
+import { reopenNinaImageJob, setNinaImageJobPrompt, softDeleteNinaImageJob } from './imagejobs'
 import { fireNinaImageGeneration } from './imagerun'
-import { NINA_JOBS_HREF, type NinaJobRefusal } from './jobview'
+import {
+  NINA_JOBS_HREF,
+  ninaJobHref,
+  type NinaJobRefusal,
+  type NinaPromptEditRefusal,
+} from './jobview'
 
 /**
  * **The `/nina/jobs` row's mutations. Phase 1 puts `redoNinaImageJob` here; phase 2 appends
@@ -180,4 +185,25 @@ export async function deleteNinaImageJob(input: { jobId: string }): Promise<Nina
 
   revalidatePath(NINA_JOBS_HREF)
   return { ok: true, reason: null, jobId: null }
+}
+
+/**
+ * **R1 (edit): rewrite this job's `args.prompt`, so the exact same "Coba lagi" button on this same
+ * screen sends something the provider's content filter did not just reject.**
+ *
+ * Revalidates this job's OWN detail path — `ninaJobHref(jobId)` — never `NINA_JOBS_HREF`: the
+ * list shows no prompt at all, so there is nothing there for this edit to invalidate.
+ */
+export async function updateNinaImageJobPrompt(input: {
+  jobId: string
+  prompt: string
+}): Promise<{ ok: boolean; reason: NinaPromptEditRefusal | null }> {
+  const userId = await requireUserId()
+  if (!isValidId(input?.jobId)) return { ok: false, reason: 'not-found' }
+
+  const outcome = await setNinaImageJobPrompt(userId, input.jobId, input.prompt)
+  if (!outcome.ok) return { ok: false, reason: outcome.reason }
+
+  revalidatePath(ninaJobHref(input.jobId))
+  return { ok: true, reason: null }
 }

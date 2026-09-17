@@ -628,3 +628,37 @@ describe('setNinaImageJobPrompt', () => {
     expect(result).toEqual({ ok: false, reason: 'not-found' })
   })
 })
+
+describe('updateNinaImageJobPrompt authenticates first and refuses before it writes', () => {
+  it('calls requireUserId above the shape check', async () => {
+    const result = await actions.updateNinaImageJobPrompt({ jobId: 'nope', prompt: 'x' })
+
+    expect(requireUserId).toHaveBeenCalledOnce()
+    expect(result).toEqual({ ok: false, reason: 'not-found' })
+    expect(revalidatePath).not.toHaveBeenCalled()
+  })
+
+  it('forwards a refusal from setNinaImageJobPrompt verbatim', async () => {
+    dbRows.select = []
+
+    const result = await actions.updateNinaImageJobPrompt({ jobId: FAILED_JOB, prompt: 'x' })
+
+    expect(result).toEqual({ ok: false, reason: 'not-found' })
+    expect(revalidatePath).not.toHaveBeenCalled()
+  })
+})
+
+describe('a successful edit revalidates this job’s own detail path', () => {
+  it('revalidates /nina/jobs/<id>, not the list', async () => {
+    dbRows.select = [{ args: { ...ARGS } }]
+    dbRows.update = [{ id: FAILED_JOB }]
+
+    const result = await actions.updateNinaImageJobPrompt({
+      jobId: FAILED_JOB,
+      prompt: 'edited prompt',
+    })
+
+    expect(result).toEqual({ ok: true, reason: null })
+    expect(revalidatePath).toHaveBeenCalledWith(`/nina/jobs/${FAILED_JOB}`)
+  })
+})
