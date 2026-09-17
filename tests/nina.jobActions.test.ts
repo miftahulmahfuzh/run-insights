@@ -50,9 +50,10 @@ import { NINA_TUNING_DEFAULTS } from '@/lib/nina/tuning'
  * collected callback IS the generation, not a doorbell, so the suite drives it itself and owns the
  * ordering.
  */
-const { deferred, dbRows } = vi.hoisted(() => ({
+const { deferred, dbRows, updateCalls } = vi.hoisted(() => ({
   deferred: [] as Array<() => unknown>,
   dbRows: { select: [] as unknown[], update: [] as unknown[] },
+  updateCalls: [] as unknown[],
 }))
 
 vi.mock('next/server', () => ({
@@ -82,7 +83,12 @@ vi.mock('@/lib/db', () => {
   return {
     db: {
       select: () => ({ from: () => ({ where: () => thenable(() => dbRows.select) }) }),
-      update: () => ({ set: () => ({ where: () => thenable(() => dbRows.update) }) }),
+      update: () => ({
+        set: (values: unknown) => {
+          updateCalls.push(values)
+          return { where: () => thenable(() => dbRows.update) }
+        },
+      }),
     },
   }
 })
@@ -159,6 +165,7 @@ let imagerun: Run
 
 beforeEach(async () => {
   deferred.length = 0
+  updateCalls.length = 0
   dbRows.select = failedRow()
   dbRows.update = []
 
@@ -571,6 +578,30 @@ describe('setNinaImageJobPrompt', () => {
     )
 
     expect(result).toEqual({ ok: true })
+    expect(updateCalls).toHaveLength(1)
+    const [{ args: written }] = updateCalls as [{ args: NinaImageJobArgs }]
+    expect(written.prompt).toBe('a photograph of nina, late afternoon light')
+    /* Every other arg field survives untouched. */
+    expect(written.seed).toBe(ARGS.seed)
+    expect(written.purpose).toBe(ARGS.purpose)
+    expect(written.scene).toBe(ARGS.scene)
+    expect(written.mood).toBe(ARGS.mood)
+    expect(written.replyToId).toBe(ARGS.replyToId)
+    expect(written.source).toBe(ARGS.source)
+    expect(written.attempts).toBe(ARGS.attempts)
+    expect(written.sidecar).toBe(
+      [
+        'provider:   openrouter',
+        'model:      qwen/qwen-image-3-pro',
+        'purpose:    selfie',
+        'resolution: 1024x1536 2:3',
+        'seed:       4242',
+        'reference:  none (RU-18)',
+        '',
+        '--- prompt as sent ---',
+        'a photograph of nina, late afternoon light',
+      ].join('\n'),
+    )
   })
 
   it('falls back to the bare prompt as the sidecar when the marker is missing', async () => {
@@ -581,6 +612,10 @@ describe('setNinaImageJobPrompt', () => {
     const result = await imagejobs.setNinaImageJobPrompt(USER, FAILED_JOB, 'new prompt')
 
     expect(result).toEqual({ ok: true })
+    expect(updateCalls).toHaveLength(1)
+    const [{ args: written }] = updateCalls as [{ args: NinaImageJobArgs }]
+    expect(written.prompt).toBe('new prompt')
+    expect(written.sidecar).toBe('new prompt')
   })
 
   it('reports not-found when the row disappears between the read and the write', async () => {
