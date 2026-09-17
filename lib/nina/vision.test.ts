@@ -183,10 +183,17 @@ describe('the describe prompt', () => {
   })
 
   it('carves out verbatim transcription for prose to read, not a fitness screen', () => {
-    expect(NINA_DESCRIBE_SYSTEM_PROMPT).toMatch(/transcribe the legible text verbatim/)
+    expect(NINA_DESCRIBE_SYSTEM_PROMPT).toMatch(/quote the legible text verbatim/)
     // Rule 7 exists precisely so it does NOT loosen rule 1 for the case rule 1 was written for.
     expect(NINA_DESCRIBE_SYSTEM_PROMPT).toMatch(
-      /a watch face, a workout summary or a splits screen is never something to transcribe/,
+      /a watch face or workout screen is never something to transcribe/,
+    )
+  })
+
+  it('asks for the whole highlighted passage, not a start-and-end summary', () => {
+    expect(NINA_DESCRIBE_SYSTEM_PROMPT).toMatch(/copy its exact words like OCR/)
+    expect(NINA_DESCRIBE_SYSTEM_PROMPT).toMatch(
+      /[Nn]ever paraphrase it or summarize where it starts and ends/,
     )
   })
 })
