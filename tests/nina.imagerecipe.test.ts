@@ -294,6 +294,34 @@ describe('the prompt', () => {
     }
   })
 
+  it('angle (2026-09-17): replaces the default framing sentence rather than adding a second, competing one', () => {
+    const overrideSentence =
+      'The camera is directly above her, looking straight down; she is lying on her back looking straight up into the lens.'
+    const prompt = buildNinaImagePrompt({
+      purpose: 'selfie',
+      scene: 'lying in a meadow, shot from directly overhead',
+      angle: overrideSentence,
+    })
+    expect(prompt).toContain(overrideSentence)
+    /* The whole point: the contradicting eye-level sentence must be GONE, not merely followed by a
+     * correction — see the header above `NINA_SELFIE_STYLE_PREFIX` for why appending doesn't work
+     * against a diffusion model. */
+    expect(prompt).not.toContain('Shot on a 50 mm lens from about three metres back')
+    expect(prompt).not.toContain('floor visible below her feet')
+    /* The rest of the camera paragraph (the anti-selfie negatives and the realism clauses either
+     * side of the framing sentence) is unconditional and still there. */
+    expect(prompt).toContain('taken by another person standing a few steps away')
+    expect(prompt).toContain('no raised arm reaching toward the camera')
+    expect(prompt).toContain('Realistic photograph, not an illustration and not a render')
+  })
+
+  it('angle absent or blank: the default eye-level framing sentence renders exactly as before', () => {
+    for (const angle of [undefined, null, '', '   ']) {
+      const prompt = buildNinaImagePrompt({ purpose: 'selfie', scene: 'on the track', angle })
+      expect(prompt, String(angle)).toContain('Shot on a 50 mm lens from about three metres back')
+    }
+  })
+
   it('R3: a high steamy dial no longer puts a phone back in her hand', () => {
     /* The pose clause used to end "the phone held close", which contradicted the camera block
      * above at `steamy` band high+ — a prompt arguing with itself. */

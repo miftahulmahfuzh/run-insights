@@ -99,8 +99,31 @@ import { NINA_IMAGE_ASPECT, NINA_IMAGE_RESOLUTION, type NinaImagePurpose } from 
  *
  * RU-18 still holds: no clause here may claim a picture that is not in the payload is
  * authoritative, and the word "reference" does not appear (`tests/nina.imagerecipe.test.ts:855`).
+ *
+ * ── WHY THE FRAMING SENTENCE IS ITS OWN CONSTANT, SPLICED IN RATHER THAN APPENDED TO ─────────────
+ * The middle sentence below ("Shot on a 50 mm lens... floor visible below her feet") is a claim
+ * about WHERE THE CAMERA IS: eye-level, a few metres back, standing framing. It is measurably
+ * correct for the ordinary photo this paragraph was written to fix, and measurably WRONG for one
+ * the chat model was explicitly asked to shoot from directly overhead (`nina_turns` `HIiyRr5_zemf`
+ * and `cPl8-4p26cqA`, both 2026-09-17): `scene`/`pose` correctly said "from directly above" and
+ * "looking straight up into the lens", and the photo still came back closer to eye-level, because
+ * this sentence was ALSO in the prompt, unconditionally, saying the opposite. A diffusion model
+ * has no "ignore the earlier sentence" — appending a correction after a standing contradiction
+ * measurably blends the two rather than picking one (the second job: an improvement, still not a
+ * true 90°). The only fix that removes the contradiction rather than out-shouting it is to never
+ * SEND both sentences at once — hence `{{angle}}` sits INSIDE this paragraph, in the framing
+ * sentence's own place, and REPLACES it exactly the way `outfit` already replaces the wardrobe
+ * line (`wardrobeValue` below) rather than joining it.
  */
-const NINA_SELFIE_STYLE = `A candid photograph of her, taken by another person standing a few steps away. This is not a selfie: no raised arm reaching toward the camera, no phone and no hand held near the lens, no mirror and no mirror reflection, and she is not holding the camera herself. Shot on a 50 mm lens from about three metres back, at chest height, so the perspective is flat and human: her head is normal-sized and in natural proportion to her tall body, her long legs read their full length, and nothing is stretched or squeezed by a close wide-angle. Frame her whole body with room to spare, the top of her head and her long feet both comfortably inside the picture and floor visible below her feet; her long feet and long calves are never cropped, never flattened against the bottom edge and never shrunk by perspective. Natural daylight, slightly imperfect framing, shallow depth of field, visible skin texture, no studio lighting, no retouching, no text, no watermark, no logo, no border. Realistic photograph, not an illustration and not a render, the kind of picture a friend takes and sends in a chat app.`
+const NINA_SELFIE_STYLE_PREFIX = `A candid photograph of her, taken by another person standing a few steps away. This is not a selfie: no raised arm reaching toward the camera, no phone and no hand held near the lens, no mirror and no mirror reflection, and she is not holding the camera herself.`
+
+/**
+ * The default framing sentence — camera position and proportion only. Replaced wholesale by the
+ * chat model's own `angle` sentence when one is sent; see the header above `NINA_SELFIE_STYLE_PREFIX`.
+ */
+const NINA_SELFIE_FRAMING_DEFAULT = `Shot on a 50 mm lens from about three metres back, at chest height, so the perspective is flat and human: her head is normal-sized and in natural proportion to her tall body, her long legs read their full length, and nothing is stretched or squeezed by a close wide-angle. Frame her whole body with room to spare, the top of her head and her long feet both comfortably inside the picture and floor visible below her feet; her long feet and long calves are never cropped, never flattened against the bottom edge and never shrunk by perspective.`
+
+const NINA_SELFIE_STYLE_SUFFIX = `Natural daylight, slightly imperfect framing, shallow depth of field, visible skin texture, no studio lighting, no retouching, no text, no watermark, no logo, no border. Realistic photograph, not an illustration and not a render, the kind of picture a friend takes and sends in a chat app.`
 
 /**
  * The avatar variant. Same camera, tighter crop, because the result is rendered inside a 28-44 px
@@ -484,7 +507,7 @@ function ninaMoodBlock(mood: string | null | undefined): string {
  * fields are empty — the omit-when-empty rule the built-in assembly always had.
  */
 export const NINA_PROMPT_TEMPLATE_DEFAULT = [
-  NINA_SELFIE_STYLE,
+  `${NINA_SELFIE_STYLE_PREFIX} {{angle}} ${NINA_SELFIE_STYLE_SUFFIX}`,
   '',
   'SUBJECT:',
   `She has got an alluring body, ${NINA_BODY_FACTS}. This silhouette is the point of the photograph and it ` +
@@ -507,8 +530,6 @@ export const NINA_PROMPT_TEMPLATE_DEFAULT = [
   'SCENE: {{scene}}',
   '',
   'EXPRESSION AND ENERGY: {{mood}}',
-  '',
-  'CAMERA ANGLE FOR THIS PHOTO: {{angle}}',
   '',
   'NOTES: {{notes}}',
 ].join('\n')
@@ -613,21 +634,18 @@ function renderNinaImagePrompt(template: string, blocks: Record<string, string>)
  *  8. **`EXPRESSION AND ENERGY:`** — after the scene, so it reads as a refinement of THIS
  *     photograph rather than an amendment to who she is. UNCHANGED, and it is exactly where
  *     `tools/gen_badge_art.py` puts `--note`, for the same reason.
- *  9. **`CAMERA ANGLE FOR THIS PHOTO:`** (2026-09-17) — after everything else and before `NOTES:`,
- *     on the same "later instruction wins" logic as items 5-6 above. Block 1's camera paragraph is
- *     fixed prose describing one specific eye-level, three-metres-back shot, chosen to fix a
- *     measured selfie-framing failure — it says nothing conditional on `scene`, so a scene that
- *     asks for a genuinely different camera (an overhead top-down shot, say) leaves two competing
- *     camera instructions in the same prompt, and the model followed the earlier, longer, more
- *     specific one instead of `pose`'s brief mention of the real angle (`nina_turns.id
- *     HIiyRr5_zemf`, 2026-09-17: `pose` said "shot straight from above" and the photo still came
- *     back eye-level). `{{angle}}` is empty on every ordinary photo — quiet by default, exactly
- *     like `{{faceLock}}` and `{{presence}}` — and the chat model is told to spend it only when the
- *     runner explicitly asked for an unusual camera position, stated as its own late, explicit
- *     correction rather than folded into `scene` or `pose` where block 1 outranks it.
- *  10. **`NOTES:`** — LAST. It is the operator's catch-all amendment to this photograph ("nina is
+ *  9. **`NOTES:`** — LAST. It is the operator's catch-all amendment to this photograph ("nina is
  *     full of sweat"), the same category as `--note` and one step later, because last is where an
  *     instruction that must be able to amend everything above it belongs.
+ *
+ * ── `{{angle}}` IS NOT A BLOCK: IT LIVES INSIDE BLOCK 1 (2026-09-17) ──────────────────────────────
+ * `NINA_SELFIE_STYLE_PREFIX`'s header has the full argument; the short version is that a "later
+ * instruction wins" correction does not work against a diffusion model the way it works against an
+ * instruction-following LLM, so the framing sentence cannot be countermanded from the end of the
+ * prompt — it has to never be sent in the first place. `{{angle}}` therefore sits IN PLACE of the
+ * default framing sentence, inside block 1, and REPLACES it (`NINA_SELFIE_FRAMING_DEFAULT` under a
+ * blank override, same as `outfit` replaces the wardrobe line) rather than joining it as a tenth
+ * numbered block.
  *
  * ── WHAT IT TAKES, AND WHY BOTH ROWS ──────────────────────────────────────────────────────────
  * `tuning` is her CHARACTER (`/admin/personality`) and only `steamy` and `flirty` have anything to
@@ -662,11 +680,11 @@ export function buildNinaImagePrompt(input: {
    * three wardrobe sources: `outfit` (an explicit ask) wins over `prefs.wardrobe` (a standing
    * preference) wins over this — it only ever replaces the canon default, never a real preference. */
   ootd?: string | null
-  /** The chat model's own camera-position correction for THIS photograph — selfie only, same
-   * reasoning as `outfit`/`pose`. Blank or absent (every ordinary photo) renders no line at all,
-   * leaving block 1's fixed eye-level camera paragraph as the only camera instruction. Non-blank
-   * renders as `CAMERA ANGLE FOR THIS PHOTO: <value>`, late enough in the template to actually
-   * override block 1 rather than compete with it — see the block-order note above. */
+  /** The chat model's own camera-position sentence for THIS photograph — selfie only, same
+   * precedence reasoning as `outfit`/`pose`. Blank or absent (every ordinary photo) leaves
+   * `NINA_SELFIE_FRAMING_DEFAULT`'s eye-level sentence in block 1. Non-blank REPLACES that
+   * sentence in place rather than adding a second, competing one — see the header above
+   * `NINA_SELFIE_STYLE_PREFIX` for why appending a late correction does not work here. */
   angle?: string | null
   /** Her character. Only `steamy` and `flirty` reach a photograph. */
   tuning?: NinaTuning | null
@@ -757,6 +775,11 @@ export function buildNinaImagePrompt(input: {
           ? ootdIdea
           : NINA_DEFAULT_OUTFIT_VALUE
 
+  /* REPLACES `NINA_SELFIE_FRAMING_DEFAULT` in place — never both in the same prompt. See the
+   * header above `NINA_SELFIE_STYLE_PREFIX` for why appending a correction after it doesn't work. */
+  const angleOverride = input.angle?.trim() ?? ''
+  const angleValue = angleOverride.length > 0 ? angleOverride : NINA_SELFIE_FRAMING_DEFAULT
+
   const blocks: Record<string, string> = {
     wardrobe: withSentenceStop(wardrobeValue),
     focus: focusTerms,
@@ -766,7 +789,7 @@ export function buildNinaImagePrompt(input: {
     time: prefs.time.trim(),
     scene: input.scene.trim(),
     mood: input.mood?.trim() ?? '',
-    angle: input.angle?.trim() ?? '',
+    angle: angleValue,
     notes: prefs.notes.trim(),
   }
 

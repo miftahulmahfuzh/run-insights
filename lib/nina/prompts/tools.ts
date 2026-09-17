@@ -375,14 +375,11 @@ export const GENERATE_IMAGE_TOOL: Anthropic.Tool = {
       angle: {
         type: 'string',
         description:
-          'ONLY when he explicitly asks for a camera position that is NOT a normal eye-level shot ' +
+          'ONLY when he explicitly asks for a camera position other than the normal eye-level shot ' +
           'from a few steps away — e.g. "from directly above", "bird\'s-eye view", "top-down", "shot ' +
-          'from below". Every photo is otherwise shot eye-level, a few steps back; leave this unset ' +
-          'for that normal case. When he does ask for one, state it as its own short instruction, ' +
-          'e.g. "The camera is directly above her, looking straight down; she is lying on her back ' +
-          'looking straight up into the lens" — and make sure her described pose and gaze in ' +
-          '`scene`/`pose` actually match that camera position (looking up at an overhead camera, not ' +
-          'at a camera in front of her).',
+          'from below". One sentence stating where the camera is, e.g. "The camera is directly ' +
+          'above her, looking straight down; she is lying on her back looking straight up into the ' +
+          'lens." Leave unset otherwise. Make sure `scene`/`pose` match it.',
       },
     },
   },
