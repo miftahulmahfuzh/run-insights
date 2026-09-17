@@ -308,6 +308,62 @@ export async function getNinaMessageImagesForMessages(
 }
 
 /**
+ * **"What photograph is he pointing at?"** — the fallback half of R2's resolution, and the only new
+ * read the chat-side avatar adoption needs.
+ *
+ * `set_avatar_from_photo` (`lib/nina/avatarAdopt.ts`) prefers whatever is attached to the runner's
+ * CURRENT message. When he attached nothing — "ganti profpic lu pake foto ini", two minutes after
+ * the photo itself, which is exactly the production turn this feature was written for — the
+ * referent is the most recent photograph the conversation has shown. This answers that, and nothing
+ * wider: one session, one row.
+ *
+ * ── ORIGINALS ONLY, AND THE PREDICATE IS THIS MODULE'S OWN ───────────────────────────────────
+ * `isOriginalPhoto()` is in the WHERE for `listNinaMessageImages`' reason and one sharper one: the
+ * caller's next act is to COPY these bytes into `nina_avatars`, and a reference renders bytes that
+ * already live somewhere else — copying one would file a second copy of a photograph the original
+ * still owns. That is `setChatPhotoAsAvatarAction`'s rule, enforced here at the read so the chat
+ * path cannot reach a reference by accident.
+ *
+ * ── THE SESSION COMES FROM `nina_messages`, SO THIS JOINS ────────────────────────────────────
+ * `nina_message_images` carries no `session_id` — a photograph is scoped by the bubble that holds
+ * it. The `innerJoin` is on `nina_messages`' primary key, and it also drops an ORPHANED photograph
+ * (`message_id IS NULL` after a session delete, `ON DELETE SET NULL`), which is correct: a
+ * photograph whose bubble is gone is not something "this conversation just showed".
+ *
+ * `user_id` is spelled on BOTH tables. The image-side predicate is the indexed one
+ * (`nina_message_images_user_created_idx`); the message-side one is the ownership belt-and-braces
+ * this module's rule 2 asks for, and it costs nothing on a primary-key join.
+ *
+ * `(created_at desc, id desc)` is `listNinaMessageImages`' ordering with the same `id` tiebreak,
+ * because rows written in one statement tie on `created_at`. The projection is `imageColumns`, so
+ * the caller gets `pathname` (it needs the container), `description` (it seeds the album row's) and
+ * the measurements, in the one row shape this module has.
+ *
+ * `null` for "no such session", "not yours" and "nothing original in it" alike — this module's
+ * standing rule, and here all three want the same next step: refuse, and ask him which photo.
+ */
+export async function getLatestOriginalNinaSessionPhoto(
+  userId: string,
+  sessionId: string,
+): Promise<NinaImageRow | null> {
+  const rows = await db
+    .select(imageColumns)
+    .from(ninaMessageImages)
+    .innerJoin(ninaMessages, eq(ninaMessages.id, ninaMessageImages.messageId))
+    .where(
+      and(
+        eq(ninaMessageImages.userId, userId),
+        eq(ninaMessages.userId, userId),
+        eq(ninaMessages.sessionId, sessionId),
+        isOriginalPhoto(),
+      ),
+    )
+    .orderBy(desc(ninaMessageImages.createdAt), desc(ninaMessageImages.id))
+    .limit(1)
+  return rows[0] ?? null
+}
+
+/**
  * **"Does this user already store these bytes?"** The write-time dedup lookup (media-dedupe P1),
  * and the question every dedup arm — the upload pre-check, the generated store, the worker — asks
  * BEFORE it is allowed to create a second Blob object. Phase 1 ships the question with no

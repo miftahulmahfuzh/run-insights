@@ -54,7 +54,13 @@ persisted as a `reminders` key in the existing `nina_memory_slots` jsonb (**no n
 migration**), and delivered by a SIXTH `ProactiveTriggerKind` (`reminder_due`) at the FRONT of
 `PROACTIVE_PRIORITY`; the `/api/cron/nina` schedule moved `"0 12 * * *"` → `"0 13 * * *"` (19:00 →
 20:00 WIB) so the Hobby plan's within-the-hour window brackets 20:45 — see *Memory, promises,
-patterns, proactive* and Gotchas.
+patterns, proactive* and Gotchas. Restated 2026-09-17 for P1-NIN-A054
+(nina-avatar-existing-photo, a one-phase set): `avatarAdopt.ts` added — a SECOND avatar tool,
+`set_avatar_from_photo`, which adopts a photograph that already exists and generates nothing;
+`NINA_PROMPT_VERSION` 10 → 11 (a whole new tool, no system text, snapshot UNREGENERATED);
+`getLatestOriginalNinaSessionPhoto` added to `queries/images.ts`; `'chat-photo:'` now has a named
+export on the nina side (`NINA_CHAT_PHOTO_SOURCE_KEY_PREFIX`) and is still three spellings, not one
+import — see Images' *Adopting a photograph that already exists*.
 **Documentation Created**: 2026-09-05 (`NINA_CHARACTER_TUNING_PLAN.md` phase 2)
 
 ## Overview
@@ -78,7 +84,9 @@ modules into `'use client'` components.
   INFERS about him, plus `reminder_due` (since 2026-09-16) — the only one he wrote, a standing
   daily check-in he asked for in chat prose and she delivers once per Jakarta day.
 - **Images** — her selfies and avatars, prompt → job row → Blob, plus the caption she writes
-  under a photograph of hers from what is actually in it.
+  under a photograph of hers from what is actually in it. One avatar path has none of that
+  (`avatarAdopt.ts`, since 2026-09-17): a photograph that already exists becomes her face inside the
+  tool round, no prompt, no job row, no camera.
 - **Embeddings** — one string to one 1536-wide vector (`embedding.ts`, since 2026-09-15), the
   vendor seam the album's semantic search reads and writes through.
 - **Album semantic search** — the three cosine-similarity reads that rank `nina_avatars` against a
@@ -221,14 +229,18 @@ and the first only when the user redlines the canon. `buildNinaSystemPrompt(tuni
 `nina*` block functions into ten sections and drops empty sections header-and-all. Proactive split:
 trigger LOGIC (day-count thresholds) is `proactive.ts`'s; trigger COPY is `system.ts`'s.
 
-**Version constants.** `NINA_PROMPT_VERSION` (10 as of 2026-09-16) identifies the ASSEMBLER —
+**Version constants.** `NINA_PROMPT_VERSION` (11 as of 2026-09-17) identifies the ASSEMBLER —
 system text **and** the schemas in `prompts/tools.ts`; it has bumped several times without any
 system text moving (the shortcut block and the burst block are conditional user-turn bytes;
 version 8 was the first bump since version 1 in which a TOOL SCHEMA moved and the system text did
-not, and versions 9 and 10 are both of that kind — 10 is the nina-natural-reminders set's
-`SEND_TOOL.reminders` array), because `nina_turns` must be able to date a turn that could carry
-bytes no earlier version could — a turn whose `body.tools` held a fifth dispatched tool is not a
-version-7 turn, and a turn whose `send` could carry a `reminders` array is not a version-9 one. The
+not, and versions 9, 10 and 11 are all of that kind — 10 is the nina-natural-reminders set's
+`SEND_TOOL.reminders` array, 11 is the whole new `SET_AVATAR_FROM_PHOTO_TOOL` plus one appended
+clause on `SET_AVATAR_TOOL.description`), because `nina_turns` must be able to date a turn that
+could carry bytes no earlier version could — a turn whose `body.tools` held a fifth dispatched tool
+is not a version-7 turn, a turn whose `send` could carry a `reminders` array is not a version-9 one,
+and a turn that could have DISPATCHED `set_avatar_from_photo` is not a version-10 one. Version 11 is
+the rule's widest case and the one to copy: ADDING a tool bumps this constant exactly as editing one
+does, and it still leaves the snapshot alone. The
 corollary is the one that catches people out in both directions: adding or editing a tool schema
 bumps this constant, and it leaves `tests/__snapshots__/nina.prompts.test.ts.snap` UNTOUCHED,
 because the snapshot is `buildNinaSystemPrompt`'s bytes and the tool array is not in them. A
@@ -365,7 +377,11 @@ shape RESTATES it as an interface beside the gateway method rather than importin
 return type. `NINA_CORE_TOOL_SET` is what this package dispatches; `extendToolSet` (`imagetools.ts`,
 `avatartools.ts`) adds the tools that carry their own infrastructure, and `NINA_CHAT_TOOL_SET` /
 `NINA_FULL_TOOL_SET` derive from the core set, so a tool added to the core array reaches both with
-no edit in either extender. The test that counts is `tests/nina.prompts.test.ts`: it walks
+no edit in either extender. **Tools the model must CHOOSE BETWEEN are added in one `extendToolSet`
+call, never split across two** — `set_avatar` and `set_avatar_from_photo` (2026-09-17) are both in
+`avatartools.ts`' single extension for exactly that reason: a build where only one of the pair is
+dispatchable is the failure the second tool exists to remove, and the guard is structural, not a
+comment. The test that counts is `tests/nina.prompts.test.ts`: it walks
 `NINA_TOOLS` (every schema that EXISTS, a superset of what any caller sends) and, for the tools
 whose arguments are enumerated, asserts the JSON-Schema `enum` lists are equal to the Zod const
 arrays — the hand-written copy is a checked claim, not a hopeful comment.
@@ -612,6 +628,65 @@ wrapped in a `try` of their own (`proactive.ts`'s shape; the seam's list read is
 `finishAvatar` deliberately notifies nothing: nobody asked in the chat, and the NULL `announced_at`
 is the `avatar_changed` proactive trigger — the next cron tick is what makes her mention it.
 
+**Adopting a photograph that already exists** (`avatarAdopt.ts`, since 2026-09-17, P1-NIN-A054) —
+the THIRD avatar path and the only one with no camera in it. `generateNinaAvatar` invents a scene
+and waits minutes; `setChatPhotoAsAvatarAction` (`lib/admin`) is the operator's; this one is the
+runner pointing at a photograph mid-conversation. The tool is `set_avatar_from_photo`
+(`handleSetAvatarFromPhoto`, `avatartools.ts`), and `SET_AVATAR_TOOL.description` now says in one
+clause that it takes a NEW photo, because the two tools are only useful as a pair. Seven rules, and
+the first is the one a new caller gets wrong:
+
+- **The referent is resolved from STRUCTURE and never from a tool argument.** The model has never
+  seen a photograph's id — `context.ts` hands it `imageDescriptions: string[]`, prose only — so an
+  id-shaped property could only ever be hallucinated, and the schema has none (`because` is the sole
+  property, `required` in the JSON schema and OPTIONAL in the Zod that validates, this file's
+  documented *"`required` is documentation and not enforcement"* split). `resolveNinaAdoptTarget`
+  answers in the order a person points: whatever is attached to the message being answered (first
+  by `sort_order` — the leftmost tile is what "ini" means), else the most recent ORIGINAL photograph
+  in the same session (`getLatestOriginalNinaSessionPhoto`), else nothing and she asks which. A
+  proactive turn has no runner message and therefore no referent.
+- **A reference row is flattened before the core, and refused inside it.** The resolver rewrites a
+  re-share to what it points at (`sourceAvatarId` beats `sourceImageId`; `ninaPhotoProvenance`
+  guarantees one hop, never a chain) and an album target is a PROMOTION — zero blob calls, zero
+  inserts, only the crown moves. `adoptNinaChatPhotoAsAvatar` still refuses either provenance column
+  outright, because a core that is only correct when its own resolver called it is not correct.
+  `getLatestOriginalNinaSessionPhoto` carries `isOriginalPhoto()` for the same reason at the read.
+- **Bytes first, rows second.** `fetch` → `put` (`nina/<userId>/avatar-<id>.<ext>`,
+  `addRandomSuffix`) → INSERT, and the row records `put`'s RETURNED pathname, never the requested
+  one. A failed copy writes nothing; a failed insert at worst orphans an object, which is the
+  recoverable direction and `scripts/blob-reap.mjs`' domain.
+- **`source_key = 'chat-photo:<imageId>'` is the whole of idempotence, and the LOOKUP is the
+  policy.** A second "pakai foto ini" finds the first copy before any bytes move;
+  `nina_avatars_user_source_key_unq` is only the backstop for the race the lookup cannot close, and
+  a conflicted insert re-reads by key rather than erroring. `changed` is read BEFORE the promotion,
+  so she can say "it already was" instead of pretending to have just changed it.
+- **`source: 'operator'`, and `description` is inherited.** `'operator'` is the `NinaAvatarSource`
+  member that had no writer until this: a PERSON picked these exact bytes — not the generator
+  (`'generated'`), not `/admin` (`'admin'`). The chat row's `description` seeds the album row's, so
+  adopting an already-described photograph costs no second vendor call; a NULL stays NULL, because
+  the deferred describe is `lib/admin`'s and this layer must not reach for it.
+- **It announces INLINE, which is the exact inverse of `finishAvatar`, and the two statements may
+  not be reordered.** `setCurrentNinaAvatar` re-arms `announced_at` to NULL by design ("a
+  hand-changed avatar makes her speak"); `markNinaAvatarAnnounced` immediately after closes it,
+  because she describes the change in this same reply. Leaving it NULL would queue the
+  `avatar_changed` cron to announce tomorrow a change she already told him about. For the same
+  reason the `in_flight` guard is DELIBERATELY ABSENT here: `handleSetAvatar` refuses while an
+  unannounced generation is in the air because two generations queue two announcements, and this
+  tool queues none — applying the guard would refuse a legitimate adoption just because a selfie
+  happened to be developing.
+- **Nothing in it throws, and almost nothing is an error.** A vendor-shaped failure becomes `null`,
+  becomes `copy_failed`, becomes one sentence in her own voice (`SET_AVATAR_FROM_PHOTO_ANSWERS`,
+  written for a model and never rendered). Every refusal is `isError: false` — they are true answers
+  to a legitimate request (`tools.ts`' ruling (g)); the single `isError: true` is a payload that is
+  not an object at all.
+
+**The layering direction is what forces the copy.** `lib/admin` depends on `lib/nina` and never the
+reverse, and `setChatPhotoAsAvatarAction` is a `'use server'` action behind `requireAdmin()`
+besides, so the chat path cannot call it. What `avatarAdopt.ts` duplicates is a CLOSED three-case
+mapping (`jpg|png|webp` → content type) and one pathname template — a bounded copy of a pure
+mapping, not of a business rule — while `NINA_BLOB_PREFIX` is imported, because that one has a
+single home. Tests hold the copies together, exactly as they hold `'chat-photo:'`.
+
 **Every failed generation CALL leaves a `nina_error_logs` row** (`imagerun.ts`'s module-private
 `recordImageCallFailure`, since 2026-09-12), not merely every failed JOB. The call site sits in
 `attemptOnce`, ABOVE `closeFailed`, deliberately: `closeFailed` either requeues (the attempt was
@@ -718,7 +793,8 @@ correlated `NOT EXISTS` against `nina_avatars` on
 `source_key = 'chat-photo:' || nina_message_images.id`, `user_id` bound INSIDE the subquery (an
 unscoped one would let another operator's album hide these photographs; the probe is index-backed
 via `nina_avatars_user_source_key_unq`). The arm exists because adoption COPIES:
-`setChatPhotoAsAvatarAction` (`lib/admin`) writes the only link there is onto the new album row,
+`setChatPhotoAsAvatarAction` (`lib/admin`) and, since 2026-09-17, `adoptNinaChatPhotoAsAvatar`
+(`avatarAdopt.ts`) write the only link there is onto the new album row,
 the chat row it copied from keeps both provenance columns NULL, and `isOriginalPhoto()` — which
 catches ALBUM → CHAT — cannot see CHAT → ALBUM, so the picker showed the photograph twice. All
 three readers of the scope change together: `listNinaPhotoReferences` (the picker's chat page),
@@ -729,10 +805,18 @@ is deleted. Deliberately unchanged: `mediaCollectionScope` (the Media view) and
 `listNinaMessageImages` (`/nina/about`) must NOT grow the arm — an adopted chat row is still a real
 photograph in a real bubble, and the Media view is the operator's only Replace/Remove handle on it;
 un-adopted photographs are unaffected. Read-path only: no migration, no back-reference column
-("bytes copied, not shared" is the write side's own rule). The `'chat-photo:'` literal is spelled
-at the reader and the writer with no shared constant (a `'use server'` module may export only
-actions), held together by `tests/nina.photoRefs.test.ts` (the emitted `not exists` SQL, the
-writer's side, and the Media/about absence asserted as an absence) and
+("bytes copied, not shared" is the write side's own rule). Since 2026-09-17 the arm also hides a
+photograph the RUNNER adopted from chat, with no change to the scope: the chat path writes the same
+`source_key`, so the one predicate covers both writers — which is the point of keying on the column
+rather than on who wrote it. **The `'chat-photo:'` literal is spelled THREE times and cannot be one
+import**: `queries/images.ts` builds it in SQL (not in TS), `lib/admin/ninaAlbumAvatarActions.ts` is
+a `'use server'` module and may export only actions, and `avatarAdopt.ts` now names it
+`NINA_CHAT_PHOTO_SOURCE_KEY_PREFIX` — an exported constant so its test can pin it against the
+literal rather than re-spell it, and deliberately NOT a shared one, because a db module must not
+import an actions module and the SQL side has nothing to import into. They are
+held together by `tests/nina.photoRefs.test.ts` (the emitted `not exists` SQL, the
+writer's side, and the Media/about absence asserted as an absence),
+`tests/admin.chatPhotoAdoption.test.ts`, `tests/nina.avatarFromPhoto.test.ts` and
 `tests/nina.imageprefs.test.ts` (the scope's body must keep `notExists(` and the literal — the
 do-not-inline guard).
 
@@ -1002,7 +1086,7 @@ folder already open answers a question the operator could answer by looking.
 | Prompts | `prompts/index.ts`, `prompts/system.ts`, `prompts/tools.ts`, `prompts/distill.ts`, `prompts/describe.ts` (two witness prompts behind a `Record` — a third subject is a compile error, and `subject` defaults to `'runner'` so existing callers are byte-identical), `prompts/caption.ts` |
 | Character | `tuning.ts`, `persona.ts` (barrel) + `persona/` (bands, identity, appearance, voice, instructor, anger, verbosity, never-say, tuning-blocks) |
 | Memory/behaviour | `memory.ts`, `distill.ts`, `promise.ts`(T)/`promises.ts`, `reminders.ts`/`reminderstore.ts`* (2026-09-16 — the same pure/impure split as promises; the pure half imports NO value and never reads a clock, and the impure half is the only file in the feature that knows a database exists; its suite is repo-level `tests/nina.reminders.test.ts`, not colocated), `nags.ts`, `patterns.ts`, `shortcuts.ts`(T), `title.ts`/`autotitle.ts` |
-| Images | `imagerecipe.ts`, `imagegen.ts`, `imageprefs.ts`, `imagejobs.ts`, `imagecall.ts`, `imageDedupe.ts`, `perceptual.ts`/`perceptualSign.ts`, `imagerun.ts`, `imagefail.ts`, `caption.ts`, `imagetools.ts`/`avatartools.ts`, `selfiegen.ts`/`avatargen.ts`/`imagetest.ts`, `jobview.ts`(T), `provenancePromotion.ts` (2026-09-16 — the promote-before-delete pass; `blobRelease.ts` is the reference-checked release every single-object delete goes through; neither declares `server-only`, both are db-touching and neither is a Server Action) |
+| Images | `imagerecipe.ts`, `imagegen.ts`, `imageprefs.ts`, `imagejobs.ts`, `imagecall.ts`, `imageDedupe.ts`, `perceptual.ts`/`perceptualSign.ts`, `imagerun.ts`, `imagefail.ts`, `caption.ts`, `imagetools.ts`/`avatartools.ts`, `selfiegen.ts`/`avatargen.ts`/`avatarAdopt.ts`*(2026-09-17 — the no-camera avatar path; the only avatar writer that announces inline)/`imagetest.ts`, `jobview.ts`(T), `provenancePromotion.ts` (2026-09-16 — the promote-before-delete pass; `blobRelease.ts` is the reference-checked release every single-object delete goes through; neither declares `server-only`, both are db-touching and neither is a Server Action) |
 | Vision/intake | `vision.ts`(T), `imageTicket.ts`(T) (HMAC carrier, `node:crypto`), `images.ts`(T), `crop.ts`(T) |
 | Provider constants | `openrouter.ts` (zero imports; the ONE home of `OPENROUTER_CHAT_URL` + `OPENROUTER_EMBEDDINGS_URL` and of all three model vocabularies — `NINA_VISION_FALLBACK_MODEL` hardcoded, `NINA_CHAT_FALLBACK_MODEL_IDS`/`_SPECS`/`_DEFAULT_MODEL` operator-picked, `NINA_EMBEDDING_MODEL` migration-locked; read by the vision fallback, the text-chat fallback client and `embedding.ts`) |
 | Embeddings | `embedding.ts`*(T) (one `fetch` to `OPENROUTER_EMBEDDINGS_URL`, no fallback ladder, no retry; the width guard gates the return against `NINA_EMBEDDING_DIMENSIONS`) |
@@ -1042,6 +1126,14 @@ not a (T): it is the barrel contract test, not a pure module's suite.
   When it cannot: `failNinaImageJob` (budget spent) or `sweepStaleNinaImageJobs` (20 min) →
   `postNinaApologyMessage` → apology row → `notifyNinaPush(…, 'photo_apology')`. An avatar job and
   a hidden job reach neither notify, because they reach neither writer.
+- **Avatar adopted, no camera** (since 2026-09-17): `set_avatar_from_photo` →
+  `handleSetAvatarFromPhoto` → `setNinaAvatarFromExistingPhoto` → `resolveNinaAdoptTarget`
+  (`ctx.sourceMessageId`'s attachments, else `getLatestOriginalNinaSessionPhoto`) → either
+  `promoteNinaAvatarAsCurrent` (an album re-share: nothing copied) or
+  `adoptNinaChatPhotoAsAvatar` (`getNinaAvatarBySourceKey` → `fetch` + `put` → `insertNinaAvatars`)
+  → `setCurrentNinaAvatar` → `markNinaAvatarAnnounced`, in that order, all inside the tool round.
+  Nothing is queued and no job row exists, so this path reaches neither notify nor the
+  `avatar_changed` cron.
 - **Photograph away** (since 2026-09-16): `promoteNinaAvatarDependents`/`promoteNinaImageDependents`
   (measure everything that re-shows it, while the link still exists) → the row DELETE (where
   `ON DELETE SET NULL` fires) → `releaseBlobIfUnreferenced` per object, or `reapAvatarBlobs`'
@@ -1164,7 +1256,10 @@ and picks what she says — a failure is a message from Nina, never a stack trac
   two facts look contradictory and are not: the constant covers system text and tool schemas, the
   snapshot covers only `buildNinaSystemPrompt`'s bytes. Adding `PROACTIVE_COPY.reminder_due`
   (version 10) did not move it either, and that is not luck: `buildNinaSystemPrompt` renders no
-  trigger copy — `PROACTIVE_INSTRUCTIONS` is appended to the USER turn by `proactive.ts`.
+  trigger copy — `PROACTIVE_INSTRUCTIONS` is appended to the USER turn by `proactive.ts`. Adding a
+  WHOLE tool is the same case, not a bigger one: version 11 (`set_avatar_from_photo`, 2026-09-17)
+  bumped the constant and left the snapshot unregenerated. A regenerated snapshot in a tool-only
+  commit is still the tell that something else moved.
 - **A new `ProactiveTriggerKind` is a THREE-list change and only one of the three can import the
   union.** `NINA_PUSH_KINDS` (`lib/push/payload.ts`) spells the names by hand because the
   off-platform image worker loads that module under `--experimental-strip-types`, and
@@ -1347,7 +1442,19 @@ recursive — a new module under `queries/` does not automatically join the walk
   Since 2026-09-16 it also pins `SEND_TOOL`'s `reminders[].timeOfDay` JSON-Schema `pattern` against
   `NINA_REMINDER_TIME_PATTERN` (`schema.ts`), which is the same copy-and-pin for the same reason.
   Same family as the barrel contract test: the list is the contract, and it is extended in the SAME
-  commit as the thing it mirrors.
+  commit as the thing it mirrors — adding `set_avatar_from_photo` (2026-09-17) moved the roster
+  list, `lib/nina/queries.test.ts`' frozen barrel list and `NINA_PROMPT_VERSION` together, and
+  nothing else.
+- **The no-camera avatar path is tested as a repo-level suite**
+  (`tests/nina.avatarFromPhoto.test.ts`, 2026-09-17), because `avatarAdopt.ts` is `server-only` and
+  its edges are a `fetch`, a `put` and the query barrel. The cases that would otherwise rot
+  silently: the resolution ORDER (attachment before session fallback; a proactive turn resolves to
+  nothing and asks the database nothing), a reference flattened by the resolver AND refused by the
+  core, re-adoption copying and inserting nothing, the container derived from the SOURCE pathname
+  rather than a hard-coded `png`, the row recording the STORED refs, and no image job row EVER
+  opened. Two assertions there are invisible from the handler's answer and are the ones to keep:
+  `announced_at` set in the same operation as the promotion (what stops the `avatar_changed` cron
+  re-announcing it) and `changed: false` when the photograph was already her face.
 - **The reminders feature is tested almost entirely as pure functions**
   (`tests/nina.reminders.test.ts`, 2026-09-16, plus the `reminder_due` cases in
   `tests/nina.proactive.test.ts`). That is the point of the `reminders.ts`/`reminderstore.ts`
