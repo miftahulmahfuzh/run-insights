@@ -63,3 +63,6 @@ __pycache__/
 # are recording intermediates — what IS committed is docs/media/, the build product.
 scripts/capture/.manifest.json
 scripts/capture/*.webm
+
+# git worktrees for isolated feature work
+.worktrees
