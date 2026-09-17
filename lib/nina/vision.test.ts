@@ -177,6 +177,18 @@ describe('the describe prompt', () => {
   it('forbids reading out numbers — invariant 2 at the vision boundary', () => {
     expect(NINA_DESCRIBE_SYSTEM_PROMPT).toMatch(/NEVER read out a number/)
   })
+
+  it('excludes the device chrome — the 2026-09-17 "05:26" incident', () => {
+    expect(NINA_DESCRIBE_SYSTEM_PROMPT).toMatch(/status-bar clock/)
+  })
+
+  it('carves out verbatim transcription for prose to read, not a fitness screen', () => {
+    expect(NINA_DESCRIBE_SYSTEM_PROMPT).toMatch(/transcribe the legible text verbatim/)
+    // Rule 7 exists precisely so it does NOT loosen rule 1 for the case rule 1 was written for.
+    expect(NINA_DESCRIBE_SYSTEM_PROMPT).toMatch(
+      /a watch face, a workout summary or a splits screen is never something to transcribe/,
+    )
+  })
 })
 
 describe('which witness is sent', () => {
