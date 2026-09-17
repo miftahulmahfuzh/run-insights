@@ -1,7 +1,7 @@
 # Package: app (the App Router route tree)
 
 **Location**: `app`
-**Last Updated**: 2026-09-15
+**Last Updated**: 2026-09-17
 **Documentation Created**: 2026-09-15
 
 ## Overview
@@ -87,7 +87,7 @@ into a 400 the `fetch` caller can actually read."
 
 ## The route tree
 
-*Measured 2026-09-15:* 21 `page.tsx`, 9 `route.ts` handlers, 3 `layout.tsx`, 2 `loading.tsx`, 1
+*Measured 2026-09-17:* 21 `page.tsx`, 11 `route.ts` handlers, 3 `layout.tsx`, 2 `loading.tsx`, 1
 `not-found.tsx`, 5 co-located `route.test.ts`.
 
 ### Runner-facing pages
@@ -118,8 +118,10 @@ it the day that module is refactored." `/admin/error-logs` has a second, stronge
 table is written by background `after()` work that never calls `revalidatePath`, so a cached render
 would show an operator a stale "no failures".
 
-`/admin/image-generation` is the only `/admin/*` route with a `maxDuration` (`300`), because `after()`
-inherits the **route segment's** budget, not the action's own wishes.
+Two `/admin/*` pages carry a `maxDuration` of `300` (*measured 2026-09-17*: `/admin/image-generation`
+and `/admin/nina`), because `after()` inherits the **route segment's** budget, not the action's own
+wishes. The rule, not the list: an admin page that starts deferred work needs a budget that covers
+the work, not the render.
 
 ### Route handlers
 
@@ -133,6 +135,8 @@ inherits the **route segment's** budget, not the action's own wishes.
 | `/api/cron/nina` | GET | `CRON_SECRET` bearer | `runtime = 'nodejs'`, `maxDuration = 300` |
 | `/api/cron/rollup` | GET | `CRON_SECRET` bearer | `runtime = 'nodejs'`, `maxDuration = 60` |
 | `/api/admin/nina/upload` | POST | `requireAdminApi`, **before** `handleUpload` | `runtime = 'nodejs'` |
+| `/api/admin/nina/backfill-descriptions` | GET, POST | `requireAdminApi`, first statement | `maxDuration = 300` |
+| `/api/admin/nina/backfill-media-descriptions` | GET, POST | `requireAdminApi`, first statement | `maxDuration = 300` |
 | `/admin/manifest.webmanifest` | GET | none — four constants | `dynamic = 'force-static'` |
 
 **The shared error envelope is `Response.json({ error: <string> }, { status })`**, with two canonical
@@ -158,6 +162,39 @@ values that matter differ: the authorisation rule (admin, not merely signed in),
 allowed content types, and the pathname shape. Its three pathname predicates are deliberately not
 one alternation, because "a 512 KB rule that silently becomes an 8 MB rule is exactly the mistake
 worth making structurally impossible."
+
+### The backfill routes — one shape, one per searchable table
+
+`/api/admin/nina/backfill-descriptions` (album, `nina_avatars`) and
+`/api/admin/nina/backfill-media-descriptions` (media, `nina_message_images`) are the same handler
+twice, and a third searchable table would be a third copy rather than a `?table=` parameter. Five
+properties are the shape, and a new one must keep all five:
+
+1. **`GET` reports, `POST` does one slice.** `GET` spends nothing — it is two counts — so an operator
+   may poll it freely. `POST` drains what fits in a budget constant and answers `remaining`.
+2. **`requireAdminApi()` is the first statement, before any read.** `proxy.ts` matches neither
+   `/admin` nor `/api/*`, so this gate is the only thing between the open internet and a route that
+   spends vendor money per call. `userId` comes from the session and is never read from the request.
+3. **`maxDuration = 300`, a bare literal, with the budget constant strictly under it.** The slow work
+   runs on the handler's own clock and *not* in `after()` — the handler's whole job **is** the slow
+   work, so there is no response to get out of the way of. The budget (`240_000` ms today for both)
+   reserves headroom so a vendor call in flight at the deadline still writes its row.
+4. **`remaining` is re-read, never computed** as `targets.length - done`. Parallel `after()` work can
+   fill a row mid-slice, and `remaining` is what the operator's loop condition tests.
+5. **Idempotent, so a double-POST is harmless.** The backlog read is oldest-first and the write is an
+   UPDATE with equal values; nothing here is a transaction and nothing needs to be.
+
+**What counts as backlog belongs in the query layer, not in the route.** Both routes take their
+predicate from `lib/nina/queries` so that every statement reading the set reads the same set by
+construction — including the media route's `isOriginalPhoto()` exclusion, without which a *reference*
+row (a re-show of a photograph that lives elsewhere, which can never carry a vector of its own by
+design) would be reported as permanent, unfixable work forever.
+
+**A route is not always the cheapest drain, and `scripts/` is the other half.** Where a backlog needs
+only an embedding and no vision call, `npm run nina:backfill-embeddings` (album) and
+`npm run nina:backfill-media-embeddings` (media) do it with no session and no dev server. The routes
+remain the permanent tool, because they are the only surface that can *describe* a row whose caption
+pass failed. Those scripts live outside this package and are documented by their own.
 
 The crons are scheduled in `vercel.json`, and **Vercel cron `schedule` strings are UTC, always,
 regardless of `regions`.** Both are idempotent by design, and `/api/cron/nina` says why that matters:
@@ -379,16 +416,32 @@ either:
 
 ## Testing
 
-Two kinds of test cover this package, and the split is a consequence of the runner's configuration
+Three kinds of test cover this package, and the split is a consequence of the runner's configuration
 (`vitest.config.ts`, `environment: 'node'`, no jsdom):
 
-1. **Co-located handler tests** — `app/**/*.test.ts`, in `vitest.config.ts`'s `include`. *Measured
-   2026-09-15:* five, one per non-trivial route handler.
+1. **Handler tests** — a route handler is importable under `node`, so its behaviour is asserted
+   directly. Two homes, and either is fine: **co-located** `app/**/*.test.ts` (in `vitest.config.ts`'s
+   `include`; *measured 2026-09-17:* five), or a named suite in `tests/` when the subject is a feature
+   rather than a file — `tests/admin.mediaBackfillRoute.test.ts` is the current example. The posture
+   in both is the same: mock only the **edges** (the gate, `next/server`'s `after`, the vendor
+   modules) and let the real query builders run against `tests/support/fakeDb`, so the assertions are
+   about generated SQL and execution order rather than about spies.
 2. **Structural source scans** in `tests/`, using `readRepoCode` / `repoFileExists` / `isClientModule`
    from `tests/support/importGraph`. A page cannot be rendered under `node`, so what is provable about
    it is proven about its source: that the gate is called, that a symbol is absent, that a file exists
    at the path a builder spells. `readRepoCode` **strips comments**, which is what lets a route's doc
    comment name `notFound` or `description` while explaining why neither appears in its code.
+3. **Integration tests** in `tests/integration/**`, against a real Postgres. Reach for one only when
+   the claim is about what the **database** decides — whether two query arms are genuinely
+   complementary, whether a write through a redirect reads back — because `tests/support/fakeDb` is a
+   *recording* driver that never evaluates a predicate, and so cannot answer either.
+
+**The integration tier is doubly opt-in, and a green from it must be read carefully.**
+`vitest.config.ts` excludes `tests/integration/**` unless `VITEST_INTEGRATION=1`, and each suite
+additionally skips itself without `TEST_DATABASE_URL` (never `DATABASE_URL` — this repo has one
+database and it is production). So a plain `npm test` matches **zero** integration files and exits 0:
+a green answering a different question. `npm run test:int` is the one that asks. Rows hang off one
+throwaway user with a unique suffix, removed in `afterAll`.
 
 `tests/photo.deepLink.test.ts` is the second kind, and its subject is the seam nothing else can see:
 that `app/photo/[kind]/[id]/page.tsx` is a real directory at the path `photoViewerPath` spells. A
@@ -438,6 +491,10 @@ Other structural gates that read files in this tree: `tests/pwa.install.test.ts`
 - **`description` must not appear in a route's code.** Both Nina point reads project it; the mappers
   are what strip it, and `tests/photo.deepLink.test.ts` asserts the route never names the field.
 - **`/admin/nina`'s JSX comments need their leading `*`** — `ci:client-secret-guard` Rule 3 reads them.
+- **`npm test` proves nothing about `tests/integration/**`** — it excludes the directory and exits 0
+  on zero matched files. If a phase's evidence rests on an integration invariant, the command in the
+  record must be `npm run test:int` with `TEST_DATABASE_URL` set, or the green answered a different
+  question.
 - Several route doc comments cite sibling files by `:NN` line number. Those drift. **Locate anchors by
   name**, and treat a quoted line number as a hint, not an address.
 
@@ -476,6 +533,34 @@ above rather than inventing new ones, and three of its choices are worth keeping
 `/api/admin/nina/upload`'s side of the same feature is phase 4's, in `lib/admin/**`.
 
 ## Recent Changes
+
+**2026-09-17 — `P2-APP-A001` (phase 4 of 4, `MEDIA_ALBUM_UNIFIED_SEARCH`)**
+- Added the route handler `app/api/admin/nina/backfill-media-descriptions/route.ts` — the media twin
+  of the album's backfill route, `GET` reporting the backlog and `POST` draining one slice under
+  `NINA_MEDIA_BACKFILL_BUDGET_MS` / `NINA_MEDIA_BACKFILL_SLICE` from
+  `lib/admin/ninaMediaDeferredDescribe.ts`. It is a copy of the album route's shape on purpose; the
+  five properties that make it that shape are written up under "The backfill routes" above, and a
+  third searchable table would be a third copy, not a parameter. Tenth and eleventh handler in the
+  tree; the album route (landed the same day this readme was created) was missing from the handler
+  table and is now in it.
+- No new URL grammar, no new gate, no page, no layout, and no existing route edited by this phase.
+  `/admin/nina`'s page had already gained its `maxDuration = 300` in an earlier phase; the "only
+  `/admin/*` route with a `maxDuration`" claim above was stale and is corrected.
+- Established the **integration tier** as a documented third kind of test for this package
+  (`tests/integration/mediaAlbumUnifiedSearch.int.test.ts`), for the two plan invariants the
+  recording fake driver structurally cannot prove: that a pointer Album row stores no
+  description/keywords/embedding of its own and redirects both reads and writes to its linked Media
+  row, and that a physical photograph appears at most once in a merged result. With it came the
+  double opt-in gate and the "a plain `npm test` matches zero files" trap, both now in Testing and
+  Gotchas.
+- The drain was actually run against production. *Measured 2026-09-17:* 118 original media rows
+  embedded, 0 failed, 0 skipped; a read-only count afterwards reported originals 118,
+  missing_description 0, missing_embedding 0. That is a measurement of one day's data, not a standing
+  property — the route is a permanent tool, because `scheduleChatPhotoCaption` still writes prose
+  with no vector.
+- The rest of the phase — `scripts/backfill-media-embeddings.mjs`, its `nina:backfill-media-embeddings`
+  script line, and the `removeChatPhotoAction` pointer-refusal cases — lands outside this package and
+  is documented by its own.
 
 **2026-09-15 — `P1-APP-M4TZ` (phase 2 of 4, `DUP_IMAGE_PUSH_NOTIFY_PLAN.md`)**
 - Added the route `app/photo/[kind]/[id]/page.tsx` — `PhotoDeepLinkPage`, with module-private

@@ -67,11 +67,16 @@ import { cn } from '@/lib/cn'
  * write — and every box is left ENABLED during a DESCRIBE: an 8-11 s vendor call must not lock him
  * out of typing, and the draft rule above protects whatever he types.
  *
- * ── THE KEYWORD BOX IS OPTIONAL, AND ABSENT IS NOT DISABLED ──────────────────────────────────
- * R2, 2026-09-15. `search_keywords` is a `nina_avatars` column and `nina_message_images` has no
- * counterpart, so the Media arm mounts this panel WITHOUT `onSaveKeywords` and the whole block is
- * not rendered — the same call `FileExplorer.tsx:368` makes for the search field over the Media
- * view: *"a search field over it would be a field that cannot answer — absent, not disabled."*
+ * ── THE KEYWORD BOXES ARE OPTIONAL, AND ABSENT IS NOT DISABLED ───────────────────────────────
+ * R2, 2026-09-15. The rule stands and the example that motivated it retired. It was: `search_keywords`
+ * is a `nina_avatars` column, `nina_message_images` had no counterpart, so the Media arm mounted this
+ * panel WITHOUT `onSaveKeywords` and the whole block did not render — the same call
+ * `FileExplorer.tsx:368` makes for the search field: *"a search field over it would be a field that
+ * cannot answer — absent, not disabled."* Since media-album-unified-search R2 (2026-09-17) BOTH
+ * tables carry both columns and both arms pass both pairs, so no caller exercises the absence today.
+ * The props stay optional and the blocks stay conditional anyway: the contract is "a box that shows a
+ * value it cannot save is worse than no box", and the next table to mount this panel should inherit
+ * that rule rather than rediscover it.
  *
  * ── THE FONT SIZE IS `CONTROL_CLASS`'s AND IS NOT SHRUNK ─────────────────────────────────
  * `text-base` comes from `CONTROL_CLASS` and stays. Safari zooms the viewport when a control

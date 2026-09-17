@@ -1204,6 +1204,42 @@ export async function isBlobPathnameReferenced(
 }
 
 /**
+ * **"Is an album entry still pointing at this photograph?"** `media-album-unified-search` phase 2,
+ * R3 — the row-level twin of `isBlobPathnameReferenced` directly above, which is why it lives here
+ * and not in `queries/avatars.ts`: that function asks "is anything still pointing at these BYTES"
+ * and this asks "is anything still pointing at this ROW", and a reader looking for either should
+ * find both without leaving the file.
+ *
+ * ── WHY A COUNT AND NOT A BOOLEAN ───────────────────────────────────────────────────────────
+ * Because the caller's sentence says a number: *"2 album entries still show this photo."* A
+ * `LIMIT 1` existence probe would make the operator open the album to find out how much work the
+ * refusal is asking for. The statement is an index-backed equality on
+ * `nina_avatars_source_image_id_idx` (phase 1's index — that exact spelling), so the count costs
+ * what the probe would.
+ *
+ * ── WHY THE PRE-CHECK EXISTS WHEN THE FK ALREADY REFUSES ────────────────────────────────────
+ * `nina_avatars.source_image_id` is `ON DELETE RESTRICT`, so Postgres refuses the delete either
+ * way — as a thrown constraint violation naming a constraint the operator has never heard of,
+ * surfaced by a Server Action as the framework's error page. This turns it into the shape
+ * `deleteNinaAvatarAction` already uses for "that is her current photo": `ok: false` and one
+ * sentence that names the fix. The constraint stays the backstop for the race this read cannot
+ * close, exactly as `nina_avatars_user_source_key_unq` is the backstop for re-adoption's.
+ *
+ * Owner-scoped (invariant 1) and correct rather than merely conventional: another operator's album
+ * cannot point at this user's photograph, and a cross-user read would prove nothing extra.
+ */
+export async function countNinaAvatarsLinkedToImage(
+  userId: string,
+  imageId: string,
+): Promise<number> {
+  const counted = await db
+    .select({ total: sql<number>`count(*)`.mapWith(Number) })
+    .from(ninaAvatars)
+    .where(and(eq(ninaAvatars.userId, userId), eq(ninaAvatars.sourceImageId, imageId)))
+  return counted[0]?.total ?? 0
+}
+
+/**
  * Stamp `glm-4.6v`'s prose on a conversation photograph. The mirror of `setNinaAvatarDescription`
  * in `lib/nina/queries/avatars.ts`, and it exists for the mirror reason: a hand-uploaded photograph has no generation prompt,
  * so a vision model is the only way this column is ever filled for one (invariant 5 — the prose is

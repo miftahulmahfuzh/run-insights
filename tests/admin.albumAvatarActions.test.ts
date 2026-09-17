@@ -68,7 +68,8 @@ let actions: Actions
 let fake: FakeDb
 
 /**
- * The `avatarColumns` projection in order — 20 values, the same discipline as
+ * The `avatarColumns` projection in order — 21 values (Step 1 of `media-album-unified-search`
+ * appended `sourceImageId` after `createdAt`), the same discipline as
  * `admin.chatPhotoAdoption.test.ts`'s `pick()`: `overrides.key ?? fallback` would read a
  * deliberate `{ description: null }` as "no opinion", which is exactly the bug that once made a
  * describe test pass for the wrong reason. `in` is the only honest test.
@@ -95,6 +96,7 @@ function avatarRow(overrides: Record<string, unknown> = {}): unknown[] {
     'isCurrent' in overrides ? overrides.isCurrent : false,
     'announcedAt' in overrides ? overrides.announcedAt : null,
     '2026-09-01 09:00:00+00',
+    'sourceImageId' in overrides ? overrides.sourceImageId : null,
   )
 }
 
