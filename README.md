@@ -4,7 +4,7 @@ Screenshot your Apple Watch run. A vision model reads it. Get coaching-grade ana
 run, that week, and that month — and, since September, a coach who lives in the app, reads every
 run you log, and tells you what she thinks without being asked.
 
-**[runins.site](https://runins.site)** · Next.js 16 · 5,093 tests
+**[runins.site](https://runins.site)** · Next.js 16 · 6,382 tests
 
 <p align="center">
   <img src="docs/media/hero.gif" width="320" alt="Picking three Apple Fitness screenshots, the model reading them, and the review screen appearing with every field filled in.">
@@ -14,6 +14,19 @@ run you log, and tells you what she thinks without being asked.
   <em>Three screenshots in, a checked run out. The read really takes 33–38 s — the counter in the
   corner is the real one, timelapsed 8×.</em>
 </p>
+
+---
+
+## Contents
+
+- [What it does](#what-it-does)
+- [Meet Nina](#meet-nina)
+- [Why a human still checks every run](#why-a-human-still-checks-every-run)
+- [The documents](#the-documents)
+- [What has shipped](#what-has-shipped)
+- [The stack](#the-stack)
+- [Getting started](#getting-started)
+- [Licence](#licence)
 
 ---
 
@@ -101,9 +114,10 @@ runs ──► Nina — glm-5.3 turns with tools (the chat tab)
 
 > **About these screenshots.** They are a **seeded demo account**, not anyone's real training.
 > `scripts/capture/` creates it, drives the real app, and deletes it again — see
-> [How these screenshots are made](#how-these-screenshots-are-made). Every number in them was
-> computed by the app itself; the runs behind them were designed. In a repo whose front page is an
-> argument about measured honesty, that distinction is not a footnote.
+> [`docs/plans/archive/F19-readme-and-capture.md`](docs/plans/archive/F19-readme-and-capture.md)
+> for exactly how. Every number in them was computed by the app itself; the runs behind them were
+> designed. In a repo whose front page is an argument about measured honesty, that distinction is
+> not a footnote.
 
 ---
 
@@ -164,296 +178,66 @@ What else is in there:
 - **Photos go both ways.** Yours are compressed, stored, and described by the vision model
   *before* you press send — the description is stamped on the image row and never reaches a client
   component. Hers arrive in the conversation and in the About page's media grid.
-- **Text expansion, as private code.** A trigger and the long expansion it stands for — `🍑`
-  standing in for the four sentences typed once, months ago. Shortcuts fire only into messages
-  *he* sends, never into something she said.
-- **Search that lands on the bubble.** Sessions are searchable — plain text or a semantic ranking
-  pass — and a hit opens the conversation, scrolls to the exact message and blinks its ring. His
-  bubbles blink white; hers blink the accent.
 - **Web Push and the unread dot.** The repo's first service worker exists for exactly two things,
   `push` and `notificationclick`, and caches nothing: a reply replaces its own notification
   instead of stacking, and a stale notification is not intimacy.
 
+Also in there: a private text-expansion system (a trigger like `🍑` standing in for a sentence
+typed once, months ago, fired only into messages *he* sends) and session search that jumps straight
+to the matched bubble and blinks it. Full detail on both is in
+[`docs/plans/archive/F33-nina.md`](docs/plans/archive/F33-nina.md).
+
 ### The workshop behind her
 
 `/admin` — "the workshop behind the runner's five tabs", says its own sidebar — is where the
-operator configures all of this. Six tabs — an overview; her Image collection, the album-cum-file-
+operator configures all of this. Seven tabs — an overview; her Image collection, the album-cum-file-
 manager that holds her portraits and the chat's photographs in one tree; her character (twelve
 trait sliders, a relationship setting, and a live render of the exact system prompt her next turn
-will receive); how she is photographed; her memory; and his shortcuts. There is not a Save button
-in the building — every control commits itself — and the hub page
-states the price of that out loud: *everything here writes production.* A signed-in address that
-is not on `ADMIN_EMAILS` gets a 404, deliberately: the existence of the surface is never
-confirmed.
+will receive); how she is photographed; her memory; his shortcuts; and an error log, a paginated
+record of every failed LLM call. There is not a Save button in the building — every control commits
+itself — and the hub page states the price of that out loud: *everything here writes production.*
+A signed-in address that is not on `ADMIN_EMAILS` gets a 404, deliberately: the existence of the
+surface is never confirmed.
 
 ---
 
-## Why this repo starts with documents
+## Why a human still checks every run
 
-Every number below was **measured against the live API before a line of application code was
-written**, using three real Apple Fitness screenshots and a hand-transcribed 108-field ground
-truth. The scripts are in [`research/`](research/) and re-run in one command.
-
-That research killed the original plan. It was going to use GLM-5.2, which turns out to be
-text-only, on an endpoint that **accepts images, returns HTTP 200, and silently discards them** —
-after which the model invents plausible numbers. Asked for the distance in a screenshot showing
-10.67 km, it answered *"5.00 km"*, confidently.
+Every number in this app was **measured against the live API before a line of application code was
+written** — three real Apple Fitness screenshots, a hand-transcribed 108-field ground truth, and a
+script in [`research/`](research/) that still re-runs in one command. That research killed the
+original plan: it was going to use GLM-5.2, which turns out to be text-only, on an endpoint that
+**accepts images, returns HTTP 200, and silently discards them** — asked for the distance in a
+screenshot showing 10.67 km, it answered *"5.00 km"*, confidently.
 
 | What was measured | Result |
 |---|---|
-| Extraction accuracy, 3 screenshots → 108 fields | **108/108, five runs in a row** |
-| Median latency | 33.7 s |
-| Best preprocessing | JPEG q80 @ 560w — 170 KB, 3,277 tokens, no accuracy cost |
+| Extraction accuracy, production prompt @ 560w/q80 | **108/108, three runs in a row** · median 38 s |
 | Cost per run | ~$0.006 |
-| LLM computing its own metrics | **aerobic decoupling came back −14.1% when the truth is +12.3%** |
+| LLM computing its own metrics (aerobic decoupling) | returned **−14.1%**, truth is **+12.35%** — the sign is backwards |
 
-Re-measured against the shipped code on 2026-08-21, with the production prompt rather than the
-research one:
+That same research also scored a cheaper parallel-call variant at **102/108** — its one miss read
+a split's pace as `436` s off a cell that plainly says `6'36"`, while getting the other 107 fields
+right. **A model can be locally wrong and globally convincing**, and at ~17 runs a month that is
+roughly one wrong field a month — sitting silently in every rollup, personal record and badge built
+on it. So extraction never auto-saves, and review is one tap rather than 108 because **confidence
+comes from arithmetic, not from the model**: four quantities are supposed to agree by construction
+(splits sum to the duration, zones sum to the duration, distance × pace is the duration), and when
+they don't, the disagreement points at the wrong number more precisely than a self-rated confidence
+score could. **That misread is what the review screenshot above is showing** — the real one, not a
+staged defect.
 
-| What was measured | Result |
-|---|---|
-| Accuracy, production prompt @ 560w/q80 | **108/108, three runs in a row** · median 38 s · 3,628 tokens |
-| The 560w recipe, in actual pixels | 739×1600 → **560×1212**, short edge exactly 560, 55–70 KB |
-| A text-only repair round-trip | 25–35 s, ~1,070 completion tokens — about what the primary call costs |
+The decoupling sign flip is why every number in this app is computed in `lib/metrics/*`, and the
+model's only permitted operation on one is to copy it into a sentence — the same rule Nina lives
+under: she never writes SQL or does arithmetic, only fills in one of four typed tool schemas, and
+the number that comes back is already spelled (`'47:24'`, never `2843.66`).
 
-Two calls of that size do not fit Vercel Hobby's 60 s ceiling, so the repair is best-effort and
-usually skipped. `lib/extract/constants.ts` says so at the constant.
-
-The decoupling row is the one that shaped the whole architecture: it is why every number in this
-app is computed in TypeScript, and the LLM only writes prose about numbers it was handed.
-
----
-
-## Why 108/108 still means a human checks every run
-
-The same measurement run that scored 108/108 five times also produced the number F05 is built
-around: the **parallel-call variant scored 102/108**, and its worst miss was reading a split's
-pace as `436` s off a cell that plainly says `6'36"` (396 s) — while getting the other 101 fields
-right, including the other ten splits. **A model can be locally wrong and globally convincing.**
-Nothing about 107 correct fields signals that the 108th is broken.
-
-At ~17 runs a month that is roughly one wrong field a month, and a wrong split does not fail
-loudly: it sits in `runs`, feeds `avg_pace_sec`, feeds every rollup, every personal record and
-every badge built on it, until a chart looks odd and nobody can say which of forty runs is at
-fault. So extraction never auto-saves (D1), and `runs.reviewed_at` has exactly one writer.
-
-Review would be worthless if it were 108 taps, and the thing that makes it one tap instead is
-that **confidence is derived from arithmetic, not from the model**. Four quantities are supposed
-to agree by construction — splits sum to the duration, zones sum to the duration, distance × pace
-is the duration, and a partial final kilometre's pace matches its own time. When they agree,
-nothing is flagged and confirming is a single tap. When they don't, the disagreement points at
-the wrong number far more precisely than a self-rated confidence score could, because it comes
-from the data rather than from the process that produced the error.
-
-The canonical fixture passes all four, and `tests/review.checks.test.ts` holds them to both
-directions: green on the real ground truth, red on the misread that actually happened. **That
-misread is what the review screenshot above is showing** — the capture harness injects the real
-one rather than inventing a defect, and `tests/capture/dataset.test.ts` pins it to the 40 seconds
-it was actually worth.
-
----
-
-## Every number is computed in TypeScript
-
-`research/control.mjs` handed `glm-5.3` the canonical fixture's raw splits **and the exact
-formulas**, and asked it to do six pieces of arithmetic. It got two wrong, and one of them was not
-a rounding slip:
-
-| Metric | LLM returned | Truth |
-|---|---|---|
-| aerobic decoupling % | **−14.1** | **+12.35** |
-| % time in Z4+Z5 | 88.3 | 90.60 |
-
-The decoupling sign is **backwards**. Shipped as-is, the narrative would have congratulated this
-runner on aerobic fitness that "held up" during the exact run where their heart rate pinned at 90%
-of max while their pace faded from 6'36" to 8'00". So `lib/metrics/*` computes every number, and
-the model's only permitted operation on one is to copy it into a sentence.
-
-The rule grew a second application with Nina: she never writes SQL and never does arithmetic.
-Every question that needs real numbers — one day, two days compared, or a whole training block —
-goes through one of four **typed tools**, a fixed JSON schema the model fills in rather than code
-it writes, and the number that comes back is already spelled: `'47:24'`, never `2843.66`.
-`lookup_runs` and `compare_runs` hand back every figure pre-formatted; `aggregate_runs` (2026-09)
-answers a stretch of time with one SQL aggregate — "average duration, last two months" is one
-`select avg(...)`, never five days of rows for the model to average in prose. `save_memory` is
-the one write path. The measured −14.1 sign flip is why: the model that invented a decoupling
-sign now answers questions about your training only through a tool, never through arithmetic.
-
-```
-lib/nina/prompts/tools.ts   the schema she reads — Anthropic.Tool, hand-written, enums only
-        │
-        ▼   Zod parses the same shape, strictly
-lib/nina/schema.ts          *ArgsSchema — validates every call before it reaches a handler
-        │
-        ▼
-lib/nina/tools.ts           dispatchNinaTool → handleLookupRuns / handleCompareRuns /
-        │                   handleAggregateRuns / handleSaveMemory — NO import of `db`,
-        │                   `runs`, or any Drizzle value (invariant 9)
-        ▼
-lib/nina/gateway.ts         NinaToolGateway — the one seam allowed to touch Postgres
-        │
-        ▼
-lib/db/queries/*.ts         real SQL — loadRunHistory (one db.batch for the whole history),
-                            aggregateRunMetric (one parameterised avg/sum/min/max/count)
-```
-
-`npm run ci:data-layer-guard` enforces the middle boundary by grepping the import list, not by
-trusting a comment — the schema and dispatch layers cannot reach the database even by accident.
-
-The canonical fixture pins eleven values and fires exactly six flags — `HIGH_DECOUPLING`,
-`TOO_MUCH_HARD`, `POSITIVE_SPLIT`, `CADENCE_FADE`, `VERY_HIGH_AVG_HR`, `FAST_START` — no more, no
-fewer. Two of those assertions are for values the code must NOT produce: a cadence fade of −9 spm
-and a split drift of +35.2 s/km, which are what you get if the final **partial** kilometre is
-allowed into a statistic that aggregates split rows (D14). The wrong cadence number is exactly
-half the true −18 and looks entirely plausible on a chart, which is why the tests pin constants
-rather than signs.
-
-Personal records are recomputed wholesale on every commit, never incremented: a correction that
-drops a run below a qualifier has to be able to **remove** a record, and an upsert cannot express
-that (R-10).
-
----
-
-## One chart is allowed to break the rules, and it argues its case
-
-The `dataviz` guidance names dual-axis charts as its top anti-pattern: two scales whose alignment
-is arbitrary invent a correlation the data does not contain. Run Insights ships exactly one, on
-`/r/[id]`, and the exemption is fenced rather than assumed (F08 §12, upheld by **R-25**):
-
-- pace and heart rate are **two readings of the same kilometre**, not two independently sampled
-  series whose x-axis correspondence is a choice;
-- both domains are anchored to the run's own min and max plus a **fixed** pad, never a percentage
-  one that would widen with the run's variance — a reviewer re-deriving either axis gets this chart;
-- the pace axis is **inverted, and says so in words** (`PACE (FASTER ↑)`), because "up is faster"
-  everywhere in this app is a global rule, not a per-chart trick;
-- the claim it makes is one `lib/metrics/*` already proved arithmetically and the `InsightCard`
-  above it states in prose — the chart illustrates a finding, it does not manufacture one;
-- every value it plots is also printed in the splits table one scroll below it.
-
-`npm run ci:f08-guard` fails the build if a second `yAxisId` appears anywhere, if `recharts` is
-imported outside the six lazily-loaded `components/charts/*Inner.tsx` files (a seventh importer
-taxes `/` and `/upload` — screens with no chart at all — with ~100 KB), or if any component
-hand-rolls a unit suffix around `lib/format.ts`. The waiver does not generalise, and the check is
-what keeps that true.
-
-Everything else follows the ordinary rules, including the ones that are easy to skip: five zone
-percentages that sum to exactly 100 by largest-remainder apportionment, a 4-week rolling mean whose
-first three points are a **visible gap** rather than a guess, a pace-trend regression withheld until
-four weeks exist, a distance-band filter so a 5 km can never be plotted next to a 15 km, and a
-table twin under every chart so no number is reachable only by hovering a thumb over a phone.
-
-That last one is also why the charts are screenshot-able at all: `ChartFrame` renders the same
-numbers as a real `<table>` beneath every chart.
-
----
-
-## The badge art is made by hand, one patch at a time, and the tooling enforces that
-
-D12: badge art is generated offline and committed. Nothing in the badge shelf draws itself at
-runtime — at ~$0.04 and 4–5 minutes per image, a shelf that drew itself on demand would be a bill
-and a latency budget in exchange for nothing a build step can't do better. (The one runtime image
-generation in the app is Nina's, and it is a different deck for a different job — her photographs,
-fenced to `lib/nina/` by `npm run ci:openrouter-guard`.)
-
-So F10 is **machinery first, pictures second**: a skill (`.claude/skills/generate-badge/`), a
-style contract, four Python tools and a CI guard — then 22 patches generated one at a time, each
-judged by eye before promotion. The deck took **35 generations for 22 badges** (~$1.40), inside
-the plan's ~60/$2.40 worst case. The eleven personal-record patches are a second deck built on
-the same machinery (F25), down to its own manifest and observed twill band.
-
-- **`style.md` is an interface, not a document.** `gen_badge_art.py` parses its
-  `<!-- STYLE BLOCK vN -->` and `<!-- SCENES -->` fences, and **refuses to start** unless the scene
-  keys are exactly `BADGE_CATALOG`'s 22. A badge with no scene, or a scene with no badge, is a
-  startup error rather than a surprise 22 images later. `npm run badges:check` asserts the same
-  parity from the other side, in CI, where no API key exists.
-- **One badge per invocation, never a batch loop.** The three-attempt cap and the look-at-it step
-  are per badge; a loop makes both ceremonial, and it would spend the full worst-case budget
-  before a human had judged a single patch.
-- **Nothing is judged from the 1024² master.** `check_badge_art.py` writes a contact strip of the
-  badge at **40 px and 220 px against the app's real `--paper` in both themes**, plus the patch
-  edge unrolled (where lettering hides) and the subject at 2× (where anatomy hides). At 1024 every
-  stitch looks considered, and the app never draws it at 1024.
-- **Same craft, opposite medium.** Every constraint the reference deck earned — no text, full
-  bleed, one silhouette, one subject, an anchor image every later badge is generated against —
-  survives untouched, because none of them is about ink and paper. Everything that *is* about ink
-  and paper was rebuilt: the substrate check inverts (navy is cool, dark, and deliberately
-  textured, so its variance gets a **floor** as well as a ceiling), and the ring-geometry fit is
-  replaced entirely — this deck's outer shape is a shield, a hexagon, a chevron or a rounded
-  triangle by design, and a radial harmonic fit against a chevron is close to meaningless.
-
-Three things the deck taught that the plan could not have known:
-
-- **The anchor is a ruler, not a stencil.** The plan made every badge generate against
-  `_anchor.png`, reasoning that twill tone and stitch gauge are continuous quantities a prompt
-  specifies loosely. Sound a priori, false for this model: three generations of one badge from an
-  identical prompt showed `input_references` transferring the *subject* hard (it redrew the
-  anchor's rooster instead of a doughnut, twice) and the *cloth tone* not at all — 9.5 and 9.3
-  points of drift with the anchor, **1.9 without it**. What holds the deck together is the style
-  block plus one fixed seed.
-- **Two instrument fixes, neither a loosened band.** The twill check was sampling a fixed outer
-  frame that a 96%-tall patch reaches into — it was measuring the patch and calling it cloth. And
-  check 9a was comparing a hexagon's bounding box against a shield's: the first two hexagons
-  "drifted" 8.8% and 9.3% while landing 0.4 points apart *from each other*. Both were fixed at the
-  instrument, with every already-passing badge unmoved — the signature of a correctness fix rather
-  than a capitulation.
-- **The contact sheet earned its place on the first run.** `century_club` and `double_century`
-  both ended up as "a vertical post with something wound round it" — the exact escalation-pair
-  collision the audit predicted, arrived at by a route it did not. Every per-badge check passed
-  it; the whole shelf in one line of sight caught it in a second.
-
-Filenames under `public/badges/` carry the first 8 hex of their master's SHA-256, which is the only
-reason `next.config.ts` may serve them `immutable` for a year: regenerating a patch changes its
-bytes, its hash and its URL, so every cache misses correctly. `npm run badges:check` recomputes
-that hash from the master and sweeps for orphans.
-
----
-
-## How these screenshots are made
-
-Every image above is a build product of a committed input, which is the same rule D12 sets for
-badge art and `gen_app_icon.py` sets for the icon. A screenshot taken by hand is a screenshot
-nobody can retake — six weeks and one design change later it shows a UI that no longer exists, and
-the only way to notice is to compare twelve images against nine routes by eye.
-
-```bash
-node --env-file=.env.local scripts/capture/seed-demo.mjs           # a demo account
-node --env-file=.env.local scripts/capture/shoot.mjs               # commit, hero, warm, nina, stills, gifs
-node --env-file=.env.local scripts/capture/seed-demo.mjs --purge   # and delete it again
-```
-
-Five properties are worth knowing, because they are what makes the pictures evidence rather than
-decoration:
-
-- **The seed writes no metric.** It writes 26 `extractions` rows and nothing else — no run, no
-  split, no record, no badge. `shoot.mjs` then clicks **Confirm & save** on each one, so every run
-  is committed by the app's own `commitReviewAction`, and the eleven personal records and
-  twenty-two badge rules are evaluated by the shipped code. **20 of the 22 badges on that shelf
-  were earned by the real rules**; the other two need 200 km in a month and four 4-run weeks, so
-  they stay locked and show progress. Nothing in `scripts/capture/` reimplements a rule the app
-  already has.
-- **The generated payloads are arithmetically honest.** Each one satisfies all four review checks
-  by construction — splits summing to the duration to the second, zones apportioned by largest
-  remainder, the partial kilometre's pace derived from its own remainder — which is why confirming
-  is one tap. `tests/capture/dataset.test.ts` asserts that against the real `runAllChecks`, and
-  runs inside `npm test`, so the fixture cannot drift out of the tolerances silently.
-- **The flagged run is the real fixture.** The review screenshots are the committed
-  `research/fixtures/golden-response.json` — the genuine `glm-4.6v` reply to the three real
-  screenshots — with the genuine misread injected. It is not a staged defect.
-- **The hero GIF is a real upload.** Real browser compression to the 560w/q80 recipe, a real Blob
-  PUT, a real vision call, a real commit. The counter ticking in its corner is the actual latency.
-- **Nina's half is real too.** The `nina` pass scripts three lines as the runner; every bubble of
-  hers is the shipped turn engine's actual `glm-5.3` reply — including the one where the runner
-  claims a run he did not do and she checks the data and says so — and the photograph she sends
-  costs one real OpenRouter generation (~$0.04). No `nina_messages` row is inserted by hand, and
-  the commit pass leaves her proactive messages in the demo's sidebar history exactly where her
-  triggers left them.
-
-The encoder is opinionated for measured reasons: `docs/media/` is capped at 8 MB and
-`webm-to-gif.mjs` **fails** rather than exceed it, walking down a ladder of frame rates until a GIF
-fits and printing which rung it used — with the five GIFs each given an explicit share of the
-budget rather than all of them assuming the 2 MB ceiling and the sum landing at ten. Dithering was
-dropped after a side-by-side showed it indistinguishable at 64 colours on this flat interface and
-~20% larger.
+The same discipline shaped two other corners of the app: the one dual-axis chart on `/r/[id]` is a
+deliberate, fenced exception to the no-dual-axis rule (`npm run ci:f08-guard` enforces the fence),
+and the 22 badge patches above are generated offline and judged by eye — **35 generations for 22
+badges** (~$1.40) — never drawn at runtime. Full measurement tables, the tool-call pipeline, the
+chart's exemption in full, the badge-art tooling, and exactly how the screenshots on this page were
+made all live in [The documents](#the-documents) below.
 
 ---
 
@@ -469,6 +253,7 @@ dropped after a side-by-side showed it indistinguishable at 64 colours on this f
 | [`.claude/skills/generate-badge/`](.claude/skills/generate-badge/) | F10's badge-art skill: the loop, and `style.md` — the parsed style contract and all 22 scenes. |
 | [`assets/badges/README.md`](assets/badges/README.md) | The three human acts between a generated candidate and a shipped patch. |
 | [`research/`](research/) | The live feasibility harness and the 108-field fixture. Stays in the repo; `score.mjs` runs in CI. |
+| [`docs/pwa-and-icon.md`](docs/pwa-and-icon.md) | The PWA install contract and the offline, committed home-screen icon pipeline. |
 
 The v0.1.0 contract docs — the roadmap, the feasibility record, and the 39-ruling reconciliation
 that arbitrated the eleven plans written in parallel — were removed from the tree in September
@@ -517,7 +302,7 @@ node research/show-metrics.mjs # deterministic metrics, no API key needed
 
 npm run db:smoke               # is Neon reachable on the pooled string?
 npm run db:migrate             # apply drizzle/ to the database
-npm test                       # 5,187 unit tests (measured 2026-09-12); never touches a database, never calls an LLM
+npm test                       # 6,382 unit tests; never touches a database, never calls an LLM
 TEST_DATABASE_URL=<pooled url> npm run test:int   # the real-Postgres suite
 npm run test:live              # opt-in: vision, narration and Nina live against real models. Costs money
 
@@ -553,50 +338,23 @@ Thirteen pages: `/` (runs), `/upload`, `/x/[extractionId]`, `/r/[id]`, `/r/[id]/
 `/nina/jobs/[id]`.
 
 Reviewing is `/x/[extractionId]`, not `/r/[id]/review` — under R-1 no `runs` row exists until the
-commit, so there is no run id to address yet. `/r/[id]/edit` is the post-review correction, and it
-is the same component tree pointed at a different baseline: the stored run rather than the model's
-original guess. Both write `extractions.corrections`, append-only, which is what turns a month of
-human fixes into a measured error profile (`getExtractionErrorProfile`).
+commit, so there is no run id to address yet. `/r/[id]/edit` is the post-review correction, pointed
+at a different baseline: the stored run rather than the model's original guess. Both write
+`extractions.corrections`, append-only, which is what turns a month of human fixes into a measured
+error profile.
 
-Uploading a run needs a Vercel Blob store linked to the project (`BLOB_READ_WRITE_TOKEN`).
-`scripts/f04-e2e-probe.mjs` walks the whole ingest pipeline once against the real Blob store, the
-real model and the real database, then deletes what it made:
-
-```bash
-node --env-file=.env.local scripts/f04-e2e-probe.mjs path/to/a-screenshot.png
-```
-
-Sign-in needs a Google OAuth client — `docs/google-auth-setup.md` has the console walkthrough.
-Leave `AUTH_URL` **empty** locally and on preview; it is production-only, and Auth.js infers the
-origin from the request everywhere else.
+Uploading needs a Vercel Blob store (`BLOB_READ_WRITE_TOKEN`); sign-in needs a Google OAuth client
+— see [`docs/google-auth-setup.md`](docs/google-auth-setup.md). Leave `AUTH_URL` **empty** locally
+and on preview; it is production-only, and Auth.js infers the origin from the request everywhere
+else.
 
 ### The home-screen icon
 
-"Add to Home Screen" is a real install, not a bookmark, and the two things that make it one are
-`app/manifest.ts` (`display: 'standalone'`) and `app/apple-icon.png` (the `apple-touch-icon` Safari
-reads). Both read their names and colours from `lib/pwa.ts`, and `tests/pwa.install.test.ts` asserts
-the whole contract — including that each icon file exists, is the size it claims, and carries no
-alpha channel, because iOS mattes a transparent icon onto black. `/admin` ships a second manifest,
-so installing it from the workshop opens the workshop.
-
-`lib/pwa.ts` is also where to look before switching `statusBarStyle` to `'black-translucent'`: it is
-`'default'` on purpose, because almost nothing in this app pads `env(safe-area-inset-top)` yet and
-translucent would slide the screen titles under the notch.
-
-The art is two steps, offline and committed, the same rule D12 sets for badge art — no runtime image
-calls for it, no key on the server:
-
-```bash
-python3 tools/gen_app_icon.py plain      # candidates → assets/icon/_candidates/ (gitignored)
-cp assets/icon/_candidates/plain.aNN.png assets/icon/silhouette.png   # pick one, by looking at it
-npm run icon:assets                      # compose + write public/icons/* and app/*-icon.png
-```
-
-The split is deliberate: the model draws the runner, and `tools/make_icon_assets.py` draws the
-ground, the zone bar, the scale and the centring from `globals.css`'s real tokens. It has to, because
-the model returned `#2dc1f9` for a `#23beeb` ground, desaturated the zone colours, and twice ignored
-an instruction to keep the bar clear of the bottom edge — where Android's circular crop would have
-eaten it.
+"Add to Home Screen" is a real install, not a bookmark — `app/manifest.ts` and `app/apple-icon.png`
+make it one, both generated offline from a committed silhouette the same way badge art is. `/admin`
+ships its own manifest, so installing it from the workshop opens the workshop. Full detail — the
+install contract, the icon-generation pipeline, and why `statusBarStyle` stays `'default'` — is in
+[`docs/pwa-and-icon.md`](docs/pwa-and-icon.md).
 
 ## Licence
 
