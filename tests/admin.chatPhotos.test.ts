@@ -1300,7 +1300,12 @@ describe('editChatPhotoDescriptionAction', () => {
     expect(captionNinaPhoto).not.toHaveBeenCalled()
     expect(updateNinaMessage).not.toHaveBeenCalled()
     expect(setNinaMessageImageDescription).not.toHaveBeenCalled()
-    expect(setNinaMessageImageDescriptionAndEmbedding).toHaveBeenCalledWith(USER, IMAGE_ID, PROSE, null)
+    expect(setNinaMessageImageDescriptionAndEmbedding).toHaveBeenCalledWith(
+      USER,
+      IMAGE_ID,
+      PROSE,
+      null,
+    )
     expect(scheduleMediaEmbed).toHaveBeenCalledWith(USER, IMAGE_ID)
   })
 
@@ -1567,6 +1572,71 @@ describe('removeChatPhotoAction — the one destructive action on this surface',
     expect(deleteNinaMessageImage).not.toHaveBeenCalled()
     expect(promoteNinaImageDependents).not.toHaveBeenCalled()
     expect(releaseBlobIfUnreferenced).not.toHaveBeenCalled()
+  })
+
+  /*
+   * `media-album-unified-search` R3. Since the promotion became a LINK, a `nina_avatars` row can
+   * name this row through `source_image_id` and show its object without owning a byte. The FK is
+   * `ON DELETE RESTRICT`, so Postgres refuses the delete either way; the check the action makes
+   * turns that into the sentence shape the operator already knows from `deleteNinaAvatarAction`'s
+   * "That is her current photo — make another one current first."
+   *
+   * These four cases exist because phase 2 shipped the guard and its exit criterion without a test
+   * for either — `tests/admin.chatPhotos.test.ts` appears in none of its test steps.
+   */
+  it('refuses when an album entry still points at the photograph, and measures nothing first', async () => {
+    countNinaAvatarsLinkedToImage.mockResolvedValue(1)
+
+    const result = await actions.removeChatPhotoAction({ id: IMAGE_ID })
+
+    expect(result).toEqual({
+      ok: false,
+      error: 'An album entry shows this photo — remove it from the album first.',
+    })
+    /* Nothing may be measured, promoted or deleted on behalf of a remove that is not going to
+     * happen — `isChatPhotoReference`'s stated rule, one refusal over. */
+    expect(promoteNinaImageDependents).not.toHaveBeenCalled()
+    expect(deleteNinaMessage).not.toHaveBeenCalled()
+    expect(deleteNinaMessageImage).not.toHaveBeenCalled()
+    expect(releaseBlobIfUnreferenced).not.toHaveBeenCalled()
+  })
+
+  it('pluralises the refusal, and names the count, when several album entries point at it', async () => {
+    countNinaAvatarsLinkedToImage.mockResolvedValue(3)
+
+    const result = await actions.removeChatPhotoAction({ id: IMAGE_ID })
+
+    expect(result).toEqual({
+      ok: false,
+      error: '3 album entries show this photo — remove them from the album first.',
+    })
+    expect(deleteNinaMessageImage).not.toHaveBeenCalled()
+  })
+
+  it('a zero count is NOT a refusal — the ordinary remove still runs to completion', async () => {
+    countNinaAvatarsLinkedToImage.mockResolvedValue(0)
+
+    const result = await actions.removeChatPhotoAction({ id: IMAGE_ID })
+
+    expect(result).toMatchObject({ ok: true, id: IMAGE_ID })
+    expect(countNinaAvatarsLinkedToImage).toHaveBeenCalledWith(USER, IMAGE_ID)
+    expect(releaseBlobIfUnreferenced).toHaveBeenCalledTimes(1)
+  })
+
+  it('a REFERENCE row never reaches the pointer count — the cheaper refusal is first', async () => {
+    getNinaMessageImage.mockResolvedValue({
+      ...imageRow,
+      messageId: null,
+      sourceAvatarId: 'avaOrigin12',
+    })
+
+    const result = await actions.removeChatPhotoAction({ id: IMAGE_ID })
+
+    expect(result).toEqual({
+      ok: false,
+      error: 'That one re-shows a photo that lives elsewhere. Remove the original instead.',
+    })
+    expect(countNinaAvatarsLinkedToImage).not.toHaveBeenCalled()
   })
 
   it('a row that vanished between the read and the delete is the miss sentence, not a crash', async () => {

@@ -36,6 +36,7 @@
     "nina:profpic": "node --experimental-strip-types --no-warnings --env-file=.env.local scripts/nina-profpic.mjs",
     "nina:promote-image-prompt": "node --experimental-strip-types --no-warnings --env-file=.env.local scripts/nina-promote-image-prompt.mjs",
     "nina:backfill-embeddings": "node --experimental-strip-types --no-warnings --env-file=.env.local scripts/backfill-avatar-embeddings.mjs",
+    "nina:backfill-media-embeddings": "node --experimental-strip-types --no-warnings --env-file=.env.local scripts/backfill-media-embeddings.mjs",
     "nina:search-analysis": "node --experimental-strip-types --no-warnings --env-file=.env.local scripts/search-analysis.mjs",
     "capture:seed": "node --env-file=.env.local scripts/capture/seed-demo.mjs",
     "capture:purge": "node --env-file=.env.local scripts/capture/seed-demo.mjs --purge",
