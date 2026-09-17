@@ -516,3 +516,80 @@ describe('a successful delete refreshes the list he is standing on, and nothing 
     expect(revalidatePath).toHaveBeenCalledOnce()
   })
 })
+
+/* ── the prompt edit ───────────────────────────────────────────────────────────────────────── */
+
+describe('setNinaImageJobPrompt', () => {
+  it('refuses a blank prompt without touching the database', async () => {
+    const imagejobs = await import('@/lib/nina/imagejobs')
+    dbRows.select = [{ status: 'failed' }] // armed to succeed; must not be read
+    dbRows.update = [{ id: FAILED_JOB }]
+
+    const result = await imagejobs.setNinaImageJobPrompt(USER, FAILED_JOB, '   ')
+
+    expect(result).toEqual({ ok: false, reason: 'empty-prompt' })
+  })
+
+  it('reports a foreign or unknown job the same way', async () => {
+    const imagejobs = await import('@/lib/nina/imagejobs')
+    dbRows.select = []
+
+    const result = await imagejobs.setNinaImageJobPrompt(USER, FAILED_JOB, 'a new prompt')
+
+    expect(result).toEqual({ ok: false, reason: 'not-found' })
+  })
+
+  it('refuses a row whose args are not an editable object', async () => {
+    const imagejobs = await import('@/lib/nina/imagejobs')
+    for (const args of [null, 'a string', 42]) {
+      dbRows.select = [{ args }]
+      const result = await imagejobs.setNinaImageJobPrompt(USER, FAILED_JOB, 'a new prompt')
+      expect(result).toEqual({ ok: false, reason: 'no-args' })
+    }
+  })
+
+  it('trims the prompt, keeps every other arg field, and regenerates the sidecar', async () => {
+    const imagejobs = await import('@/lib/nina/imagejobs')
+    const sidecar = [
+      'provider:   openrouter',
+      'model:      qwen/qwen-image-3-pro',
+      'purpose:    selfie',
+      'resolution: 1024x1536 2:3',
+      'seed:       4242',
+      'reference:  none (RU-18)',
+      '',
+      '--- prompt as sent ---',
+      'a photograph of nina, REJECTED WORD, late afternoon light',
+    ].join('\n')
+    dbRows.select = [{ args: { ...ARGS, sidecar } }]
+    dbRows.update = [{ id: FAILED_JOB }]
+
+    const result = await imagejobs.setNinaImageJobPrompt(
+      USER,
+      FAILED_JOB,
+      '  a photograph of nina, late afternoon light  ',
+    )
+
+    expect(result).toEqual({ ok: true })
+  })
+
+  it('falls back to the bare prompt as the sidecar when the marker is missing', async () => {
+    const imagejobs = await import('@/lib/nina/imagejobs')
+    dbRows.select = [{ args: { ...ARGS, sidecar: 'an old, unstructured sidecar' } }]
+    dbRows.update = [{ id: FAILED_JOB }]
+
+    const result = await imagejobs.setNinaImageJobPrompt(USER, FAILED_JOB, 'new prompt')
+
+    expect(result).toEqual({ ok: true })
+  })
+
+  it('reports not-found when the row disappears between the read and the write', async () => {
+    const imagejobs = await import('@/lib/nina/imagejobs')
+    dbRows.select = [{ args: { ...ARGS } }]
+    dbRows.update = [] // the UPDATE ... RETURNING came back empty
+
+    const result = await imagejobs.setNinaImageJobPrompt(USER, FAILED_JOB, 'new prompt')
+
+    expect(result).toEqual({ ok: false, reason: 'not-found' })
+  })
+})
