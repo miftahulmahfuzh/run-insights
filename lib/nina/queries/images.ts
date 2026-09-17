@@ -453,7 +453,8 @@ export async function findNinaSignedOriginals(userId: string): Promise<
  * ── THE COLLECTION READS IT FILTERS, AND THE ONES IT MUST NEVER ───────────────────────
  * Filtered — the COLLECTION reads, which describe a set of photographs to a human:
  *   · `listNinaMessageImages`   → /nina/about's Media feed
- *   · `countNinaChatPhotos`     → the reference picker's chat-side total, via the same scope
+ *   · `listNinaPhotoReferences` (`queries/imageprefs.ts`) → the reference picker's chat-side rows,
+ *     via `generatedChatPhotoScope` below
  *   · `listNinaMediaPhotos` + `countNinaMediaPhotos` → /admin/nina?view=media and its tree badge,
  *                                 via `mediaCollectionScope` — the all-kinds superset of the
  *                                 generated pair, sharing THIS predicate so a reference cannot
@@ -516,9 +517,10 @@ export function isOriginalPhoto(): SQL | undefined {
  * `isOriginalPhoto()` joins the `and(...)` here rather than at the call sites, which is the same
  * argument this docstring already makes for `kind`: every statement that reads this scope reads the
  * same set by construction. After the image-collection merge the scope's callers are the
- * image-reference picker's — `listNinaPhotoReferences` (page side) and `countNinaChatPhotos` (its
- * total) and `resolveNinaPhotoReference` (the stored selection) — a picker grid that shows her
- * GENERATED photographs only, which is the one set this scope still names.
+ * image-reference picker's — `listNinaPhotoReferences` (`queries/imageprefs.ts`, both the rows and
+ * their `total`, since 2026-09-17's dedup pass folded the count into the same deduped read) and
+ * `resolveNinaPhotoReference` (the stored selection) — a picker grid that shows her GENERATED
+ * photographs only, which is the one set this scope still names.
  *
  * ── AND NOT ONE THE ALBUM HAS ALREADY ADOPTED. THIS IS THE SAME DUPLICATE, MIRRORED ──────────
  * `isOriginalPhoto()` catches ALBUM → CHAT: a chat row that POINTS at a photograph living
@@ -582,25 +584,6 @@ export function generatedChatPhotoScope(userId: string) {
     isOriginalPhoto(),
     notExists(alreadyAdoptedIntoAlbum),
   )
-}
-
-/**
- * How many photographs the collection holds, as a number rather than as a list of rows.
- *
- * One caller needs the integer and nothing else: `listNinaPhotoReferences`, whose picker total is
- * the album count plus this one — the mistake `countNinaAvatars` (`queries/avatars.ts`) was written to undo, not
- * repeated here. (The `/admin` hub card and the `/admin/photos` page that used to read it are gone
- * with the surface merge; the Media view counts with its own all-kinds read.)
- *
- * `id` is the final tiebreak in the sibling's ORDER BY because `created_at` ties for rows written
- * in one statement; it has no bearing here, and is noted so the two are not "fixed" into agreement.
- */
-export async function countNinaChatPhotos(userId: string): Promise<number> {
-  const counted = await db
-    .select({ total: sql<number>`count(*)`.mapWith(Number) })
-    .from(ninaMessageImages)
-    .where(generatedChatPhotoScope(userId))
-  return counted[0]?.total ?? 0
 }
 
 /* ============================================================================

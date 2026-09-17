@@ -71,6 +71,8 @@ function panel(p: ImageGenDraft = prefs(), defaults: ImageGenDraft = prefs()) {
       defaultTemplate="SHELL {{scene}}"
       references={[]}
       photoTotal={0}
+      photoPage={1}
+      photoPageCount={1}
     />,
   )
 }
@@ -261,6 +263,8 @@ describe('ImageGenPanel — the commit moments', () => {
         defaultTemplate="SHELL {{scene}}"
         references={[]}
         photoTotal={0}
+        photoPage={1}
+        photoPageCount={1}
       />,
     )
     fireEvent.change(screen.getByRole('slider'), { target: { value: '80' } })

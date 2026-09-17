@@ -6,11 +6,9 @@ import {
   nextPhotoReferenceValue,
   PHOTO_REFERENCE_MIN_TILE_PX,
   PHOTO_REFERENCE_NONE,
-  PHOTO_REFERENCE_REVEAL_STEP,
   PHOTO_REFERENCE_TILE_LABEL,
   photoReferenceIndex,
   photoReferenceLabel,
-  photoReferenceReveal,
   photoReferenceTileSrc,
   photoReferenceView,
 } from '@/components/admin/photoReferenceModel'
@@ -122,31 +120,9 @@ describe('photoReferenceIndex / nextPhotoReferenceValue — one, or none', () =>
   })
 })
 
-describe('photoReferenceReveal — bounded, and never hiding the selection', () => {
-  it('never draws more tiles than there are rows', () => {
-    expect(photoReferenceReveal(PHOTO_REFERENCE_REVEAL_STEP, 3, null)).toBe(3)
-  })
-
-  it('clamps UP so the selected photograph is always on screen', () => {
-    // The bug this prevents: a saved selection at index 60 of a 120-row page would be invisible
-    // until "Show more", and the grid would look unset while the form said otherwise.
-    expect(photoReferenceReveal(10, 120, 60)).toBe(61)
-  })
-
-  it('grows by a step and stops at the end', () => {
-    expect(photoReferenceReveal(PHOTO_REFERENCE_REVEAL_STEP * 2, 60, null)).toBe(60)
-  })
-
-  it('answers 0 for an empty list and survives garbage', () => {
-    expect(photoReferenceReveal(PHOTO_REFERENCE_REVEAL_STEP, 0, null)).toBe(0)
-    expect(photoReferenceReveal(Number.NaN, 10, null)).toBe(10)
-    expect(photoReferenceReveal(-5, 10, null)).toBe(1)
-  })
-})
-
 describe('photoReferenceView', () => {
   it('labels tiles 1-based and marks exactly one selected', () => {
-    const view = photoReferenceView({ items, value: 'chat:c1', reveal: 48, total: 3 })
+    const view = photoReferenceView({ items, value: 'chat:c1' })
     expect(view.tiles.map((t) => t.label)).toEqual([
       `${PHOTO_REFERENCE_TILE_LABEL} 1`,
       `${PHOTO_REFERENCE_TILE_LABEL} 2`,
@@ -159,30 +135,29 @@ describe('photoReferenceView', () => {
   })
 
   it('says nothing is selected, and says nothing is missing, when nothing was chosen', () => {
-    const view = photoReferenceView({ items, value: PHOTO_REFERENCE_NONE, reveal: 48, total: 3 })
+    const view = photoReferenceView({ items, value: PHOTO_REFERENCE_NONE })
     expect(view.selectedIndex).toBeNull()
     expect(view.selectedLabel).toBeNull()
     expect(view.missing).toBe(false)
     expect(view.tiles.some((t) => t.selected)).toBe(false)
   })
 
-  it('reports a saved selection that is no longer in the list, and selects nothing', () => {
+  it('reports a saved selection that is not on this page, and selects nothing', () => {
     // `/admin/photos` can remove a chat photograph and the album manager can delete an album row;
-    // the same state also occurs with nothing deleted, when the photograph is older than this page.
-    const view = photoReferenceView({ items, value: 'chat:gone', reveal: 48, total: 3 })
+    // the same state also occurs with nothing deleted, when the photograph is on a different page.
+    const view = photoReferenceView({ items, value: 'chat:gone' })
     expect(view.missing).toBe(true)
     expect(view.selectedIndex).toBeNull()
     expect(view.tiles.some((t) => t.selected)).toBe(false)
   })
 
-  it('counts what the union holds beyond this page, and never goes negative', () => {
-    expect(photoReferenceView({ items, value: '', reveal: 48, total: 300 }).hidden).toBe(297)
-    expect(photoReferenceView({ items, value: '', reveal: 48, total: 0 }).hidden).toBe(0)
-    expect(photoReferenceView({ items, value: '', reveal: 48, total: Number.NaN }).hidden).toBe(0)
+  it('draws every item handed to it — there is no page-size concept left in this module', () => {
+    const view = photoReferenceView({ items, value: '' })
+    expect(view.tiles).toHaveLength(items.length)
   })
 
   it('carries the thumbnail-or-original decision into the tile', () => {
-    const view = photoReferenceView({ items, value: '', reveal: 48, total: 3 })
+    const view = photoReferenceView({ items, value: '' })
     expect(view.tiles.map((t) => t.src)).toEqual([
       'https://blob/a1-thumb.jpg',
       'https://blob/c1.png',
@@ -191,9 +166,8 @@ describe('photoReferenceView', () => {
   })
 
   it('renders an empty list as an empty view rather than throwing', () => {
-    const view = photoReferenceView({ items: [], value: 'chat:c1', reveal: 48, total: 0 })
+    const view = photoReferenceView({ items: [], value: 'chat:c1' })
     expect(view.tiles).toEqual([])
-    expect(view.revealed).toBe(0)
     expect(view.missing).toBe(true)
   })
 })

@@ -11,6 +11,7 @@ import {
   coerceNinaImageReference,
   coerceNinaImageTemplate,
   coerceNinaImageText,
+  dedupeNinaPhotoRefs,
   mergeNinaPhotoRefs,
   NINA_IMAGE_FOCUS_DEFAULTS,
   NINA_IMAGE_FOCUS_KEYS,
@@ -31,12 +32,12 @@ import {
   NINA_IMAGE_VENUE_MAX,
   NINA_IMAGE_WARDROBE_MAX,
   NINA_PHOTO_REF_PAGE_SIZE,
-  NINA_PHOTO_REF_SCAN_MAX,
   NINA_PROMPT_LENGTH_RUNGS,
   NINA_PROMPT_TEMPLATE_MAX,
   ninaImageFocusKeysOn,
   ninaPhotoRefBounds,
   ninaPromptLengthRungFor,
+  paginateNinaPhotoRefs,
   validateNinaImageTemplate,
   type NinaImagePrefs,
   type NinaPhotoRef,
@@ -325,58 +326,47 @@ describe('the photograph reference (R10, storage)', () => {
   })
 })
 
-describe('the picker page is bounded, and its order is provable without a database', () => {
+describe('the picker page is provable without a database — merge, dedupe, paginate', () => {
   const at = (iso: string): Date => new Date(iso)
   const ref = (
     source: 'album' | 'chat',
     id: string,
     iso: string,
-    thumbUrl: string | null = null,
+    opts: { thumbUrl?: string | null; contentHash?: string | null } = {},
   ): NinaPhotoRef => ({
     source,
     id,
     blobUrl: `https://blob.example/${source}/${id}.png`,
-    thumbUrl,
+    thumbUrl: opts.thumbUrl ?? null,
     width: 768,
     height: 1024,
     createdAt: at(iso),
+    contentHash: opts.contentHash ?? null,
   })
 
-  it('clamps the window, and the ceiling is the page size', () => {
-    expect(ninaPhotoRefBounds()).toEqual({
-      offset: 0,
-      limit: NINA_PHOTO_REF_PAGE_SIZE,
-      scan: NINA_PHOTO_REF_PAGE_SIZE,
-    })
+  it('clamps the limit to the page size, and floors the offset — no upper clamp any more', () => {
+    // There is no `NINA_PHOTO_REF_SCAN_MAX` any more: the collection is read in full and sliced in
+    // memory, so an offset has nothing left to protect against except a negative number.
+    expect(ninaPhotoRefBounds()).toEqual({ offset: 0, limit: NINA_PHOTO_REF_PAGE_SIZE })
     expect(ninaPhotoRefBounds({ limit: 1000 }).limit).toBe(NINA_PHOTO_REF_PAGE_SIZE)
     expect(ninaPhotoRefBounds({ limit: 0 }).limit).toBe(1)
     expect(ninaPhotoRefBounds({ offset: -5 }).offset).toBe(0)
-    expect(ninaPhotoRefBounds({ offset: 10_000 }).offset).toBe(NINA_PHOTO_REF_SCAN_MAX)
+    expect(ninaPhotoRefBounds({ offset: 10_000 }).offset).toBe(10_000)
     for (const bad of [Number.NaN, undefined, null as unknown as number]) {
       expect(ninaPhotoRefBounds({ limit: bad, offset: bad })).toEqual({
         offset: 0,
         limit: NINA_PHOTO_REF_PAGE_SIZE,
-        scan: NINA_PHOTO_REF_PAGE_SIZE,
       })
     }
   })
 
-  it('caps the per-side read at NINA_PHOTO_REF_SCAN_MAX, which is what makes it bounded', () => {
-    // The merge needs `offset + limit` rows from each side, so an uncapped depth would make this an
-    // unbounded read over "hundreds of profile pics" — the mistake `countNinaAvatars` exists to undo.
-    expect(ninaPhotoRefBounds({ offset: 96, limit: 48 }).scan).toBe(144)
-    expect(ninaPhotoRefBounds({ offset: NINA_PHOTO_REF_SCAN_MAX, limit: 48 }).scan).toBe(
-      NINA_PHOTO_REF_SCAN_MAX,
-    )
-  })
-
-  it('interleaves both sets newest first', () => {
-    const album = [ref('album', 'a1', '2026-09-05T00:00:00Z', 'https://t/a1.jpg')]
+  it('interleaves both sets newest first, unbounded', () => {
+    const album = [ref('album', 'a1', '2026-09-05T00:00:00Z', { thumbUrl: 'https://t/a1.jpg' })]
     const chat = [
       ref('chat', 'c1', '2026-09-06T00:00:00Z'),
       ref('chat', 'c2', '2026-09-04T00:00:00Z'),
     ]
-    const rows = mergeNinaPhotoRefs(album, chat, ninaPhotoRefBounds())
+    const rows = mergeNinaPhotoRefs(album, chat)
     expect(rows.map((r) => r.id)).toEqual(['c1', 'a1', 'c2'])
   })
 
@@ -387,33 +377,59 @@ describe('the picker page is bounded, and its order is provable without a databa
     const rows = mergeNinaPhotoRefs(
       [ref('album', 'a1', same), ref('album', 'a2', same)],
       [ref('chat', 'c1', same)],
-      ninaPhotoRefBounds(),
     )
     expect(rows.map((r) => r.id)).toEqual(['a2', 'a1', 'c1'])
     // Same input, sides swapped in the array: same answer.
     const again = mergeNinaPhotoRefs(
       [ref('album', 'a2', same), ref('album', 'a1', same)],
       [ref('chat', 'c1', same)],
-      ninaPhotoRefBounds(),
     )
     expect(again.map((r) => r.id)).toEqual(['a2', 'a1', 'c1'])
   })
 
-  it('slices the requested window and returns [] past the end', () => {
-    const album = [1, 2, 3, 4].map((n) => ref('album', `a${n}`, `2026-09-0${n}T00:00:00Z`))
-    expect(
-      mergeNinaPhotoRefs(album, [], ninaPhotoRefBounds({ offset: 1, limit: 2 })).map((r) => r.id),
-    ).toEqual(['a3', 'a2'])
-    expect(mergeNinaPhotoRefs(album, [], ninaPhotoRefBounds({ offset: 400, limit: 2 }))).toEqual([])
-  })
-
   it('handles an empty side, both sides, and an unusable timestamp', () => {
-    expect(mergeNinaPhotoRefs([], [], ninaPhotoRefBounds())).toEqual([])
+    expect(mergeNinaPhotoRefs([], [])).toEqual([])
     const good = ref('album', 'a1', '2026-09-05T00:00:00Z')
     const broken = { ...ref('chat', 'c1', '2026-09-09T00:00:00Z'), createdAt: null as never }
-    const rows = mergeNinaPhotoRefs([good], [broken], ninaPhotoRefBounds())
+    const rows = mergeNinaPhotoRefs([good], [broken])
     // A row whose timestamp cannot be read sorts last rather than corrupting the comparator.
     expect(rows.map((r) => r.id)).toEqual(['a1', 'c1'])
+  })
+
+  it('paginateNinaPhotoRefs slices the requested window and returns [] past the end', () => {
+    const album = [1, 2, 3, 4].map((n) => ref('album', `a${n}`, `2026-09-0${n}T00:00:00Z`))
+    const sorted = mergeNinaPhotoRefs(album, []) // newest first: a4, a3, a2, a1
+    expect(paginateNinaPhotoRefs(sorted, { offset: 1, limit: 2 }).map((r) => r.id)).toEqual([
+      'a3',
+      'a2',
+    ])
+    expect(paginateNinaPhotoRefs(sorted, { offset: 400, limit: 2 })).toEqual([])
+  })
+
+  describe('dedupeNinaPhotoRefs — "deduplicated", the operator\'s own word', () => {
+    it('keeps the first (newest) of a group sharing one content_hash', () => {
+      const rows = mergeNinaPhotoRefs(
+        [ref('album', 'a1', '2026-09-06T00:00:00Z', { contentHash: 'HASH1' })],
+        [ref('chat', 'c1', '2026-09-05T00:00:00Z', { contentHash: 'HASH1' })],
+      )
+      expect(dedupeNinaPhotoRefs(rows).map((r) => r.id)).toEqual(['a1'])
+    })
+
+    it('never treats two null hashes as duplicates of each other', () => {
+      const rows = [
+        ref('album', 'a1', '2026-09-06T00:00:00Z'),
+        ref('chat', 'c1', '2026-09-05T00:00:00Z'),
+      ]
+      expect(dedupeNinaPhotoRefs(rows).map((r) => r.id)).toEqual(['a1', 'c1'])
+    })
+
+    it('leaves a collection with no duplicate hashes untouched, in order', () => {
+      const rows = [
+        ref('album', 'a1', '2026-09-06T00:00:00Z', { contentHash: 'H1' }),
+        ref('chat', 'c1', '2026-09-05T00:00:00Z', { contentHash: 'H2' }),
+      ]
+      expect(dedupeNinaPhotoRefs(rows).map((r) => r.id)).toEqual(['a1', 'c1'])
+    })
   })
 })
 
@@ -548,7 +564,6 @@ describe("the picker's union cannot contain the same photograph twice (plan inva
     const body = fn.slice(0, fn.indexOf('\nexport '))
     expect(body).toContain('generatedChatPhotoScope(userId)')
     expect(body).not.toMatch(/ninaMessageImages\.kind/)
-    expect(body).toContain('countNinaChatPhotos(userId)')
   })
 
   it('and the shared scope itself excludes a photograph already copied into her album', () => {
@@ -558,11 +573,12 @@ describe("the picker's union cannot contain the same photograph twice (plan inva
      * chat row's provenance NULL, so the photograph came back as two tiles — which is what the
      * user reported on 2026-09-12 ("the first 2 are duplicates").
      *
-     * The fix is one more arm on `generatedChatPhotoScope`, and it must STAY there: a copy of it
-     * inside `listNinaPhotoReferences` would let `countNinaChatPhotos` disagree with the page it
-     * is the total for. Asserted as source text like the case above, because this file has no
-     * database harness — the generated-SQL proof is `tests/nina.photoRefs.test.ts`'s
-     * `ADOPTED_SKIPPED`. */
+     * The fix is one more arm on `generatedChatPhotoScope`, and it must STAY there: both the rows
+     * and the `total` `listNinaPhotoReferences` returns are now read through this one scope (the
+     * total is the deduped count of the SAME read, not a second statement any more), so a copy of
+     * this arm inside `listNinaPhotoReferences` would let the two disagree. Asserted as source text
+     * like the case above, because this file has no database harness — the generated-SQL proof is
+     * `tests/nina.photoRefs.test.ts`'s `ADOPTED_SKIPPED`. */
     const source = readSource('lib/nina/queries/images.ts')
     const fn = source.slice(
       source.indexOf('\nexport function generatedChatPhotoScope(userId: string) {'),

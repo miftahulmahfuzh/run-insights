@@ -7,7 +7,6 @@ import { PhotoReferencePicker } from './PhotoReferencePicker'
 import {
   PHOTO_REFERENCE_MIN_TILE_PX,
   PHOTO_REFERENCE_NONE,
-  PHOTO_REFERENCE_REVEAL_STEP,
   type PhotoReferenceItem,
 } from './photoReferenceModel'
 
@@ -29,6 +28,8 @@ function picker(props?: Partial<Parameters<typeof PhotoReferencePicker>[0]>) {
     <PhotoReferencePicker
       items={[item('a'), item('b', 'https://blob.example/b_thumb.jpg'), item('c')]}
       total={3}
+      page={1}
+      pageCount={1}
       value={PHOTO_REFERENCE_NONE}
       onChange={onChange}
       {...props}
@@ -118,7 +119,7 @@ describe('PhotoReferencePicker', () => {
     const { onChange } = picker({ value: 'gone' })
     expect(
       screen.getByText(
-        /The saved reference is not in this grid — it was deleted, or it is older than the photographs shown here/,
+        /The saved reference is not on this page — it was deleted, or it is on a different page/,
       ),
     ).toBeInTheDocument()
     expect(screen.queryByText('✓')).not.toBeInTheDocument()
@@ -129,46 +130,54 @@ describe('PhotoReferencePicker', () => {
 
   it('renders the empty state and no grid when the union has no photographs', () => {
     render(
-      <PhotoReferencePicker items={[]} total={0} value={PHOTO_REFERENCE_NONE} onChange={vi.fn()} />,
+      <PhotoReferencePicker
+        items={[]}
+        total={0}
+        page={1}
+        pageCount={1}
+        value={PHOTO_REFERENCE_NONE}
+        onChange={vi.fn()}
+      />,
     )
     expect(screen.getByText('No photos to choose from')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Nina photo/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Clear reference' })).not.toBeInTheDocument()
   })
 
-  it('reveals the first page and grows by a step on "Show more"', async () => {
-    const user = userEvent.setup()
-    const items = Array.from({ length: 120 }, (_, i) => item(`k${i}`))
-    // total is the union's full count; 192 against a 120-row page leaves 72 for the footer to own.
-    picker({ items, total: 192 })
-    expect(screen.getAllByRole('button', { name: /Nina photo/ })).toHaveLength(
-      PHOTO_REFERENCE_REVEAL_STEP,
-    )
-    expect(screen.getByText(/Showing 48 of 120/)).toBeInTheDocument()
-    // The count and the parenthetical are owned by the same <p>, so the tail matches by regex.
-    expect(screen.getByText(/72 older not on this page/)).toBeInTheDocument()
-
-    await user.click(screen.getByRole('button', { name: 'Show more' }))
-    expect(screen.getAllByRole('button', { name: /Nina photo/ })).toHaveLength(
-      PHOTO_REFERENCE_REVEAL_STEP * 2,
-    )
+  it('draws every tile on the page — there is no reveal step any more', () => {
+    // The server hands over one real `?page=` window, at most NINA_PHOTO_REF_PAGE_SIZE rows; the
+    // component draws all of it rather than staging it behind a "Show more" button.
+    const items = Array.from({ length: 50 }, (_, i) => item(`k${i}`))
+    picker({ items, total: 120, page: 1, pageCount: 3 })
+    expect(screen.getAllByRole('button', { name: /Nina photo/ })).toHaveLength(50)
+    expect(screen.getByText(/Showing 50 of 120/)).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Show more' })).not.toBeInTheDocument()
   })
 
-  it('clamps the reveal UP so a saved selection beyond the page is never invisible', () => {
-    // The rule that keeps the check badge visible: a selection at index 50 with only 48 tiles
-    // asked for must still be drawn, or the grid would look like nothing was chosen while the
-    // form said otherwise.
-    const items = Array.from({ length: 120 }, (_, i) => item(`k${i}`))
-    picker({ items, total: 120, value: 'k50' })
-    const selected = screen.getByRole('button', { name: 'Nina photo 51' })
-    expect(selected).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getAllByRole('button', { name: /Nina photo/ })).toHaveLength(51)
+  it('offers Next but no Previous on the first page of several', () => {
+    const items = Array.from({ length: 50 }, (_, i) => item(`k${i}`))
+    picker({ items, total: 120, page: 1, pageCount: 3 })
+    expect(screen.getByText(/page 1 of 3/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Next' })).toHaveAttribute(
+      'href',
+      '?page=2',
+    )
+    expect(screen.queryByRole('link', { name: 'Previous' })).not.toBeInTheDocument()
   })
 
-  it('offers no "Show more" when the whole page fits inside one reveal', () => {
+  it('offers Previous but no Next on the last page', () => {
+    const items = Array.from({ length: 20 }, (_, i) => item(`k${i}`))
+    picker({ items, total: 120, page: 3, pageCount: 3 })
+    expect(screen.getByRole('link', { name: 'Previous' })).toHaveAttribute('href', '?page=2')
+    expect(screen.queryByRole('link', { name: 'Next' })).not.toBeInTheDocument()
+  })
+
+  it('offers neither Previous nor Next when the whole collection is one page', () => {
     picker()
-    expect(screen.queryByRole('button', { name: 'Show more' })).not.toBeInTheDocument()
-    expect(screen.getByText('Showing 3 of 3')).toBeInTheDocument()
+    expect(screen.getByText(/Showing 3 of 3/)).toBeInTheDocument()
+    expect(screen.getByText(/page 1 of 1/)).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Previous' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Next' })).not.toBeInTheDocument()
   })
 
   it('offers "Clear reference" only when something is chosen, and clearing hands back the empty value', async () => {
@@ -228,6 +237,8 @@ function pickerRender(props: Partial<Parameters<typeof PhotoReferencePicker>[0]>
     <PhotoReferencePicker
       items={[]}
       total={0}
+      page={1}
+      pageCount={1}
       value={PHOTO_REFERENCE_NONE}
       onChange={vi.fn()}
       {...props}

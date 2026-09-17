@@ -2,13 +2,12 @@
 
 import * as React from 'react'
 
-import { Button, EmptyState } from '@/components/ui'
+import { Button, ButtonLink, EmptyState } from '@/components/ui'
 import { cn } from '@/lib/cn'
 
 import {
   nextPhotoReferenceValue,
   PHOTO_REFERENCE_NONE,
-  PHOTO_REFERENCE_REVEAL_STEP,
   photoReferenceView,
 } from './photoReferenceModel'
 import type { PhotoReferenceItem } from './photoReferenceModel'
@@ -46,8 +45,8 @@ import type { PhotoReferenceItem } from './photoReferenceModel'
  * `explorer/PhotoGrid.tsx:31-34` and `ChatPhotoGrid.tsx:26-33` both reaffirm it. This follows that
  * precedent rather than re-opening it. The album half of this union has a derived `thumb_url` and
  * uses it; the chat half has no such column at all, so those tiles load originals, and
- * `loading="lazy"` plus a bounded page plus `PHOTO_REFERENCE_REVEAL_STEP` is the whole mitigation.
- * It is a known cost, not an oversight.
+ * `loading="lazy"` plus a `NINA_PHOTO_REF_PAGE_SIZE`-row page is the whole mitigation. It is a
+ * known cost, not an oversight.
  *
  * ── `aria-pressed` AND NOT A RADIO GROUP ────────────────────────────────────────────────────────
  * A radio group cannot express *one, or none*: un-checking a radio is not a gesture ARIA has, so
@@ -72,17 +71,24 @@ import type { PhotoReferenceItem } from './photoReferenceModel'
 export function PhotoReferencePicker({
   items,
   total,
+  page,
+  pageCount,
   value,
   onChange,
 }: {
   /**
-   * One bounded page of the union — album rows and `kind = 'generated'` chat rows together, newest
-   * first. **Not reordered here**: the order is the read's, and this component carries no date to
-   * sort by even if it wanted to.
+   * One real `?page=` window of the deduplicated union — album rows and `kind = 'generated'` chat
+   * rows together, newest first, at most `NINA_PHOTO_REF_PAGE_SIZE` of them. **Not reordered
+   * here**: the order is the read's, and this component carries no date to sort by even if it
+   * wanted to.
    */
   items: readonly PhotoReferenceItem[]
-  /** How many photographs the union holds in total, so the footer can be honest about the rest. */
+  /** How many photographs the deduplicated union holds in total, across every page. */
   total: number
+  /** 1-based. The page this window came from. */
+  page: number
+  /** `Math.max(1, Math.ceil(total / pageSize))` — always at least 1, even for an empty collection. */
+  pageCount: number
   /** The saved (or drafted) selection. `PHOTO_REFERENCE_NONE` (`''`) means no reference. */
   value: string
   /** Called with the next value — a `key`, or `PHOTO_REFERENCE_NONE` to clear. */
@@ -96,18 +102,7 @@ export function PhotoReferencePicker({
 }) {
   const headingId = React.useId()
 
-  /*
-   * How many tiles are in the DOM. The only state here, and `photoReferenceReveal` clamps it on
-   * every render — up to include the selected photograph, down to the number of rows in hand — so
-   * a page change from the server cannot leave this pointing past the end.
-   *
-   * `DialSlider.tsx`'s `useId` is the precedent for the id above; the reason there is no optimistic
-   * copy of `items` is `ChatPhotoGrid.tsx:63-70`'s, unchanged: the rows arrive from the server and
-   * there is nothing to keep in sync.
-   */
-  const [reveal, setReveal] = React.useState(PHOTO_REFERENCE_REVEAL_STEP)
-
-  const view = photoReferenceView({ items, value, reveal, total })
+  const view = photoReferenceView({ items, value })
 
   return (
     <section aria-labelledby={headingId} className="mb-6">
@@ -132,15 +127,17 @@ export function PhotoReferencePicker({
 
       {view.missing && (
         /*
-         * The saved reference is not in this list. Two causes, both real and indistinguishable
+         * The saved reference is not on THIS page. Two causes, both real and indistinguishable
          * from here: the row was deleted (`/admin/photos` can remove a chat photograph and the
-         * album manager can delete an album row), or it is simply older than this page. Nothing is
-         * drawn as selected, and `onChange` is deliberately NOT called — see the file's Decisions
-         * entry: self-healing in an effect would mark the operator's draft dirty on mount.
+         * album manager can delete an album row), or it is simply on a different page — the picker
+         * now reaches every photograph, so nothing is ever permanently out of reach any more, only
+         * a `Previous`/`Next` tap away. Nothing is drawn as selected, and `onChange` is deliberately
+         * NOT called — see the file's Decisions entry: self-healing in an effect would mark the
+         * operator's draft dirty on mount.
          */
         <p className="mb-2 max-w-[70ch] text-[13px] font-medium text-ink-2">
-          The saved reference is not in this grid &mdash; it was deleted, or it is older than the
-          photographs shown here. Choose another photo, or clear it.
+          The saved reference is not on this page &mdash; it was deleted, or it is on a different
+          page. Choose another photo, page through to find it, or clear it.
         </p>
       )}
 
@@ -197,19 +194,18 @@ export function PhotoReferencePicker({
 
           <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
             <p className="text-[12px] font-medium text-ink-3 tabular-nums">
-              Showing {view.revealed} of {items.length}
-              {view.hidden > 0 ? ` (${view.hidden} older not on this page)` : ''}
+              Showing {items.length} of {total} &middot; page {page} of {pageCount}
             </p>
             <div className="flex flex-wrap items-center gap-2">
-              {view.revealed < items.length && (
-                <Button
-                  type="button"
-                  size="md"
-                  variant="secondary"
-                  onClick={() => setReveal(view.revealed + PHOTO_REFERENCE_REVEAL_STEP)}
-                >
-                  Show more
-                </Button>
+              {page > 1 && (
+                <ButtonLink href={`?page=${page - 1}`} size="md" variant="secondary">
+                  Previous
+                </ButtonLink>
+              )}
+              {page < pageCount && (
+                <ButtonLink href={`?page=${page + 1}`} size="md" variant="secondary">
+                  Next
+                </ButtonLink>
               )}
               {value !== PHOTO_REFERENCE_NONE && (
                 <Button

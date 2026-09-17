@@ -49,7 +49,6 @@ const BARREL_VALUE_EXPORTS = [
   // See `lib/nina/queries/avatarEmbeddings.ts`'s header for why they are a module of their own.
   'countNinaAvatarDescribeBacklog',
   'countNinaAvatars',
-  'countNinaChatPhotos',
   'countNinaMediaPhotos',
   'countNinaTurnsSince',
   'countUnreadNinaMessages',

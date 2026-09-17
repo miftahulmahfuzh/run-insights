@@ -197,14 +197,15 @@ export interface ImageGenPanelProps {
    */
   references: ImageReferenceOption[]
   /**
-   * How many photographs the union holds **in total**, not just on this page — i.e.
-   * `listNinaPhotoReferences(userId).total`.
-   *
-   * **RECONCILED: this prop is on phase 4's list because phase 5 needs it and phase 5 does not edit
-   * this prop list.** Phase 5's footer says *"Showing 48 of 142 (94 older not on this page)"*, which
-   * it cannot do from `references.length` alone.
+   * How many photographs the deduplicated union holds **in total**, across every page — i.e.
+   * `listNinaPhotoReferences(userId, opts).total`. The footer's "Showing N of {photoTotal}" cannot
+   * say this from `references.length` alone.
    */
   photoTotal: number
+  /** 1-based. Which `?page=` window `references` came from — the page.tsx route's own reader. */
+  photoPage: number
+  /** `Math.max(1, Math.ceil(photoTotal / NINA_PHOTO_REF_PAGE_SIZE))`, computed by the page. */
+  photoPageCount: number
 }
 
 export function ImageGenPanel({
@@ -215,6 +216,8 @@ export function ImageGenPanel({
   defaultTemplate,
   references,
   photoTotal,
+  photoPage,
+  photoPageCount,
 }: ImageGenPanelProps) {
   /* What the controls show and edit. */
   const [draft, setDraft] = React.useState<ImageGenDraft>(prefs)
@@ -745,6 +748,8 @@ export function ImageGenPanel({
         <PhotoReferencePicker
           items={references}
           total={photoTotal}
+          page={photoPage}
+          pageCount={photoPageCount}
           value={selectedKey}
           onChange={(next) => setReference(parseReferenceKey(next))}
         />

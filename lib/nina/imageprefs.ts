@@ -441,30 +441,12 @@ export function coerceNinaImageReference(value: unknown): NinaImageReference {
  * ==========================================================================*/
 
 /**
- * One page of the caption-less grid. 48, the same as `NINA_CHAT_PHOTO_PAGE_SIZE` in
- * `lib/nina/album.ts` — a 6x8 grid of square tiles on a phone, which is the iOS Photos idiom the
- * user asked for. Both the default and the CEILING for `limit`, so a hand-edited request cannot
- * turn one page into the unpaginated read this function exists to avoid.
+ * One page of the caption-less grid. Both the default and the CEILING for `limit`, so a
+ * hand-edited request cannot turn one page into the unpaginated read the pager exists to avoid.
+ * 50, per the operator's own ask — "50 image in a page" — replacing the 48-tile iOS-grid number
+ * this pager shipped with, now that a page is a real `?page=` window and not a client-side reveal.
  */
-export const NINA_PHOTO_REF_PAGE_SIZE = 48
-
-/**
- * **How deep the picker can reach, and it is a real bound rather than a formality.**
- *
- * The merge below is a pure function over two arrays, which is what lets `npm test` prove the
- * ordering with no database — the *"SQL groups, the pure module rolls up"* split
- * `listNinaAvatarFolders` and `lib/admin/filetree.ts` already use. The price of that split is that
- * `listNinaPhotoReferences` must read `offset + limit` rows from EACH side before it can merge, so
- * the depth has to be capped or the read stops being bounded — which is precisely the mistake
- * `countNinaAvatars` exists to undo, and `listNinaAvatars` (`lib/nina/queries/avatars.ts`) is the
- * unbounded read this must not reuse.
- *
- * 480 is ten pages. The honest cost, stated rather than hidden: a photograph older than the newest
- * 480 across both sets cannot be reached from the picker. Against that, the alternative is a SQL
- * `UNION ALL` whose ordering can only be proved against a live database, bought for deep paging
- * nobody does inside a modal grid.
- */
-export const NINA_PHOTO_REF_SCAN_MAX = 480
+export const NINA_PHOTO_REF_PAGE_SIZE = 50
 
 /** The two sets a photograph can come from. `'none'` is not one of them, so it is excluded. */
 type NinaPhotoRefSource = Exclude<NinaImageReferenceSource, 'none'>
@@ -480,6 +462,10 @@ type NinaPhotoRefSource = Exclude<NinaImageReferenceSource, 'none'>
  * There is no `description`, no `filename`, no `folder` and no `prompt`, and that is R10 held in the
  * type: *"a simple photos grid without any captions (just like ios album app)"*. A field the grid
  * must not render is a field the read must not ship.
+ *
+ * `contentHash` is the one exception, and it never leaves this module: `dedupeNinaPhotoRefs` reads
+ * it and `toImageReferenceOption` (`lib/admin/imageGenModel.ts`) does not carry it into
+ * `ImageReferenceOption`, so it never crosses to the browser.
  */
 export interface NinaPhotoRef {
   readonly source: NinaPhotoRefSource
@@ -489,15 +475,17 @@ export interface NinaPhotoRef {
   readonly width: number | null
   readonly height: number | null
   readonly createdAt: Date
+  /** SHA-256 over the exact bytes, or `null` when the row was never hashed. */
+  readonly contentHash: string | null
 }
 
 /**
- * One page, plus the whole collection's size and the window it was taken from.
+ * One page of the DEDUPED, full collection, plus its true size.
  *
- * `total` is a truthful count of BOTH sets, so an over-shot page returns `rows: []` beside a
- * non-zero total — the distinction `NinaAvatarFolderPage`'s docstring calls out as the one case a
- * pager has to tell apart. `offset` and `limit` are echoed back already clamped, so phase 5 renders
- * the window it actually got rather than the one it asked for.
+ * `total` is the deduped count — not `albumCount + chatCount`, which would overcount exactly the
+ * rows `dedupeNinaPhotoRefs` drops — so an over-shot page returns `rows: []` beside a total that
+ * still names the real collection size, the same distinction `NinaAvatarFolderPage`'s docstring
+ * calls out. `offset` and `limit` are echoed back already clamped.
  */
 export interface NinaPhotoRefPage {
   readonly rows: NinaPhotoRef[]
@@ -506,12 +494,10 @@ export interface NinaPhotoRefPage {
   readonly limit: number
 }
 
-/** The clamped window, plus how many rows each side must be read to fill it. */
+/** The clamped window a page was requested with. */
 export interface NinaPhotoRefBounds {
   readonly offset: number
   readonly limit: number
-  /** `min(offset + limit, NINA_PHOTO_REF_SCAN_MAX)` — the per-side `LIMIT`. */
-  readonly scan: number
 }
 
 function boundedInt(value: unknown, fallback: number, min: number, max: number): number {
@@ -520,19 +506,23 @@ function boundedInt(value: unknown, fallback: number, min: number, max: number):
 }
 
 /**
- * The one place the picker's window is decided, so the reader and the merge cannot disagree about
- * it. `lib/nina/queries.ts` calls this once and passes the result to `mergeNinaPhotoRefs`.
+ * The one place the picker's window is decided, so the reader and the paginator cannot disagree
+ * about it. `offset` has no upper clamp beyond finiteness: it slices an in-memory array (the whole
+ * deduped collection is already in hand by the time this is used), so an over-shot offset is simply
+ * an empty page rather than a query that needs protecting.
  */
 export function ninaPhotoRefBounds(
   opts: { limit?: number; offset?: number } = {},
 ): NinaPhotoRefBounds {
   const limit = boundedInt(opts.limit, NINA_PHOTO_REF_PAGE_SIZE, 1, NINA_PHOTO_REF_PAGE_SIZE)
-  const offset = boundedInt(opts.offset, 0, 0, NINA_PHOTO_REF_SCAN_MAX)
-  return { offset, limit, scan: Math.min(offset + limit, NINA_PHOTO_REF_SCAN_MAX) }
+  const offset = boundedInt(opts.offset, 0, 0, Number.MAX_SAFE_INTEGER)
+  return { offset, limit }
 }
 
 /**
- * Newest first across both sets, then the requested slice. **Pure, total, and never throws.**
+ * Newest first across both sets. **Pure, total, and never throws.** No longer bounded, and no
+ * longer the one function that also slices a page — see `dedupeNinaPhotoRefs` and
+ * `paginateNinaPhotoRefs` below, which now sit between this and the page a caller actually wants.
  *
  * The tiebreak is `(createdAt desc, source asc, id desc)` and every part of it is load-bearing:
  * both source reads already order `(created_at desc, id desc)`, rows written in one statement share
@@ -547,10 +537,43 @@ export function ninaPhotoRefBounds(
 export function mergeNinaPhotoRefs(
   album: readonly NinaPhotoRef[],
   chat: readonly NinaPhotoRef[],
+): NinaPhotoRef[] {
+  return [...album, ...chat].sort(compareNinaPhotoRefs)
+}
+
+/**
+ * **Collapse byte-identical photographs to the first one that sorts.** "Deduplicated" (the
+ * operator's own word): two rows sharing a `content_hash` are the same bytes stored twice —
+ * independently uploaded into the album twice, or uploaded to both the album and the chat with no
+ * provenance link between them — and the picker must offer each photograph once.
+ *
+ * `null` never matches anything, including another `null`: an unhashed row cannot be PROVEN
+ * identical to another unhashed row, so it is always kept. Input is assumed already sorted
+ * (`mergeNinaPhotoRefs`'s order), so "the first one that sorts" is the newest of the group — the
+ * same "keep the newest" rule `findNinaImageByContentHash` and `findNinaAvatarByContentHash` both
+ * use for the same reason: the newest survivor is the least likely to have been deleted since.
+ */
+export function dedupeNinaPhotoRefs(rows: readonly NinaPhotoRef[]): NinaPhotoRef[] {
+  const seen = new Set<string>()
+  const kept: NinaPhotoRef[] = []
+  for (const row of rows) {
+    if (row.contentHash === null) {
+      kept.push(row)
+      continue
+    }
+    if (seen.has(row.contentHash)) continue
+    seen.add(row.contentHash)
+    kept.push(row)
+  }
+  return kept
+}
+
+/** The requested window over an already sorted, already deduped collection. `[]` past the end. */
+export function paginateNinaPhotoRefs(
+  rows: readonly NinaPhotoRef[],
   bounds: NinaPhotoRefBounds,
 ): NinaPhotoRef[] {
-  const merged = [...album, ...chat].sort(compareNinaPhotoRefs)
-  return merged.slice(bounds.offset, bounds.offset + bounds.limit)
+  return rows.slice(bounds.offset, bounds.offset + bounds.limit)
 }
 
 function refTime(ref: NinaPhotoRef): number {

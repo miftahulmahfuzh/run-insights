@@ -6,7 +6,7 @@ import {
 } from '@/lib/admin/imageGenModel'
 import { requireAdmin } from '@/lib/admin/requireAdmin'
 import { buildNinaImagePrompt, NINA_PROMPT_TEMPLATE_DEFAULT } from '@/lib/nina/imagegen'
-import { NINA_IMAGE_PREFS_DEFAULTS } from '@/lib/nina/imageprefs'
+import { NINA_IMAGE_PREFS_DEFAULTS, NINA_PHOTO_REF_PAGE_SIZE } from '@/lib/nina/imageprefs'
 import { listNinaPhotoReferences, readNinaImagePrefs, readNinaTuning } from '@/lib/nina/queries'
 
 /**
@@ -31,19 +31,21 @@ import { listNinaPhotoReferences, readNinaImagePrefs, readNinaTuning } from '@/l
  * change and needs none. Plan invariant 6, and `tests/admin.imagegen.test.ts` asserts the ordering
  * on this file structurally.
  *
- * ── `force-dynamic`, AND WHY IT IS NOT ABOUT `searchParams` ─────────────────────────────────
- * This page reads no `searchParams` and therefore takes no props — the shape `app/admin/page.tsx`
- * and `app/admin/personality/page.tsx` both already have. Verified against this repo's own Next
- * (16.3.1) rather than remembered:
- * `node_modules/next/dist/docs/01-app/02-guides/caching-without-cache-components.md:96-99` is where
- * `'auto' | 'force-dynamic' | 'error' | 'force-static'` is defined, and `'auto'` caches as much as
- * it can.
+ * ── `force-dynamic`, AND `searchParams` IS NOW WHY TOO ──────────────────────────────────────
+ * This page used to read no `searchParams`. Real pagination on the photo-reference picker (the
+ * operator's *"select the anchor for every single image in the system"* ask) changed that: `?page=`
+ * now drives which window of `listNinaPhotoReferences` this render fetches, the same shape
+ * `app/admin/nina/page.tsx` already has. `PageProps<'/admin/image-generation'>` is verified against
+ * this repo's own Next (16.3.1) rather than remembered:
+ * `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/page.md` — `searchParams`
+ * is a promise and reading it opts the page into dynamic rendering on its own.
  *
- * The reason it is declared is the sibling pages' reason verbatim: these prefs are per-request
- * state that must reflect the action that just ran, and `revalidatePath('/admin/image-generation')`
- * in both actions is what makes that immediate. `requireAdmin()` awaits `auth()`, which reads a
- * cookie and would opt this route in implicitly — but a route's caching decided by the internals
- * of a module three levels down is a route that loses it the day that module is refactored.
+ * The reason `force-dynamic` is declared explicitly is still the sibling pages' reason verbatim,
+ * `searchParams` notwithstanding: these prefs are per-request state that must reflect the action
+ * that just ran, and `revalidatePath('/admin/image-generation')` in both actions is what makes that
+ * immediate. `requireAdmin()` awaits `auth()`, which reads a cookie and would opt this route in
+ * implicitly — but a route's caching decided by the internals of a module three levels down is a
+ * route that loses it the day that module is refactored.
  *
  * ── THE PREVIEW IS A PURE FUNCTION, WHICH IS WHAT MAKES IT LEGAL HERE ───────────────────────
  * `buildNinaImagePrompt(...)` assembles a string. It is not a model call, it awaits nothing, and it
@@ -97,17 +99,35 @@ export const dynamic = 'force-dynamic'
  */
 export const maxDuration = 300
 
-export default async function AdminImageGenerationPage() {
+/** A hand-typed `?page=` cannot ask for an offset past what any collection here will ever reach. */
+const PAGE_CEILING = 1000
+
+/** 1-based, floored at 1, capped at `PAGE_CEILING`. Garbage reads as page 1 — `app/admin/nina/page.tsx`'s reader, verbatim. */
+function readPage(raw: string | string[] | undefined): number {
+  const value = Array.isArray(raw) ? (raw[0] ?? '') : (raw ?? '')
+  const parsed = Number.parseInt(value, 10)
+  if (!Number.isFinite(parsed) || parsed < 1) return 1
+  return Math.min(parsed, PAGE_CEILING)
+}
+
+export default async function AdminImageGenerationPage(
+  props: PageProps<'/admin/image-generation'>,
+) {
   const { userId } = await requireAdmin()
 
+  const searchParams = await props.searchParams
+  const page = readPage(searchParams.page)
+  const offset = (page - 1) * NINA_PHOTO_REF_PAGE_SIZE
+
   /* `listNinaPhotoReferences` returns a `NinaPhotoRefPage` — `{ rows, total, offset, limit }` —
-   * not an array. `total` counts BOTH sets and is what phase 5's footer needs to say "Showing 48 of
-   * 142" truthfully, so it is threaded to the panel as its own prop. */
+   * not an array. `total` is the DEDUPED count across the whole collection, not just this page, so
+   * the picker's page count is derived from it here rather than assumed from `rows.length`. */
   const [prefs, tuning, referencePage] = await Promise.all([
     readNinaImagePrefs(userId),
     readNinaTuning(userId),
-    listNinaPhotoReferences(userId),
+    listNinaPhotoReferences(userId, { offset, limit: NINA_PHOTO_REF_PAGE_SIZE }),
   ])
+  const pageCount = Math.max(1, Math.ceil(referencePage.total / NINA_PHOTO_REF_PAGE_SIZE))
 
   return (
     <div>
@@ -150,6 +170,8 @@ export default async function AdminImageGenerationPage() {
         defaultTemplate={NINA_PROMPT_TEMPLATE_DEFAULT}
         references={referencePage.rows.map(toImageReferenceOption)}
         photoTotal={referencePage.total}
+        photoPage={page}
+        photoPageCount={pageCount}
       />
     </div>
   )

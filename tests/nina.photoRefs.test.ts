@@ -14,9 +14,9 @@ import { installFakeDb, uninstallFakeDb, type FakeDb } from './support/fakeDb'
  *
  * Three properties, and the SECOND is the one most likely to rot:
  *
- *   1. The three COLLECTION reads skip a reference. The listing read and the picker count —
- *      `listNinaPhotoReferences`' page side and `countNinaChatPhotos`, its total — share
- *      `generatedChatPhotoScope` on purpose, so the page and the total cannot drift.
+ *   1. The three COLLECTION reads skip a reference. `listNinaPhotoReferences`' chat-side read
+ *      shares `generatedChatPhotoScope` with its own `total` — since 2026-09-17's dedup pass, both
+ *      come off the same statement, so they cannot drift apart by construction.
  *   2. The reads that make a photograph RENDER, or that build Nina's context, carry NO such
  *      predicate — invariant 2, written as an ABSENCE on purpose. A future "consistency" cleanup
  *      that adds the filter to `getNinaMessageImagesForMessages` blanks a photograph in a live
@@ -106,51 +106,34 @@ describe('the collection listings skip a reference (R1, R3)', () => {
     expect(sql).toContain('limit')
   })
 
-  it('countNinaChatPhotos — the reference picker’s chat-side total still skips a reference', async () => {
-    fake.enqueue([[0]])
-    await expect(queries.countNinaChatPhotos('u1')).resolves.toBe(0)
+  it('listNinaPhotoReferences — the chat-side read still skips a reference', async () => {
+    // Two statements now (2026-09-17's dedup pass folded the two counts into the same full reads):
+    // Q0 the album read, Q1 the chat read, in `Promise.all` array order.
+    fake.enqueue([], [])
+    await queries.listNinaPhotoReferences('u1')
 
-    const where = whereOf(fake.only().sql)
+    expect(fake.queries).toHaveLength(2)
+    const where = whereOf(fake.sqlAt(1))
     for (const predicate of REFERENCE_SKIPPED) expect(where, predicate).toContain(predicate)
   })
 })
 
 describe('the picker drops a photograph her album has already adopted', () => {
-  it('countNinaChatPhotos — the chat-side total stops counting an adopted photograph', async () => {
-    fake.enqueue([[0]])
-    await expect(queries.countNinaChatPhotos('u1')).resolves.toBe(0)
-
-    const { sql, params } = fake.only()
-    const where = whereOf(sql)
-    for (const predicate of ADOPTED_SKIPPED) expect(where, predicate).toContain(predicate)
-    /* BOTH halves, in one scope: the F37 reference filter and the adoption filter. The bug was
-     * that the first one alone looked like the whole rule. */
-    for (const predicate of REFERENCE_SKIPPED) expect(where, predicate).toContain(predicate)
-    /* The owner id is bound TWICE — once on the outer table, once inside the subquery. An
-     * unscoped subquery would let another operator's album hide this operator's photographs, and
-     * a missing third parameter is exactly what that regression would look like from here. */
-    expect(params).toEqual(['u1', 'generated', 'u1'])
-  })
-
   it('listNinaPhotoReferences — the chat page carries it and the ALBUM page must not', async () => {
-    /* Four statements. Q0 `countNinaAvatars` and Q1 `countNinaChatPhotos` are function CALLS and
-     * dispatch while the `Promise.all` array is being built; Q2 the album page and Q3 the chat
-     * page are lazy drizzle thenables that only run when `Promise.all` awaits them, in array
-     * order. Recorded, not assumed. */
-    fake.enqueue([[3]], [[4]], [], [])
+    fake.enqueue([], [])
     await queries.listNinaPhotoReferences('u1')
 
-    expect(fake.queries).toHaveLength(4)
-    const chat = whereOf(fake.sqlAt(3))
+    expect(fake.queries).toHaveLength(2)
+    const chat = whereOf(fake.sqlAt(1))
     for (const predicate of ADOPTED_SKIPPED) expect(chat, predicate).toContain(predicate)
-    /* The page and the total read one scope, so they cannot disagree about who is adopted. */
-    const count = whereOf(fake.sqlAt(1))
-    for (const predicate of ADOPTED_SKIPPED) expect(count, predicate).toContain(predicate)
+    /* BOTH halves, in one scope: the F37 reference filter and the adoption filter. The bug was
+     * that the first one alone looked like the whole rule. */
+    for (const predicate of REFERENCE_SKIPPED) expect(chat, predicate).toContain(predicate)
 
     /* An ABSENCE, and it is the user's other half: the album COPY is the row that SURVIVES the
      * dedup, so the album statement must keep listing it. Filtering both sides "for consistency"
      * would delete the photograph from the picker entirely. */
-    const album = whereOf(fake.sqlAt(2))
+    const album = whereOf(fake.sqlAt(0))
     expect(album).not.toContain('source_key')
     expect(album).not.toContain('not exists')
   })

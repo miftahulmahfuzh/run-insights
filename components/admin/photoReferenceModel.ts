@@ -69,18 +69,18 @@ interface PhotoReferenceTile {
 
 /** Everything the component needs to render, derived in one pass. */
 export interface PhotoReferenceView {
+  /** One tile per item, in the server's order. Every page is now a real `?page=` window, so the
+   * component draws everything it was handed — there is nothing left to reveal in stages. */
   tiles: PhotoReferenceTile[]
   /** Index into the **items**, not into `tiles`. `null` when nothing is selected. */
   selectedIndex: number | null
   /** The selected tile's accessible name, for the status line. `null` when nothing is selected. */
   selectedLabel: string | null
-  /** How many tiles are in the DOM. Equal to `tiles.length`; named so the caller can read intent. */
-  revealed: number
-  /** How many photographs the union holds beyond this page. `0` when the page is the whole set. */
-  hidden: number
   /**
-   * The saved selection matches no photograph in the list — it was deleted, or it is older than
-   * this page. The grid draws nothing as selected and says so; it does **not** self-heal.
+   * The saved selection matches no photograph on THIS page — it was deleted, or it is on a
+   * different page (the picker now reaches the whole deduplicated collection, so a photograph is
+   * never permanently out of reach, only ever a `Next`/`Previous` tap away). The grid draws nothing
+   * as selected and says so; it does **not** self-heal.
    */
   missing: boolean
 }
@@ -108,17 +108,6 @@ export const PHOTO_REFERENCE_NONE = ''
  * photograph came from.
  */
 export const PHOTO_REFERENCE_TILE_LABEL = 'Nina photo'
-
-/**
- * How many tiles enter the DOM at once, and how many each **Show more** adds.
- *
- * `NINA_CHAT_PHOTO_PAGE_SIZE`'s number, for `lib/nina/album.ts:80-102`'s recorded reason: the chat
- * half of this union has no thumbnail column, so those tiles fetch ~1 MB originals. 48 of them is
- * a page; 120 of them *"is not a page, it is a download"*. If phase 1's union page is itself 48
- * this constant never shows a button — it exists for the larger page, and it is a reveal over rows
- * already in hand, never a read.
- */
-export const PHOTO_REFERENCE_REVEAL_STEP = 48
 
 /**
  * The narrowest a tile may ever be, in CSS pixels — the `minmax()` floor in the grid template.
@@ -177,60 +166,32 @@ export function nextPhotoReferenceValue(current: string, key: string): string {
 }
 
 /**
- * How many tiles to draw: what was asked for, never more than there are, and never so few that the
- * selected photograph is off the end.
- *
- * The clamp-up is the rule that keeps the check badge visible. Without it a saved selection at
- * index 60 of a 120-row page would be invisible until the operator pressed **Show more**, and the
- * grid would look as though nothing were chosen while the form said otherwise. `viewerIndex`
- * (`lib/nina/chatphotos.ts:79-83`) is the precedent for clamping a window rather than trusting it.
- */
-export function photoReferenceReveal(
-  reveal: number,
-  count: number,
-  selectedIndex: number | null,
-): number {
-  if (!Number.isFinite(count) || count <= 0) return 0
-  const asked = Number.isFinite(reveal) ? Math.trunc(reveal) : PHOTO_REFERENCE_REVEAL_STEP
-  const floor = selectedIndex === null ? 0 : selectedIndex + 1
-  return Math.min(count, Math.max(asked, floor, 1))
-}
-
-/**
  * The whole render, derived in one pass so the component branches on data and not on rules.
  *
- * `total` is the union's full count and may legitimately exceed `items.length` — phase 1 hands one
- * bounded page of *"hundreds of profile pics"*. A `total` smaller than the page in hand is
- * nonsense (a concurrent delete between the count and the page, or a caller passing the wrong
- * number), so it is floored at `items.length` rather than allowed to make `hidden` negative.
+ * No `reveal`/`total` any more: the server now hands over exactly one `?page=` window (at most
+ * `NINA_PHOTO_REF_PAGE_SIZE` rows), so every item in `items` is drawn — there is no larger page to
+ * stage a reveal over. Paging further is a real navigation, handled by the component's `page` /
+ * `pageCount` props, not by this view.
  */
 export function photoReferenceView({
   items,
   value,
-  reveal,
-  total,
 }: {
   items: readonly PhotoReferenceItem[]
   value: string
-  reveal: number
-  total: number
 }): PhotoReferenceView {
   const selectedIndex = photoReferenceIndex(items, value)
-  const revealed = photoReferenceReveal(reveal, items.length, selectedIndex)
-  const tiles = items.slice(0, revealed).map((item, index) => ({
+  const tiles = items.map((item, index) => ({
     key: item.key,
     src: photoReferenceTileSrc(item),
     label: photoReferenceLabel(index),
     selected: index === selectedIndex,
   }))
-  const counted = Number.isFinite(total) ? Math.max(Math.trunc(total), items.length) : items.length
 
   return {
     tiles,
     selectedIndex,
     selectedLabel: selectedIndex === null ? null : photoReferenceLabel(selectedIndex),
-    revealed,
-    hidden: counted - items.length,
     missing: value !== PHOTO_REFERENCE_NONE && selectedIndex === null,
   }
 }

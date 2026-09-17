@@ -9,17 +9,18 @@ import {
 } from '@/lib/db/schema'
 import {
   coerceNinaImagePrefs,
+  dedupeNinaPhotoRefs,
   mergeNinaPhotoRefs,
   NINA_IMAGE_PREFS_DEFAULTS,
   ninaPhotoRefBounds,
+  paginateNinaPhotoRefs,
   type NinaImagePrefs,
   type NinaImagePrefsWrite,
   type NinaImageReference,
   type NinaPhotoRef,
   type NinaPhotoRefPage,
 } from '@/lib/nina/imageprefs'
-import { countNinaAvatars } from './avatars'
-import { countNinaChatPhotos, generatedChatPhotoScope } from './images'
+import { generatedChatPhotoScope } from './images'
 
 /**
  * Split from `lib/nina/queries.ts` on 2026-09-12: this file carries that barrel's §10b
@@ -158,29 +159,39 @@ export async function writeNinaImagePrefs(
 }
 
 /**
- * **Every photograph the operator may point the camera at, from both sets, newest first** — R10's
- * *"user can select all photos in Nina's album and Chat photos"*.
+ * **Every photograph the operator may point the camera at, from both sets, newest first,
+ * deduplicated, and reachable at any depth** — R10's *"user can select all photos in Nina's album
+ * and Chat photos"*, extended so a `?page=` can reach every one of them and not just the newest
+ * batch.
  *
- * ── TWO BOUNDED READS PLUS A PURE MERGE, NOT A SQL `UNION ALL` ──────────────────────────────
+ * ── TWO FULL READS PLUS A PURE MERGE, NOT A SQL `UNION ALL` ─────────────────────────────────
  * The two tables share no column list — `nina_avatars` has a derived `thumb_url` and
  * `nina_message_images` has none — so a `UNION ALL` would need a projection with literal
  * discriminators, and its ordering could then only be proved against a live database. Instead each
- * side is read on its own index and `mergeNinaPhotoRefs` orders and slices them, which `npm test`
- * proves with no database at all. It is the split `listNinaAvatarFolders` already makes and states:
- * *"SQL groups, the pure module rolls up."*
+ * side is read in full, on its own index, and `mergeNinaPhotoRefs` / `dedupeNinaPhotoRefs` /
+ * `paginateNinaPhotoRefs` do the rest in pure functions `npm test` proves with no database at all —
+ * the split `listNinaAvatarFolders` already makes and states: *"SQL groups, the pure module rolls
+ * up."*
  *
- * ── IT IS BOUNDED, AND `NINA_PHOTO_REF_SCAN_MAX` IS WHERE ─────────────────────────────────────
- * `ninaPhotoRefBounds` clamps `limit` to `NINA_PHOTO_REF_PAGE_SIZE` (both default and CEILING, so a
- * hand-edited request cannot widen it) and caps the reachable depth at `NINA_PHOTO_REF_SCAN_MAX`,
- * which is also the per-side `LIMIT`. An unbounded read over *"hundreds of profile pics"* is the
- * mistake `countNinaAvatars` exists to undo, and `listNinaAvatars` (`queries/avatars.ts`) is that unbounded read —
- * it is deliberately NOT reused here.
+ * ── NO PER-SIDE CAP ANY MORE ─────────────────────────────────────────────────────────────────
+ * This used to cap each side's read at `NINA_PHOTO_REF_SCAN_MAX`, so a photograph past the newest
+ * few hundred was permanently unreachable from the picker — the operator's own ask (*"select the
+ * anchor for every single image in the system"*) is exactly the case that cap ruled out. Dedup
+ * needs the WHOLE collection in hand anyway (a duplicate can be arbitrarily far from its twin), so
+ * there is nothing left to cap: both reads are unbounded per user, which is the collection this
+ * function was always scoped to.
  *
- * ── FOUR STATEMENTS, RUN CONCURRENTLY ────────────────────────────────────────────────────────
- * Two pages and two counts, in one `Promise.all`. The counts are their own statements rather than
- * `count(*) OVER ()` windows for `listNinaChatPhotos`'s reason: a window reports `total: 0` for an
- * over-shot page, which the picker has to tell apart from an empty collection. The chat count is
- * literally `countNinaChatPhotos` (`queries/images.ts`) rather than a second copy of its predicate.
+ * ── THE TOTAL IS THE DEDUPED COUNT, SO THIS NO LONGER SPENDS A SEPARATE `count(*)` PER SIDE ────
+ * `countNinaAvatars`/`countNinaChatPhotos` answered "how many rows", which is not "how many
+ * photographs" once two rows can share bytes — so `total` is `deduped.length`, computed from the
+ * same full read the page is sliced from. Two statements, not four.
+ *
+ * ── DEDUPLICATED, BY `content_hash` ──────────────────────────────────────────────────────────
+ * Both tables carry `content_hash` (SHA-256 over the exact bytes). Two rows sharing one hash are
+ * the same photograph stored twice — an album drop repeated into two folders, or the same file
+ * uploaded to both the album and the chat with no provenance link between them — and
+ * `dedupeNinaPhotoRefs` keeps the first (newest) of each such group. An unhashed row (`null`) is
+ * never treated as a duplicate of anything.
  *
  * ── WHICH ROWS, AND WHICH INDEX ──────────────────────────────────────────────────────────────
  * The album side is EVERY folder — *"all photos in Nina's album"* — so there is no `folder`
@@ -208,9 +219,7 @@ export async function writeNinaImagePrefs(
  * It does not, and the reason is structural rather than lucky: `generatedChatPhotoScope`
  * (`queries/images.ts`) is `and(eq(userId), eq(kind, 'generated'), isOriginalPhoto())`,
  * and `isOriginalPhoto()` (`queries/images.ts`) is
- * `and(isNull(sourceAvatarId), isNull(sourceImageId))`. `countNinaChatPhotos` (`queries/images.ts`) shares that
- * same private scope, so the page and the `total` cannot disagree — which is the argument that
- * function's own docstring makes in `queries/images.ts`.
+ * `and(isNull(sourceAvatarId), isNull(sourceImageId))`.
  *
  * **DO NOT INLINE THE PREDICATE.** Replacing `generatedChatPhotoScope(userId)` with a hand-written
  * `and(eq(ninaMessageImages.userId, userId), eq(ninaMessageImages.kind, 'generated'))` — the
@@ -235,6 +244,7 @@ export async function writeNinaImagePrefs(
  * No `description`, no `filename`, no `folder`, no `prompt`. R10 is *"a simple photos grid without
  * any captions (just like ios album app)"*, and a field the grid must not render is a field this
  * read must not ship — the same discipline `listNinaAvatarManifest` applies to its own projection.
+ * `contentHash` rides along only far enough to dedupe; `toImageReferenceOption` never reads it.
  */
 export async function listNinaPhotoReferences(
   userId: string,
@@ -242,7 +252,7 @@ export async function listNinaPhotoReferences(
 ): Promise<NinaPhotoRefPage> {
   const bounds = ninaPhotoRefBounds(opts)
 
-  const [albumRows, chatRows, albumCount, chatCount] = await Promise.all([
+  const [albumRows, chatRows] = await Promise.all([
     db
       .select({
         id: ninaAvatars.id,
@@ -251,11 +261,11 @@ export async function listNinaPhotoReferences(
         width: ninaAvatars.width,
         height: ninaAvatars.height,
         createdAt: ninaAvatars.createdAt,
+        contentHash: ninaAvatars.contentHash,
       })
       .from(ninaAvatars)
       .where(eq(ninaAvatars.userId, userId))
-      .orderBy(desc(ninaAvatars.createdAt), desc(ninaAvatars.id))
-      .limit(bounds.scan),
+      .orderBy(desc(ninaAvatars.createdAt), desc(ninaAvatars.id)),
     db
       .select({
         id: ninaMessageImages.id,
@@ -263,13 +273,11 @@ export async function listNinaPhotoReferences(
         width: ninaMessageImages.width,
         height: ninaMessageImages.height,
         createdAt: ninaMessageImages.createdAt,
+        contentHash: ninaMessageImages.contentHash,
       })
       .from(ninaMessageImages)
       .where(generatedChatPhotoScope(userId))
-      .orderBy(desc(ninaMessageImages.createdAt), desc(ninaMessageImages.id))
-      .limit(bounds.scan),
-    countNinaAvatars(userId),
-    countNinaChatPhotos(userId),
+      .orderBy(desc(ninaMessageImages.createdAt), desc(ninaMessageImages.id)),
   ])
 
   /* `as const` on the discriminator rather than relying on the annotation's contextual type: this
@@ -283,9 +291,11 @@ export async function listNinaPhotoReferences(
     ...row,
   }))
 
+  const deduped = dedupeNinaPhotoRefs(mergeNinaPhotoRefs(album, chat))
+
   return {
-    rows: mergeNinaPhotoRefs(album, chat, bounds),
-    total: albumCount + chatCount,
+    rows: paginateNinaPhotoRefs(deduped, bounds),
+    total: deduped.length,
     offset: bounds.offset,
     limit: bounds.limit,
   }
@@ -326,6 +336,7 @@ export async function resolveNinaPhotoReference(
         width: ninaAvatars.width,
         height: ninaAvatars.height,
         createdAt: ninaAvatars.createdAt,
+        contentHash: ninaAvatars.contentHash,
       })
       .from(ninaAvatars)
       .where(and(eq(ninaAvatars.userId, userId), eq(ninaAvatars.id, reference.id)))
@@ -341,6 +352,7 @@ export async function resolveNinaPhotoReference(
       width: ninaMessageImages.width,
       height: ninaMessageImages.height,
       createdAt: ninaMessageImages.createdAt,
+      contentHash: ninaMessageImages.contentHash,
     })
     .from(ninaMessageImages)
     .where(and(generatedChatPhotoScope(userId), eq(ninaMessageImages.id, reference.id)))
