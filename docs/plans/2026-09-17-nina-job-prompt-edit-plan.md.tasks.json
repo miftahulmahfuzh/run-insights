@@ -1,0 +1,12 @@
+{
+  "planPath": "docs/plans/2026-09-17-nina-job-prompt-edit-plan.md",
+  "tasks": [
+    { "id": 0, "subject": "Task 1: NinaJobActionResult grows a jobId field", "status": "pending" },
+    { "id": 1, "subject": "Task 2: setNinaImageJobPrompt core DB operation", "status": "pending", "blockedBy": [0] },
+    { "id": 2, "subject": "Task 3: updateNinaImageJobPrompt server action", "status": "pending", "blockedBy": [1] },
+    { "id": 3, "subject": "Task 4: Retry button on the detail page", "status": "pending", "blockedBy": [2] },
+    { "id": 4, "subject": "Task 5: Edit-prompt button on the detail page", "status": "pending", "blockedBy": [3] },
+    { "id": 5, "subject": "Task 6: Full verification pass", "status": "pending", "blockedBy": [4] }
+  ],
+  "lastUpdated": "2026-09-17"
+}
