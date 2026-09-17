@@ -212,7 +212,9 @@ describe('NinaJobDetail', () => {
   })
 
   it('a failed job draws a retry control; a done one does not', () => {
-    const { unmount } = render(<NinaJobDetail {...props({ stage: 'failed', stageLabel: 'Gagal' })} />)
+    const { unmount } = render(
+      <NinaJobDetail {...props({ stage: 'failed', stageLabel: 'Gagal' })} />,
+    )
     expect(screen.getByRole('button', { name: 'Coba lagi' })).toBeInTheDocument()
     unmount()
 
