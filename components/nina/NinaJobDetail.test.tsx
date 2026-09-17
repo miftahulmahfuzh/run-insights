@@ -1,10 +1,13 @@
 // @vitest-environment happy-dom
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { redoNinaImageJob } = vi.hoisted(() => ({ redoNinaImageJob: vi.fn() }))
-vi.mock('@/lib/nina/jobActions', () => ({ redoNinaImageJob }))
+const { redoNinaImageJob, updateNinaImageJobPrompt } = vi.hoisted(() => ({
+  redoNinaImageJob: vi.fn(),
+  updateNinaImageJobPrompt: vi.fn(),
+}))
+vi.mock('@/lib/nina/jobActions', () => ({ redoNinaImageJob, updateNinaImageJobPrompt }))
 
 const { routerPush } = vi.hoisted(() => ({ routerPush: vi.fn() }))
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: routerPush }) }))
@@ -56,6 +59,7 @@ function props(overrides?: Partial<Props>): Props {
 describe('NinaJobDetail', () => {
   beforeEach(() => {
     redoNinaImageJob.mockReset().mockResolvedValue({ ok: true, reason: null, jobId: 'job-2' })
+    updateNinaImageJobPrompt.mockReset().mockResolvedValue({ ok: true, reason: null })
     routerPush.mockReset()
   })
 
@@ -243,5 +247,73 @@ describe('NinaJobDetail', () => {
       'Jatah foto hari ini sudah habis. Coba lagi besok ya.',
     )
     expect(routerPush).not.toHaveBeenCalled()
+  })
+
+  it('the pencil opens an editable textarea prefilled with the bare prompt, never the sidecar', async () => {
+    const user = userEvent.setup()
+    render(<NinaJobDetail {...props()} />)
+
+    await user.click(screen.getByRole('button', { name: 'Ubah prompt' }))
+
+    expect(screen.getByRole('textbox', { name: 'Prompt' })).toHaveValue(
+      'sebuah foto selfie di pantai',
+    )
+  })
+
+  it('Batal discards the draft and returns to the read-only view untouched', async () => {
+    const user = userEvent.setup()
+    render(<NinaJobDetail {...props()} />)
+    await user.click(screen.getByRole('button', { name: 'Ubah prompt' }))
+    await user.clear(screen.getByRole('textbox', { name: 'Prompt' }))
+    await user.type(screen.getByRole('textbox', { name: 'Prompt' }), 'a different draft')
+
+    await user.click(screen.getByRole('button', { name: 'Batal' }))
+
+    expect(screen.queryByRole('textbox', { name: 'Prompt' })).not.toBeInTheDocument()
+    expect(updateNinaImageJobPrompt).not.toHaveBeenCalled()
+    expect(screen.getByText(/--- prompt as sent ---/)).toBeInTheDocument()
+  })
+
+  it('Simpan saves the trimmed draft for THIS job and returns to the read-only view', async () => {
+    const user = userEvent.setup()
+    render(<NinaJobDetail {...props()} />)
+    await user.click(screen.getByRole('button', { name: 'Ubah prompt' }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Prompt' }), {
+      target: { value: '  no nsfw words here  ' },
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Simpan' }))
+
+    await waitFor(() =>
+      expect(updateNinaImageJobPrompt).toHaveBeenCalledWith({
+        jobId: 'job-1',
+        prompt: '  no nsfw words here  ',
+      }),
+    )
+    await waitFor(() =>
+      expect(screen.queryByRole('textbox', { name: 'Prompt' })).not.toBeInTheDocument(),
+    )
+  })
+
+  it('a save refusal keeps the textarea open and shows the sentence', async () => {
+    updateNinaImageJobPrompt.mockResolvedValue({ ok: false, reason: 'empty-prompt' })
+    const user = userEvent.setup()
+    render(<NinaJobDetail {...props()} />)
+    await user.click(screen.getByRole('button', { name: 'Ubah prompt' }))
+
+    await user.click(screen.getByRole('button', { name: 'Simpan' }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(/kosong/i)
+    expect(screen.getByRole('textbox', { name: 'Prompt' })).toBeInTheDocument()
+  })
+
+  it('while editing, the retry control is hidden', async () => {
+    const user = userEvent.setup()
+    render(<NinaJobDetail {...props({ stage: 'failed', stageLabel: 'Gagal' })} />)
+    expect(screen.getByRole('button', { name: 'Coba lagi' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Ubah prompt' }))
+
+    expect(screen.queryByRole('button', { name: 'Coba lagi' })).not.toBeInTheDocument()
   })
 })

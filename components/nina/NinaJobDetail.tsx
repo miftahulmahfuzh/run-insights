@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
 import * as React from 'react'
 
 import { Button, ButtonLink, Card, Stat } from '@/components/ui'
-import { redoNinaImageJob } from '@/lib/nina/jobActions'
+import { redoNinaImageJob, updateNinaImageJobPrompt } from '@/lib/nina/jobActions'
 import {
   NINA_JOB_JUMP_NOTE,
   formatJobLatency,
@@ -18,6 +18,14 @@ import {
 } from '@/lib/nina/jobview'
 import { NOTE } from './NinaJobActions'
 import { NinaJobElapsed } from './NinaJobElapsed'
+
+/** Refusal sentences for `updateNinaImageJobPrompt` — `NinaJobActions.tsx`'s `NOTE` is the
+ * precedent: the server returns a discriminant, never prose, and the component owns the words. */
+const EDIT_NOTE: Record<'not-found' | 'no-args' | 'empty-prompt', string> = {
+  'not-found': 'Job ini sudah nggak ada.',
+  'no-args': 'Job ini nggak nyimpan argumen buat diubah.',
+  'empty-prompt': 'Prompt-nya nggak boleh kosong.',
+}
 
 /**
  * **R1's image-generation detail page: "the exact prompt of image generation, how long the job has
@@ -135,6 +143,34 @@ export function NinaJobDetail({
     })
   }
 
+  const [mode, setMode] = React.useState<'view' | 'edit'>('view')
+  const [draft, setDraft] = React.useState('')
+  const [editNote, setEditNote] = React.useState<string | null>(null)
+  const [editPending, startEditTransition] = React.useTransition()
+
+  function openEdit() {
+    setDraft(prompt ?? '')
+    setEditNote(null)
+    setMode('edit')
+  }
+
+  function cancelEdit() {
+    setMode('view')
+    setEditNote(null)
+  }
+
+  function saveEdit() {
+    setEditNote(null)
+    startEditTransition(async () => {
+      const outcome = await updateNinaImageJobPrompt({ jobId, prompt: draft })
+      if (!outcome.ok) {
+        setEditNote(EDIT_NOTE[outcome.reason ?? 'not-found'])
+        return
+      }
+      setMode('view')
+    })
+  }
+
   return (
     <div className="space-y-4">
       <Card className="p-5">
@@ -203,7 +239,7 @@ export function NinaJobDetail({
               <Maximize2Icon />
             </ButtonLink>
           )}
-          {jobCanRedo(stage) && (
+          {mode === 'view' && jobCanRedo(stage) && (
             <Button
               variant="secondary"
               size="md"
@@ -253,10 +289,41 @@ export function NinaJobDetail({
           `sidecarText()` cannot know at job-open time, since it is written before the call that
           decides it even runs. See its own header (`lib/nina/jobview.ts`) for the two no-ops.
         */}
-        <h2 className="mb-2 text-[11px] font-semibold tracking-[0.06em] text-ink-3 uppercase">
-          Catatan foto
-        </h2>
-        {sidecar === null && prompt === null ? (
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <h2 className="text-[11px] font-semibold tracking-[0.06em] text-ink-3 uppercase">
+            Catatan foto
+          </h2>
+          {mode === 'view' && (
+            <Button variant="secondary" size="md" aria-label="Ubah prompt" onClick={openEdit}>
+              <PencilIcon />
+            </Button>
+          )}
+        </div>
+
+        {mode === 'edit' ? (
+          <div>
+            <textarea
+              aria-label="Prompt"
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              rows={6}
+              className="w-full resize-y rounded-field border border-rule bg-paper-2 px-3 py-2 text-[13px] leading-[1.55] font-medium text-ink-2"
+            />
+            {editNote !== null && (
+              <p role="status" className="mt-2 text-[12px] font-semibold text-red">
+                {editNote}
+              </p>
+            )}
+            <div className="mt-3 flex gap-2">
+              <Button size="md" loading={editPending} onClick={saveEdit}>
+                Simpan
+              </Button>
+              <Button variant="ghost" size="md" disabled={editPending} onClick={cancelEdit}>
+                Batal
+              </Button>
+            </div>
+          </div>
+        ) : sidecar === null && prompt === null ? (
           <p className="text-[13px] font-medium text-ink-3">
             Job ini nggak nyimpen catatan fotonya — barisnya dibuat sebelum catatan itu ada.
           </p>
@@ -345,6 +412,26 @@ function RedoIcon() {
         strokeLinecap="round"
         strokeLinejoin="round"
       />
+    </svg>
+  )
+}
+
+/** "Ubah prompt" — `SessionRow.tsx`'s `PencilIcon`, copied verbatim. `aria-hidden`: the button
+ * already carries the accessible name. */
+function PencilIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="size-[18px]"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" />
+      <path d="m15 5 4 4" />
     </svg>
   )
 }
