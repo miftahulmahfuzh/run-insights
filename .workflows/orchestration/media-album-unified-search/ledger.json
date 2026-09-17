@@ -85,7 +85,7 @@
         "R2",
         "R3"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": null,
       "title": "Backfill + test coverage"
     }
@@ -93,7 +93,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/media-album-unified-search/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "media-album-unified-search",
-  "updated": "2026-09-17T04:29:55+00:00",
+  "updated": "2026-09-17T04:30:33+00:00",
   "verified_at": "2026-09-17T03:21:03+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/media-album-unified-search"
 }
