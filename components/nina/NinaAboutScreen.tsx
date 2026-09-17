@@ -810,6 +810,14 @@ function toCell(photo: NinaAlbumPhoto | NinaGalleryPhoto): NinaGridCell {
  * `onPage` is `goToAlbumPage`/`goToMediaPage` — a client fetch, never a navigation (the runner's
  * own choice over a `?page=` link): the page shell never remounts and `busy` is this tap's own
  * flight, not the attach strip's.
+ *
+ * ── ICON-ONLY, CENTERED, ARROWS FLANKING THE PAGE LINE ───────────────────────────────────────
+ * The two controls used to be labelled `Button`s pinned to the row's right edge — the runner's
+ * own ask was to drop the words for a plain `<-` `->` and centre the whole row instead of leaving
+ * it hugging one side. The page/total line sits BETWEEN the two arrows rather than beside them:
+ * it is the one row on this screen that answers "where am I", and a centred trio reads as one
+ * control rather than two unrelated ones sharing a line. `aria-label` carries the word the glyph
+ * dropped, unchanged from before.
  */
 function NinaAboutPager({
   page,
@@ -826,42 +834,42 @@ function NinaAboutPager({
 }) {
   if (pageCount <= 1) return null
   return (
-    <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+    <div className="mt-2 flex items-center justify-center gap-3">
+      <Button
+        type="button"
+        size="md"
+        variant="secondary"
+        aria-label="Sebelumnya"
+        disabled={busy || page <= 1}
+        onClick={() => onPage(page - 1)}
+      >
+        <ChevronLeftIcon />
+      </Button>
       <p className="text-[11px] font-medium text-ink-3 tabular-nums">
         Halaman {page} dari {pageCount} &middot; {total} foto
       </p>
-      <div className="flex gap-2">
-        <Button
-          type="button"
-          size="md"
-          variant="secondary"
-          disabled={busy || page <= 1}
-          onClick={() => onPage(page - 1)}
-        >
-          Sebelumnya
-        </Button>
-        <Button
-          type="button"
-          size="md"
-          variant="secondary"
-          disabled={busy || page >= pageCount}
-          onClick={() => onPage(page + 1)}
-        >
-          Berikutnya
-        </Button>
-      </div>
+      <Button
+        type="button"
+        size="md"
+        variant="secondary"
+        aria-label="Berikutnya"
+        disabled={busy || page >= pageCount}
+        onClick={() => onPage(page + 1)}
+      >
+        <ChevronRightIcon />
+      </Button>
     </div>
   )
 }
 
 /*
- * The strip's four glyphs, inlined rather than imported — `SessionRow`'s collection note and
- * `AdminNav`'s before it. All are **Lucide** (lucide-static 1.42.0, ISC), fetched 2026-09-09 from
- * `unpkg.com/lucide-static@1.42.0/icons/<name>.svg` and copied verbatim — the paths and the root's
- * presentation attributes exactly as published; the only adaptations are JSX spelling
- * (`stroke-width` -> `strokeWidth`) and dropping lucide's own `class`, `width` and `height` for
- * our `className` and the 18px size. Every glyph is 18px in `currentColor` and `aria-hidden` — the
- * accessible name is the `aria-label` on the button, never the picture.
+ * Six glyphs, inlined rather than imported — `SessionRow`'s collection note and `AdminNav`'s
+ * before it. All are **Lucide** (lucide-static 1.42.0, ISC), fetched 2026-09-09 (the pager's pair,
+ * 2026-09-18) from `unpkg.com/lucide-static@1.42.0/icons/<name>.svg` and copied verbatim — the
+ * paths and the root's presentation attributes exactly as published; the only adaptations are JSX
+ * spelling (`stroke-width` -> `strokeWidth`) and dropping lucide's own `class`, `width` and
+ * `height` for our `className` and the 18px size. Every glyph is 18px in `currentColor` and
+ * `aria-hidden` — the accessible name is the `aria-label` on the button, never the picture.
  *
  * `send-horizontal` is the paper plane every chat app uses for "send", lying sideways so it reads
  * at 18px on the row that fires it (lucide's `send` is the same arrow at 45 degrees; the
@@ -874,6 +882,11 @@ function NinaAboutPager({
  * arrow into the tray — the one save glyph every platform's own UI already speaks, and the same
  * picture `components/admin/photoIcons.tsx` draws for the admin rails; it is inlined here rather
  * than imported from there because that module is the admin pages' home, not this one's.
+ *
+ * `chevron-left`/`chevron-right` (`NinaAboutPager`) are the plain "step one page" arrows the
+ * runner asked for over the words "Sebelumnya"/"Berikutnya" — `chevron`, not `arrow-left-right`:
+ * a full arrow is the platform's idiom for "leave this screen", where a chevron reads as "one
+ * step within the same list", which is the whole of what Previous/Next do here.
  */
 
 /** "Kirim ke chat" — his most recent conversation. Lucide's `send-horizontal`, verbatim. */
@@ -953,6 +966,42 @@ function DownloadIcon() {
       <path d="M12 15V3" />
       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
       <path d="m7 10 5 5 5-5" />
+    </svg>
+  )
+}
+
+/** "Sebelumnya" — one page back. Lucide's `chevron-left`, verbatim. */
+function ChevronLeftIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="size-[18px]"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="m15 18-6-6 6-6" />
+    </svg>
+  )
+}
+
+/** "Berikutnya" — one page forward. Lucide's `chevron-right`, verbatim. */
+function ChevronRightIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="size-[18px]"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="m9 18 6-6-6-6" />
     </svg>
   )
 }

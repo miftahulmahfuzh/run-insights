@@ -210,6 +210,23 @@ describe('NinaAboutScreen — pagination', () => {
     expect(screen.getByRole('button', { name: 'Berikutnya' })).toBeEnabled()
   })
 
+  it('the controls are icon-only — the accessible name carries the word, not visible text', () => {
+    renderScreen({ albumTotal: 45 })
+    const prev = screen.getByRole('button', { name: 'Sebelumnya' })
+    const next = screen.getByRole('button', { name: 'Berikutnya' })
+    expect(prev.textContent?.trim()).toBe('')
+    expect(next.textContent?.trim()).toBe('')
+    expect(prev.querySelector('svg')).toBeInTheDocument()
+    expect(next.querySelector('svg')).toBeInTheDocument()
+  })
+
+  it('the pager row is centered, not pinned to one edge', () => {
+    renderScreen({ albumTotal: 45 })
+    const row = screen.getByRole('button', { name: 'Sebelumnya' }).parentElement as HTMLElement
+    expect(row.className).toContain('justify-center')
+    expect(row.className).not.toContain('justify-between')
+  })
+
   it('Berikutnya fetches the next page from the server and renders it — no navigation', async () => {
     fetchNinaAlbumPage.mockResolvedValue({
       items: [albumPhoto('a3'), albumPhoto('a4')],
