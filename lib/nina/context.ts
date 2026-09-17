@@ -688,13 +688,26 @@ function memoryFacts(input: BuildNinaContextInput, today: DateISO): MemoryFacts 
   }
 }
 
+/**
+ * A runner bubble can carry a real line break (shift+enter, or a multi-line paste), and that
+ * newline reaches the model as `\n` inside a JSON string — legible, but not a clean sentence
+ * boundary. Measured 2026-09-17: "jadiin profpic yang\nbikin horny banget lu. pantatnya keliatan
+ * jelas plak!" read as one relative clause describing a NEW photo ("a profpic that's hot, ass
+ * clearly visible") rather than as a dangling reference to the photo two bubbles above, and the
+ * model reached for `generate_image`/`set_avatar` instead of `set_avatar_from_photo`. A period
+ * gives the same words an unambiguous sentence break with no other change to what was typed.
+ */
+function flattenNinaMessageText(text: string): string {
+  return text.replace(/[ \t]*\n[ \t\n]*/g, '. ').trimEnd()
+}
+
 function conversationFacts(input: BuildNinaContextInput, today: DateISO): ConversationFacts {
   const window: ConversationTurn[] = input.messages.map((message) => {
     const sentOnISO = jakartaDayOf(message.sentAt)
     return {
       id: message.id,
       role: message.role,
-      text: message.text,
+      text: flattenNinaMessageText(message.text),
       sentOnISO,
       sentAtLabel: `${formatDayShort(sentOnISO)} ${jakartaClockOf(message.sentAt)}`,
       daysAgo: daysBetween(sentOnISO, today),

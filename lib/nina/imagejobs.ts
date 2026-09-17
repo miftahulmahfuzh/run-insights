@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { and, asc, desc, eq, isNotNull, isNull, lt, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gte, isNotNull, isNull, lt, or, sql } from 'drizzle-orm'
 
 import { db } from '@/lib/db'
 import { ninaTurns } from '@/lib/db/schema'
@@ -113,6 +113,57 @@ export async function openNinaImageJob(userId: string, args: NinaImageJobArgs): 
     args,
   })
 }
+
+/**
+ * **The duplicate-dispatch guard.** Measured 2026-09-17: a chat turn dispatched `generate_image`,
+ * then the turn itself failed (`status='failed'`) before it could reply; per the app's "no
+ * fallback bubble" rule the runner's message was left looking unanswered, so
+ * `lib/nina/turnrevive.ts` reran the WHOLE turn on the next page load. That revived turn has no
+ * memory that a camera already fired for this exact message, so the model chose again — this time
+ * `set_avatar` — and two independent generations resulted from one ask.
+ *
+ * `handleGenerateImage` and `handleSetAvatar` (`./imagetools.ts`, `./avatartools.ts`) both call
+ * this before dispatching, keyed on `ctx.sourceMessageId`, so a revived or repaired turn that
+ * reaches for either tool a second time for the SAME runner message is told a camera already ran
+ * instead of starting another one. It deliberately spans BOTH tools — the observed failure picked
+ * a DIFFERENT tool on retry, so a guard keyed on `(sourceMessageId, toolName)` would have missed
+ * exactly this incident.
+ *
+ * Bounded to `NINA_IMAGE_STALE_MS`, the same window a job's own lifecycle is bounded to
+ * (`sweepStaleNinaImageJobs`), so the read is a range scan on `nina_turns_user_created_idx` rather
+ * than a full walk of the user's image history — `sourceMessageId` is not indexed and every job
+ * this guard needs to see was opened seconds to minutes ago.
+ */
+export async function hasNinaImageJobForMessage(
+  userId: string,
+  sourceMessageId: string,
+  now: Date = new Date(),
+): Promise<boolean> {
+  const since = new Date(now.getTime() - NINA_IMAGE_STALE_MS)
+  const [row] = await db
+    .select({ id: ninaTurns.id })
+    .from(ninaTurns)
+    .where(
+      and(
+        eq(ninaTurns.userId, userId),
+        eq(ninaTurns.kind, 'image'),
+        gte(ninaTurns.createdAt, since),
+        sql`${ninaTurns.args} ->> 'sourceMessageId' = ${sourceMessageId}`,
+      ),
+    )
+    .limit(1)
+
+  return row != null
+}
+
+/**
+ * What she is told when the guard above refuses her. Written for a MODEL, never rendered — the
+ * same contract as `SET_AVATAR_ANSWERS`/`SET_AVATAR_FROM_PHOTO_ANSWERS` in `./avatartools.ts`. It
+ * names no mechanism: she just knows the camera already ran for this and does not try again.
+ */
+export const NINA_IMAGE_DUPLICATE_NOTE =
+  'Kamera udah jalan sekali buat pesan ini. Jangan ambil foto baru lagi atau ganti profpic lagi ' +
+  'buat permintaan yang sama — anggap itu udah cukup, jawab aja tanpa mulai proses baru.'
 
 /**
  * **R1's redo. It INSERTS; it never resets.**

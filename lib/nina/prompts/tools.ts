@@ -427,7 +427,8 @@ export const SET_AVATAR_FROM_PHOTO_TOOL: Anthropic.Tool = {
   name: 'set_avatar_from_photo',
   description:
     'Make a photo already in this chat your profile picture, unchanged. Use it when he points at ' +
-    'one — "pakai foto ini" — and does not ask for a new photo.',
+    'one — "pakai foto ini", or just "jadiin profpic" with no new scene described — rather than ' +
+    'asking you to take a new one. A compliment about the photo is not a new scene.',
   input_schema: {
     type: 'object',
     additionalProperties: false,

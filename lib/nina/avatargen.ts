@@ -64,6 +64,13 @@ export interface NinaAvatarRequest {
   scene: string
   mood?: string | null
   source: 'generated' | 'admin'
+  /**
+   * The chat tool's `ctx.sourceMessageId`, threaded through purely so `hasNinaImageJobForMessage`
+   * (`./imagejobs.ts`) can see this dispatch — never used to quote or announce anything, which is
+   * still `replyToId`'s job below and stays `null`. Absent for the promise sweep and the admin
+   * album's Generate button, neither of which answers a specific runner message.
+   */
+  sourceMessageId?: string | null
 }
 
 export type NinaAvatarResult =
@@ -123,6 +130,7 @@ export async function generateNinaAvatar(request: NinaAvatarRequest): Promise<Ni
     seed,
     /* Nobody asked in chat, so there is nothing to quote and nothing to apologise into. */
     replyToId: null,
+    sourceMessageId: request.sourceMessageId ?? null,
     source: request.source,
     attempts: 0,
     referenceUrl: reference?.blobUrl ?? null,

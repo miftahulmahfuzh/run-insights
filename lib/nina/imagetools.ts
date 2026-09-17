@@ -13,6 +13,7 @@ import {
 } from '@/lib/nina/tools'
 
 import { NINA_IMAGE_CAPPED_NOTE } from './imagefail'
+import { hasNinaImageJobForMessage, NINA_IMAGE_DUPLICATE_NOTE } from './imagejobs'
 import { generateNinaSelfie } from './selfiegen'
 
 /**
@@ -68,6 +69,18 @@ const handleGenerateImage: NinaToolHandler = async (
       answer: { error: 'Describe the photo in a sentence or two as `scene`, and try again.' },
       isError: true,
     }
+  }
+
+  /*
+   * THE DUPLICATE GUARD, before the cap and before anything is spent. See
+   * `hasNinaImageJobForMessage`'s own header for the incident this closes: a revived or repaired
+   * turn reaching for a SECOND camera action on the SAME runner message.
+   */
+  if (
+    ctx.sourceMessageId != null &&
+    (await hasNinaImageJobForMessage(ctx.userId, ctx.sourceMessageId))
+  ) {
+    return { answer: { taken: false, instruction: NINA_IMAGE_DUPLICATE_NOTE }, isError: false }
   }
 
   /*

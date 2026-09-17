@@ -614,6 +614,18 @@ export interface NinaImageJobArgs {
   seed: number
   /** The runner message that asked, so the photo or the apology quotes it (phase 7's column). */
   replyToId: string | null
+  /**
+   * **The runner message that caused this dispatch — NOT the same field as `replyToId`.**
+   * `replyToId` is null for every avatar job on purpose ("nobody asked in chat, nothing to
+   * quote"), so it cannot answer "did a camera already fire for this message". This can, on both
+   * job kinds, and `hasNinaImageJobForMessage` (`./imagejobs.ts`) is its only reader — the guard
+   * against `generate_image` and `set_avatar` double-firing when a chat turn dispatches a tool and
+   * then fails, and the render-path revive (`lib/nina/turnrevive.ts`) reruns the whole turn from
+   * scratch with no memory that the first attempt already spent the camera. Optional for the same
+   * reason `referenceUrl`/`model` are: `nina_turns.args` is jsonb and never migrated, and every job
+   * opened before this field existed has no such key.
+   */
+  sourceMessageId?: string | null
   /** Provenance. `'chat'` posts a message; the other two write `nina_avatars`. */
   source: 'chat' | 'generated' | 'admin'
   /** Bounded by `NINA_IMAGE_MAX_ATTEMPTS`. Incremented by each claim. */

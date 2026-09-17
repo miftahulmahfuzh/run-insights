@@ -139,7 +139,27 @@
  * eighth tool is a turn `nina_turns` has to be able to tell from version 10's, which is the whole job
  * of this constant. This is the SINGLE bump for the set: it is a one-phase set and no other file
  * touches the constant. */
-export const NINA_PROMPT_VERSION = 11
+/* 12 — the duplicate-camera-dispatch fix (2026-09-17). `./tools.ts` widened
+ * `SET_AVATAR_FROM_PHOTO_TOOL.description` by one clause, from a single example phrase
+ * ("pakai foto ini") to one that also covers a bare "jadiin profpic" with no new scene attached,
+ * plus an explicit "a compliment is not a new scene" line; `./system.ts` was not opened, so
+ * `buildNinaSystemPrompt` is byte-identical to version 11's and
+ * `tests/__snapshots__/nina.prompts.test.ts.snap` passes UNREGENERATED (the snapshot does not
+ * cover tool schemas).
+ *
+ * The production turn on 2026-09-17 04:03 is the evidence: "jadiin profpic yang\nbikin horny
+ * banget lu. pantatnya keliatan jelas plak!" — no "ini", a dangling "yang" before a line break —
+ * called `generate_image`, and a revived retry of the same message then called `set_avatar`,
+ * neither ever reaching `set_avatar_from_photo`. Compare the turn minutes earlier where "ganti
+ * profpic pake ini" DID call it correctly: the literal word "ini" was the only structural
+ * difference, which is this file's own measured warning about how literally this model reads a
+ * tool description. A turn whose model can now read a bare "jadiin profpic" as a reference rather
+ * than a scene is a turn `nina_turns` has to be able to tell from version 11's, which is the whole
+ * job of this constant. This is the SINGLE bump for the fix: no other file touches this constant.
+ * (The other half of this fix — `lib/nina/context.ts` flattening embedded newlines to periods, and
+ * `lib/nina/imagejobs.ts`'s `hasNinaImageJobForMessage` guard against a revived turn double-firing
+ * the camera — changed no prompt text and needs no bump.) */
+export const NINA_PROMPT_VERSION = 12
 
 export {
   NINA_REPAIR_PREAMBLE,

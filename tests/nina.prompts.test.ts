@@ -32,6 +32,7 @@ import {
   buildProactiveInstruction,
 } from '@/lib/nina/prompts'
 import { buildDistillSystemPrompt } from '@/lib/nina/prompts/distill'
+import { SET_AVATAR_FROM_PHOTO_TOOL } from '@/lib/nina/prompts/tools'
 import {
   NINA_AGGREGATE_FNS,
   NINA_AGGREGATE_INTENTS,
@@ -507,6 +508,18 @@ describe('the tool schemas', () => {
   it('stays a constant array — no tool schema depends on a tuning', () => {
     expect(Array.isArray(NINA_TOOLS)).toBe(true)
     expect(SEND_TOOL.description).toBe('Send your reply. Always answer with this tool.')
+  })
+
+  /*
+   * The 2026-09-17 defect: "jadiin profpic yang\nbikin horny banget lu. pantatnya keliatan jelas
+   * plak!" — no "ini" — never reached `set_avatar_from_photo`, which anchored on that one exact
+   * phrase. This pins the widened description that also covers a bare "jadiin profpic" and states
+   * the compliment-is-not-a-scene distinction the incident turned on.
+   */
+  it('set_avatar_from_photo also covers a bare "jadiin profpic" with no "ini"', () => {
+    expect(SET_AVATAR_FROM_PHOTO_TOOL.description).toContain('pakai foto ini')
+    expect(SET_AVATAR_FROM_PHOTO_TOOL.description).toContain('jadiin profpic')
+    expect(SET_AVATAR_FROM_PHOTO_TOOL.description).toContain('compliment')
   })
 })
 

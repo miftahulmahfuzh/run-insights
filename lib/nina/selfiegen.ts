@@ -138,6 +138,9 @@ export async function generateNinaSelfie(request: NinaSelfieRequest): Promise<Ni
     prompt,
     seed,
     replyToId,
+    /* Same value as `replyToId` on this path — see `NinaImageJobArgs.sourceMessageId`'s own note
+     * on why it is a separate field regardless. */
+    sourceMessageId: replyToId,
     source: 'chat',
     attempts: 0,
     referenceUrl: reference?.blobUrl ?? null,

@@ -256,6 +256,36 @@ describe('buildNinaContext — memory and the conversation (RU-6, RU-14)', () =>
     expect(fresh.conversation.daysSinceNinaSpoke).toBeNull()
   })
 
+  /*
+   * The 2026-09-17 defect: a runner bubble with a manual line break — "jadiin profpic
+   * yang\nbikin horny banget lu. pantatnya keliatan jelas plak!" — reached the model with the
+   * newline as its only sentence break, and it read as one relative clause describing a NEW photo
+   * rather than a dangling reference to the one already sent. Flattening the newline to a period
+   * is the fix; this pins that it happens exactly here, on the window the model actually reads.
+   */
+  it('flattens an embedded newline to a sentence break, so a two-line bubble reads as two sentences', () => {
+    const withBreak = buildNinaContext(
+      ninaFixtureInput({
+        messages: [
+          {
+            id: 'msg_1',
+            role: 'runner',
+            text: 'jadiin profpic yang\nbikin horny banget lu. pantatnya keliatan jelas plak!',
+            sentAt: new Date('2026-09-03T17:00:00Z'),
+            replyToId: null,
+            runId: null,
+            imageDescriptions: [],
+          },
+        ],
+        olderMessageCount: 0,
+      }),
+    )
+    expect(withBreak.conversation.window[0]!.text).toBe(
+      'jadiin profpic yang. bikin horny banget lu. pantatnya keliatan jelas plak!',
+    )
+    expect(withBreak.conversation.window[0]!.text).not.toContain('\n')
+  })
+
   it('carries the slots and the ledger with their own ages', () => {
     expect(ctx.memory.slots[0]!.key).toBe('usual_running_days')
     expect(ctx.memory.slots[0]!.daysAgo).toBe(3)

@@ -7,6 +7,7 @@ import { extendToolSet, type NinaToolAnswer, type NinaToolHandler, type NinaTool
 import { NINA_CHAT_TOOL_SET } from './imagetools'
 import { setNinaAvatarFromExistingPhoto } from './avatarAdopt'
 import { generateNinaAvatar } from './avatargen'
+import { hasNinaImageJobForMessage, NINA_IMAGE_DUPLICATE_NOTE } from './imagejobs'
 import { getCurrentNinaAvatar } from './queries'
 
 /**
@@ -114,6 +115,20 @@ export const handleSetAvatar: NinaToolHandler = async (args, ctx): Promise<NinaT
   }
 
   /*
+   * THE DUPLICATE GUARD, before the in-flight check below and before anything is spent. See
+   * `hasNinaImageJobForMessage`'s own header (`./imagejobs.ts`): the observed incident had a
+   * revived turn reach `set_avatar` after an EARLIER attempt on the same message had already
+   * dispatched `generate_image`, which the in-flight check below cannot catch — it only reads the
+   * CURRENT avatar row, not the message that caused any of this.
+   */
+  if (
+    ctx.sourceMessageId != null &&
+    (await hasNinaImageJobForMessage(ctx.userId, ctx.sourceMessageId))
+  ) {
+    return { answer: { ok: false, note: NINA_IMAGE_DUPLICATE_NOTE }, isError: false }
+  }
+
+  /*
    * One in-flight photograph at a time. The check is on the CURRENT avatar being unannounced
    * rather than on phase 12's job table, and that is deliberate: an unannounced current avatar is
    * a face phase 10 has not spoken about yet, so starting a second generation would queue two
@@ -129,6 +144,7 @@ export const handleSetAvatar: NinaToolHandler = async (args, ctx): Promise<NinaT
     userId: ctx.userId,
     scene: parsed.data.scene,
     source: 'generated',
+    sourceMessageId: ctx.sourceMessageId,
   })
 
   if (result.ok) {
