@@ -285,8 +285,10 @@ export async function reopenNinaImageJob(userId: string, jobId: string): Promise
   }
 }
 
-/** `setNinaImageJobPrompt`'s return — `{ ok: true }` carries nothing else to report. */
-export type NinaPromptEditOutcome = { ok: true } | { ok: false; reason: NinaPromptEditRefusal }
+/** `setNinaImageJobPrompt`'s return — `{ ok: true }` carries nothing else to report. Module-local
+ * on `NinaImageReopen`'s precedent just above: the one caller (`updateNinaImageJobPrompt`)
+ * consumes it by inference and has never named it. */
+type NinaPromptEditOutcome = { ok: true } | { ok: false; reason: NinaPromptEditRefusal }
 
 /**
  * **The "Ubah prompt" edit: rewrite `args.prompt` on a job that already exists, so a retry can
