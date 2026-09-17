@@ -108,7 +108,7 @@ runs ──► Nina — glm-5.3 turns with tools (the chat tab)
    │        ├── lookup_runs / compare_runs / aggregate_runs: numbers handed over pre-formatted,
    │        │   never computed — a training-block average is one SQL aggregate, never rows
    │        ├── memory: what-is-true-now slots + an append-only fact ledger
-   │        └── her photos: qwen-image-3-pro on OpenRouter, an async job queue (~90 s, cap 30/day)
+   │        └── her photos: bytedance-seed/seedream-5-0-pro on OpenRouter, an async job queue (~90 s, cap 30/day)
    └── she also speaks first: five triggers, at most one message per Jakarta day
 ```
 
@@ -158,7 +158,7 @@ types like it, lowercase Jakarta register, in whatever language you typed at her
 <td valign="top">
   <img src="docs/media/nina-jobs.gif" alt="The photo queue at Proses foto: a job ticking through Lagi digambar, a refresh, Selesai, and the job's detail page.">
   <p><strong>Her photographs are a queue, not a spinner.</strong> Asking her for a photo opens a
-  real job — <code>qwen-image-3-pro</code> on OpenRouter, ~90 s, ~$0.04 — tracked at
+  real job — <code>bytedance-seed/seedream-5-0-pro</code> on OpenRouter, ~90 s, ~$0.04 — tracked at
   <code>/nina/jobs</code> with stage, cost and attempts, capped by <code>NINA_IMAGE_DAILY_CAP</code>
   (default 30/day). A refusal still arrives as her own apology.</p>
 </td>
@@ -289,7 +289,7 @@ Tailwind v4 · Web Push · Vitest · Playwright (capture only) · Vercel.
 Three model roles across two providers. **`glm-4.6v`** for vision on z.ai's OpenAI-shaped coding
 endpoint (plain `fetch` — the Anthropic SDK cannot be pointed at it), reading run screenshots and
 Nina's chat photos alike. **`glm-5.3`** for prose on the Anthropic-compatible endpoint: run
-narratives, and every one of Nina's turns. **`qwen/qwen-image-3-pro`** on OpenRouter for Nina's
+narratives, and every one of Nina's turns. **`bytedance-seed/seedream-5-0-pro`** on OpenRouter for Nina's
 photographs — the one runtime image generation in the app, fenced to `lib/nina/` by
 `npm run ci:openrouter-guard`. Badge and record art stays offline and committed; nothing else
 generates images at runtime.
