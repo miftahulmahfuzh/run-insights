@@ -274,7 +274,7 @@ describe('NinaJobDetail', () => {
     expect(screen.getByText(/--- prompt as sent ---/)).toBeInTheDocument()
   })
 
-  it('Simpan saves the trimmed draft for THIS job and returns to the read-only view', async () => {
+  it('Simpan saves the exact draft text for THIS job and returns to the read-only view', async () => {
     const user = userEvent.setup()
     render(<NinaJobDetail {...props()} />)
     await user.click(screen.getByRole('button', { name: 'Ubah prompt' }))

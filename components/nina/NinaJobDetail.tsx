@@ -15,13 +15,14 @@ import {
   type NinaJobJump,
   type NinaJobPhoto,
   type NinaJobStage,
+  type NinaPromptEditRefusal,
 } from '@/lib/nina/jobview'
 import { NOTE } from './NinaJobActions'
 import { NinaJobElapsed } from './NinaJobElapsed'
 
 /** Refusal sentences for `updateNinaImageJobPrompt` — `NinaJobActions.tsx`'s `NOTE` is the
  * precedent: the server returns a discriminant, never prose, and the component owns the words. */
-const EDIT_NOTE: Record<'not-found' | 'no-args' | 'empty-prompt', string> = {
+const EDIT_NOTE: Record<NinaPromptEditRefusal, string> = {
   'not-found': 'Job ini sudah nggak ada.',
   'no-args': 'Job ini nggak nyimpan argumen buat diubah.',
   'empty-prompt': 'Prompt-nya nggak boleh kosong.',
