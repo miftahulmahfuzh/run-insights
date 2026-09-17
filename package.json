@@ -39,6 +39,7 @@
     "nina:backfill-embeddings": "node --experimental-strip-types --no-warnings --env-file=.env.local scripts/backfill-avatar-embeddings.mjs",
     "nina:backfill-media-embeddings": "node --experimental-strip-types --no-warnings --env-file=.env.local scripts/backfill-media-embeddings.mjs",
     "nina:search-analysis": "node --experimental-strip-types --no-warnings --env-file=.env.local scripts/search-analysis.mjs",
+    "nina:pull-image-gen-job": "node --experimental-strip-types --no-warnings --env-file=.env.local scripts/pull-image-gen-job.mjs",
     "capture:seed": "node --env-file=.env.local scripts/capture/seed-demo.mjs",
     "capture:purge": "node --env-file=.env.local scripts/capture/seed-demo.mjs --purge",
     "capture:status": "node --env-file=.env.local scripts/capture/seed-demo.mjs --status",

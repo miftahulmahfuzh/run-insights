@@ -183,6 +183,11 @@ describe('NinaJobDetail', () => {
     'sebuah foto selfie di pantai',
   ].join('\n')
 
+  it('the job id renders above "provider:" (2026-09-17)', () => {
+    render(<NinaJobDetail {...props({ jobId: 'HIiyRr5_zemf', sidecar: REAL_SHAPE_SIDECAR })} />)
+    expect(screen.getByText(/job:\s+HIiyRr5_zemf/)).toBeInTheDocument()
+  })
+
   it('cost source lands right after resolution — openrouter', () => {
     render(<NinaJobDetail {...props({ sidecar: REAL_SHAPE_SIDECAR, costSource: 'openrouter' })} />)
     expect(screen.getByText(/cost source: openrouter api response/)).toBeInTheDocument()

@@ -24,6 +24,7 @@ import {
   planJobPhoto,
   toNinaJobListItems,
   withCostSourceLine,
+  withJobIdLine,
 } from '@/lib/nina/jobview'
 
 describe('the deep link is its own parameter', () => {
@@ -339,6 +340,44 @@ describe('cost source — where the latest Biaya total write got its number', ()
   it('a sidecar from before this convention existed is left exactly as it was', () => {
     const oldShape = 'model: glm-4.6v\n--- prompt as sent ---\nhalo'
     expect(withCostSourceLine(oldShape, 'openrouter')).toBe(oldShape)
+  })
+})
+
+describe('job id line — the id spliced above "provider:" (2026-09-17)', () => {
+  const REAL_SHAPE_SIDECAR = [
+    'provider:   openrouter',
+    'model:      glm-4.6v',
+    'purpose:    selfie',
+    'resolution: 1024x1536 2:3',
+    'seed:       42',
+    'reference:  none (RU-18)',
+    '',
+    '--- prompt as sent ---',
+    'sebuah foto selfie di pantai',
+  ].join('\n')
+
+  it('unshifts "job: <id>" as the new first line, above "provider:"', () => {
+    const spliced = withJobIdLine(REAL_SHAPE_SIDECAR, 'HIiyRr5_zemf')
+    const lines = spliced?.split('\n') ?? []
+    expect(lines[0]).toBe('job:        HIiyRr5_zemf')
+    expect(lines[1]).toBe('provider:   openrouter')
+  })
+
+  it('composes with withCostSourceLine — job id ends up first, cost source stays after resolution', () => {
+    const spliced = withJobIdLine(withCostSourceLine(REAL_SHAPE_SIDECAR, 'openrouter'), 'abc123')
+    const lines = spliced?.split('\n') ?? []
+    expect(lines[0]).toBe('job:        abc123')
+    const resolutionIdx = lines.findIndex((l) => l.startsWith('resolution:'))
+    expect(lines[resolutionIdx + 1]).toBe('cost source: openrouter api response')
+  })
+
+  it('a null sidecar (bare prompt) passes through untouched', () => {
+    expect(withJobIdLine(null, 'abc123')).toBeNull()
+  })
+
+  it('a sidecar from before this convention existed is left exactly as it was', () => {
+    const oldShape = 'model: glm-4.6v\n--- prompt as sent ---\nhalo'
+    expect(withJobIdLine(oldShape, 'abc123')).toBe(oldShape)
   })
 })
 

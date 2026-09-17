@@ -418,6 +418,31 @@ export function withCostSourceLine(
   return lines.join('\n')
 }
 
+/**
+ * **Splices "job: …" onto the very top of the sidecar text, above `provider:`.** Same reason as
+ * `withCostSourceLine` right above: the job's own id does not exist yet when `sidecarText()` runs
+ * — `openNinaImageJob` mints it on insert, and every writer builds the sidecar as one of the
+ * *arguments* to that call — so it has to be added here, at RENDER time, from the row this screen
+ * already has open.
+ *
+ * The runner asked for this (2026-09-17) so a job could be named in a complaint by eye, without
+ * opening the database: "the id is already in the URL, but the sidecar is what actually gets
+ * copy-pasted out of the page, so that's where it has to live to be useful."
+ *
+ * Same two honest no-ops as `withCostSourceLine`: `sidecar === null` and a sidecar whose first
+ * line is not (yet, after any earlier splice) `provider:   openrouter` both pass through
+ * unchanged. Run this AFTER `withCostSourceLine`, not before — it unshifts a new first line, and
+ * `withCostSourceLine` looks for `provider:` at that exact position.
+ */
+export function withJobIdLine(sidecar: string | null, jobId: string): string | null {
+  if (sidecar == null) return sidecar
+  const lines = sidecar.split('\n')
+  if (lines[0] !== 'provider:   openrouter') return sidecar
+
+  lines.unshift(`job:        ${jobId}`)
+  return lines.join('\n')
+}
+
 /** `4716` seconds → `1:18:36`. Re-exported so a screen imports one module, not two. */
 export function formatJobSeconds(seconds: number | null | undefined): string {
   return formatDuration(seconds)

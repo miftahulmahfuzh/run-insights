@@ -12,6 +12,7 @@ import {
   jobCanRedo,
   ninaJobHref,
   withCostSourceLine,
+  withJobIdLine,
   type NinaJobJump,
   type NinaJobPhoto,
   type NinaJobStage,
@@ -286,9 +287,12 @@ export function NinaJobDetail({
           writer writes both args fields together (d61cdba onward), so the bare prompt renders only
           where a sidecar genuinely never existed.
 
-          `withCostSourceLine` inserts "cost source: …" right after "resolution:" — a fact
-          `sidecarText()` cannot know at job-open time, since it is written before the call that
-          decides it even runs. See its own header (`lib/nina/jobview.ts`) for the two no-ops.
+          `withCostSourceLine` inserts "cost source: …" right after "resolution:", and
+          `withJobIdLine` inserts "job: …" above "provider:" — two facts `sidecarText()` cannot
+          know at job-open time, since it is written before the call that decides them (the
+          job's own id included: `openNinaImageJob` mints it on insert). See their own headers
+          (`lib/nina/jobview.ts`) for the no-ops. Order matters: cost source first, job id last —
+          it unshifts a new first line.
         */}
         <div className="mb-2 flex items-center justify-between gap-2">
           <h2 className="text-[11px] font-semibold tracking-[0.06em] text-ink-3 uppercase">
@@ -330,7 +334,7 @@ export function NinaJobDetail({
           </p>
         ) : (
           <p className="text-[13px] leading-[1.55] font-medium whitespace-pre-wrap text-ink-2">
-            {withCostSourceLine(sidecar, costSource) ?? prompt}
+            {withJobIdLine(withCostSourceLine(sidecar, costSource), jobId) ?? prompt}
           </p>
         )}
       </Card>
