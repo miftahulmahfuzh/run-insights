@@ -279,9 +279,9 @@ describe('the prompt', () => {
       // (b) the optics that decide head size, and (c) the framing that decides whether feet survive.
       expect(prompt, where).toContain('Shot on a 50 mm lens from about three metres back')
       expect(prompt, where).toContain(
-        'her head is normal-sized and in natural proportion to her body',
+        'her head is normal-sized and in natural proportion to her tall body',
       )
-      expect(prompt, where).toContain('her feet and lower legs are never cropped')
+      expect(prompt, where).toContain('her long feet and long calves are never cropped')
       /* The clauses that have nothing to do with the three problems were carried over character
        * for character — the R3 rewrite is not allowed to quietly drop them. */
       expect(prompt, where).toContain(

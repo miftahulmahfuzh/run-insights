@@ -102,6 +102,7 @@ function albumPhoto(overrides?: Partial<AlbumExplorerPhoto>): AlbumExplorerPhoto
     folder: 'bali',
     thumbUrl: null,
     origin: 'album',
+    isPointer: false,
     ...overrides,
   }
 }
@@ -117,6 +118,8 @@ function mediaPhoto(overrides?: Partial<MediaExplorerPhoto>): MediaExplorerPhoto
     source: 'generated',
     isCurrent: false,
     description: null,
+    searchKeywords: null,
+    negativeSearchKeywords: null,
     crop: { scale: 1, x: 0, y: 0 },
     createdAt: '2026-09-01T00:00:00.000Z',
     folder: '',
@@ -349,5 +352,30 @@ describe('AlbumSelectionPane (via SelectionPane)', () => {
     expect(screen.getByText('upload')).toBeInTheDocument()
     expect(screen.getByText('640', { exact: false })).toBeInTheDocument()
     expect(screen.getByText('None — the grid loads the original')).toBeInTheDocument()
+  })
+
+  /*
+   * media-album-unified-search R3, 2026-09-17. A pointer album row borrows its description and both
+   * keyword lines from the media photograph it names, and the pane says so in one sentence. It is
+   * INFORMATIONAL: every control stays live, because a save from here writes through to that row.
+   */
+  it('tells the operator when this album row is a link to a Media photo', () => {
+    render(<SelectionPane {...baseProps()} photo={albumPhoto({ isPointer: true })} />)
+    expect(screen.getByText(/link to a photo in Media/)).toBeInTheDocument()
+  })
+
+  it('says nothing of the sort for an ordinary album row, and never disables a verb for a pointer', () => {
+    const { rerender } = render(
+      <SelectionPane {...baseProps()} photo={albumPhoto({ isPointer: false })} />,
+    )
+    expect(screen.queryByText(/link to a photo in Media/)).not.toBeInTheDocument()
+
+    // The note is the whole change: a pointer keeps every verb an ordinary row has.
+    rerender(
+      <SelectionPane {...baseProps()} photo={albumPhoto({ isPointer: true, isCurrent: false })} />,
+    )
+    expect(screen.getByRole('button', { name: 'Remove this photo' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Set as her profile picture' })).toBeEnabled()
+    expect(screen.getByLabelText('Search keywords')).toBeEnabled()
   })
 })

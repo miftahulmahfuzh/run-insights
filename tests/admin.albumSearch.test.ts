@@ -2,12 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
  * `searchNinaAvatarsAction`'s three jobs: refuse an empty query BEFORE any vendor call, wire each
- * of the three modes to its own read, and narrow a row to what a browser may see.
+ * of the three modes to its own read, and narrow a row to what a browser may see — now over the
+ * MERGED search (`media-album-unified-search` R1), which ranks both `nina_avatars` and
+ * `nina_message_images` into one list.
  *
  * Every edge is doubled — this is a wiring test, and the things it is checking are precisely the
  * arguments passed across the seams (the witness subject, which vector goes to which search, what
- * survives the serialization boundary). The two vision error classes are real classes in the
- * factory so the action's `instanceof` branch is exercised rather than simulated.
+ * survives the serialization boundary, and now `origin`). The two vision error classes are real
+ * classes in the factory so the action's `instanceof` branch is exercised rather than simulated.
  */
 
 const USER = 'usrAAAAAAAAA'
@@ -18,9 +20,9 @@ class FakeTransportError extends Error {}
 const requireAdmin = vi.fn(async () => ({ userId: USER, email: 'admin@example.com' }))
 const describeNinaImagesWithFallback = vi.fn()
 const embedNinaText = vi.fn()
-const searchNinaAvatarsByText = vi.fn()
-const searchNinaAvatarsByImageCaption = vi.fn()
-const searchNinaAvatarsByTextAndCaption = vi.fn()
+const searchNinaPhotosByText = vi.fn()
+const searchNinaPhotosByImageCaption = vi.fn()
+const searchNinaPhotosByTextAndCaption = vi.fn()
 
 vi.mock('@/lib/admin/requireAdmin', () => ({ requireAdmin: () => requireAdmin() }))
 vi.mock('@/lib/nina/vision', () => ({
@@ -35,16 +37,17 @@ vi.mock('@/lib/nina/embedding', () => ({
   embedNinaText: (...args: unknown[]) => embedNinaText(...args),
 }))
 vi.mock('@/lib/nina/queries', () => ({
-  searchNinaAvatarsByText: (...args: unknown[]) => searchNinaAvatarsByText(...args),
-  searchNinaAvatarsByImageCaption: (...args: unknown[]) => searchNinaAvatarsByImageCaption(...args),
-  searchNinaAvatarsByTextAndCaption: (...args: unknown[]) =>
-    searchNinaAvatarsByTextAndCaption(...args),
+  searchNinaPhotosByText: (...args: unknown[]) => searchNinaPhotosByText(...args),
+  searchNinaPhotosByImageCaption: (...args: unknown[]) => searchNinaPhotosByImageCaption(...args),
+  searchNinaPhotosByTextAndCaption: (...args: unknown[]) =>
+    searchNinaPhotosByTextAndCaption(...args),
 }))
 
 const JPEG = `data:image/jpeg;base64,${'A'.repeat(64)}`
 
-/** One row as the query layer hands it over — a `NinaAvatarSearchRow`. */
+/** One ALBUM row as the query layer hands it over — a `NinaPhotoSearchRow`. */
 const ROW = {
+  origin: 'album' as const,
   id: 'avtAAAAAAAAA',
   blobUrl: 'https://blob/x.jpg',
   pathname: 'nina/u/x.jpg',
@@ -60,10 +63,36 @@ const ROW = {
   cropX: null,
   cropY: null,
   description: 'she is on a beach',
+  searchKeywords: null,
+  negativeSearchKeywords: null,
   isCurrent: false,
   announcedAt: null,
   createdAt: new Date('2026-09-01T10:00:00.000Z'),
   score: 0.82,
+}
+
+/** One MEDIA row, exercising `rankMedia`'s own constants — no folder, no framing, no thumbnail,
+ *  never current. */
+const MEDIA_ROW = {
+  origin: 'media' as const,
+  id: 'imgAAAAAAAAA',
+  blobUrl: 'https://blob/y.jpg',
+  folder: '',
+  filename: null,
+  thumbUrl: null,
+  width: 1024,
+  height: 768,
+  bytes: 210_000,
+  source: 'upload',
+  cropScale: null,
+  cropX: null,
+  cropY: null,
+  description: 'he is at the pool',
+  searchKeywords: null,
+  negativeSearchKeywords: null,
+  isCurrent: false,
+  createdAt: new Date('2026-09-02T10:00:00.000Z'),
+  score: 0.75,
 }
 
 async function action() {
@@ -75,12 +104,12 @@ beforeEach(() => {
   requireAdmin.mockClear()
   describeNinaImagesWithFallback.mockReset()
   embedNinaText.mockReset()
-  searchNinaAvatarsByText.mockReset()
-  searchNinaAvatarsByImageCaption.mockReset()
-  searchNinaAvatarsByTextAndCaption.mockReset()
-  searchNinaAvatarsByText.mockResolvedValue({ rows: [ROW], total: 342 })
-  searchNinaAvatarsByImageCaption.mockResolvedValue({ rows: [ROW], total: 342 })
-  searchNinaAvatarsByTextAndCaption.mockResolvedValue({ rows: [ROW], total: 342 })
+  searchNinaPhotosByText.mockReset()
+  searchNinaPhotosByImageCaption.mockReset()
+  searchNinaPhotosByTextAndCaption.mockReset()
+  searchNinaPhotosByText.mockResolvedValue({ rows: [ROW], total: 342 })
+  searchNinaPhotosByImageCaption.mockResolvedValue({ rows: [ROW], total: 342 })
+  searchNinaPhotosByTextAndCaption.mockResolvedValue({ rows: [ROW], total: 342 })
 })
 
 afterEach(() => {
@@ -115,19 +144,20 @@ describe('text only (R2)', () => {
     // `{ userId }` is not decoration — it is the `user_id` on the `nina_error_logs` row
     // `embedNinaText` writes before it throws. Phase 1's contract asks for it; pin it.
     expect(embedNinaText).toHaveBeenCalledExactlyOnceWith('red dress', { userId: USER })
-    expect(searchNinaAvatarsByText).toHaveBeenCalledExactlyOnceWith(USER, [0.1, 0.2], 'red dress')
+    expect(searchNinaPhotosByText).toHaveBeenCalledExactlyOnceWith(USER, [0.1, 0.2], 'red dress')
     expect(result.ok).toBe(true)
     expect(result.mode).toBe('text')
     expect(result.searched).toBe(342)
     expect(result.caption).toBeUndefined()
   })
 
-  it('narrows a row to what a browser may see', async () => {
+  it('narrows a row to what a browser may see, and carries origin through', async () => {
     embedNinaText.mockResolvedValue([0.1, 0.2])
 
     const result = await (await action())({ text: 'red dress' })
 
     expect(result.hits[0]).toEqual({
+      origin: 'album',
       id: 'avtAAAAAAAAA',
       url: 'https://blob/x.jpg',
       thumbUrl: 'https://blob/x-thumb.jpg',
@@ -139,6 +169,8 @@ describe('text only (R2)', () => {
       source: 'upload',
       isCurrent: false,
       description: 'she is on a beach',
+      searchKeywords: null,
+      negativeSearchKeywords: null,
       crop: { scale: null, x: null, y: null },
       createdAt: '2026-09-01T10:00:00.000Z',
       score: 0.82,
@@ -148,6 +180,34 @@ describe('text only (R2)', () => {
     expect(result.hits[0]).not.toHaveProperty('pathname')
     expect(result.hits[0]).not.toHaveProperty('thumbPathname')
     expect(result.hits[0]).not.toHaveProperty('announcedAt')
+  })
+
+  it('narrows a MEDIA row using its own conventions — no folder, no framing, no thumbnail', async () => {
+    embedNinaText.mockResolvedValue([0.1, 0.2])
+    searchNinaPhotosByText.mockResolvedValue({ rows: [ROW, MEDIA_ROW], total: 342 })
+
+    const result = await (await action())({ text: 'pool' })
+
+    const mediaHit = result.hits[1]
+    expect(mediaHit).toEqual({
+      origin: 'media',
+      id: 'imgAAAAAAAAA',
+      url: 'https://blob/y.jpg',
+      thumbUrl: null,
+      folder: '',
+      filename: 'imgAAAAAAAAA', // `row.filename ?? row.id` — a media row carries no filename
+      width: 1024,
+      height: 768,
+      bytes: 210_000,
+      source: 'upload',
+      isCurrent: false,
+      description: 'he is at the pool',
+      searchKeywords: null,
+      negativeSearchKeywords: null,
+      crop: { scale: null, x: null, y: null },
+      createdAt: '2026-09-02T10:00:00.000Z',
+      score: 0.75,
+    })
   })
 })
 
@@ -164,7 +224,7 @@ describe('image only (R3)', () => {
       { subject: 'self', userId: USER },
     )
     expect(embedNinaText).toHaveBeenCalledExactlyOnceWith('she is on a beach', { userId: USER })
-    expect(searchNinaAvatarsByImageCaption).toHaveBeenCalledExactlyOnceWith(USER, [0.3, 0.4])
+    expect(searchNinaPhotosByImageCaption).toHaveBeenCalledExactlyOnceWith(USER, [0.3, 0.4])
     expect(result.ok).toBe(true)
     expect(result.mode).toBe('image')
     expect(result.caption).toBe('she is on a beach')
@@ -180,14 +240,14 @@ describe('both (R4)', () => {
 
     const result = await (await action())({ text: 'red dress', imageDataUri: JPEG })
 
-    expect(searchNinaAvatarsByTextAndCaption).toHaveBeenCalledExactlyOnceWith(
+    expect(searchNinaPhotosByTextAndCaption).toHaveBeenCalledExactlyOnceWith(
       USER,
       [0.1, 0.2],
       [0.3, 0.4],
       'red dress',
     )
-    expect(searchNinaAvatarsByText).not.toHaveBeenCalled()
-    expect(searchNinaAvatarsByImageCaption).not.toHaveBeenCalled()
+    expect(searchNinaPhotosByText).not.toHaveBeenCalled()
+    expect(searchNinaPhotosByImageCaption).not.toHaveBeenCalled()
     expect(result.mode).toBe('both')
   })
 })

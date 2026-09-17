@@ -1,8 +1,9 @@
 # Package: db
 
 **Location**: `lib/db`
-**Last Updated**: 2026-09-15 (`P2-DB-A001` — `nina_avatars.description_embedding`, the first
-pgvector column in the schema, plus its HNSW cosine index and migration `0022`; see Notes for the
+**Last Updated**: 2026-09-17 (`P2-DB-A002` — `nina_message_images` gains the album's three search
+columns, `nina_avatars` gains the `source_image_id` pointer at a Media original, and
+`NINA_EMBEDDING_DIMENSIONS` moves to its own leaf module; migration `0026`. See Notes for the
 documentation history)
 
 ## Overview
@@ -90,6 +91,24 @@ whole; where a table lives is a module lookup (the inventory below names the var
 table, and the module layout comment at the top of `schema.ts` names which file owns it), not a
 line number in one file.
 
+**Eight barrel entries, nine module files: `schema/nina/embedding.ts` is a leaf and deliberately
+not a ninth `export *`.** It holds one constant, `NINA_EMBEDDING_DIMENSIONS`, imported by both
+`schema/nina/avatars.ts` and `schema/nina/chat.ts` and re-exported by the former, so the barrel's
+surface is byte-identical to what it was when the constant lived in `avatars.ts` and
+`lib/nina/embedding.ts`'s import path is unchanged. The rule that keeps it there: **a value the
+`avatars` ⇄ `chat` pair both read at module-evaluation time may not live in either of them.** Those
+two modules are a cycle since `nina_avatars.source_image_id` (2026-09-17) — `chat` has imported
+`ninaAvatars` since F37, `avatars` now imports `ninaMessageImages` back — and a cycle whose every
+edge is lazy (`(): AnyPgColumn => …`, evaluated long after both module bodies finish) is safe in
+any evaluation order. A constant is not lazy: `vector('…', { dimensions: … })` reads it while the
+module body runs, so leaving it in `avatars.ts` makes `chat.ts` depend eagerly on a
+mid-evaluation module and yields `ReferenceError: Cannot access 'NINA_EMBEDDING_DIMENSIONS' before
+initialization` whenever the graph is entered from the `avatars` side. It would not fire today only
+because `schema.ts` happens to list `./schema/nina/chat` above `./schema/nina/avatars` — correctness
+resting on the order of two `export *` lines, which is why the constant was moved rather than
+documented. Do not move it back, and do not add a second eagerly-read shared value to either
+module; add a leaf.
+
 The v0.1.0 contract docs (`ROADMAP_v0.1.0.md` §4.3 for every column; `RECONCILIATION_v0.1.0.md`)
 are retired — the rulings survive in `.workflows/plan/nina-chatbot/RECONCILIATION_RULINGS.md`, and
 each amendment is marked in the owning module with its ruling (R-1, R-5, R-7, R-8, R-9, R-11, R-12,
@@ -116,12 +135,12 @@ R-13, R-22, R-28 — ten in all). Where a module and a feature plan disagree, th
 | `ninaTurns` | `nina_turns` | Audit/job row for every Nina model call (soft-delete column `deleted_at`) | `nina_turns_user_created_idx` |
 | `ninaChatSessions` | `nina_chat_sessions` | The conversation's partition — one row per topic he started | `nina_chat_sessions_user_created_idx` |
 | `ninaMessages` | `nina_messages` | One bubble of the runner↔Nina conversation | `nina_messages_user_seq_idx`, `nina_messages_user_unread_idx` (partial), `nina_messages_reply_to_idx`, `nina_messages_user_run_idx`, `nina_messages_session_seq_idx`, `nina_messages_user_session_runner_idx` (partial) |
-| `ninaMessageImages` | `nina_message_images` | One image attached to a message, plus where its bytes came from | `nina_message_images_message_idx`, `nina_message_images_user_created_idx`, `nina_message_images_user_content_hash_idx` (partial) |
+| `ninaMessageImages` | `nina_message_images` | One image attached to a message, plus where its bytes came from, plus the album's three search columns (`search_keywords`, `negative_search_keywords`, `description_embedding`) | `nina_message_images_message_idx`, `nina_message_images_user_created_idx`, `nina_message_images_user_content_hash_idx` (partial), `nina_message_images_description_embedding_hnsw_idx` (HNSW, `vector_cosine_ops`) |
 | `ninaMemorySlots` | `nina_memory_slots` | Upserted "current fact" memory slot | PK `(user_id, key)` |
 | `ninaMemoryFacts` | `nina_memory_facts` | Append-only "what he has told me" ledger | `nina_memory_facts_user_created_idx` |
 | `ninaShortcuts` | `nina_shortcuts` | The trigger registry — one emoji or short token standing for a long directive he wrote once | `nina_shortcuts_user_match_unq`, `nina_shortcuts_user_enabled_idx` |
 | `ninaNags` | `nina_nags` | Escalation-ladder state per nag code | PK `(user_id, code)` |
-| `ninaAvatars` | `nina_avatars` | Nina's photo album: folder, crop transform, thumbnail, dedupe key, `description` + its `description_embedding` vector | `nina_avatars_user_current_unq` (partial), `nina_avatars_user_created_idx`, `nina_avatars_user_folder_created_idx`, `nina_avatars_user_source_key_unq`, `nina_avatars_description_embedding_hnsw_idx` (HNSW, `vector_cosine_ops`) |
+| `ninaAvatars` | `nina_avatars` | Nina's photo album: folder, crop transform, thumbnail, dedupe key, `description` + `search_keywords` / `negative_search_keywords` + the `description_embedding` vector, and `source_image_id` — non-null makes the row a pointer at a Media original rather than a photograph of its own | `nina_avatars_user_current_unq` (partial), `nina_avatars_user_created_idx`, `nina_avatars_user_folder_created_idx`, `nina_avatars_user_source_key_unq`, `nina_avatars_user_content_hash_idx` (partial), `nina_avatars_description_embedding_hnsw_idx` (HNSW, `vector_cosine_ops`), `nina_avatars_source_image_id_idx` |
 | `ninaFolders` | `nina_folders` | Asserts a folder exists even when empty | PK `(user_id, folder)` |
 | `ninaTuning` | `nina_tuning` | Nina's per-user character: twelve trait dials, the relationship, the four extra dials, seventeen enable flags and a notes field | PK `user_id` |
 | `ninaImagePrefs` | `nina_image_prefs` | How she is photographed: the prompt-length slider, six focus flags, four lines of free text, `prompt_template` + `model` (the image-gen controls), the chosen photo reference | PK `user_id` |
@@ -199,6 +218,29 @@ generation degrades to unanchored. One cascade is not a default but a stated req
 `nina_messages.session_id` → `nina_chat_sessions.id`, so removing a session takes its messages in
 one `DELETE` — and there the chain **stops**, because the images' FK is `set null`.
 
+**One FK is `restrict`, and it is the only one.** `nina_avatars.source_image_id` →
+`nina_message_images.id` (2026-09-17) refuses the delete rather than degrading the row, because the
+dependent row has **nothing of its own**: an album row with that column set owns no bytes and no
+prose — it renders the linked Media row's Blob object and reads the linked row's `description` /
+`search_keywords` / `negative_search_keywords` / `description_embedding`, all four of which stay
+NULL on the pointer forever. `set null` would leave a row with no picture at all (unrecoverable
+without re-copying the bytes, which is the duplication the pointer exists to avoid) and `cascade`
+could silently take the "current profile picture" designation with it. So deleting a Media original
+an Album pointer still names is refused **by the database**, and a caller's job is to turn that
+refusal into a sentence before the constraint has to — the `nina_avatars_user_current_unq`
+argument again: the alternative is a read-then-compare that is correct until two writers race.
+This is deliberately the opposite call from `nina_message_images.message_id`'s `set null` one table
+over, and the two are not inconsistent: there the dependent row is a whole photograph that survives
+losing its bubble.
+
+**`source_image_id` is spelled twice in this schema and means two different things.**
+`nina_avatars.source_image_id` is an album row pointing at a chat row whose bytes and prose it
+borrows (`restrict`). `nina_message_images.source_image_id` is a chat row pointing at an earlier
+chat row whose bytes it re-shows (`set null`, F37) — different table, opposite direction, different
+lifecycle. A reader who conflates them writes a query that answers the wrong question. What they do
+share is `isOriginalPhoto()`'s convention: a row that borrows its bytes is excluded from collection
+listings and from search, so one physical photograph is one hit.
+
 **Unique indexes are how invariants are enforced.** `shares_run_id_active_unq` (partial, `where
 revoked_at is null`) is the stated precedent, and later tables cite it by name: the alternative to a
 constraint is a read-then-compare that is correct until two writers race.
@@ -224,18 +266,37 @@ place): `run_splits`, `run_zones`, `records`, `badges`, `nina_memory_slots`, `ni
 (untyped on purpose, so adding a job field is not a migration) and `nina_memory_slots.value`
 (`NinaSlotValue`).
 
-**One column is a vector, and every rule about it is a rule about its width.**
-`nina_avatars.description_embedding` is `vector(1536)` — the schema's only pgvector column, added
-2026-09-15. The width is declared once, as `NINA_EMBEDDING_DIMENSIONS` in
-`lib/db/schema/nina/avatars.ts`, and exported through the `schema.ts` barrel so the client
-(`lib/nina/embedding.ts`) imports the column's number rather than restating it. It lives here and
+**Two columns are vectors, they share one space, and every rule about them is a rule about their
+width.** `nina_avatars.description_embedding` (2026-09-15) and
+`nina_message_images.description_embedding` (2026-09-17) are both `vector(1536)` — the schema's only
+pgvector columns, each with its own HNSW `vector_cosine_ops` index. The width is declared once, as
+`NINA_EMBEDDING_DIMENSIONS` in `lib/db/schema/nina/embedding.ts`, re-exported by
+`schema/nina/avatars.ts` and so still reachable through the `schema.ts` barrel, so the client
+(`lib/nina/embedding.ts`) imports the columns' number rather than restating it. It lives here and
 not beside `NINA_EMBEDDING_MODEL` in `lib/nina/openrouter.ts` because it is a property of the
-column, and because `drizzle-kit` loads `lib/db/schema/` outside Next — a `@/lib/nina/*` edge would
-be the first path alias in its resolution path. Three rules follow and none of them is optional:
+columns, and because `drizzle-kit` loads `lib/db/schema/` outside Next — a `@/lib/nina/*` edge would
+be the first path alias in its resolution path. (Why it is a leaf module and not a line in
+`avatars.ts`: see the barrel note above.)
 
-- **The model and the constant change together, in one migration, with a full re-embed.** Two
-  embedding models do not share a vector space, so changing one without the other does not degrade
-  the ranking — it randomises it, with no error anywhere.
+**One vector space across two tables is what makes a merged ranking possible at all.** Both columns
+hold vectors produced by the same model at the same width and both indexes name the same operator
+class, so a single query embedding ranked against both tables yields two cosine similarities that
+are comparable numbers rather than two incomparable rankings. That is a standing obligation, not a
+one-time fact: a re-embed that covered one table and not the other leaves the search ranking two
+different spaces against one query, with no error anywhere. Four rules follow and none of them is
+optional:
+
+- **The model and the constant change together, in one migration, with a full re-embed — of both
+  columns.** Two embedding models do not share a vector space, so changing one without the other
+  does not degrade the ranking — it randomises it, with no error anywhere.
+- **The keyword columns are an INPUT to the vector, never a second thing to rank by, and the
+  negative ones never touch the vector at all.** Both tables carry the same pair beside their
+  embedding: `search_keywords` is folded into the embedded text (`buildNinaAvatarEmbedText` in
+  `lib/nina/avatarEmbedText.ts` — the name says avatar, the body is generic over any
+  description+keywords pair), while
+  `negative_search_keywords` is read alone by the ranker against the operator's typed query.
+  Nothing may SELECT `search_keywords` to compare against a query, and nothing may fold
+  `negative_search_keywords` into an embedding.
 - **2000 is pgvector's hard ceiling for an HNSW index** (the `vector` type itself allows 16000). A
   wider model stores fine and then fails at `CREATE INDEX`, at migration time, against production.
 - **The operator class is named at both ends.** The index is `hnsw (… vector_cosine_ops)` because
@@ -429,7 +490,13 @@ typing: `components/profile/ProfileForm.tsx` (`SEX_VALUES`, `Sex`), `components/
 Sixteen test-side files import statically. The notable ones: `tests/db.schema.test.ts`,
 `tests/db.schema.nina.test.ts` and `tests/db.schema.errorlogs.test.ts` assert on the schema
 *objects* themselves — table names, column names and SQL types, index names, FK on-delete
-behaviour — via `getTableConfig`, with no database involved. `tests/support/fakeDb.ts` builds the
+behaviour — via `getTableConfig`, with no database involved. **Those assertions are WHOLE-list
+`toEqual`s, not `toContain`s**: a table's column names and index names are pinned as complete,
+sorted lists, so adding one column or one index means editing the existing list (and its comment)
+rather than appending a new `it(...)` beside it. That is deliberate — it makes an accidental column
+a failing test rather than an unnoticed one — and it is why a schema change lands in that file in
+the same commit, and why a later phase of the same plan set must not re-assert what an earlier one
+already added. `tests/support/fakeDb.ts` builds the
 recording fake that the wider suite uses, and `tests/db.client.test.ts` asserts that `@/lib/db`
 re-exports the schema — those two (like most of the suite) load the package with a dynamic
 `import()` inside the test body.
@@ -521,12 +588,21 @@ or calls `process.exit`, and no error is swallowed.
   underlying facts have not changed.
 - Records are recomputed wholesale rather than incremented (roadmap §4.5 / R-10), which trades a
   little work for immunity to drift after a correction.
-- **The HNSW index is insurance, not a requirement.** A per-user album of hundreds ranks fine on a
-  sequential scan — a few hundred 1536-float dot products is sub-millisecond. It is declared now
-  because declaring it now is free and adding it later is a migration, and because the album's own
-  premise is "hundreds of profile pics" growing. Building it cost nothing at migration time either:
-  every row was NULL, and pgvector does not index NULLs, so `0022` had nothing to build over. That
-  is the cheapest moment this index will ever cost.
+- **Both HNSW indexes are insurance, not a requirement.** A per-user album or media collection of
+  hundreds ranks fine on a sequential scan — a few hundred 1536-float dot products is
+  sub-millisecond. Each is declared now because declaring it now is free and adding it later is a
+  migration, because both premises ("hundreds of profile pics", a chat archive that only grows) are
+  growth premises, and because the merged search reads both tables on every query. Building each
+  cost nothing at migration time either: every row was NULL and pgvector does not index NULLs, so
+  the `CREATE INDEX` had nothing to build over. That is the cheapest moment either index will ever
+  cost, and it is the argument for declaring the next one at its column's `ADD COLUMN` too.
+- **A `restrict` FK buys a sequential scan on every parent delete unless the referencing side is
+  indexed.** Postgres indexes only the referenced side, so `nina_avatars_source_image_id_idx` exists
+  to answer "is any album row pointing at THIS media row?" — a question the database now asks on
+  every `nina_message_images` delete. Same structural reason as
+  `nina_messages_session_seq_idx`'s second job above. Plain btree, not unique (no invariant forbids
+  two pointers at one original) and not partial (the FK's own lookup is generated by Postgres, so
+  it cannot be relied on to carry a matching `IS NOT NULL` for a partial index to match).
 - One read is knowingly *not* optimised: the avatar subtree scan (`folder` prefix match) cannot
   range-scan a b-tree under a non-C collation without `text_pattern_ops`, so it degrades to a
   `user_id` scan with a filter. Accepted deliberately — it runs once per dropped folder over a
@@ -597,10 +673,13 @@ clean. Later migrations repeat the arrangement for the other reasons a hand-writ
 migration that creates the destination, because on a fresh database the files replay in order and a
 copy written later would read a column an earlier migration had already dropped),
 `0001_badge_award_ledger` (filling `dedupe_key` before the PK that requires it), and
-`0022_nina_avatar_embedding` (a hand-written `CREATE EXTENSION IF NOT EXISTS vector` above the
+`0023_dry_kabuki` (a hand-written `CREATE EXTENSION IF NOT EXISTS vector` above the
 generated DDL — **drizzle-kit emits the column and the index and assumes the extension exists**, so
 a generated-only file would replay on a fresh database as an error; `IF NOT EXISTS` makes a re-run,
-or a database where someone already enabled it, a no-op). All of them keep
+or a database where someone already enabled it, a no-op). The second pgvector column,
+`nina_message_images.description_embedding` in `0026_media_album_unified_search`, needed **no**
+such line and is generated verbatim: the extension is already installed and `0023` replays above it
+on a fresh database. All of them keep
 the generated DDL at the top and put the hand-written statements below a
 `--> statement-breakpoint` under a banner saying so, because
 **`npm run db:generate` will silently drop them if the file is regenerated**: diff the old file
@@ -643,9 +722,21 @@ do not trust this line):** Production has no
 `nina_tuning.revision`, no `nina_turns.tuning_revision`, no `nina_image_prefs.revision`; it does
 have `content_hash`, `perceptual_hash`, `perceptual_sig`, `prompt_template`, `model`,
 `app_settings` and `nina_error_logs` (with its one index). It also has
-`nina_avatars.description_embedding`, its HNSW index and the `vector` extension: `0022` is
-**already applied**, confirmed 2026-09-15 by reading `information_schema.columns`, `pg_indexes` and
-`pg_extension` directly — not by `db:migrate`'s exit code, which is green over a no-op.
+`nina_avatars.description_embedding`, its HNSW index and the `vector` extension: the embedding
+migration is **already applied**, confirmed 2026-09-15 by reading `information_schema.columns`,
+`pg_indexes` and `pg_extension` directly — not by `db:migrate`'s exit code, which is green over a
+no-op. (That migration's file is `0023_dry_kabuki`, journal-measured 2026-09-17; `0022` is
+`0022_red_thunderbolts`, the `content_hash` pair. The doc-history table below said otherwise until
+today, which is this section's own "do not trust an old document's migration file name" warning
+catching itself.)
+
+**2026-09-17 (`P2-DB-A002`): the journal holds 27 entries, `0000`–`0026`, and
+`0026_media_album_unified_search` has been applied to the one database this repo has.** That
+migration is additive-only — four nullable `ADD COLUMN`s, one `ADD CONSTRAINT`, two `CREATE INDEX`,
+no `DROP`, no `SET NOT NULL`, no backfill — so it rewrites no table and is replay-safe on a fresh
+database. Its entries `0024_nina_avatar_search_keywords` and `0025_handy_santa_claus` (the album's
+two keyword columns) precede it. As always: this line is a dated claim, and
+`npm run ci:schema-drift-guard` is the answer to "is it true now?".
 
 **`0011_rare_blockbuster` was the one stranded entry, and on 2026-09-13 it was repaired by hand.**
 For six days it sat journalled-but-unapplied: its journal `when` (1788786634959) is older than the
@@ -667,8 +758,10 @@ should never again be the thing you rely on.
 **And it is the ONLY drift.** The 2026-09-12 pass checked the columns it had reason to suspect; the
 2026-09-13 guard run compared the whole surface — 29 tables, 309 columns, 37 foreign keys, 31
 indexes, 1 unique constraint (counts as measured that day) — and `nina_memory_facts.confidence` is
-the single divergence. The 2026-09-15 run after `0022` reports zero drift over 29 tables and 309
-columns (measured 2026-09-15; the table count is unchanged because `0022` adds no table). That is
+the single divergence. The 2026-09-15 run after the embedding migration (`0023_dry_kabuki`) reports
+zero drift over 29 tables and 309 columns (measured 2026-09-15; the table count is unchanged because
+that migration adds no table, and `0026` adds none either — it is four columns on two existing
+tables). That is
 the useful half of the result: the stranded migration did not take anything else with it, and the
 snapshot chain is unbroken (every `prevId` links, despite the collision-era renumbering above). Do
 not re-derive this by hand either — the counts are what the guard prints on a clean run.
@@ -700,13 +793,28 @@ not re-derive this by hand either — the counts are what the guard prints on a 
   value no renderer, prompt or export has any use for, and it would break four suites'
   `projectedRow(...)` fixtures on the way. Search selects the column (or, better, a similarity
   expression over it) in its own statement. **The rule generalises: a column whose only consumer is
-  one query does not belong in the projection every query shares.**
-- **Every path that writes `description` must write `description_embedding` in the same step.**
+  one query does not belong in the projection every query shares.** The rule now has a second
+  instance to keep honest: `imageColumns` in the same file is `nina_message_images`' shared
+  projection, and it likewise names neither `description_embedding` nor the two keyword columns.
+- **A `nina_avatars` row with `source_image_id` set stores no prose of its own — and that is the
+  synchronisation mechanism, not an omission.** `description`, `search_keywords`,
+  `negative_search_keywords` and `description_embedding` stay NULL on a pointer row forever,
+  because the linked `nina_message_images` row is the only place that data lives; editing it in
+  one surface is visible in the other because there is no second copy to drift. A writer that
+  "helpfully" fills any of those four on a pointer row creates exactly the duplicate the design
+  removed, and a reader that reads them off the pointer row instead of following the link sees a
+  photograph with no description. Follow the link; never copy across it.
+- **Every path that writes `description` must write `description_embedding` in the same step —
+  on both tables.**
   A row with prose and a NULL embedding is invisible to search while looking perfectly healthy in
   the explorer — the one failure mode here with no symptom. NULL itself is a legal state forever
   (a photo whose describe pass failed is simply not in the search index; a cosine predicate skips
   NULL rows and HNSW does not index them, so "unsearchable" costs nothing at read time), which is
   exactly why a *stale* NULL beside a fresh description cannot be detected by the column alone.
+  `search_keywords` is an input to the same vector, so writing it carries the same obligation; a
+  model re-describe pass, on the other hand, must **not** touch either keyword column — those are
+  the operator's correction of the model's opinion, and a pass that erased the correction would
+  erase it every time it was needed.
 - **`NOT NULL` cannot be added to a populated table in one statement.** A new required column is
   three statements and a backfill between them, in the migration file itself. See `0004`.
 - **A re-attached photo is a reference, not a copy.** `nina_message_images` rows share a `blob_url`
@@ -716,7 +824,9 @@ not re-derive this by hand either — the counts are what the guard prints on a 
   prompt read reads this table by `message_id`, so a missing row is a blank bubble. Filter the three
   collection reads instead (`isOriginalPhoto()` in `lib/nina/queries.ts`), and leave the pointers
   naming the **original** rather than the immediate predecessor, so a `SET NULL` cannot resurrect a
-  duplicate.
+  duplicate. Note the spelling collision: this is `nina_message_images.source_image_id` (chat → chat,
+  `set null`), **not** `nina_avatars.source_image_id` (album → chat, `restrict`, and the pointer row
+  owns nothing). See the FK conventions above before writing a query over either.
 - **`nina_message_images.content_hash` NULL means "dedup inactive", not "unknown".** It is the
   write-time dedup key (media-dedupe P1): sha-256 over the exact stored bytes, asked per user via
   `findNinaImageByContentHash`. Every pre-column row and every write that had no hash in hand
@@ -763,10 +873,11 @@ not re-derive this by hand either — the counts are what the guard prints on a 
 ### Deploy state of the journal
 
 Kept short because it is the fact most likely to have changed since this page was written (and
-four times has): see **Migrations → Deploy state** above — as of 2026-09-15, 23 of 23 entries
-applied and no drift, `0022_nina_avatar_embedding` verified applied against
+five times has): see **Migrations → Deploy state** above — as of 2026-09-17 the journal holds 27
+entries (`0000`–`0026`) and `0026_media_album_unified_search` has been applied; the embedding
+migration `0023_dry_kabuki` was verified applied on 2026-09-15 against
 `information_schema` / `pg_indexes` / `pg_extension` rather than against an exit code, and
-`0011_rare_blockbuster` repaired by hand back on 2026-09-13. Do not read that paragraph for a
+`0011_rare_blockbuster` was repaired by hand back on 2026-09-13. Do not read that paragraph for a
 current answer; run `npm run ci:schema-drift-guard`, which is the whole point of it existing.
 
 ### Documentation history
@@ -800,4 +911,6 @@ history, and the decisions worth keeping are folded into the sections above. The
 | 2026-09-12 | db-schema-split | `schema.ts` split into eight domain modules behind an `export *` barrel; no table, column or behavior changed | — |
 | 2026-09-12 | nina-queries-split, db-queries-split | `queries.ts` split into thirteen `queries/*.ts` modules (+ `queries/internal.ts`, not re-exported) behind an `export *` barrel; `lib/nina/queries.ts` split in parallel; no query behavior changed | — |
 | 2026-09-13 | schema-llm-insights (doc-drift fix) | this page's file-layout language updated to match the two splits above, which landed after that morning's compaction pass; the "no importers" row-type list extended from 2 to 8 entries (grep-verified, `components/` included) | — |
-| 2026-09-15 | P2-DB-A001 (admin-album-semantic-search p1) | `nina_avatars` + nullable `description_embedding vector(1536)` and an HNSW `vector_cosine_ops` index; `NINA_EMBEDDING_DIMENSIONS` exported through the schema barrel; the drift guard taught to fold `vector(N)` (width pinned by the schema test instead); nothing writes the column in this phase | `0022_nina_avatar_embedding` (applied; hand-written `CREATE EXTENSION IF NOT EXISTS vector` above the generated DDL) |
+| 2026-09-15 | P2-DB-A001 (admin-album-semantic-search p1) | `nina_avatars` + nullable `description_embedding vector(1536)` and an HNSW `vector_cosine_ops` index; `NINA_EMBEDDING_DIMENSIONS` exported through the schema barrel; the drift guard taught to fold `vector(N)` (width pinned by the schema test instead); nothing writes the column in this phase | `0023_dry_kabuki` (applied; hand-written `CREATE EXTENSION IF NOT EXISTS vector` above the generated DDL — journal-measured 2026-09-17, this row previously named a tag that does not exist) |
+| 2026-09-15 | nina-album-search-relevance-tools R2 | `nina_avatars` + `search_keywords`, then + `negative_search_keywords` — both nullable `text`, no index: one is an input to the embedding, the other is read alone by the ranker | `0024_nina_avatar_search_keywords`, `0025_handy_santa_claus` (both applied) |
+| 2026-09-17 | P2-DB-A002 (media-album-unified-search p1 of 4) | `nina_message_images` + the album's three search columns and an HNSW `vector_cosine_ops` index; `nina_avatars` + `source_image_id` (FK → `nina_message_images.id`, the schema's first `ON DELETE RESTRICT`) and its plain btree; `NINA_EMBEDDING_DIMENSIONS` moved to the leaf module `schema/nina/embedding.ts` to break the `avatars` ⇄ `chat` cycle the new FK creates, barrel surface unchanged; nothing writes any of the four columns in this phase | `0026_media_album_unified_search` (applied; additive-only, generated, no hand-edits) |

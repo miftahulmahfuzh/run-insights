@@ -178,6 +178,14 @@ export interface NinaImageRow {
   perceptualSig: string | null
   sortOrder: number
   createdAt: Date
+  /* media-album-unified-search R2, 2026-09-17. The media twin of `NinaAvatarRow.searchKeywords`.
+   * Read by the Media pane (to edit) and by `ninaMediaDeferredDescribe`'s embed pass (to fold into
+   * the embedded text). Never ranked against directly. Appended for `avatarColumns`' stated reason:
+   * two positional `imageRow()` fixtures project this list. */
+  searchKeywords: string | null
+  /* media-album-unified-search R2, 2026-09-17. Read by the Media pane (to edit) and by the merged
+   * ranker's `matchesNegativeKeyword` pass. Never folded into the embedded text. */
+  negativeSearchKeywords: string | null
 }
 
 export interface NinaImageInsert {
@@ -393,6 +401,18 @@ export interface NinaAvatarRow {
   isCurrent: boolean
   announcedAt: Date | null
   createdAt: Date
+  /**
+   * media-album-unified-search R3. The `nina_message_images.id` whose bytes this row shows, or
+   * `null` for an ordinary album row.
+   *
+   * **A non-null value is a promise about four OTHER fields on this row**: `description`,
+   * `searchKeywords`, `negativeSearchKeywords` and the (never-projected) `description_embedding`
+   * are all NULL, forever, and the operator's real values live on the row this names. Nothing may
+   * render `row.description` for a pointer without going through
+   * `resolveNinaAvatarLinkedText` (`lib/nina/queries/avatarPointer.ts`) first. Last in the
+   * interface because it is last in `avatarColumns`; see that list's note for why.
+   */
+  sourceImageId: string | null
 }
 
 export interface NinaAvatarInsert {
@@ -452,6 +472,17 @@ export interface NinaAvatarBatchInsert {
    * `setChatPhotoAsAvatarAction`, needs no edit and keeps writing rows without one.
    */
   contentHash?: string | null
+  /**
+   * media-album-unified-search R3. The `nina_message_images.id` this row POINTS AT — set by
+   * exactly one writer, `linkChatPhotoIntoAlbum` (`lib/admin/ninaAlbumAvatarActions.ts`), and by
+   * nothing else ever.
+   *
+   * Optional for `contentHash`'s stated reason and not `sourceKey`'s: an absent value and an
+   * explicit null are the same fact, and the folder-upload writer — the other caller of this
+   * shape — mints rows that own their bytes and must never set it. A row that sets this must
+   * leave `description` unset, because a pointer's prose lives on the row it names.
+   */
+  sourceImageId?: string | null
 }
 
 /**
@@ -484,6 +515,9 @@ export interface NinaAvatarFolderPage {
   total: number
 }
 
+/** Which table a merged search hit came from. `media-album-unified-search` R1. */
+export type NinaPhotoSearchOrigin = 'album' | 'media'
+
 /**
  * One page of the WHOLE album — every folder, the `/nina/about` "Foto profil" tab's read.
  *
@@ -499,41 +533,75 @@ export interface NinaAvatarPage {
 }
 
 /**
- * One ranked row of a semantic search over the album — `NinaAvatarRow` plus the score it ranked on.
+ * One ranked photograph of the MERGED search — the union of what a `nina_avatars` row and a
+ * `nina_message_images` row can both say about themselves, plus where it came from and what it
+ * scored. `media-album-unified-search` R1, replacing `NinaAvatarSearchRow`.
  *
- * A SUPERSET of `NinaAvatarRow` rather than a parallel shape, deliberately: `app/admin/nina/page.tsx`
- * already owns the one `NinaAvatarRow -> AlbumExplorerPhoto` mapping this app has, and a search
- * result is the same photograph that the grid draws — it has just been found a different way. An
- * extra property is structurally invisible to that mapping, so a second copy of it never has to
- * exist.
+ * ── A FLAT SHAPE AND NOT A DISCRIMINATED UNION, DELIBERATELY ────────────────────────────────
+ * The consumer (`toHit`, `lib/admin/ninaAlbumSearchActions.ts`) maps every hit to ONE
+ * `AdminSearchHit`, because the results grid draws one kind of tile. A union would make that
+ * mapping a two-branch `switch` whose two branches wrote the same object, and would push the
+ * "a media row is filed nowhere / is never current / has no thumbnail" conventions into the
+ * consumer instead of into the query that knows them. So the query layer applies
+ * `MediaExplorerPhoto`'s own documented constants (see `rankMedia`) and hands over one shape.
+ * `origin` rides along because the UI phase needs it for the deep link and the pane it opens, not
+ * because the type varies by it.
+ *
+ * `filename` is nullable here (it is on `nina_avatars` and absent on `nina_message_images`); the
+ * `?? id` fallback is the consumer's, exactly as it already was.
  */
-export interface NinaAvatarSearchRow extends NinaAvatarRow {
+export interface NinaPhotoSearchRow {
+  origin: NinaPhotoSearchOrigin
+  id: string
+  blobUrl: string
+  thumbUrl: string | null
+  /** `''` for every media row — it is filed nowhere. See `rankMedia`. */
+  folder: string
+  filename: string | null
+  width: number | null
+  height: number | null
+  bytes: number | null
+  /** The album row's `source`, or the media row's `kind` — `ExplorerPhotoBase.source`'s rule. */
+  source: string
+  /** Always `false` for a media row. */
+  isCurrent: boolean
+  description: string | null
+  searchKeywords: string | null
+  /**
+   * Read by `matchesNegativeKeyword` at merge time, for BOTH origins. It is on the row rather than
+   * looked up later because the exclusion is applied over the merged page and a second read per
+   * row would be 96 round trips for a filter.
+   */
+  negativeSearchKeywords: string | null
+  cropScale: number | null
+  cropX: number | null
+  cropY: number | null
+  createdAt: Date
   /**
    * Cosine similarity against the query vector, `1 - (embedding <=> query)`.
    *
    * In `[-1, 1]` by definition, and in practice in `[0, 1]` for two embeddings of English prose
-   * from one model — a negative score means the two texts are actively opposed, which a description
-   * corpus does not produce. It is a RELATIVE number: read it to order results and to grey out the
-   * weak tail, never as a percentage, and never compare one query's scores against another's.
+   * from one model. It is a RELATIVE number: read it to order results and to grey out the weak
+   * tail, never as a percentage, and never compare one query's scores against another's. **It is
+   * also comparable ACROSS the two origins**, which is what makes the merged sort legitimate
+   * rather than a coincidence: one model, one space, one column shape on both tables.
    *
-   * On `searchNinaAvatarsByTextAndCaption` it is the WEIGHTED similarity — see that function.
+   * On `searchNinaPhotosByTextAndCaption` it is the WEIGHTED similarity — see that function.
    */
   score: number
 }
 
 /**
- * A page of search results — the same `{ rows, total }` pair `NinaAvatarFolderPage` carries, and
- * assignable to it, so nothing downstream needs a second branch.
+ * A page of merged search results.
  *
- * `total` means something different here and the difference matters: it is **how many album rows
- * were actually compared**, i.e. how many carry a `description_embedding` at all. It is NOT the
- * album's size and it is NOT a pager's denominator — search returns one flat top-N list and has no
- * pager. It is the coverage number: "48 shown, out of 342 photos that have been described". Phase
- * 2's backfill is what moves it.
+ * `total` means *"how many rows were actually compared"* — the sum of BOTH tables' candidate
+ * counts, i.e. how many rows across the two carry a `description_embedding` and are not excluded
+ * by their arm's dedup predicate. It is NOT the collection's size and NOT a pager's denominator;
+ * search returns one flat top-N list and has no pager. It is the coverage number: "48 shown, out of
+ * 196 photos that have been described". Phase 4's Media backfill is what moves it.
  */
-export interface NinaAvatarSearchPage {
-  rows: NinaAvatarSearchRow[]
-  /** Rows with a non-NULL `description_embedding`, for this user, across EVERY folder. */
+export interface NinaPhotoSearchPage {
+  rows: NinaPhotoSearchRow[]
   total: number
 }
 

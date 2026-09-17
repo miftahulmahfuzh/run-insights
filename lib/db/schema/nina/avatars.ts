@@ -10,8 +10,19 @@ import {
   timestamp,
   uniqueIndex,
   vector,
+  type AnyPgColumn,
 } from 'drizzle-orm/pg-core'
 import { users } from '../auth'
+import { ninaMessageImages } from './chat'
+import { NINA_EMBEDDING_DIMENSIONS } from './embedding'
+
+/**
+ * Re-exported, not re-declared: `@/lib/db/schema`'s `export * from './schema/nina/avatars'` has
+ * been this constant's public path since 2026-09-15 and every consumer imports it from there.
+ * It now LIVES in `./embedding` — see that module's header for the cycle this separation defuses.
+ */
+export { NINA_EMBEDDING_DIMENSIONS }
+
 /** 'seed' is the committed first avatar, 'generated' phase 12, 'operator' phase 14, 'admin' 15. */
 export type NinaAvatarSource = 'seed' | 'generated' | 'operator' | 'admin'
 
@@ -157,8 +168,8 @@ export type NinaAvatarSource = 'seed' | 'generated' | 'operator' | 'admin'
  *
  * Nullable, derived, and never authoritative: `description` remains the single source of truth
  * that Nina's prompt reads, and this column is a read-only-by-search projection of it. See the
- * column's own note for why NULL is a legal state forever, and `NINA_EMBEDDING_DIMENSIONS` just
- * below this block for why the width cannot change without a re-embed.
+ * column's own note for why NULL is a legal state forever, and `NINA_EMBEDDING_DIMENSIONS` in
+ * `./embedding` for why the width cannot change without a re-embed.
  *
  * ── `search_keywords` (2026-09-15, nina-album-search-relevance-tools R2) ─────────────────────
  * A SECOND relevance signal, written by hand: comma-separated free-text phrases the operator adds
@@ -187,29 +198,61 @@ export type NinaAvatarSource = 'seed' | 'generated' | 'operator' | 'admin'
  * makes the combined text exactly the description, so every already-computed vector stays
  * numerically correct. The one-off backfill re-embeds them anyway, to prove the path is uniform
  * rather than to change a number.
+ *
+ * ── `source_image_id` (2026-09-17, media-album-unified-search R3) ────────────────────────────
+ * **A row with this set is a POINTER at a Media original, not a photograph of its own.** NULL is
+ * the value every album row written before today carries and the value every ordinary upload will
+ * go on carrying — "these bytes are this row's own". Non-null names the `nina_message_images` row
+ * whose Blob object this row RENDERS and whose prose this row BORROWS.
+ *
+ * The user's words are the specification: *"if admin set a picture from Media, we wouldn't copy
+ * paste a new duplicate image into Album directory … the image in Album is just a pointer to the
+ * real file in Media … editing image description, search keyword, negative keyword in one place
+ * will automatically synchronize it with other location."* That last clause is why this is a
+ * pointer and not a copied row with a provenance note bolted on: **a pointer row stores no
+ * `description`, no `search_keywords`, no `negative_search_keywords` and no
+ * `description_embedding` of its own — all four stay NULL forever.** "Synchronised" is then not a
+ * mechanism that can drift; it is the absence of a second place to store the fact. The reads and
+ * writes that redirect a pointer row's four fields to its linked row are the next phase's work.
+ * **Nothing in THIS phase writes this column** — the same posture `description_embedding` above
+ * took when it was declared.
+ *
+ * ── `ON DELETE RESTRICT`, AND IT IS THE ONLY ONE OF THE THREE THAT IS HONEST ─────────────────
+ * The plan index's Decisions row, verbatim: *"`ON DELETE RESTRICT` — refuse the delete with an
+ * actionable message, mirroring `deleteNinaAvatar`'s existing 'can't delete the current avatar'
+ * refusal shape. `SET NULL` would produce a pointer row with no bytes (unrecoverable without
+ * re-copying, defeating R3); `CASCADE` risks silently losing the 'current profile picture'
+ * designation."* So deleting a Media original that an Album pointer still names is REFUSED — not
+ * cascaded, not silently orphaned — and the refusal is a database constraint rather than a
+ * check somebody has to remember to write, for `nina_avatars_user_current_unq`'s stated reason:
+ * the alternative is a read-then-compare that is correct until two writers race.
+ *
+ * This is the first `restrict` in the schema, and it is deliberately the opposite call from
+ * `nina_message_images.message_id`'s `SET NULL` one table over. The two are not inconsistent:
+ * there, blocking a session delete with its photographs would turn one bug into a worse one, and
+ * a chat photo that loses its bubble is still a whole photograph. Here the dependent row has
+ * NOTHING of its own — no bytes, no prose — so demoting it to an original is not available and
+ * losing it silently is the thing R3 was asked for.
+ *
+ * ── IT IS NOT `nina_message_images.source_image_id`, DESPITE THE NAME ────────────────────────
+ * That column (F37, `lib/db/schema/nina/chat.ts`) is a CHAT row pointing at an earlier CHAT row
+ * whose bytes it re-shows; its sibling `source_avatar_id` is a chat row pointing at an album row.
+ * Different table, opposite direction, different lifecycle (`SET NULL`, because there the copy can
+ * honestly become an original). The shared spelling is the schema's one provenance-FK idiom used
+ * twice, and a reader who conflates them will write a query that answers the wrong question. The
+ * one thing they DO share is `isOriginalPhoto()`'s convention — a row that borrows its bytes is
+ * excluded from collection listings and from search, and this column extends that convention to
+ * the album arm (see the plan index's dedup Decision).
+ *
+ * ── THE INDEX IS NOT UNIQUE, AND THAT IS A DECISION ──────────────────────────────────────────
+ * `nina_avatars_source_image_id_idx` is a plain btree. No stated invariant forbids two album rows
+ * naming one media original — in practice the promotion action reuses the existing pointer, so
+ * only one exists at a time, but that is the action's behaviour and not a fact the schema was
+ * asked to enforce. A unique index here would be inventing a constraint nobody stated, and it
+ * would turn a future "the same photo, filed in two folders" into a thrown INSERT.
+ * `nina_avatars_user_content_hash_idx` two entries down makes exactly this argument for exactly
+ * this reason.
  */
-
-/**
- * **How wide `description_embedding` is, declared once.**
- *
- * It lives here and not beside `NINA_EMBEDDING_MODEL` in `lib/nina/openrouter.ts` because it is a
- * property of the COLUMN — the client has to agree with the column, not the other way round — and
- * because every module under `lib/db/schema/` imports only its own siblings today. `drizzle-kit`
- * loads this tree outside Next.js; a `@/lib/nina/...` edge would be the first path alias in its
- * resolution path, bought for nothing. `lib/nina/embedding.ts` imports THIS, through the
- * `@/lib/db/schema` barrel, exactly as `lib/nina/errorlogs.ts` already imports `ninaErrorLogs`.
- *
- * **It is pinned to whatever `NINA_EMBEDDING_MODEL` returned when it was probed.** Two embedding
- * models do not share a vector space, so changing either one without the other does not degrade
- * the ranking — it randomises it, silently, with no error anywhere. Change them together, in one
- * migration, with a full re-embed.
- *
- * **2000 is pgvector's hard ceiling for an HNSW index** (the `vector` type itself allows 16000).
- * A model wider than that would store fine and then fail at `CREATE INDEX` — at migration time,
- * against production. The probe's candidate order in the phase plan is sorted by this constraint
- * for that reason.
- */
-export const NINA_EMBEDDING_DIMENSIONS = 1536
 
 export const ninaAvatars = pgTable(
   'nina_avatars',
@@ -340,6 +383,25 @@ export const ninaAvatars = pgTable(
     descriptionEmbedding: vector('description_embedding', {
       dimensions: NINA_EMBEDDING_DIMENSIONS,
     }),
+    /**
+     * **The Media original this album row POINTS AT — media-album-unified-search R3, 2026-09-17.**
+     *
+     * NULL means this row owns its bytes and its prose, which is every row written before today
+     * and every ordinary upload after it. Non-null means it borrows both: the Blob object is the
+     * linked `nina_message_images` row's, and `description` / `search_keywords` /
+     * `negative_search_keywords` / `description_embedding` on THIS row stay NULL forever because
+     * the linked row is the only place that data lives.
+     *
+     * `ON DELETE RESTRICT`: deleting the Media original while this pointer names it is refused,
+     * not cascaded and not silently orphaned. `AnyPgColumn` is what lets this compile across the
+     * `./avatars` ⇄ `./chat` cycle, the same escape `nina_messages.reply_to_id` uses for its own
+     * self-reference; see `./embedding`'s header for why the cycle carries no eager edge. The
+     * full argument — including why this column is NOT `nina_message_images.source_image_id`
+     * despite the name — is in the table header.
+     */
+    sourceImageId: text('source_image_id').references((): AnyPgColumn => ninaMessageImages.id, {
+      onDelete: 'restrict',
+    }),
     isCurrent: boolean('is_current').notNull().default(false),
     /** NULL = she has not mentioned this one yet. See the header. */
     announcedAt: timestamp('announced_at', { withTimezone: true, mode: 'date' }),
@@ -396,6 +458,24 @@ export const ninaAvatars = pgTable(
       'hnsw',
       t.descriptionEmbedding.op('vector_cosine_ops'),
     ),
+    /**
+     * **"Is any album row pointing at THIS media row?"** — two readers, one index.
+     *
+     * Postgres does not index the REFERENCING side of a foreign key, and `ON DELETE RESTRICT`
+     * makes the database ask that question on EVERY `nina_message_images` delete. Without this
+     * index each one sequentially scans the album. That is `nina_messages_session_seq_idx`'s
+     * second job, one table over, for the same structural reason. The next phase's
+     * `removeChatPhotoAction` guard asks the same question in SQL before the delete, so it can
+     * refuse with a sentence instead of a constraint violation.
+     *
+     * Plain btree and NOT unique — see the header: nothing states that one media original may be
+     * pointed at by only one album row, and a unique index would be a constraint nobody asked
+     * for. Not partial either: the NULL rows are the overwhelming majority today, but a partial
+     * index is one more predicate the planner has to prove a query matches, and the FK's own
+     * lookup is generated by Postgres rather than written here, so it cannot be relied on to
+     * carry a matching `IS NOT NULL`.
+     */
+    index('nina_avatars_source_image_id_idx').on(t.sourceImageId),
   ],
 )
 

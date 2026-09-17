@@ -1,10 +1,15 @@
 # Package: components/admin
 
 **Location**: `components/admin`
-**Last Updated**: 2026-09-15 (`admin-album-semantic-search` phase 4/4, `P2-CA-A001`: the album's
+**Last Updated**: 2026-09-17 (`media-album-unified-search` phase 3/4, `P2-CA-A006`: the UI half of
+unified Album+Media search — the Media arm's keyword boxes, a ranked sheet that mixes both
+collections and labels a media hit `in Media`, and the pointer-row sentence in
+`AlbumSelectionPane`. Touched `explorer/model.ts`, `MediaPane.tsx`, `SelectionPane.tsx`,
+`PhotoDescription.tsx`, `PhotoSearchBar.tsx`, `SearchResultsGrid.tsx` and their four suites.)
+
+**Previously**: 2026-09-15 (`admin-album-semantic-search` phase 4/4, `P2-CA-A001`: the album's
 semantic search row — `explorer/PhotoSearchBar.tsx`, `explorer/SearchResultsGrid.tsx`,
-`explorer/searchQueryImage.ts`, and `FileExplorer`'s one branch between browsing and results.
-Everything below the search additions is the 2026-09-13 pass, unchanged.)
+`explorer/searchQueryImage.ts`, and `FileExplorer`'s one branch between browsing and results.)
 
 **Previously**: 2026-09-13 (doc-drift fix: the 2026-09-12 optional-prop-vs-callsite AST sweep
 — commit `1fec595`, `components/admin` in full — landed after this file's same-day compaction
@@ -57,7 +62,8 @@ plus the JSX that arranges it. The judgement layer lives in `lib/admin/filetree.
 unit-tested there. Testing has **two layers** since the component-test wave (2026-09-12):
 pure decisions in `lib/` under the default `node` environment, and a colocated happy-dom suite
 for essentially every component (`components/**/*.test.tsx` is in vitest's include; each file
-opts in with a `// @vitest-environment happy-dom` pragma — 27 of them here). The third, oldest
+opts in with a `// @vitest-environment happy-dom` pragma — 32 of them here, measured
+2026-09-17). The third, oldest
 layer reads a file in this directory **as text** to pin a property no runtime test can carry —
 see Test consumers under Reverse Dependencies.
 
@@ -66,13 +72,16 @@ see Test consumers under Reverse Dependencies.
 - Be `/admin/nina`'s file manager: folder tree, breadcrumb, folder-scoped paginated grid,
   drag-and-drop of nested folders, a directory picker, and a details rail; create, rename, move
   and delete folders from the row that names them, with every refusal left on the server.
-- Search that album semantically, album-wide, from a row above everything: words, a photograph
+- Search the whole collection semantically from a row above everything: words, a photograph
   re-encoded in the browser as a question and never uploaded, or both; render the ranked answer as
-  its own sheet whose tile opens the shared full-screen viewer. The ranking itself is `lib/`'s.
+  its own sheet whose tile opens the shared full-screen viewer. Since 2026-09-17 the answer mixes
+  album rows and Media rows in one list, and each tile says which collection it came from. The
+  ranking itself is `lib/`'s.
 - Serve the Media view — the conversation's photographs, her generated selfies and his composer
   uploads alike — with the full verb set: adopt as her profile picture under a draft framing,
-  replace, remove, download, hand-edit or re-run the vision describe, read the generation
-  prompt, and add new photographs on a carrier message.
+  replace, remove, download, hand-edit or re-run the vision describe, hand-write its search and
+  negative-search keywords, read the generation prompt, and add new photographs on a carrier
+  message.
 - Turn a gesture into `WalkedFile[]` via the two non-standard browser APIs, derive a 256 px
   thumbnail in the browser, and run a bounded, resumable, chunk-registering upload queue.
 - Own the framing studio and the sanity circles at the sizes chat actually draws; hand a photo
@@ -91,20 +100,20 @@ see Test consumers under Reverse Dependencies.
 |---|---|---|
 | `touch.ts` | **no directive** | The 44 px rule spelled once: `TOUCH_TARGET`, `TOUCH_ICON`. Zero imports. |
 | `FileExplorer.tsx` | `'use client'` | The `/admin/nina` screen. Layout, toolbar, breadcrumb, drop target, the two-arm URL grammar (`hrefForFolder` / `hrefForMediaView` / `hrefForPage`), the removal-`notice` line. Toolbar buttons are icon-only (private Lucide glyphs, `aria-label` is the name). Below `lg`: two-row toolbar, folder rail behind the `treeOpen` drawer (`id="admin-folder-rail"`). `?view=media` swaps the content pane to the Media view inside the same chrome; re-exports the `explorer/model.ts` types. Holds the landed `search` (client state, `null` = browsing) and branches the content pane between `PhotoGrid` and `SearchResultsGrid`. Takes `deepLinkId` and owns the `?avatar=` **landing effect** — select, clear the search, spend the parameter — guarded by a `spentDeepLink` ref. |
-| `explorer/PhotoSearchBar.tsx` | `'use client'` | The album search row, rendered FIRST so it sits above every printing of the word "Album". Owns only the DRAFT (words, picked photograph, in-flight, the one sentence under the row) and hands a landed search UP through `onResults`; `Clear` resets it and calls `onClear`. Calls `searchNinaAvatarsAction` as a black box. Album arm only — absent on Media, not disabled. Shows neither the caption nor the score. |
-| `explorer/SearchResultsGrid.tsx` | `'use client'` | The ranked answer as one sheet, `PhotoGrid`'s borderless recipe mirrored with three deliberate differences: no pager (a ranked list has no page 2), no selection and no `SelectionPane` (a tile opens `components/ui/PhotoViewer` instead, scoped to the result set via a local `viewerIndex` + `useMemo`'d `ViewerPhoto[]`), and the folder in the accessible name (`<filename> in 2026/bali`, root as `NINA_FOLDER_ROOT_LABEL`). Fills `PhotoViewer`'s `headerAction` slot with the `hrefForAvatar` jump link (a private `FileTextIcon`, a `<Link>` so middle-click opens a second tab), the one route from an irrelevant-looking hit to its description. |
+| `explorer/PhotoSearchBar.tsx` | `'use client'` | The album search row, rendered FIRST so it sits above every printing of the word "Album". Owns only the DRAFT (words, picked photograph, in-flight, the one sentence under the row) and hands a landed search UP through `onResults`; `Clear` resets it and calls `onClear`. Calls `searchNinaAvatarsAction` as a black box — one action that now ranks both tables, which reached this file as nothing at all: it reads no field of a hit. Mounted on the album arm only (`FileExplorer`'s `!isMediaView`), which is a recorded trim, not a rule — see the search section. Shows neither the caption nor the score. |
+| `explorer/SearchResultsGrid.tsx` | `'use client'` | The ranked answer as one sheet, `PhotoGrid`'s borderless recipe mirrored with three deliberate differences: no pager (a ranked list has no page 2), no selection and no `SelectionPane` (a tile opens `components/ui/PhotoViewer` instead, scoped to the result set via a local `viewerIndex` + `useMemo`'d `ViewerPhoto[]`), and WHERE the photograph lives in the accessible name, from the private `whereLabel(hit)` — an album hit gets its folder (`<filename> in 2026/bali`, root as `NINA_FOLDER_ROOT_LABEL`), a media hit gets `NINA_MEDIA_NODE_LABEL` (`… in Media`), because folding a media row's empty `folder` through the album rule would print `Album` over a photograph that is not in it. Fills `PhotoViewer`'s `headerAction` slot with a jump link whose destination and accessible name BRANCH on `hits[viewerIndex].origin`: an album hit gets `hrefForAvatar(photo.id)` + "Open this photo's description", a media hit `hrefForMediaView()` + "Open Media, where this photo lives". A private `FileTextIcon`, a `<Link>` so middle-click opens a second tab. |
 | `explorer/searchQueryImage.ts` | browser APIs | The one encode in this folder that does **not** PUT: one decode → `SEARCH_QUERY_SHORT_EDGE_PX = 768` on the SHORT edge (`longEdgeTargetFor`), `SEARCH_QUERY_QUALITY = 0.75` JPEG, out as a data URI, capped at `SEARCH_QUERY_MAX_DATA_URI_CHARS = 700_000`. The four constants stay `export`ed with a symbol-level note because knip cannot see their reader — see Test consumers. |
-| `explorer/model.ts` | **types only** | The Server→client props contract and the row union: `ExplorerPhoto` is `AlbumExplorerPhoto \| MediaExplorerPhoto`, discriminated by `origin`. The media arm types `thumbUrl` as the literal `null` (no thumbnail column) and `isCurrent` as `false` (adoption copies bytes into `nina_avatars`; the copy carries the flag). `QueueItem` / `QueueReport` — `report.already` is the number the upload exists to show. No runtime export. |
+| `explorer/model.ts` | **types only** | The Server→client props contract and the row union: `ExplorerPhoto` is `AlbumExplorerPhoto \| MediaExplorerPhoto`, discriminated by `origin`. The media arm types `thumbUrl` as the literal `null` (no thumbnail column) and `isCurrent` as `false` (adoption mints an `nina_avatars` row and THAT row carries the flag). Both arms now carry `searchKeywords`/`negativeSearchKeywords` — still one pair per arm, because they are two columns on two tables with two write paths, so a reader that skipped the `origin` narrowing would not know which action it may call. The album arm adds `isPointer: boolean`, the boolean and never the linked id. `QueueItem` / `QueueReport` — `report.already` is the number the upload exists to show. No runtime export. |
 | `explorer/dropWalk.ts` | browser APIs | `webkitGetAsEntry()` capture, the `readEntries` pump (`EXPLORER_WALK_MAX_FILES = 2000`, `EXPLORER_WALK_MAX_DEPTH = 12`), the `webkitdirectory` picker. Decides nothing. |
 | `explorer/thumbnail.ts` | browser APIs | One decode: intrinsic size out, `EXPLORER_THUMB_SHORT_EDGE_PX = 256` JPEG (`EXPLORER_THUMB_QUALITY = 0.82`) out. |
 | `explorer/useFolderUpload.ts` | `'use client'` hook | One gesture end to end: walk, manifest, diff (`planFolderUpload`), four-lane upload, chunked register. |
 | `explorer/FolderTree.tsx` | `'use client'` | The folder rail. Every row is a `<Link>` and 44 px, expansion is `override[path] ?? onPath.has(path)`, the count column is subtree `totalCount`. Carries the pinned Media row (`mediaViewNode` — a view, not a `FolderNode`; badge `mediaCount` on both views) and one `FolderMenu` per `Row`. |
 | `explorer/PhotoGrid.tsx` | `'use client'` | One page of square tiles + the "121–240 of 314" pager. `thumbUrl ?? url` + `loading="lazy"`; view-aware in exactly three copy places. |
-| `explorer/SelectionPane.tsx` | `'use client'` | The details rail, as a two-line dispatcher on `isMediaRow`: album rows render the private `AlbumSelectionPane` (framing, facts, one icon row, `PhotoDescription` with the album closures), media rows render `MediaPane`. Neither arm reads the `origin` discriminant below the dispatch. |
-| `explorer/MediaPane.tsx` | `'use client'` | One Media row in full — the purged `/admin/photos` rail re-hosted in the album pane's idiom. Adoption DRAFT framing (the `worn` latch), the prompt brush INSIDE the `photo.prompt != null` conditional (no dim state), `MediaControls` in the icon row, `PhotoDescription` with the media closures, keyed by `photo.id` so remount is the reset. |
+| `explorer/SelectionPane.tsx` | `'use client'` | The details rail, as a two-line dispatcher on `isMediaRow`: album rows render the private `AlbumSelectionPane` (framing, facts, one icon row, `PhotoDescription` with the album closures), media rows render `MediaPane`. Neither arm reads the `origin` discriminant below the dispatch. The album arm renders one extra sentence when `photo.isPointer`: this entry is a LINK to a photo in Media whose description and keywords are stored there, so editing them here changes that photo too. Informational only — it gates no verb and disables no control. |
+| `explorer/MediaPane.tsx` | `'use client'` | One Media row in full — the purged `/admin/photos` rail re-hosted in the album pane's idiom. Adoption DRAFT framing (the `worn` latch), the prompt brush INSIDE the `photo.prompt != null` conditional (no dim state), `MediaControls` in the icon row, `PhotoDescription` with the media closures — since 2026-09-17 including BOTH keyword pairs, saved through `lib/admin/chatPhotoKeywordActions.ts` — keyed by `photo.id` so remount is the reset. |
 | `explorer/MediaAdd.tsx` | `'use client'` | The Media toolbar's "Add photos": encode → dedupe pre-check → PUT → `addChatPhotoAction` on a carrier message. Sequential `for` loop, per-file failure is not batch failure, no confirmation. |
 | `explorer/MediaControls.tsx` | `'use client'` | Replace and Remove for one media row, as a fragment in `MediaPane`'s icon row. No confirmation; a remove's `note` goes UP to `FileExplorer` via `onRemoved` because this pane unmounts under the revalidation that carries it. |
-| `explorer/PhotoDescription.tsx` | `'use client'` | THE one describe control, mounted by BOTH arms. Stored prose editable by hand (SAVE button, not blur), a describe/re-describe button always available that runs the vision model and OVERWRITES. Imports no server action — the host hands in `onSave` / `onRedescribe` closures. |
+| `explorer/PhotoDescription.tsx` | `'use client'` | THE one describe control, mounted by BOTH arms, and the two keyword boxes with it. Stored prose editable by hand (SAVE button, not blur), a describe/re-describe button always available that runs the vision model and OVERWRITES, plus the search-keyword and negative-keyword boxes on the same SAVE-button rule. Imports no server action — the host hands in `onSave` / `onRedescribe` / `onSaveKeywords` / `onSaveNegativeKeywords` closures. Each keyword pair (value + save closure) is optional and its block is conditional; since 2026-09-17 both arms pass both pairs, so no caller exercises the absence — the rule is kept for the next table that mounts this panel. |
 | `explorer/chatPhotoUpload.ts` | `'use client'` | The encode both media flows share: decode once, `ADMIN_CHAT_PHOTO_LONG_EDGE_PX = 1024` on the long edge (`NINA_IMAGE_HEIGHT`), `ADMIN_CHAT_PHOTO_QUALITY = 0.9`, hash the ENCODED blob before the PUT. `opts.dedupe` is opt-in and Add is its only caller. |
 | `explorer/UploadQueue.tsx` | `'use client'` | The upload's one honest sentence — "Nothing new. All 313 files are already here." `REFUSAL_TEXT` is an exhaustive `Record` over `UploadRefusal`, so a new refusal reason is a build error here until it has words. |
 | `FolderMenu.tsx` | `'use client'` | One folder's four verbs (New subfolder / Rename / Move to… / Delete) as a `Mode` union with four `absolute` overlay panels (`z-40` — it must clear `AdminNav`'s `z-30` bottom bar). Decides nothing; refusals render `lib/admin/folderOps.ts`'s own sentences. |
@@ -176,9 +185,14 @@ folder operations that only learn their destination from the server's answer.
 The deep link is the exception that proves the rule and is spelled **outside this package**, in
 `lib/admin/albumDeepLink.ts` (`NINA_AVATAR_PARAM`, `hrefForAvatar`), for `NINA_MEDIA_VIEW_PARAM`'s
 reason: its writer is a `'use client'` module here and its reader is `app/admin/nina/page.tsx`, so
-a spelling kept in `FileExplorer.tsx` would be a spelling the Server Component cannot import.
+a spelling kept in `FileExplorer.tsx` would be a spelling the Server Component cannot import. Since
+2026-09-17 the results sheet's media link lives there too — `hrefForMediaView()`, a second
+`hrefFor*` in the same grammar module, building `?view=media` from `filetree`'s own two constants
+rather than re-spelling them. Note the name collision inside this package: `FileExplorer`'s private
+`hrefForMediaView(page)` is the BROWSING grammar's media arm and takes a page; the grammar module's
+`hrefForMediaView()` takes nothing and means page one.
 
-### Semantic search over the album
+### Semantic search over the collection
 
 The requirement is one sentence — *"in image collection, above 'Album' text. put a search field,
 plus a button to upload image"* — and the placement is the load-bearing half of it. The row is the
@@ -195,13 +209,28 @@ Three properties are worth more than the markup:
    `chatPhotoUpload.ts`/`thumbnail.ts`'s standing ruling — a constant is shared when it is *agreed
    on*, and the data URI crosses the boundary as opaque bytes nothing re-derives. The cap exists
    only so a pathological source gets a sentence instead of Next's 1 MB Server Action body error.
-2. **The search is album-wide, and `?folder=` is deliberately not sent.** The complaint behind the
-   feature is not knowing *which* folder; scoping the answer to the folder being browsed would
-   answer a question nobody asked. The breadcrumb still says where browsing would resume.
+2. **The search is collection-wide, and `?folder=` is deliberately not sent.** The complaint behind
+   the feature is not knowing *which* folder; scoping the answer to the folder being browsed would
+   answer a question nobody asked. Since 2026-09-17 it is not a question about one TABLE either:
+   `searchNinaAvatarsAction` ranks `nina_avatars` and `nina_message_images` together and returns one
+   deduplicated list. That widening reached this package as **nothing in `PhotoSearchBar`** — it
+   holds the draft, counts what came back and forwards the array without reading a field of a hit —
+   and as exactly two branches in `SearchResultsGrid` (the tile's "where", the header link). The
+   breadcrumb still says where browsing would resume.
 3. **Neither the caption nor the score is rendered.** The vision model's prose about a photograph is
    Nina's (invariant 5, the same rule `explorer/model.ts` states for the browsing grid) and that
    covers the caption derived from the query image. A raw cosine number is the other half of the
    same mistake: the ranking *is* the answer, and a number beside it is one nobody can act on.
+
+**The row is still mounted on the album arm only, and as of 2026-09-17 that is a trim rather than a
+rule.** `FileExplorer`'s `{!isMediaView && (` gate and its JSX comment both predate the merge and
+say the media table has no description column — false on both clauses now (it has had `description`
+all along and an embedding since this set's phase 1). The gate survives because
+`tests/admin.photoSearch.test.ts` pins that literal and the suite belongs to another phase; the
+capability is not lost, only the convenience of starting a search while standing in Media, because
+the merged search runs from the album arm — the view a bare `/admin/nina` opens — and answers for
+both collections. Mounting it unconditionally means dropping `activeSearch = isMediaView ? null :
+search` and editing that test in the same commit.
 
 A landed search clears `selectedId` in the event handler — the open rail is describing a row that is
 about to leave the screen — which also leaves `PhotoMoveBar` in its nothing-selected state with no
@@ -214,7 +243,22 @@ one, and what a click does.
 A ranked sheet's failure mode is a hit the operator cannot explain, and the fix is always the same:
 read the description the ranking was computed from. But the sheet ranks across EVERY folder while
 the explorer holds one folder and one page, so the row a hit names is usually not in the array the
-client can select from. That gap is the whole reason this path exists, and it dictates the shape:
+client can select from. That gap is the whole reason this path exists, and it dictates the shape.
+
+**Since 2026-09-17 the control has two destinations, and they are deliberately not twins.** The
+branch is `hits[viewerIndex].origin` — the overlay's own index, which is already the source of truth
+for the picture on screen, so it is the source of truth for the link beside it. An ALBUM hit keeps
+everything below. A MEDIA hit gets `hrefForMediaView()`: the COLLECTION, page one, nothing
+pre-selected. Resolving a `nina_message_images` id into a page of `listNinaMediaPhotos` needs a
+`locateNinaMediaPhoto` that does not exist, and minting one is a query-layer change — so the trim is
+a slightly less precise destination for half the result set, taken over the alternative of an
+overlay with no way out of it for that half. The accessible name moves with it ("Open Media, where
+this photo lives" rather than "Open this photo's description"), because a control whose name
+overstates where it goes is worse than one that says plainly what it opens. The precise twin, if it
+is ever wanted, is the album's shape exactly: a `NINA_MEDIA_PHOTO_PARAM` beside `NINA_AVATAR_PARAM`,
+the locate call beside `locateNinaAvatar` in the page, and `deepLinkId` reused on the media arm.
+
+The album path, unchanged:
 
 1. **The link carries the id and nothing else.** `hrefForAvatar(id)` deliberately appends no
    `folder`/`page`. Both are DERIVED server-side; a pair travelling beside the id would be two
@@ -234,6 +278,10 @@ client can select from. That gap is the whole reason this path exists, and it di
    navigation or remounted it; and spend the parameter via `history.replaceState` to the canonical
    `hrefForFolder(...)`, so a reload, a copied link and the back button all describe where the
    operator actually is.
+
+The overlay closes on the way out of either branch, for immediate feedback rather than as the
+guarantee — on the album branch the landing clears the search and unmounts the sheet and the overlay
+with it; on the media branch the whole screen navigates.
 
 The effect is idempotent through a `spentDeepLink` ref, and that is load-bearing rather than tidy:
 `history.replaceState` re-runs parameter watchers synchronously, so the effect can be re-entered for
@@ -358,6 +406,20 @@ not a third save implementation), Remove last. There is **no optimistic copy of 
 every action calls `revalidatePath('/admin/nina')` and the page is `force-dynamic`. The describe
 verb lives in the `PhotoDescription` section below the row, next to the prose it rewrites.
 
+**A POINTER album row says what it is, in one sentence, and nothing more.** An album entry minted by
+"Set as her profile picture" over a Media photograph is a LINK
+(`nina_avatars.source_image_id` non-null, surfaced as the boolean `photo.isPointer`): the bytes,
+the description and both keyword lines live on the `nina_message_images` row it names, and the page
+hands them here already redirected, so the three boxes show that row's values and saving any of them
+writes to that row. That is the point — *"editing image description, search keyword, negative
+keyword in one place will automatically synchronize it with other location"* is true by
+construction, not by a sync mechanism — which is exactly why it is worth a sentence instead of being
+discovered. It is informational: nothing is disabled, no confirmation is added, and framing, make
+current, share, download and remove behave for a pointer exactly as for any album row. The promotion
+changed where the bytes and the prose live, not what an album row can do. The 18 pre-existing rows
+whose `source_key` matches `chat-photo:%` are NOT pointers — they own their bytes and their prose,
+render `isPointer: false` and show no note (measured 2026-09-17).
+
 **`UploadQueue`** — "Upload only the new files" has a failure mode the requirement does not
 mention: the operator's second drop does *nothing*, which is indistinguishable from a broken
 page. So `report.already` is on screen in words and numerals. `REFUSAL_TEXT` is an exhaustive
@@ -383,9 +445,13 @@ lands on the folder's ALBUM view, the only place its rows can be drawn.
 component rather than a branch inside the album pane:
 
 - **Framing is adoption, and the draft has nowhere to persist.** `nina_message_images` has no
-  crop columns, so `CropStudio` + the two circles render a DRAFT that starts at identity and
+  crop columns (this set's phase 1 gave that table keyword and embedding columns, not crop ones),
+  so `CropStudio` + the two circles render a DRAFT that starts at identity and
   resets with the selection; its ONE consumer is `setChatPhotoAsAvatarAction`, which receives
-  `scale`/`x`/`y` at click time and copies the bytes into a fresh `avatar-` object. The `worn`
+  `scale`/`x`/`y` at click time. Since 2026-09-17 that action mints a POINTER album row instead of
+  `put()`ing a second Blob object — same bytes, one object, the album row storing the crop and this
+  row storing the photograph. The pane is unchanged by that: it hands over the same three numbers,
+  and the album row is still the only side that can keep them. The `worn`
   latch disables the button once the action answered `ok`.
 - **The prompt affordance exists only while the sidecar does.** The old rail's brush always
   rendered and dimmed on `prompt == null` — the defect the owner named. Here the toggle is
@@ -414,6 +480,20 @@ page, and the host arm picks the actions. It **imports no server action**: `onSa
 (`editNinaAvatarDescriptionAction` / `describeNinaAvatarAction`) or `MediaPane`
 (`editChatPhotoDescriptionAction` / `describeChatPhotoAction`), so a rename in either action
 family fails at the call site in that arm instead of silently inside a component that guessed.
+
+The same panel holds the two **keyword boxes** — the operator's hand-written search phrases and his
+exclusion phrases — on the same closure rule: `searchKeywords` + `onSaveKeywords`, and
+`negativeSearchKeywords` + `onSaveNegativeKeywords`, each pair handed in together. As of 2026-09-17
+BOTH arms pass both pairs, each naming its own table's action
+(`editNinaAvatarSearchKeywordsAction` / `editNinaAvatarNegativeSearchKeywordsAction` on the album
+arm, `editNinaMessageImageSearchKeywordsAction` /
+`editNinaMessageImageNegativeSearchKeywordsAction` on the media arm) — so the closures, not the
+props, are now what distinguishes the two mounts. **Each pair stays optional and its block stays
+conditional even though nothing exercises the absence today**: the contract is *a box that shows a
+value it cannot save is worse than no box*, and the next table to mount this panel should inherit
+that rule rather than rediscover it. The positive keywords are folded into the vector; the negatives
+are read fresh by the ranker against the typed query and never embedded — both are ADMIN surfaces,
+so invariant 5 is untouched.
 
 - **The prose edit is a SAVE button, not commit-on-blur.** The no-confirmation ruling is about a
   SECOND click; this is the FIRST click of the write, and a stray blur must not store a
@@ -887,6 +967,12 @@ counts stay MEMORY counts: still true of the account, just not of this page.
   `editChatPhotoDescription`, `findChatPhotoDuplicate`, `describeChatPhotoAction` — the vision
   overwrite that refuses a reference row and picks its subject through `describeSubjectForSide`).
   A `'use server'` module, so it crosses as a client reference and its Zod stays server-side.
+- `@/lib/admin/chatPhotoKeywordActions` — the media arm's two keyword writes,
+  `editNinaMessageImageSearchKeywordsAction` and
+  `editNinaMessageImageNegativeSearchKeywordsAction` (2026-09-17), imported only by `MediaPane`
+  and handed to `PhotoDescription` as closures. A `'use server'` module, split out of
+  `chatPhotoActions` the way the album side split prose-and-keywords out of face-and-lifecycle —
+  irrelevant from here: both arrive as client references either way.
 - `@/lib/admin/chatPhotos` — the media collection's pure model: `adminChatPhotoPathname` (the
   only producer of that pathname shape), `ADMIN_CHAT_PHOTO_CONTENT_TYPE`,
   `ADMIN_CHAT_PHOTO_MAX_DESCRIPTION_CHARS`, `ADMIN_CHAT_PHOTOS_PATH` (value `/admin/nina` — the
@@ -896,21 +982,32 @@ counts stay MEMORY counts: still true of the account, just not of this page.
 - `@/lib/admin/ninaAlbumActions` — every album write: `registerNinaAvatarsAction`,
   `listNinaAlbumManifestAction`, `setCurrentNinaAvatarAction`, `saveNinaAvatarCropAction`,
   `deleteNinaAvatarAction`, `describeNinaAvatarAction`, `editNinaAvatarDescriptionAction`,
-  `ensureNinaAvatarDescriptionAction`, the six folder/move ops, and the Media view's
-  `setChatPhotoAsAvatarAction` (id + DRAFT scale/x/y → bytes copied into a fresh `avatar-`
-  object). `AdminActionResult` comes from here too — since R3 it carries an optional
+  `ensureNinaAvatarDescriptionAction`, `editNinaAvatarSearchKeywordsAction` +
+  `editNinaAvatarNegativeSearchKeywordsAction` (the album arm's two keyword writes), the six
+  folder/move ops, and the Media view's
+  `setChatPhotoAsAvatarAction` (id + DRAFT scale/x/y → since 2026-09-17 a POINTER `nina_avatars`
+  row rather than a copied `avatar-` object). `AdminActionResult` comes from here too — since R3 it
+  carries an optional
   `description` so fresh prose reaches the panel in the describe round trip. Since the
-  semantic-search set, also `searchNinaAvatarsAction` + the `AdminSearchHit` row type: the album
+  semantic-search set, also `searchNinaAvatarsAction` + the `AdminSearchHit` row type: the
   search's whole server surface, called as a black box by `PhotoSearchBar`. A hit carries
-  `description` and `score`; this package renders neither.
+  `description` and `score`; this package renders neither. Since 2026-09-17 a hit also carries
+  `origin: 'album' | 'media'`, mirroring `explorer/model.ts`'s own discriminant by name and value —
+  which is why a hit still spreads into a drawable explorer row — and `SearchResultsGrid` is the one
+  file here that reads it.
 - `@/lib/admin/folderOps` — **not imported, deliberately.** It holds every folder refusal and
   the Zod schemas behind them; the components call actions and render sentences. (There is no
   `lib/admin/folderPath.ts`; reconciliation deleted it.)
 - `@/lib/admin/albumDeepLink` — `NINA_AVATAR_PARAM` + `hrefForAvatar(id)`, the `?avatar=` grammar,
-  imported by `SearchResultsGrid` (the writer) while `app/admin/nina/page.tsx` imports the reader
+  and since 2026-09-17 `hrefForMediaView()` (`/admin/nina?view=media`, page one implied by the
+  ABSENCE of `?page=`); both imported by `SearchResultsGrid` (the writer) while
+  `app/admin/nina/page.tsx` imports the reader
   half. A grammar and not a validator: the id's SHAPE is checked by the page against
-  `ADMIN_AVATAR_ID_RE`. Zero-import, so a client file may name it; it is a module of its own rather
-  than a 36th name in `lib/admin/filetree`, whose barrel surface is frozen by a test.
+  `ADMIN_AVATAR_ID_RE`. It is a module of its own rather
+  than a 36th name in `lib/admin/filetree`, whose barrel surface is frozen by a test. No longer
+  zero-import — `hrefForMediaView` takes `NINA_MEDIA_VIEW_PARAM`/`_VALUE` from that same
+  import-pure `filetree` module rather than re-spelling the parameter a client writes and a Server
+  Component reads, which is what the purity rule is FOR.
 - `@/lib/admin/shareToNina` — `ninaPhotoShareUrl(origin, avatarId)`, the only writer of the
   `/nina?photo=avatar:<id>` link. Near-zero-import, so client files may import it.
 - `@/lib/admin/avatars` — `adminAvatarPathname`, `adminAvatarThumbPathname`, `extForContentType`,
@@ -993,7 +1090,13 @@ calling bundle. `lib/share/origin.ts` is the mirror: it opens with `import 'serv
   `sourceKey` and `thumbPathname` never cross the boundary. It also OWNS the `?avatar=` read:
   shape-checked against `ADMIN_AVATAR_ID_RE`, resolved by `locateNinaAvatar`, divided into a page by
   the page's own `NINA_ADMIN_PAGE_SIZE`, and handed back down as `deepLinkId` — so this package
-  never sees an id it cannot select.
+  never sees an id it cannot select. Since 2026-09-17 it also resolves POINTER rows: `isPointer` is
+  `row.sourceImageId !== null`, and ONE `resolveNinaAvatarLinkedText(userId, rows)` call per page
+  (it filters to pointers itself, de-duplicates the image ids and issues a single `inArray` — zero
+  statements on a page with no pointer) redirects `description`, `searchKeywords` and
+  `negativeSearchKeywords` to the linked `nina_message_images` row. All three or none: they are
+  spelled as one binding so a pointer cannot borrow some and keep others. The media mapping now
+  carries that table's own two keyword columns down as well.
 - `app/admin/personality/page.tsx` — `CharacterPanel` (ONLY mount site) **and
   `TextModelSelect`**. Reads the tuning, assembles the prompt preview as a pure string,
   resolves the effective narrative model server-side.
@@ -1035,7 +1138,7 @@ calling bundle. `lib/share/origin.ts` is the mirror: it opens with `import 'serv
 Three layers, none of them an accident:
 
 1. **Colocated component suites** — 32 `*.test.tsx` files beside the components (counted
-   2026-09-15; the count moves with the module map, the rule does not), each opening
+   2026-09-17; the count moves with the module map, the rule does not), each opening
    with `// @vitest-environment happy-dom` (the repo default is `environment: 'node'`;
    `components/**/*.test.tsx` is in vitest's include). Every component in the module map has
    one; they drive real DOM interactions (dispatches, optimistic tables, the upload state
@@ -1060,7 +1163,12 @@ Three layers, none of them an accident:
    toolbar, `role="search"`, the Media arm's `{!isMediaView && (`, the absence of `@vercel/blob`
    from both the bar and the encode module, the four `SEARCH_QUERY_*` numbers, the results sheet's
    mirror of the borderless recipe, the absent pager/`SelectionPane`/`data-photo-id`, the
-   `photos[viewerIndex] != null` guard, and that no `hit.description` reaches the browser. **Its
+   `photos[viewerIndex] != null` guard, and that no `hit.description` reaches the browser. Two of
+   its assertions shaped the 2026-09-17 merge rather than merely recording it: no `/admin/nina?`
+   literal may appear in `SearchResultsGrid.tsx` (which is why the media link is
+   `hrefForMediaView()` in the grammar module and not a template string here) and
+   `hrefForAvatar(photo.id)` must survive verbatim (which is why the branch is a ternary around it
+   rather than a helper taking a renamed argument). **Its
    `readFileSync` is why `searchQueryImage.ts`'s four constants keep their `export`** — the import
    graph shows no reader, so knip flags them; they are annotated at the symbol, never suppressed
    (`EXTRACTION_SHAPE` in `lib/llm/prompts/extraction.ts` is the same documented blind spot).
@@ -1076,15 +1184,20 @@ app/admin/nina/page.tsx  (Server Component, force-dynamic, requireAdmin() on lin
   │  validateFolderPath(?folder) · readExplorerView(?view) · parallel reads
   │  readAvatarId(?avatar) ─► locateNinaAvatar(userId,id) ─► { folder, offset } | null
   │       resolved: OVERRIDES ?folder=/?page= (pageOfOffset) · null: ordinary params, no selection
+  │  album rows ─► resolveNinaAvatarLinkedText(userId, rows)  ← ONE stmt, pointers only
+  │       isPointer = sourceImageId !== null · description/keywords/negatives ← the LINKED row
   │  shareOrigin()   ← server-only, resolved HERE, handed down as a string
   ▼
 FileExplorer ─── PhotoSearchBar ─────► encodeSearchQueryImage(file) → data URI (NO PUT)
-     │             (album arm only)    searchNinaAvatarsAction({ text?, imageDataUri? })
-     │                    │            └─► hits ──► onResults ──► setSearch + setSelectedId(null)
+     │             (mounted on the      searchNinaAvatarsAction({ text?, imageDataUri? })
+     │              album arm only)     └─► hits (album + media, deduped, each with `origin`)
+     │                    │                 ──► onResults ──► setSearch + setSelectedId(null)
      │      ── activeSearch = isMediaView ? null : search ── branches the content pane ──┐
      │      ─── SearchResultsGrid ────► tile click → viewerIndex → <PhotoViewer>   ◄─────┘
      │             (no pager, no pane, overlay scoped to the result set)
-     │             └─ headerAction ──► <Link href={hrefForAvatar(photo.id)}>  (album arm only)
+     │             whereLabel(hit): folder | NINA_FOLDER_ROOT_LABEL | NINA_MEDIA_NODE_LABEL
+     │             └─ headerAction ─┬─ album hit ─► <Link href={hrefForAvatar(photo.id)}>
+     │                              └─ media hit ─► <Link href={hrefForMediaView()}>  (page 1)
      │                                        │
      │      ─── deepLinkId (prop) ◄───────────┘  the page resolved it; effect runs ONCE per id
      │             1. setSelectedId(id)  → SelectionPane + PhotoDescription mount
@@ -1100,8 +1213,11 @@ FileExplorer ─── PhotoSearchBar ─────► encodeSearchQueryImage(
      │                    │           ├─ replace/removeChatPhotoAction ← MediaControls
      │                    │           │      └─ a remove's note ──► onRemoved ──► notice
      │                    │           └─ PhotoDescription ► edit/describeChatPhotoAction
+     │                    │                 └─ keyword boxes ► editNinaMessageImage*KeywordsAction
      │                    └─ AlbumSelectionPane ► setCurrent / saveCrop / delete
+     │                          │  photo.isPointer ► one sentence: "stored in Media" (no gating)
      │                          └─ PhotoDescription ► edit/describeNinaAvatarAction
+     │                                └─ keyword boxes ► editNinaAvatar*KeywordsAction
      │                                 └─► revalidatePath('/admin/nina')
      │                          └── ShareToNinaItem (one click, in this order)
      │                                1. ensureNinaAvatarDescriptionAction ← FIRED, not awaited
@@ -1318,7 +1434,26 @@ be a second definition that one day disagrees (or a canon leak into the bundle).
 - **Do not render `description` on any runner-facing surface** (invariant 5). The admin surface
   is the deliberate exception — `PhotoDescription` renders and edits the prose on BOTH arms.
 - **Do not import a server action into `PhotoDescription.tsx`.** The host arm hands in
-  `onSave`/`onRedescribe` closures so a rename fails at the call site in that arm.
+  `onSave`/`onRedescribe`/`onSaveKeywords`/`onSaveNegativeKeywords` closures so a rename fails at
+  the call site in that arm. A keyword VALUE and its SAVE closure travel together or not at all —
+  a box that shows a value it cannot save is worse than no box.
+- **Do not read `searchKeywords` off the `ExplorerPhoto` union.** Both arms carry the pair now, but
+  they are two columns on two tables with two write paths; narrowing on `origin` first is what makes
+  a reader know which action it may call. Both mounts receive an already-narrowed row.
+- **Do not let `isPointer` gate a verb, disable a control, or add a confirmation.** It buys exactly
+  one sentence in `AlbumSelectionPane`. The promotion changed where the bytes and the prose live, not
+  what an album row can do — and the write-through it announces is the feature, not a hazard.
+- **Do not send the linked `nina_message_images` id to the client.** The boolean is the whole
+  contract: nothing here mints a link from that id or issues a second read, so the id would be a
+  field with no reader — the argument `pathname`, `announcedAt` and `sourceKey` already lose.
+- **Do not label a media hit with `NINA_FOLDER_ROOT_LABEL`.** A media row's `folder` is `''` by
+  construction, so the album fold would print `Album` over a photograph that is not in the album;
+  `whereLabel` is the one place the two grammars meet.
+- **Do not point a media hit's header link at `hrefForAvatar`**, and do not hand-build
+  `/admin/nina?…` in `SearchResultsGrid` — `tests/admin.photoSearch.test.ts` asserts that file
+  contains no such literal and still contains `hrefForAvatar(photo.id)` verbatim. The media arm goes
+  through `hrefForMediaView()`, and its accessible name says the collection rather than promising a
+  description panel it does not open.
 - **Do not re-grow a describe button in an icon row, an eye toggle, or a null-ness `<dl>` row.**
   R3 removed all of them in favour of the one panel; `tests/admin.mediaPane.test.ts` asserts
   `MediaDescription.tsx` stays deleted and no eye icon remains in `MediaPane`.
@@ -1327,9 +1462,12 @@ be a second definition that one day disagrees (or a canon leak into the bundle).
 - **Do not PUT the search query photograph.** `searchQueryImage.ts` ends at a data URI on purpose;
   an `@vercel/blob` import in it or in `PhotoSearchBar.tsx` is one orphan blob per search, and
   `tests/admin.photoSearch.test.ts` fails on the specifier.
-- **Do not move the search row below the toolbar, or give the Media arm a disabled one.** The
-  requirement is *above* the word "Album", which is printed by two siblings below that line; and
-  the media table has no description column, so a field there is a field that cannot answer.
+- **Do not move the search row below the toolbar.** The requirement is *above* the word "Album",
+  which is printed by two siblings below that line. Its absence on the Media arm is now a trim, not
+  a rule — `FileExplorer`'s `!isMediaView` gate and its JSX comment still argue from "that table has
+  no description column", which has been false since this set's phase 1; mounting it on both arms
+  means editing `tests/admin.photoSearch.test.ts:58-60` in the same commit. Whichever way that goes,
+  a **disabled** field is still wrong: absent, not disabled.
 - **Do not scope a search to `?folder=`, and do not put the landed search in the URL.** The feature
   exists because the operator does not know which folder, and its rows do not come from the page's
   read — a URL parameter would re-run two queries to render rows the server never produced.
@@ -1524,3 +1662,21 @@ to her.
   to those packages and are documented there; `PhotoViewer`'s `ViewerPhoto.id` + `headerAction`
   widening is `components/ui`'s. No existing behaviour here changed — browsing, the two grids and
   every folder verb are untouched.
+- **2026-09-17** — `media-album-unified-search` phase 3/4 (`P2-CA-A006`), the UI layer for unified
+  Album+Media search. Three requirement strands land here. **R1**: the one search action now ranks
+  both tables, so `SearchResultsGrid` gained `whereLabel(hit)` (`… in Media` via
+  `NINA_MEDIA_NODE_LABEL`) and a header link that branches on `hits[viewerIndex].origin` —
+  `hrefForAvatar(id)` for an album hit, the new `hrefForMediaView()` for a media one, with the
+  accessible name moving with it. `PhotoSearchBar` changed by comment only: it reads no field of a
+  hit, which is why the widening reached it as nothing. **R2**: `nina_message_images` carries both
+  keyword columns since phase 1, so `MediaPane` mounts `PhotoDescription`'s two keyword boxes with
+  `lib/admin/chatPhotoKeywordActions.ts`'s closures — both arms now pass both pairs, and the
+  optional-props rule is kept for the next table rather than for a live caller. **R3**: an album row
+  minted by adoption is now a POINTER (`isPointer`), its description and keywords resolved to the
+  linked media row by `app/admin/nina/page.tsx`'s one `resolveNinaAvatarLinkedText` call, and
+  `AlbumSelectionPane` says so in one sentence that gates nothing. Deliberately NOT done, both
+  recorded: `FileExplorer` is untouched, so the search row is still absent on the Media arm and its
+  stale "no description column" comment stands (`tests/admin.photoSearch.test.ts` pins the gate and
+  belongs to phase 4); and there is no per-photo deep link into the Media pane, because that needs a
+  `locateNinaMediaPhoto` in the query layer. Phases 1, 2 and 4 (the columns, the query/action layer,
+  the backfill and tests) are `db/`, `lib/`, `app/`'s and are documented there.

@@ -3,6 +3,12 @@
   "coordinator": "orch-media-album-unified-search",
   "coordinator_session_id": "27b10e90-0def-461a-ba7c-f2ea6d467806",
   "created": "2026-09-17T02:59:39+00:00",
+  "landed": {
+    "at": "2026-09-17T05:00:54+00:00",
+    "base": "main",
+    "commit": "9d92759725b06a670a069aee66690aef171bd33b",
+    "machine": "pc"
+  },
   "phases": [
     {
       "card": null,
@@ -93,7 +99,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/media-album-unified-search/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "media-album-unified-search",
-  "updated": "2026-09-17T04:47:57+00:00",
+  "updated": "2026-09-17T05:00:54+00:00",
   "verified_at": "2026-09-17T03:21:03+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/media-album-unified-search"
 }

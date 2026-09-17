@@ -187,6 +187,35 @@ export const ADMIN_CHAT_PHOTO_MAX_URL_CHARS = 2048
  */
 export const ADMIN_CHAT_PHOTO_MAX_DESCRIPTION_CHARS = 2000
 
+/**
+ * **How long a hand-written keyword list may be, on a MEDIA row** —
+ * `media-album-unified-search` R2. 500.
+ *
+ * ── WHY IT IS A SIBLING OF `ADMIN_AVATAR_MAX_SEARCH_KEYWORDS_CHARS` AND NOT AN IMPORT OF IT ──
+ * Because that constant's own docstring rules on exactly this question, in the other direction:
+ * *"NOT `ADMIN_CHAT_PHOTO_MAX_DESCRIPTION_CHARS` … sharing a bound here would assert a kinship
+ * that does not exist"*, and its negative twin adds *"the two columns' bounds happening to agree
+ * today is not a promise that they always will."* Two constants that agree beats one that is
+ * shared across a boundary the file next door already declined to cross.
+ *
+ * The NUMBER is derived the same way its album twin's is, and the derivation holds because the two
+ * tables now feed ONE embedding text: `NINA_EMBEDDING_MAX_CHARS` truncates at 8 000 and the
+ * combined text is `description + "\n\nKeywords: " + searchKeywords`, so
+ * `ADMIN_CHAT_PHOTO_MAX_DESCRIPTION_CHARS` (2 000) + 13 + 500 = 2 513 — two-and-a-half times of
+ * headroom, and the keywords can never be the half that gets cut. 500 is also ~30 comma-separated
+ * phrases, more than a human tags one photograph with.
+ */
+export const ADMIN_CHAT_PHOTO_MAX_SEARCH_KEYWORDS_CHARS = 500
+
+/**
+ * **How long a hand-written EXCLUSION list may be, on a MEDIA row** —
+ * `media-album-unified-search` R2. Same 500, different reason: this column never joins the
+ * embedded text, so `NINA_EMBEDDING_MAX_CHARS` has nothing to say about it. The bound here is the
+ * "a human types this" ceiling its neighbour argues for itself — a separate constant, because the
+ * two agreeing today is not a promise.
+ */
+export const ADMIN_CHAT_PHOTO_MAX_NEGATIVE_SEARCH_KEYWORDS_CHARS = 500
+
 /** `nina/<userId>/selfie-<id>.jpg` — what the client asks for. Blob appends its own suffix. */
 export function adminChatPhotoPathname(userId: string, id: string): string {
   return `${NINA_BLOB_PREFIX}${userId}/${ADMIN_CHAT_PHOTO_PURPOSE}-${id}.${ADMIN_CHAT_PHOTO_EXT}`

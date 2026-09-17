@@ -31,13 +31,24 @@ const { saver } = vi.hoisted(() => ({
 }))
 vi.mock('@/components/ui/useSavePhoto', () => ({ useSavePhoto: () => saver }))
 
-const { describeChatPhotoAction, editChatPhotoDescriptionAction } = vi.hoisted(() => ({
+const {
+  describeChatPhotoAction,
+  editChatPhotoDescriptionAction,
+  editNinaMessageImageNegativeSearchKeywordsAction,
+  editNinaMessageImageSearchKeywordsAction,
+} = vi.hoisted(() => ({
   describeChatPhotoAction: vi.fn(),
   editChatPhotoDescriptionAction: vi.fn(),
+  editNinaMessageImageNegativeSearchKeywordsAction: vi.fn(),
+  editNinaMessageImageSearchKeywordsAction: vi.fn(),
 }))
 vi.mock('@/lib/admin/chatPhotoActions', () => ({
   describeChatPhotoAction,
   editChatPhotoDescriptionAction,
+}))
+vi.mock('@/lib/admin/chatPhotoKeywordActions', () => ({
+  editNinaMessageImageNegativeSearchKeywordsAction,
+  editNinaMessageImageSearchKeywordsAction,
 }))
 
 const { setChatPhotoAsAvatarAction } = vi.hoisted(() => ({ setChatPhotoAsAvatarAction: vi.fn() }))
@@ -65,6 +76,8 @@ function mediaPhoto(overrides?: Partial<MediaExplorerPhoto>): MediaExplorerPhoto
     source: 'generated',
     isCurrent: false,
     description: null,
+    searchKeywords: null,
+    negativeSearchKeywords: null,
     crop: { scale: 1, x: 0, y: 0 },
     createdAt: '2026-09-01T12:30:00.000Z',
     folder: '',
@@ -87,6 +100,8 @@ describe('MediaPane', () => {
   beforeEach(() => {
     describeChatPhotoAction.mockReset().mockResolvedValue({ ok: true })
     editChatPhotoDescriptionAction.mockReset().mockResolvedValue({ ok: true })
+    editNinaMessageImageSearchKeywordsAction.mockReset().mockResolvedValue({ ok: true })
+    editNinaMessageImageNegativeSearchKeywordsAction.mockReset().mockResolvedValue({ ok: true })
     setChatPhotoAsAvatarAction.mockReset().mockResolvedValue({ ok: true })
     saver.busy = false
     saver.notice = null
@@ -196,5 +211,48 @@ describe('MediaPane', () => {
     expect(
       screen.getByText(/reload in a moment if it was just added or replaced/),
     ).toBeInTheDocument()
+  })
+
+  /*
+   * media-album-unified-search R2, 2026-09-17. The Media arm used to mount `PhotoDescription`
+   * WITHOUT the keyword props, so the block did not render at all — absent, not disabled. Its
+   * table has the columns now, so the boxes are here and they save to THIS table's actions. The
+   * album twin of this assertion lives in `SelectionPane.test.tsx`, and neither may drift.
+   */
+  it('wires the keyword box to the media keyword action with the row id', async () => {
+    const user = userEvent.setup()
+    render(
+      <MediaPane {...baseProps()} photo={mediaPhoto({ id: 'kw-me', searchKeywords: 'tete' })} />,
+    )
+
+    const box = screen.getByLabelText('Search keywords')
+    await user.type(box, ', putih')
+    await user.click(screen.getByRole('button', { name: /save the search keywords/i }))
+
+    expect(editNinaMessageImageSearchKeywordsAction).toHaveBeenCalledWith({
+      id: 'kw-me',
+      searchKeywords: 'tete, putih',
+    })
+    // The album action family must never be reachable from this arm.
+    expect(setChatPhotoAsAvatarAction).not.toHaveBeenCalled()
+  })
+
+  it('wires the negative-keyword box to its own media action with the row id', async () => {
+    const user = userEvent.setup()
+    render(
+      <MediaPane
+        {...baseProps()}
+        photo={mediaPhoto({ id: 'neg-me', negativeSearchKeywords: 'tete' })}
+      />,
+    )
+
+    const box = screen.getByLabelText('Negative keywords')
+    await user.type(box, ', payudara')
+    await user.click(screen.getByRole('button', { name: /save the negative keywords/i }))
+
+    expect(editNinaMessageImageNegativeSearchKeywordsAction).toHaveBeenCalledWith({
+      id: 'neg-me',
+      negativeSearchKeywords: 'tete, payudara',
+    })
   })
 })

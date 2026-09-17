@@ -31,11 +31,15 @@ describe('the search row', () => {
   })
 
   it('sends the trimmed words and hands the ranked hits up', async () => {
-    // A whole `AdminSearchHit` — the type is `ExplorerPhotoBase` + `score` (phase 3's barrel), and
-    // a literal that is handed to `onResults` as `readonly AdminSearchHit[]` must satisfy all of it.
+    // A whole `AdminSearchHit` — the type is `ExplorerPhotoBase` + `score` + `origin` + the two
+    // keyword columns (phase 2 widened it, all required), and a literal handed to `onResults` as
+    // `readonly AdminSearchHit[]` must satisfy all of it. `origin` is what the merged set
+    // (media-album-unified-search R1) discriminates on; this component never reads it — nor either
+    // keyword field — which is exactly why one album-origin fixture is enough here.
     const hits = [
       {
         id: 'a1',
+        origin: 'album',
         url: 'https://blob.example/a1.jpg',
         thumbUrl: null,
         folder: '',
@@ -46,6 +50,8 @@ describe('the search row', () => {
         source: 'upload',
         isCurrent: false,
         description: null,
+        searchKeywords: null,
+        negativeSearchKeywords: null,
         crop: { scale: null, x: null, y: null },
         createdAt: '2026-09-01T02:30:00.000Z',
         score: 0.77,

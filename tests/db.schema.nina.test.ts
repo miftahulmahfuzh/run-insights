@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 
 import { getTableConfig } from 'drizzle-orm/pg-core'
 import type { PgTable } from 'drizzle-orm/pg-core'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import * as schema from '@/lib/db/schema'
 import { NINA_IMAGE_FOCUS_KEYS, NINA_IMAGE_TEXT_KEYS } from '@/lib/nina/imageprefs'
@@ -201,17 +201,50 @@ describe('nina_message_images', () => {
     expect(fkFor(schema.ninaMessageImages, 'source_image_id')?.onDelete).toBe('set null')
   })
 
-  it('adds no index for them — they are residual predicates, like kind', () => {
+  it('adds no index for the provenance pair — they are residual predicates, like kind', () => {
     // `generatedChatPhotoScope` argues this in full for `kind` at the same table size. An index
-    // asserted as an ABSENCE so that adding one is a decision somebody makes on purpose. One
-    // such decision since media-dedupe P1: `…_user_content_hash_idx` — the write-time dedup
-    // lookup, partial (content_hash IS NOT NULL) and non-unique; the column's header carries the
-    // reasoning in full.
+    // asserted as an ABSENCE so that adding one is a decision somebody makes on purpose. Two
+    // such decisions so far: `…_user_content_hash_idx` (media-dedupe P1 — the write-time dedup
+    // lookup, partial and non-unique) and `…_description_embedding_hnsw_idx`
+    // (media-album-unified-search P1 — the merged search's media arm). `source_avatar_id` and
+    // `source_image_id` still have none.
     expect(indexNames(schema.ninaMessageImages)).toEqual([
+      'nina_message_images_description_embedding_hnsw_idx',
       'nina_message_images_message_idx',
       'nina_message_images_user_content_hash_idx',
       'nina_message_images_user_created_idx',
     ])
+  })
+
+  it('carries the album\'s three search columns verbatim — R1/R2 parity for every directory', () => {
+    // The user's words: "every single picture in any directory must be able to be image searched
+    // and we must be able to add search keyword and negative search keyword to each of them."
+    // Media was the directory that could not. Same shape as `nina_avatars`', deliberately: same
+    // type, same nullability, same absence of a default, so one embed path serves both tables.
+    for (const column of ['search_keywords', 'negative_search_keywords']) {
+      expect(sqlType(schema.ninaMessageImages, column), column).toBe('text')
+      expect(columns(schema.ninaMessageImages).get(column)?.notNull, column).toBe(false)
+      expect(columns(schema.ninaMessageImages).get(column)?.hasDefault, column).toBe(false)
+    }
+    // ONE vector space for both tables, which is what makes a merged ranking comparable rather
+    // than a fusion of two incomparable scores. If the model is ever swapped, both columns move
+    // together or the search silently randomises — see lib/db/schema/nina/embedding.ts.
+    expect(sqlType(schema.ninaMessageImages, 'description_embedding')).toBe(
+      `vector(${schema.NINA_EMBEDDING_DIMENSIONS})`,
+    )
+    expect(columns(schema.ninaMessageImages).get('description_embedding')?.notNull).toBe(false)
+    expect(columns(schema.ninaMessageImages).get('description_embedding')?.hasDefault).toBe(false)
+  })
+
+  it('its HNSW index names the same cosine operator class the album index does', () => {
+    const hnsw = cfg(schema.ninaMessageImages).indexes.find(
+      (i) => i.config.name === 'nina_message_images_description_embedding_hnsw_idx',
+    )
+    expect(hnsw?.config.method).toBe('hnsw')
+    expect(hnsw?.config.unique).toBe(false)
+    // NOT partial: pgvector's HNSW does not index NULLs anyway, and a partial index is one more
+    // predicate the planner has to prove a query matches. Same call as the album's.
+    expect(hnsw?.config.where).toBeUndefined()
   })
 })
 
@@ -269,7 +302,7 @@ describe('memory: the slots, the ledger, and R26 hand-editing', () => {
 })
 
 describe('nina_avatars', () => {
-  it('carries exactly the twenty-three columns phases 12-15, F34, the duplicate push, the album search and R2 were written against', () => {
+  it('carries exactly the twenty-four columns phases 12-15, F34, the duplicate push, the album search, R2 and the Media pointer were written against', () => {
     expect(names(schema.ninaAvatars)).toEqual(
       [
         'id',
@@ -304,6 +337,11 @@ describe('nina_avatars', () => {
         // 2026-09-15: the vector form of `description`, and the only thing the album's semantic
         // search ranks by. Derived and nullable — `description` stays the source of truth.
         'description_embedding',
+        // media-album-unified-search R3, 2026-09-17: non-null makes this row a POINTER at a Media
+        // original — it renders that row's bytes and borrows its prose, and the four columns just
+        // above stay NULL on it forever. NOT the same thing as
+        // `nina_message_images.source_image_id`, which points the other way between two chat rows.
+        'source_image_id',
         'is_current',
         'announced_at',
         'created_at',
@@ -341,6 +379,10 @@ describe('nina_avatars', () => {
   it('has the folder page index, the dedupe-key unique index and the content-hash index beside the two it already had', () => {
     expect(indexNames(schema.ninaAvatars)).toEqual([
       'nina_avatars_description_embedding_hnsw_idx',
+      // media-album-unified-search P1: the FK's own referencing-side index. Postgres does not
+      // index the referencing side, and ON DELETE RESTRICT makes every nina_message_images delete
+      // ask this question — without it, each one scans the album.
+      'nina_avatars_source_image_id_idx',
       'nina_avatars_user_content_hash_idx',
       'nina_avatars_user_created_idx',
       'nina_avatars_user_current_unq',
@@ -405,6 +447,55 @@ describe('nina_avatars', () => {
     expect(hnsw?.config.method).toBe('hnsw')
     expect(hnsw?.config.unique).toBe(false)
     expect(hnsw?.config.where).toBeUndefined()
+  })
+
+  it('source_image_id points at nina_message_images and RESTRICTS the delete (R3)', () => {
+    /* The plan's Decisions row: SET NULL would produce a pointer row with no bytes — unrecoverable
+     * without re-copying, which defeats R3 — and CASCADE risks silently losing the "current
+     * profile picture" designation. RESTRICT refuses instead, and the refusal is a constraint
+     * rather than a check somebody has to remember to write. This is deliberately the OPPOSITE
+     * call from `nina_message_images.message_id`'s SET NULL: there the dependent row is a whole
+     * photograph that survives losing its bubble; here it owns nothing at all. */
+    const fk = fkFor(schema.ninaAvatars, 'source_image_id')
+    expect(fk).toBeDefined()
+    expect(cfg(fk!.reference().foreignTable).name).toBe('nina_message_images')
+    expect(fk?.onDelete).toBe('restrict')
+    // Nullable with no default: what makes the ADD COLUMN a no-rewrite migration over 70 existing
+    // rows, and what makes "these bytes are this row's own" the default meaning.
+    expect(columns(schema.ninaAvatars).get('source_image_id')?.notNull).toBe(false)
+    expect(columns(schema.ninaAvatars).get('source_image_id')?.hasDefault).toBe(false)
+  })
+
+  it('its index is a plain btree, NOT unique — no invariant forbids two pointers at one original', () => {
+    // Asserted as a non-constraint on `nina_avatars_user_content_hash_idx`'s precedent: a unique
+    // index here would invent a rule nobody stated, and would turn "the same photo, filed in two
+    // folders" into a thrown INSERT.
+    const idx = cfg(schema.ninaAvatars).indexes.find(
+      (i) => i.config.name === 'nina_avatars_source_image_id_idx',
+    )
+    expect(idx).toBeDefined()
+    expect(idx?.config.unique).toBe(false)
+    expect(idx?.config.where).toBeUndefined()
+  })
+
+  it('the avatars ⇄ chat cycle survives being entered from the avatars side', async () => {
+    /* R3's foreign key makes `./avatars` and `./chat` a cycle: chat has imported `ninaAvatars`
+     * since F37, and avatars now imports `ninaMessageImages` back. Both edges are LAZY — the value
+     * is touched only inside a `(): AnyPgColumn => …` callback — which is safe in any evaluation
+     * order. An EAGER edge is not: while `NINA_EMBEDDING_DIMENSIONS` lived in `./avatars`, chat's
+     * `vector(...)` call read it during module evaluation, and entering the graph at `./avatars`
+     * threw `ReferenceError: Cannot access 'NINA_EMBEDDING_DIMENSIONS' before initialization`
+     * (measured, 2026-09-17). It did not fire in production only because `lib/db/schema.ts` lists
+     * `./schema/nina/chat` above `./schema/nina/avatars` — correctness resting on the order of two
+     * `export *` lines. `lib/db/schema/nina/embedding.ts` is what removed that dependence, and
+     * this test is what stops a tidy-up from folding the constant back in.
+     *
+     * `resetModules` is the point: the static import at the top of this file has already loaded
+     * the barrel, which loads chat first. Only a fresh registry can enter at the avatars side. */
+    vi.resetModules()
+    const avatars = await import('@/lib/db/schema/nina/avatars')
+    expect(cfg(avatars.ninaAvatars).name).toBe('nina_avatars')
+    expect(avatars.NINA_EMBEDDING_DIMENSIONS).toBe(1536)
   })
 })
 

@@ -5,8 +5,8 @@ import { useMemo, useState } from 'react'
 
 import { EmptyState } from '@/components/ui'
 import { PhotoViewer, type ViewerPhoto } from '@/components/ui/PhotoViewer'
-import { hrefForAvatar } from '@/lib/admin/albumDeepLink'
-import { NINA_FOLDER_ROOT_LABEL } from '@/lib/admin/filetree'
+import { hrefForAvatar, hrefForMediaView } from '@/lib/admin/albumDeepLink'
+import { NINA_FOLDER_ROOT_LABEL, NINA_MEDIA_NODE_LABEL } from '@/lib/admin/filetree'
 
 import type { AdminSearchHit } from '@/lib/admin/ninaAlbumActions'
 
@@ -34,11 +34,16 @@ import type { AdminSearchHit } from '@/lib/admin/ninaAlbumActions'
  *      operated on, and Clear is one button away. There is also no `data-photo-id` here — that
  *      attribute is `FileExplorer`'s pane-close focus hook (`FileExplorer.tsx:189-198`) and this
  *      grid opens no pane.
- *   3. **The folder is in the accessible name.** *"i am struggling to see the image i want"* is a
- *      complaint about not knowing where a photograph is filed, and the search answers it — so the
- *      tile says `<filename> in 2026/bali`, and the root says `Album` (`NINA_FOLDER_ROOT_LABEL`,
- *      the same string the breadcrumb and the tree print). It stays out of the VISIBLE tile for
- *      `PhotoGrid`'s own reason: a text label under every tile is what broke the sheet.
+ *   3. **Where the photograph is, in the accessible name.** *"i am struggling to see the image i
+ *      want"* is a complaint about not knowing where a photograph is filed, and the search answers
+ *      it — so the tile says `<filename> in 2026/bali`, and the album root says `Album`
+ *      (`NINA_FOLDER_ROOT_LABEL`, the same string the breadcrumb and the tree print). Since
+ *      media-album-unified-search R1 (2026-09-17) the ranked set also holds `nina_message_images`
+ *      rows, which are filed in no folder at all — those say `in Media`
+ *      (`NINA_MEDIA_NODE_LABEL`, the same string the breadcrumb and the tree badge print for that
+ *      collection), because a media hit labelled `in Album` would name a folder it is not in and a
+ *      media hit labelled with an empty folder would name nothing. It stays out of the VISIBLE
+ *      tile for `PhotoGrid`'s own reason: a text label under every tile is what broke the sheet.
  *
  * ── THE OVERLAY IS SCOPED TO THE RESULTS, AND THAT IS WHY IT LIVES IN THIS FILE ─────────────
  * `components/ui/PhotoViewer` is the app's one full-screen overlay and this is its second caller
@@ -91,7 +96,7 @@ export function SearchResultsGrid({ hits }: { hits: readonly AdminSearchHit[] })
     <>
       <ul className="grid grid-cols-[repeat(auto-fill,minmax(88px,1fr))] gap-[3px] overflow-hidden rounded-field">
         {hits.map((hit, index) => {
-          const where = hit.folder === '' ? NINA_FOLDER_ROOT_LABEL : hit.folder
+          const where = whereLabel(hit)
           return (
             <li key={hit.id} className="relative aspect-square bg-ink-3/20">
               <button
@@ -140,8 +145,8 @@ export function SearchResultsGrid({ hits }: { hits: readonly AdminSearchHit[] })
           subject="foto"
           /*
            * R1. The way out of *"saya liat search result irrelevant, saya bisa langsung ke
-           * deskripsinya"*: a link, in the header, to the panel where this photograph's
-           * description is read and edited.
+           * deskripsinya"*: a link, in the header, to where this photograph's description is read
+           * and edited.
            *
            * A `<Link>` and not a `router.push` button, which is the split `FileExplorer` already
            * keeps: a folder OPERATION needs a navigator because it learns where to go only once
@@ -150,32 +155,74 @@ export function SearchResultsGrid({ hits }: { hits: readonly AdminSearchHit[] })
            * a new tab keeps the ranked result set alive in this one while the description gets
            * fixed in the other.
            *
+           * ── TWO DESTINATIONS SINCE THE SET MERGED (2026-09-17) ─────────────────────────────
+           * An ALBUM hit keeps the deep link it has always had: `?avatar=<id>`, which the server
+           * resolves into a folder and a page and hands back as `deepLinkId` so the row arrives
+           * SELECTED, with its pane open.
+           *
+           * A MEDIA hit has no such parameter, and minting one is not this phase's work: resolving
+           * a `nina_message_images` id into a page of `listNinaMediaPhotos` is a database read, and
+           * the only place that can run is the query layer. So the media link is the collection and
+           * not the row — `/admin/nina?view=media`, page one, nothing pre-selected. That is a
+           * deliberate and recorded trim (see this phase's plan, Handoffs H2): a slightly less
+           * precise destination is worth having, and dropping the control for half the result set
+           * — leaving the operator an overlay with no way out of it — is not.
+           *
+           * Which is why the accessible name differs with it. "Open this photo's description"
+           * would be a promise the media branch does not keep, and a control whose name overstates
+           * where it goes is worse than one that says plainly what it opens.
+           *
            * `photo.id == null` is unreachable from this file (every hit has one) and is still
            * checked, because `ViewerPhoto.id` is optional for the review surfaces and a `!` here
-           * would be an assertion about a shared type this file does not own.
+           * would be an assertion about a shared type this file does not own. `hits[viewerIndex]`
+           * and not a lookup by id: `photos` is built 1:1 from `hits`, the overlay's index is this
+           * component's own state, and an index that is the source of truth for the picture on
+           * screen is the source of truth for the link beside it.
            *
            * The overlay is closed on the way out for IMMEDIATE feedback. It is not the guarantee:
-           * the landing clears the search (`FileExplorer`'s deep-link effect), which unmounts this
-           * whole component and the overlay with it. Both, so the lightbox is never left hanging
-           * over the page the link just opened during the navigation.
+           * an album landing clears the search (`FileExplorer`'s deep-link effect), which unmounts
+           * this whole component and the overlay with it. Both, so the lightbox is never left
+           * hanging over the page the link just opened during the navigation.
            */
-          headerAction={(photo) =>
-            photo.id == null ? null : (
+          headerAction={(photo) => {
+            if (photo.id == null) return null
+            const media = hits[viewerIndex]?.origin === 'media'
+            const name = media
+              ? 'Open Media, where this photo lives'
+              : "Open this photo's description"
+            return (
               <Link
-                href={hrefForAvatar(photo.id)}
+                href={media ? hrefForMediaView() : hrefForAvatar(photo.id)}
                 onClick={() => setViewerIndex(null)}
-                aria-label="Open this photo's description"
-                title="Open this photo's description"
+                aria-label={name}
+                title={name}
                 className="grid size-11 place-items-center rounded-pill text-card"
               >
                 <FileTextIcon className="size-5" />
               </Link>
             )
-          }
+          }}
         />
       )}
     </>
   )
+}
+
+/**
+ * Where a hit LIVES, in one phrase, for the tile's accessible name and tooltip.
+ *
+ * Two collections, two grammars, and this function is the only place they meet. An album hit is
+ * filed in a folder, so the folder's path is the answer and the root's own name is
+ * `NINA_FOLDER_ROOT_LABEL` — the identical fold the breadcrumb and the folder tree apply, which is
+ * why "Album" needs no special case anywhere else. A media hit is filed NOWHERE (`folder` is `''`
+ * on that arm by construction — `app/admin/nina/page.tsx`'s media mapping sets it to the album root
+ * only to keep one shape serving both arms, and nothing links into it), so folding its `''` through
+ * the album rule would print `Album` over a photograph that is not in the album. It gets the name
+ * its collection actually has.
+ */
+function whereLabel(hit: AdminSearchHit): string {
+  if (hit.origin === 'media') return NINA_MEDIA_NODE_LABEL
+  return hit.folder === '' ? NINA_FOLDER_ROOT_LABEL : hit.folder
 }
 
 /*

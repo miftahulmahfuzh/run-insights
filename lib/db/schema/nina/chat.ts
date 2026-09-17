@@ -8,11 +8,13 @@ import {
   pgTable,
   text,
   timestamp,
+  vector,
   type AnyPgColumn,
 } from 'drizzle-orm/pg-core'
 import { users } from '../auth'
 import { runs } from '../runs'
 import { ninaAvatars } from './avatars'
+import { NINA_EMBEDDING_DIMENSIONS } from './embedding'
 export type NinaTurnKind = 'chat' | 'proactive' | 'image' | 'vision'
 
 /**
@@ -550,6 +552,36 @@ export type NinaImageKind = 'upload' | 'generated'
  * `description` is `glm-4.6v`'s dense private text (RU-12): what is actually in the picture, in
  * prose, written for `glm-5.3` to react to and never shown to the runner. It is what makes R10
  * work at all, and phase 6 is the only writer.
+ *
+ * ── SEARCH PARITY WITH THE ALBUM (2026-09-17, media-album-unified-search R1/R2) ──────────────
+ * Three columns arrive together and they are `nina_avatars`' three, verbatim in shape, bound and
+ * meaning: `search_keywords`, `negative_search_keywords`, `description_embedding`. The user's
+ * words: *"every single picture in any directory must be able to be image searched and we must be
+ * able to add search keyword and negative search keyword to each of them."* Media was the
+ * directory that could not, for one structural reason — it had the prose (`description` above,
+ * `glm-4.6v`'s, written by the existing caption pass) and nothing else.
+ *
+ * **Mirrored, not re-argued.** `lib/db/schema/nina/avatars.ts`'s header states each column's
+ * semantics once — keywords are an INPUT to the vector and never a second thing to rank by;
+ * negative keywords are read ALONE by the ranker against the typed query and never touch the
+ * vector; the vector is derived, nullable, never authoritative, and NULL is a legal state forever
+ * — and those statements hold here unchanged. What is new is only which rows they cover.
+ *
+ * **One vector space, two tables, and that is what makes the merged search possible at all.** The
+ * width comes from the same `NINA_EMBEDDING_DIMENSIONS` (`./embedding`) and the index names the
+ * same `vector_cosine_ops`, so a single query embedding can be ranked against both tables and the
+ * two cosine similarities are comparable numbers rather than two incomparable rankings — the
+ * argument `description_embedding` already made for captioning an image query into the text space.
+ * Dedup is `isOriginalPhoto()`'s existing convention applied symmetrically (plan index Decisions):
+ * a reference row is not ranked here, and an album row that is a pointer
+ * (`nina_avatars.source_image_id IS NOT NULL`) is not ranked there, so one physical photograph is
+ * one hit.
+ *
+ * **Nullable, no default, no backfill in this phase.** Every one of the existing rows reads NULL
+ * on all three, `ADD COLUMN` rewrites nothing, and an unembedded photo is simply not in the search
+ * index — `nina_avatars`' own migration story, applied to a second table. Filling the existing
+ * rows' embeddings is a separate, deliberately-run entry point (this plan's phase 4), exactly as
+ * the album's was.
  */
 export const ninaMessageImages = pgTable(
   'nina_message_images',
@@ -603,6 +635,62 @@ export const ninaMessageImages = pgTable(
     description: text('description'),
     /** The generation prompt, `kind = 'generated'` only. Phase 12 writes it. */
     prompt: text('prompt'),
+    /**
+     * **Hand-written search phrases, comma-separated** — media-album-unified-search R2,
+     * 2026-09-17. `"tete, putih"`. `nina_avatars.search_keywords`' twin, and that column's header
+     * carries the semantics for both: it is an INPUT to `description_embedding` below (folded into
+     * the embedded text by `buildNinaAvatarEmbedText`, whose name says avatar and whose body is
+     * generic over any description+keywords pair), and nothing SELECTs it to compare against a
+     * query.
+     *
+     * NULL means the operator has not tagged this photograph — the value every existing row
+     * carries, and a legal state forever. A re-describe must NOT touch it: `description` above is
+     * the model's opinion and this is the operator's correction of it, and a model pass that
+     * erased the correction would erase it every time it was needed.
+     *
+     * Bounded at the Zod boundary and not by the column, like `description` — Phase 2 reuses
+     * `ADMIN_AVATAR_MAX_SEARCH_KEYWORDS_CHARS` (500) rather than inventing a media-side number,
+     * because the two boxes are the same box in the same pane.
+     */
+    searchKeywords: text('search_keywords'),
+    /**
+     * **Hand-written EXCLUSION phrases, comma-separated** — media-album-unified-search R2,
+     * 2026-09-17. `nina_avatars.negative_search_keywords`' twin.
+     *
+     * The mirror image of the column above rather than a second flavour of it: that one is folded
+     * into the vector; this one is READ, alone, by the ranker itself (`matchesNegativeKeyword`,
+     * whole-word and case-insensitive against the operator's typed query text, comma-splitting
+     * multiple phrases) and never touches the vector. It names the query word this photograph
+     * should never answer to, which is the only way to pull a row out of a semantic neighbourhood
+     * whose prose the operator agrees is accurate.
+     *
+     * NULL means no exclusion is configured — the value every existing row carries. Bounded by
+     * `ADMIN_AVATAR_MAX_NEGATIVE_SEARCH_KEYWORDS_CHARS` (500) at the boundary, not by the column.
+     */
+    negativeSearchKeywords: text('negative_search_keywords'),
+    /**
+     * **`description`, as a vector** — media-album-unified-search R1, 2026-09-17. The merged
+     * search ranks a Media row against this and nothing else. Derived, read-only-by-search, and
+     * never a second source of truth: the prose in `description` above stays the one thing Nina's
+     * prompt reads.
+     *
+     * NULLABLE, and nullable is the entire migration story — `nina_avatars.description_embedding`'s
+     * argument applied to the 154 rows this table holds today. All of them read NULL, an
+     * `ADD COLUMN` of a nullable vector rewrites nothing, NULL means "not embedded yet" and it is
+     * a legal state forever: a photo whose describe pass failed is simply not in the search index.
+     * A cosine-distance predicate skips NULL rows on its own and the HNSW index below does not
+     * index them, so "unsearchable" costs nothing at read time.
+     *
+     * **Nothing in THIS phase writes it.** The write sites — a media twin of the deferred
+     * describe+embed pass, the keyword actions, the one-time backfill — are the next phases', and
+     * the invariant they must keep is the album's: every path that writes `description` or
+     * `search_keywords` writes this in the SAME UPDATE. A row with a description and a NULL
+     * embedding is invisible to search while looking perfectly healthy in the explorer, which is
+     * the one failure mode here that has no symptom.
+     */
+    descriptionEmbedding: vector('description_embedding', {
+      dimensions: NINA_EMBEDDING_DIMENSIONS,
+    }),
     /**
      * ── PROVENANCE: WHERE THESE BYTES CAME FROM, WHEN THEY CAME FROM SOMEWHERE ────────────────
      *
@@ -730,6 +818,28 @@ export const ninaMessageImages = pgTable(
     index('nina_message_images_user_content_hash_idx')
       .on(t.userId, t.contentHash)
       .where(sql`${t.contentHash} is not null`),
+    /**
+     * **The cosine-similarity index, and it is insurance rather than a requirement** — the same
+     * call `nina_avatars_description_embedding_hnsw_idx` made, at a table of the same order of
+     * size (154 rows today). A few hundred 1536-float dot products is sub-millisecond on a
+     * sequential scan; the index is here because it is free to declare now and costs a migration
+     * later, and because the merged search reads both tables on every query.
+     *
+     * `vector_cosine_ops`, matching the `<=>` operator the search uses, and matching the album
+     * index's operator class exactly — one merged ranking cannot be assembled from two operator
+     * classes. An HNSW index built for one class does not serve another: an `l2` index under a
+     * cosine query silently falls back to a seq scan, which is correct and slow, and nothing
+     * reports it.
+     *
+     * NOT partial. `WHERE description_embedding IS NOT NULL` would be redundant — pgvector's HNSW
+     * does not index NULL rows anyway — and a partial index is one more predicate the planner has
+     * to prove a query matches before it can use it. The build is instant here because every row
+     * is NULL at migration time; this is the cheapest moment this index will ever cost.
+     */
+    index('nina_message_images_description_embedding_hnsw_idx').using(
+      'hnsw',
+      t.descriptionEmbedding.op('vector_cosine_ops'),
+    ),
   ],
 )
 

@@ -41,10 +41,20 @@ import * as barrel from '@/lib/nina/queries'
  * reference row is measured before `ON DELETE SET NULL` reclassifies it — see
  * `lib/nina/provenancePromotion.ts`.
  *
- * nina-about-pagination (2026-09-17): one name swapped for another, net zero — `listNinaAvatarsPage`
- * added (the paginated album read `/nina/about`'s Foto profil tab now uses) and
- * `listNinaMessageImages` removed (its one caller, the same page's old Media read, moved to the
- * already-paginated `listNinaMediaPhotos`).
+ * `media-album-unified-search` phase 2 takes it 96 → 104: the three `searchNinaAvatarsBy*` names
+ * are RENAMED to `searchNinaPhotosBy*` (a merged ranking over both tables, not just the album) and
+ * eight names are added — the MEDIA twin of the description_embedding pipeline
+ * (`countNinaMessageImageDescribeBacklog`, `listNinaMessageImageDescribeBacklog`,
+ * `listNinaMessageImageDescribeTargets`, `setNinaMessageImageDescriptionAndEmbedding`,
+ * `setNinaMessageImageSearchKeywordsAndEmbedding`, `setNinaMessageImageNegativeSearchKeywords`),
+ * the pointer-row deletion pre-check (`countNinaAvatarsLinkedToImage`), and the pointer read
+ * redirection (`resolveNinaAvatarLinkedText`). See the plan set's Phase 2 Interface Contract.
+ *
+ * nina-about-pagination (2026-09-17, landed alongside the above): one name swapped for another
+ * against that same 96-baseline, net zero against it — `listNinaAvatarsPage` added (the paginated
+ * album read `/nina/about`'s Foto profil tab now uses) and `listNinaMessageImages` removed (its
+ * one caller, the same page's old Media read, moved to the already-paginated
+ * `listNinaMediaPhotos`). Combined with the 96 → 104 line above, the count stays 104.
  */
 const BARREL_VALUE_EXPORTS = [
   'adoptNinaMessageImage',
@@ -54,7 +64,13 @@ const BARREL_VALUE_EXPORTS = [
   // See `lib/nina/queries/avatarEmbeddings.ts`'s header for why they are a module of their own.
   'countNinaAvatarDescribeBacklog',
   'countNinaAvatars',
+  // media-album-unified-search phase 2 (R3): the pointer-row deletion pre-check — "is an album
+  // entry still pointing at this photograph?" `lib/nina/queries/images.ts`'s own header argues it.
+  'countNinaAvatarsLinkedToImage',
   'countNinaMediaPhotos',
+  // media-album-unified-search phase 2 (R1/R2): the MEDIA twin of `countNinaAvatarDescribeBacklog`
+  // — `lib/nina/queries/imageEmbeddings.ts`'s header.
+  'countNinaMessageImageDescribeBacklog',
   'countNinaTurnsSince',
   'countUnreadNinaMessages',
   'createNinaSession',
@@ -122,6 +138,10 @@ const BARREL_VALUE_EXPORTS = [
   'listNinaAvatarsPage',
   'listNinaMediaPhotos',
   'listNinaMemoryFacts',
+  // media-album-unified-search phase 2 (R1/R2): the MEDIA twin of `listNinaAvatarDescribeBacklog`
+  // and `listNinaAvatarDescribeTargets` — `lib/nina/queries/imageEmbeddings.ts`'s header.
+  'listNinaMessageImageDescribeBacklog',
+  'listNinaMessageImageDescribeTargets',
   'listNinaMessages',
   'listNinaMessagesAfter',
   'listNinaPhotoReferences',
@@ -148,12 +168,16 @@ const BARREL_VALUE_EXPORTS = [
   'renameNinaAvatarFolder',
   'renameNinaFolderSubtree',
   'renameNinaSession',
+  // media-album-unified-search phase 2 (R3): the pointer read redirection — where a LINKED album
+  // row's prose and keywords actually live. `lib/nina/queries/avatarPointer.ts`'s header.
+  'resolveNinaAvatarLinkedText',
   'resolveNinaPhotoReference',
-  // admin-album-semantic-search phase 3: the album's semantic search (R2/R3/R4), documented
-  // growth under this file's "a name was ADDED" rule.
-  'searchNinaAvatarsByImageCaption',
-  'searchNinaAvatarsByText',
-  'searchNinaAvatarsByTextAndCaption',
+  // media-album-unified-search phase 2 (R1/R2/R3): RENAMED from `searchNinaAvatarsBy*` — the
+  // ranking merges `nina_avatars` and `nina_message_images` into one list now, and a name that
+  // still says "avatars" over a merged ranking would be a half-truth. `lib/nina/queries/avatarsearch.ts`.
+  'searchNinaPhotosByImageCaption',
+  'searchNinaPhotosByText',
+  'searchNinaPhotosByTextAndCaption',
   'setCurrentNinaAvatar',
   'setNinaAvatarDescription',
   // admin-album-semantic-search phase 2: writes prose and vector in one UPDATE.
@@ -168,6 +192,11 @@ const BARREL_VALUE_EXPORTS = [
   // derived column; see `lib/nina/queries/avatarEmbeddings.ts`'s header for why both exist.
   'setNinaAvatarSearchKeywordsAndEmbedding',
   'setNinaMessageImageDescription',
+  // media-album-unified-search phase 2 (R1/R2): the MEDIA twins of the three `setNinaAvatar*`
+  // description/keyword writers above — `lib/nina/queries/imageEmbeddings.ts`'s header.
+  'setNinaMessageImageDescriptionAndEmbedding',
+  'setNinaMessageImageNegativeSearchKeywords',
+  'setNinaMessageImageSearchKeywordsAndEmbedding',
   'setNinaSessionPinned',
   'setNinaSessionTitleIfUntitled',
   'updateNinaAvatarCrop',

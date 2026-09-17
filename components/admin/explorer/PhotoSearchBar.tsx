@@ -27,11 +27,16 @@ import { encodeSearchQueryImage } from './searchQueryImage'
  * to Blob — see that module's header. The preview below is that same data URI, so what the operator
  * sees is exactly the bytes the vision model will see.
  *
- * ── THE SEARCH IS ALBUM-WIDE, AND THAT IS THE POINT ─────────────────────────────────────────
+ * ── THE SEARCH IS WIDE, AND THAT IS THE POINT ───────────────────────────────────────────────
  * `?folder=` is not sent. The complaint is *"i am struggling to see the image i want"*, which is
- * not a complaint about one folder — it is not knowing which folder. The breadcrumb above still
- * says where browsing would resume; the summary line below says how many photographs matched,
- * anywhere.
+ * not a complaint about one folder — it is not knowing which folder. Since
+ * media-album-unified-search R1 (2026-09-17) it is not a complaint about one TABLE either: the one
+ * action behind this row ranks `nina_avatars` and `nina_message_images` together and hands back a
+ * single deduplicated list, so *"every single picture in any directory"* is one query's answer.
+ * This component is unchanged by that — it holds the draft, counts what came back and forwards the
+ * array; it reads no field of a hit, which is why widening the hit reached it as nothing at all.
+ * The breadcrumb above still says where browsing would resume; the summary line below says how many
+ * photographs matched, anywhere.
  *
  * ── WHY NO CAPTION AND NO SCORE ARE SHOWN ───────────────────────────────────────────────────
  * Invariant 5: `glm-4.6v`'s prose about a photograph is Nina's and does not reach a component

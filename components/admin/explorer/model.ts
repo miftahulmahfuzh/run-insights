@@ -69,12 +69,39 @@ interface ExplorerPhotoBase {
 export interface AlbumExplorerPhoto extends ExplorerPhotoBase {
   origin: 'album'
   /**
+   * TRUE when this album row is a POINTER at a Media photograph rather than a file of its own —
+   * `nina_avatars.source_image_id IS NOT NULL` (media-album-unified-search R3, 2026-09-17).
+   *
+   * The pane reads it for exactly ONE purpose: to say, in a sentence, that this photograph's
+   * description and keywords live on the linked `nina_message_images` row, and that editing them
+   * here edits that row. It gates NO verb. Crop, folder move, delete and "make current" all behave
+   * for a pointer exactly as they do for an ordinary album row, because the promotion changed where
+   * the BYTES and the PROSE live — not what an album row can do.
+   *
+   * A `boolean` and not the linked id: no link is minted from that id and no second read is issued,
+   * so carrying a `nina_message_images` primary key across the serialization boundary would be a
+   * field with no reader — the same argument `announcedAt` and `pathname` lose in this file's
+   * header.
+   */
+  isPointer: boolean
+  /**
    * The operator's hand-written search phrases, or `null`. R2, 2026-09-15.
    *
-   * ALBUM-ONLY, and on the arm rather than on `ExplorerPhotoBase` for the reason `prompt` and
-   * `kind` sit on the media arm: `nina_message_images` has no such column, so a media row cannot
-   * carry the value and code that reads it must narrow on `origin` first. That is the compiler
-   * refusing to let the shared rail assume an album row.
+   * On the ARM rather than on `ExplorerPhotoBase`, and the reason changed on 2026-09-17 without the
+   * conclusion changing. It used to be "`nina_message_images` has no such column"; since
+   * media-album-unified-search R2 that table HAS one and `MediaExplorerPhoto` carries the pair too.
+   * What still forces the split is that these are two columns on two tables with two write paths —
+   * an album row's is `editNinaAvatarSearchKeywordsAction`, a media row's is
+   * `editNinaMessageImageSearchKeywordsAction` — so a consumer that read the field off the `ExplorerPhoto`
+   * union without narrowing on `origin` first would be a consumer that does not yet know which
+   * action it is allowed to call. No shared component reads it off the union today: both mounts
+   * (`AlbumSelectionPane` here, `MediaPane` there) receive an already-narrowed row.
+   *
+   * For a POINTER row (`isPointer`) this value is the LINKED MEDIA ROW's. The read layer redirects
+   * it (plan invariant 3: a pointer never independently stores one), so the box shows what the media
+   * photograph stores and the save writes back to that same row — which is what makes *"editing in
+   * one place will automatically synchronize it with other location"* true by construction rather
+   * than by a sync mechanism.
    *
    * Unlike `description` this IS rendered — the rail's keyword box shows and edits it. Invariant 5
    * is untouched: it is an ADMIN surface, nothing runner-facing reads it, and it never reaches a
@@ -84,10 +111,10 @@ export interface AlbumExplorerPhoto extends ExplorerPhotoBase {
   /**
    * The operator's hand-written EXCLUSION phrases, or `null`. R2 follow-up, 2026-09-15.
    *
-   * ALBUM-ONLY for the same reason `searchKeywords` above is: `nina_message_images` has no such
-   * column. Unlike `searchKeywords` this value is never folded into the vector — it is read only
-   * by the ranker, against the operator's typed query — but it IS rendered and edited here for the
-   * identical reason: the rail is where the operator looks at the photo while deciding what it
+   * Same per-arm placement, for `searchKeywords`' revised reason above, and the same pointer
+   * redirection. Unlike `searchKeywords` this value is never folded into the vector — it is read
+   * only by the ranker, against the operator's typed query — but it IS rendered and edited here for
+   * the identical reason: the rail is where the operator looks at the photo while deciding what it
    * should never answer to.
    */
   negativeSearchKeywords: string | null
@@ -110,13 +137,38 @@ export interface MediaExplorerPhoto extends ExplorerPhotoBase {
    */
   thumbUrl: null
   /**
-   * Always `false`. Adoption (`setChatPhotoAsAvatarAction`) COPIES the bytes into `nina_avatars`,
-   * and it is the copy that carries `is_current` — a message image is never itself her face.
+   * Always `false`. Adoption (`setChatPhotoAsAvatarAction`) mints an `nina_avatars` row, and it is
+   * THAT row which carries `is_current` — a message image is never itself her face.
+   *
+   * Since media-album-unified-search R3 (2026-09-17) the minted row is a POINTER at this one rather
+   * than a byte copy, which changes nothing about this field: the pointer is still the album row,
+   * `is_current` is still that row's column, and this row still answers `false`.
    */
   isCurrent: false
   /** Identity (all three null): `resolveCrop` folds it to centred `object-cover`. Framing begins
    * only when an adoption mints an avatar row that can store one. */
   crop: NinaCropInput
+  /**
+   * The operator's hand-written search phrases for THIS photograph, or `null`.
+   * media-album-unified-search R2, 2026-09-17 — `nina_message_images.search_keywords`, the column
+   * Phase 1 added so that *"every single picture in any directory"* can carry them.
+   *
+   * On the arm and not on `ExplorerPhotoBase` for the reason `AlbumExplorerPhoto.searchKeywords`
+   * spells out: two tables, two write paths. This one's is
+   * `editNinaMessageImageSearchKeywordsAction` (`lib/admin/chatPhotoKeywordActions.ts`).
+   *
+   * Rendered and edited by `MediaPane`'s `PhotoDescription` mount, which is the whole of R2's UI
+   * half. When an album pointer names this row, this is the single stored value BOTH panes show.
+   */
+  searchKeywords: string | null
+  /**
+   * The operator's hand-written EXCLUSION phrases for this photograph, or `null`. Same round, same
+   * column family (`nina_message_images.negative_search_keywords`), same per-arm reasoning.
+   *
+   * Never folded into the vector — the ranker reads it fresh against the typed query, exactly as it
+   * does for an album row.
+   */
+  negativeSearchKeywords: string | null
   /** The table's own kind: `'generated'` (her worker) or `'upload'` (his composer). */
   kind: NinaImageKind
   /** `photoSideOf(kind)`, computed on the server exactly as `galleryPhotos` computes it. */

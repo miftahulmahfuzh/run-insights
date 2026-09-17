@@ -773,6 +773,11 @@ export async function insertNinaAvatars(
          * no part in `onConflictDoNothing` below — `(user_id, source_key)` is still the only key
          * this statement conflicts on. */
         contentHash: input.contentHash ?? null,
+        /* media-album-unified-search R3. `?? null` for `contentHash`'s reason. It takes no part in
+         * `onConflictDoNothing` below: `(user_id, source_key)` stays the only key this statement
+         * conflicts on, which is what keeps re-adoption a constraint decision rather than a
+         * second pointer row. */
+        sourceImageId: input.sourceImageId ?? null,
         isCurrent: false,
       })),
     )
