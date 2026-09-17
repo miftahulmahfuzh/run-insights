@@ -1401,9 +1401,9 @@ describe('the threshold chain', () => {
     expect(NINA_IMAGE_MAX_ATTEMPTS).toBeLessThanOrEqual(3)
   })
 
-  it('the cap default is 30 — the 2026-09-10 ask, "right now set it to 30 images"', () => {
+  it('the cap default is 100 — raised 2026-09-17 after a day burned the 30 it replaced', () => {
     expect(Number.isInteger(NINA_IMAGE_DAILY_CAP)).toBe(true)
-    expect(NINA_IMAGE_DAILY_CAP).toBe(30)
+    expect(NINA_IMAGE_DAILY_CAP).toBe(100)
   })
 
   /* The env override is read at CALL time, so a test can stub it the same way production sets

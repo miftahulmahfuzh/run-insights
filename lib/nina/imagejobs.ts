@@ -1047,10 +1047,14 @@ function toJobRow(row: {
  */
 
 /**
- * How many jobs the list renders. The cap (`ninaImageDailyCap()`, env-tunable, 30 at this
- * writing) bounds a day's rows, so sixty is a couple of days of flat-out use — `NINA_ALBUM_MAX`'s
- * reasoning, one table over. A real `LIMIT`, not a `slice`: this
- * table grows forever and a tracking page has no business reading all of it.
+ * How many jobs the list renders. The cap (`ninaImageDailyCap()`, env-tunable, 100 at this
+ * writing) bounds a day's rows, so sixty is LESS than a day of flat-out use since the 2026-09-17
+ * raise — no longer `NINA_ALBUM_MAX`'s "a couple of days" — which means a runner who spends the
+ * whole quota in one day can lose today's own oldest job rows off the bottom of this list, not
+ * just an older day's. Nothing reads past `NINA_JOB_LIST_LIMIT` today, so this is a known gap
+ * rather than a fixed one; raising it alongside the cap is a follow-up, not this comment's job. A
+ * real `LIMIT`, not a `slice`: this table grows forever and a tracking page has no business
+ * reading all of it.
  */
 /* Module-local since the 2026-09-12 YAGNI sweep: it bounds this file's own list read, and nothing
  * else has ever read it. */

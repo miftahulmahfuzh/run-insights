@@ -148,18 +148,19 @@ export type NinaImageJobPhase = 'queued' | 'dispatched' | 'running'
 export const NINA_IMAGE_COST_MICRO_USD = 40_000
 
 /**
- * **The fallback daily cap — 30, the 2026-09-10 ask:** *"buat quota untuk image generation can be
- * easily changed via vercel env. right now set it to 30 images."* The LIVE number is
- * `ninaImageDailyCap()` below, which reads `NINA_IMAGE_DAILY_CAP` from the environment; the Vercel
- * variable moves the cap with no deploy and this constant is what ships when it is unset. At the
- * measured $0.040 the default is $1.20/day and ~$36/month worst case — the owner was shown that
- * arithmetic next to the 6/day it replaced and chose the raise.
+ * **The fallback daily cap — 100, the 2026-09-17 raise.** The 30 it replaced (the 2026-09-10 ask:
+ * *"buat quota untuk image generation can be easily changed via vercel env. right now set it to 30
+ * images."*) got fully spent in one day — 19 `ok` plus 11 `failed` — with several of those spent
+ * re-testing one job's prompt via the redo button. The LIVE number is `ninaImageDailyCap()` below,
+ * which reads `NINA_IMAGE_DAILY_CAP` from the environment; the Vercel variable moves the cap with
+ * no deploy and this constant is what ships when it is unset. At the measured $0.040 the new
+ * default is $4.00/day and ~$120/month worst case.
  *
  * It counts FAILED generations too, because `countNinaTurnsSince` does: a cap that only counts
  * successes is a cap an unlucky afternoon can spend ten times over, and every failed attempt still
  * cost either money or a runner minute.
  */
-export const NINA_IMAGE_DAILY_CAP = 30
+export const NINA_IMAGE_DAILY_CAP = 100
 
 /**
  * The clamp `ninaImageDailyCap` applies to the env override. **1, not 0**: an operator who wants no
