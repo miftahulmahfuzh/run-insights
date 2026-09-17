@@ -785,12 +785,15 @@ export function coerceNinaImageTemplate(value: unknown): string {
  * ==========================================================================*/
 
 /**
- * **The two cameras the dropdown offers, verified live on 2026-09-10**: both ids were listed by
- * OpenRouter's `/api/v1/images/models` the day this shipped. A CLOSED vocabulary, not a free-text
- * id, for the reason `NINA_IMAGE_REFERENCE_SOURCES` is one: an unknown model id must fail toward
- * the measured default at the read, not toward a provider 404 after the money is spent. A new
- * model is a code change — and, per this repo's own discipline, a probe — rather than a form
- * field.
+ * **The cameras the dropdown offers.** The first two ids were verified live on 2026-09-10 against
+ * OpenRouter's `/api/v1/images/models`. The three added 2026-09-17 (Recraft V4.1, Seedream 4.5,
+ * Seedream 5.0 Pro) are listed on OpenRouter's model pages as of that date but have NOT been
+ * probed live by this repo yet — they exist so the admin can generate with them and compare, per
+ * the repo's own discipline a real anchored/unanchored A/B still belongs before trusting their
+ * hint copy the way the Qwen entries' copy is trusted. A CLOSED vocabulary, not a free-text id,
+ * for the reason `NINA_IMAGE_REFERENCE_SOURCES` is one: an unknown model id must fail toward the
+ * measured default at the read, not toward a provider 404 after the money is spent. A new model is
+ * a code change — and, per this repo's own discipline, a probe — rather than a form field.
  *
  * Lives HERE and not in `lib/nina/imagerecipe.ts` because three hosts that may not import that
  * file all need it: the `'use client'` panel renders the dropdown, the Zod boundary checks the
@@ -800,7 +803,13 @@ export function coerceNinaImageTemplate(value: unknown): string {
  * for the payload builder, and `tests/nina.imagerecipe.test.ts` asserts the two agree — the same
  * RULING A6 mitigation shape as `ninaImagePathname` versus `NINA_BLOB_PREFIX`.
  */
-export const NINA_IMAGE_MODEL_IDS = ['qwen/qwen-image-3', 'qwen/qwen-image-3-pro'] as const
+export const NINA_IMAGE_MODEL_IDS = [
+  'qwen/qwen-image-3',
+  'qwen/qwen-image-3-pro',
+  'recraft/recraft-v4.1',
+  'bytedance-seed/seedream-4.5',
+  'bytedance-seed/seedream-5-0-pro',
+] as const
 
 export type NinaImageModelId = (typeof NINA_IMAGE_MODEL_IDS)[number]
 
@@ -833,6 +842,28 @@ export const NINA_IMAGE_MODEL_SPECS: Readonly<Record<NinaImageModelId, NinaImage
         'The heavier brush: 257 s anchored (A/B 2026-09-11) — past every in-platform ceiling, ' +
         'so anchored generations abort on Vercel and only the backstop worker finishes them. ' +
         '61 s unanchored. For days likeness quality beats latency.',
+    }),
+    'recraft/recraft-v4.1': Object.freeze({
+      id: 'recraft/recraft-v4.1',
+      label: 'Recraft V4.1',
+      hint:
+        'Added 2026-09-17 for comparison — not yet measured against this app’s anchored ' +
+        'call ceilings. Listed on OpenRouter at $0.035/image, tuned for high aesthetics.',
+    }),
+    'bytedance-seed/seedream-4.5': Object.freeze({
+      id: 'bytedance-seed/seedream-4.5',
+      label: 'Seedream 4.5',
+      hint:
+        'Added 2026-09-17 for comparison — not yet measured against this app’s anchored ' +
+        'call ceilings.',
+    }),
+    'bytedance-seed/seedream-5-0-pro': Object.freeze({
+      id: 'bytedance-seed/seedream-5-0-pro',
+      label: 'Seedream 5.0 Pro',
+      hint:
+        'Added 2026-09-17 for comparison — not yet measured against this app’s anchored ' +
+        'call ceilings. Listed on OpenRouter at $0.045/image ($0.09 at high resolution), takes ' +
+        'up to 14 reference images.',
     }),
   })
 
