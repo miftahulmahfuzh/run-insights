@@ -95,7 +95,7 @@ export const NINA_BODY_AVATAR = `She is voluptuous — big boobs and very long c
  * a change fights the reference. Three concerns, three paragraph boundaries, one source for each
  * sentence — `NINA_APPEARANCE` is derived from the three halves rather than written a fourth time.
  */
-export const NINA_FACE = `A white, beautiful, caucasian woman in her late twenties. Long dark brown hair pulled into a high ponytail with loose strands at the temples. Dark brown eyes, thick straight eyebrows, no makeup. Her expression is serious, like a magazine cover model's: composed, never smiling or laughing, lips just barely parted. Usually a little sweaty.`
+export const NINA_FACE = `A white, beautiful, tall, caucasian woman in her late twenties. Long dark brown hair pulled into a high ponytail with loose strands at the temples. Dark brown eyes, thick straight eyebrows, no makeup. Her expression is serious, like a magazine cover model's: composed, never smiling or laughing, lips just barely parted. Usually a little sweaty.`
 
 const NINA_DEFAULT_OUTFIT = `Her default outfit is a heather-grey racerback tank, black fitted running shorts, white running shoes, and a black digital watch on her left wrist. Often a white towel over one shoulder and a blue water bottle in one hand. Her home ground is a red 400 m athletics track beside a green field, in flat morning sun.`
 
