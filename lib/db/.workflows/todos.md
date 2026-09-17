@@ -2,7 +2,7 @@
 
 **Package Path**: `lib/db`
 **Package Code**: DB
-**Last Updated**: 2026-09-15
+**Last Updated**: 2026-09-17
 **Total Active Tasks**: 0
 
 ## Quick Stats
@@ -12,7 +12,7 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 9
+- Completed: 10
 - Archived: 7
 
 ---
@@ -38,6 +38,20 @@
 (all seven completed tasks were archived on 2026-09-12 — see Archive; full
 per-task detail — Context, Drift, Decided, Files — survives in git history and
 in `.workflows/package_readme.md`)
+
+- [x] **P2-DB-A002** Phase 1: Schema: media keyword/embedding columns + Album pointer FK
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns `lib/db/schema/nina/avatars.ts`, `lib/db/schema/nina/chat.ts`, new leaf module `lib/db/schema/nina/embedding.ts`, new Drizzle migration under `drizzle/` (+meta), and `tests/db.schema.nina.test.ts`. Exit criteria: `npx drizzle-kit generate` produces one additive-only migration; `npx tsc --noEmit` and vitest pass; migration applies cleanly; `npm run ci:schema-drift-guard` OK.
+  - **Status**: completed
+  - **Plan Set**: `MEDIA_ALBUM_UNIFIED_SEARCH_PLAN.md` (phase 1 of 4)
+  - **Satisfies**: R1, R2, R3 — R1: every picture in every directory is semantically searchable, merged into one deduplicated ranked result set; R2: every picture can carry hand-written search keywords and negative search keywords; R3: promoting a Media photo to Album creates a pointer (no byte copy) instead of a copy, with synchronized description/keywords
+  - **Depends on**: —
+  - **Plan**: `.workflows/plan/P2-DB-A002.md`
+  - **Completed**: 2026-09-17 10:13
+  - **Method**: /do
+  - **Files**: lib/db/schema/nina/embedding.ts, lib/db/schema/nina/avatars.ts, lib/db/schema/nina/chat.ts, drizzle/0026_media_album_unified_search.sql, drizzle/meta/0026_snapshot.json, drizzle/meta/_journal.json, tests/db.schema.nina.test.ts
+  - **Verified**: implementation followed `.workflows/plan/P2-DB-A002.md` exactly — no drift, no decisions forked. `npm run typecheck` clean; `npx vitest run tests/db.schema.nina.test.ts tests/db.schemaDrift.test.ts` 129 passed; full `npm test` showed one red in `components/admin/explorer/MediaPane.test.tsx` (a file this phase never touches) that reproduced only under parallel load — isolated re-run green and `npx vitest run --no-file-parallelism` all 6243 tests / 357 files green, so it is the known pre-existing test-infra flake, not this phase. `npm run db:check` OK; `npm run ci:schema-drift-guard` OK for both halves (static + live diff: 29 tables, 317 columns, 38 FKs, 36 indexes, no drift). Migration `0026` verified additive-only by reading the generated SQL (4 `ADD COLUMN`, 1 `ADD CONSTRAINT`, 2 `CREATE INDEX`, no `DROP`, no `SET NOT NULL`) and is already applied to the one Neon database this repo has — confirmed by the live half of the drift guard, not just `db:migrate`'s exit code. `npm run knip` reports no new unused-file/export findings for this phase: `embedding.ts` is consumed by both `avatars.ts` and `chat.ts`.
 
 - [x] **P2-DB-A001** Phase 1: Schema + embedding client
   - **Difficulty**: NORMAL

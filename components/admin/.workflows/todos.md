@@ -2,16 +2,16 @@
 
 **Package Path**: `components/admin`
 **Package Code**: CA
-**Last Updated**: 2026-09-15
-**Total Active Tasks**: 0
+**Last Updated**: 2026-09-17
+**Total Active Tasks**: 1
 
 ## Quick Stats
 - P0 Critical: 0
 - P1 High: 0
-- P2 Medium: 0
+- P2 Medium: 1
 - P3 Low: 0
 - P4 Backlog: 0
-- Blocked: 0
+- Blocked: 1
 - Completed: 7
 - Archived: 6
 
@@ -24,6 +24,16 @@
 ### [P1] High
 
 ### [P2] Medium
+
+- [ ] **P2-CA-A006** Phase 3: UI: Media keyword box, merged search results, pointer-row messaging
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns `components/admin/explorer/model.ts`, `MediaPane.tsx`, `SelectionPane.tsx`, `PhotoDescription.tsx` (comment only), `PhotoSearchBar.tsx` (comment only), `SearchResultsGrid.tsx`, their four co-located test suites, `lib/admin/albumDeepLink.ts` (`hrefForMediaView`), and `app/admin/nina/page.tsx`. Exit criteria: vitest component suite green plus three pinned suites unbroken; manual dev-server verification of keyword box, merged search, and pointer-row linked text. (Cross-package note: also touches `app/admin/nina/page.tsx` under the `app` package, which is not filed a separate task for this phase.)
+  - **Status**: blocked
+  - **Plan Set**: `MEDIA_ALBUM_UNIFIED_SEARCH_PLAN.md` (phase 3 of 4)
+  - **Satisfies**: R1, R2, R3 — R1: every picture in every directory is semantically searchable, merged into one deduplicated ranked result set; R2: every picture can carry hand-written search keywords and negative search keywords; R3: promoting a Media photo to Album creates a pointer (no byte copy) instead of a copy, with synchronized description/keywords
+  - **Depends on**: P2-DB-A002, P2-NIN-A002
+  - **Plan**: `.workflows/plan/P2-CA-A006.md`
 
 ### [P3] Low
 

@@ -2,13 +2,13 @@
 
 **Package Path**: `lib/nina`
 **Package Code**: NIN
-**Last Updated**: 2026-09-16
-**Total Active Tasks**: 0
+**Last Updated**: 2026-09-17
+**Total Active Tasks**: 1
 
 ## Quick Stats
 - P0 Critical: 0
 - P1 High: 0
-- P2 Medium: 0
+- P2 Medium: 1
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
@@ -22,6 +22,16 @@
 ### [P1] High
 
 ### [P2] Medium
+
+- [ ] **P2-NIN-A002** Phase 2: Query/action layer: merged search, media embedding pipeline, link-not-copy promotion, deletion guard
+  - **Difficulty**: HARD
+  - **Type**: Feature
+  - **Context**: Owns `lib/nina/queries/*` (avatarColumns + imageColumns widenings), media embedding read/write helpers, merged search ranking, `copyChatPhotoIntoAlbum` → `linkChatPhotoIntoAlbum`, new media keyword actions in `lib/admin/chatPhotoKeywordActions.ts`, `deleteNinaAvatarAction`'s pointer-row branch, `removeChatPhotoAction`'s pointer-guard refusal, four album actions' write-redirection, `AdminSearchHit`'s three new fields. Exit criteria: full equivalent unit-test coverage; vitest and tsc green including `tests/admin.chatPhotos.test.ts`; `lib/nina/queries.test.ts` frozen barrel is 104 names; `listNinaMediaPhotos` rows carry both keyword columns. (Cross-package note: this phase also touches `lib/admin/chatPhotoKeywordActions.ts` and related `lib/admin` action files — `lib/nina` is the primary package as it owns the bulk of the query-layer files; `lib/admin` is not filed a separate task for this phase.)
+  - **Status**: open
+  - **Plan Set**: `MEDIA_ALBUM_UNIFIED_SEARCH_PLAN.md` (phase 2 of 4)
+  - **Satisfies**: R1, R2, R3 — R1: every picture in every directory is semantically searchable, merged into one deduplicated ranked result set; R2: every picture can carry hand-written search keywords and negative search keywords; R3: promoting a Media photo to Album creates a pointer (no byte copy) instead of a copy, with synchronized description/keywords
+  - **Depends on**: P2-DB-A002
+  - **Plan**: `.workflows/plan/P2-NIN-A002.md`
 
 ### [P3] Low
 
