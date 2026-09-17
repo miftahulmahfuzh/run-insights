@@ -57,9 +57,11 @@ import type { PhotoReferenceItem } from './photoReferenceModel'
  * and **Clear reference** makes "none" reachable without knowing that re-tapping works.
  *
  * ── TOUCH TARGETS ON A DENSE GRID ───────────────────────────────────────────────────────────────
- * `PHOTO_REFERENCE_MIN_TILE_PX` is the `minmax()` floor, so `auto-fill` drops a column before it
- * lets a tile go under 92 px — 2.1x `docs/design-brief.md`'s 44 pt minimum. At 414 px this
- * resolves to three columns at ~112 px inside a padded panel, or four at ~93 px without it.
+ * `PHOTO_REFERENCE_MIN_TILE_PX` is the `minmax()` floor for the fluid tablet range (`sm` to `lg`):
+ * `auto-fill` drops a column before it lets a tile go under 92 px — 2.1x `docs/design-brief.md`'s
+ * 44 pt minimum. Below `sm` (phones) the grid is a fixed 3 columns, comfortably clear of the floor
+ * even on a narrow screen; at `lg` and up (desktop) it is a fixed 10 columns, which — paired with
+ * `NINA_PHOTO_REF_PAGE_SIZE`'s 50-row page — draws as a clean 5-row sheet with no ragged edge.
  *
  * ── IT READS NOTHING AND WRITES NOTHING ─────────────────────────────────────────────────────────
  * No Server Action is imported, no `fetch()` is called, and there is no database read here or
@@ -175,7 +177,7 @@ export function PhotoReferencePicker({
         />
       ) : (
         <>
-          <ul className="grid grid-cols-[repeat(auto-fill,minmax(92px,1fr))] gap-[3px] overflow-hidden rounded-field">
+          <ul className="grid grid-cols-3 gap-[3px] overflow-hidden rounded-field sm:grid-cols-[repeat(auto-fill,minmax(92px,1fr))] lg:grid-cols-10">
             {view.tiles.map((tile) => (
               <li key={tile.key} className="relative aspect-square bg-ink-3/20">
                 <button
