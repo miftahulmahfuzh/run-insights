@@ -222,8 +222,9 @@ describe('R1 — a merged set holds both collections, and says which is which', 
 
     // And the album branch is unchanged, in the same mounted set: paging back proves it.
     fireEvent.keyDown(document, { key: 'ArrowRight' })
-    expect(
-      screen.getByRole('link', { name: "Open this photo's description" }),
-    ).toHaveAttribute('href', '/admin/nina?avatar=a1')
+    expect(screen.getByRole('link', { name: "Open this photo's description" })).toHaveAttribute(
+      'href',
+      '/admin/nina?avatar=a1',
+    )
   })
 })

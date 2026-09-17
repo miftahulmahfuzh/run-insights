@@ -1,11 +1,7 @@
 import 'server-only'
 
 import type { DateISO } from '@/lib/date/ranges'
-import {
-  NINA_SLOT_REMINDERS,
-  type NinaMemorySource,
-  type NinaRemindersSlot,
-} from '@/lib/db/schema'
+import { NINA_SLOT_REMINDERS, type NinaMemorySource, type NinaRemindersSlot } from '@/lib/db/schema'
 import { newId } from '@/lib/id'
 
 import { getNinaMemorySlot, upsertNinaMemorySlot } from './queries'

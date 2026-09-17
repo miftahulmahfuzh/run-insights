@@ -162,10 +162,7 @@ describe('PhotoReferencePicker', () => {
     const items = Array.from({ length: 50 }, (_, i) => item(`k${i}`))
     picker({ items, total: 120, page: 1, pageCount: 3 })
     expect(screen.getByText(/page 1 of 3/)).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Next' })).toHaveAttribute(
-      'href',
-      '?page=2',
-    )
+    expect(screen.getByRole('link', { name: 'Next' })).toHaveAttribute('href', '?page=2')
     expect(screen.queryByRole('link', { name: 'Previous' })).not.toBeInTheDocument()
   })
 

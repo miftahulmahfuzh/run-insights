@@ -216,7 +216,7 @@ describe('nina_message_images', () => {
     ])
   })
 
-  it('carries the album\'s three search columns verbatim — R1/R2 parity for every directory', () => {
+  it("carries the album's three search columns verbatim — R1/R2 parity for every directory", () => {
     // The user's words: "every single picture in any directory must be able to be image searched
     // and we must be able to add search keyword and negative search keyword to each of them."
     // Media was the directory that could not. Same shape as `nina_avatars`', deliberately: same

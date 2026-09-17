@@ -308,7 +308,9 @@ describe('setChatPhotoAsAvatarAction — the fresh link', () => {
     expect(describeNinaImages).not.toHaveBeenCalled() // prose already exists
     expect(embedNinaText).toHaveBeenCalledTimes(1)
     expect(embedNinaText).toHaveBeenCalledWith(SOURCE_DESCRIPTION, { userId: USER })
-    const update = fake.queries.find((query) => query.sql.startsWith('update "nina_message_images"'))
+    const update = fake.queries.find((query) =>
+      query.sql.startsWith('update "nina_message_images"'),
+    )
     expect(update).toBeDefined()
   })
 
@@ -337,7 +339,9 @@ describe('setChatPhotoAsAvatarAction — the fresh link', () => {
     )
     expect(
       fake.queries.some(
-        (query) => query.sql.startsWith('update "nina_message_images"') && query.sql.includes('"description"'),
+        (query) =>
+          query.sql.startsWith('update "nina_message_images"') &&
+          query.sql.includes('"description"'),
       ),
     ).toBe(true)
   })

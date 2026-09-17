@@ -145,7 +145,13 @@ export async function generateNinaSelfie(request: NinaSelfieRequest): Promise<Ni
     attempts: 0,
     referenceUrl: reference?.blobUrl ?? null,
     model,
-    sidecar: sidecarText({ prompt, seed, purpose: 'selfie', model, referenceUrl: reference?.blobUrl ?? null }),
+    sidecar: sidecarText({
+      prompt,
+      seed,
+      purpose: 'selfie',
+      model,
+      referenceUrl: reference?.blobUrl ?? null,
+    }),
   })
 
   /*

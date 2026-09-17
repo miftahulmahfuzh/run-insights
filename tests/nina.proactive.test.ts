@@ -356,9 +356,9 @@ describe('decideProactive — one message, by priority', () => {
     expect(kindOf(base)).toBe('reminder_due')
     expect(kindOf({ ...base, reminders: [] })).toBe('avatar_changed')
     expect(kindOf({ ...base, reminders: [], unannouncedAvatarId: null })).toBe('pattern_crossed')
-    expect(
-      kindOf({ ...base, reminders: [], unannouncedAvatarId: null, patterns: [] }),
-    ).toBe('missed_usual_day')
+    expect(kindOf({ ...base, reminders: [], unannouncedAvatarId: null, patterns: [] })).toBe(
+      'missed_usual_day',
+    )
     expect(
       kindOf({
         ...base,

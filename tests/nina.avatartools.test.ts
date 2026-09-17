@@ -70,7 +70,10 @@ describe('set_avatar refuses a second dispatch for the same message', () => {
 
   it('skips the guard on a proactive turn, where sourceMessageId is null', async () => {
     const proactiveCtx = { userId: 'u1', sourceMessageId: null } as unknown as NinaToolContext
-    await handleSetAvatar({ scene: 'a beach at night', because: 'a promise came true' }, proactiveCtx)
+    await handleSetAvatar(
+      { scene: 'a beach at night', because: 'a promise came true' },
+      proactiveCtx,
+    )
     expect(hasNinaImageJobForMessage).not.toHaveBeenCalled()
     expect(generateNinaAvatar).toHaveBeenCalled()
   })

@@ -133,9 +133,7 @@ describe('resolveNinaAvatarLinkedText', () => {
   })
 
   it('binds a de-duplicated IN list and keys its Map by the AVATAR id', async () => {
-    fake.enqueue([
-      projectedRow(IMAGE, 'her description', 'tete', null),
-    ])
+    fake.enqueue([projectedRow(IMAGE, 'her description', 'tete', null)])
 
     const linked = await queries.resolveNinaAvatarLinkedText(USER, [
       { id: 'avtAAAAAAAAA', sourceImageId: IMAGE },

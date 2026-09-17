@@ -151,7 +151,8 @@ export const SEND_TOOL: Anthropic.Tool = {
             },
             id: {
               type: 'string',
-              description: 'For "cancel": the id in memory.slots "reminders". To move one, cancel it and create it again.',
+              description:
+                'For "cancel": the id in memory.slots "reminders". To move one, cancel it and create it again.',
             },
             timeOfDay: {
               type: 'string',

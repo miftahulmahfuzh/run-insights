@@ -46,7 +46,10 @@ import {
   type NinaImageRow,
   type NinaMessageRow,
 } from '@/lib/nina/queries'
-import { embedNinaMessageImageDescription, scheduleMediaEmbed } from '@/lib/admin/ninaMediaDeferredDescribe'
+import {
+  embedNinaMessageImageDescription,
+  scheduleMediaEmbed,
+} from '@/lib/admin/ninaMediaDeferredDescribe'
 import { resolveNinaWriteSession } from '@/lib/nina/sessionResolve'
 import { fetchAndSignImage } from '@/lib/nina/perceptualSign'
 import { NinaVisionTokenFloorError, describeNinaImages } from '@/lib/nina/vision'
@@ -891,7 +894,11 @@ export async function describeChatPhotoAction(input: unknown): Promise<ChatPhoto
      * reason the old one was chosen still holds for its remaining caller: a vision pass that
      * produced nothing writes nothing, and NULL is not among this path's outcomes.
      */
-    const embedding = await embedNinaMessageImageDescription(description, row.searchKeywords, userId)
+    const embedding = await embedNinaMessageImageDescription(
+      description,
+      row.searchKeywords,
+      userId,
+    )
     const written = await setNinaMessageImageDescriptionAndEmbedding(
       userId,
       id,

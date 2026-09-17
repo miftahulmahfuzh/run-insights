@@ -328,12 +328,22 @@ describe('patchReminder — the in-place edit', () => {
   it('refuses a malformed time or an empty field, same as create does', () => {
     const original = reminder()
     expect(
-      patchReminder({ slot: slotOf(original), id: original.id, timeOfDay: '8:45 pm', label: 'x', message: 'y' })
-        .refusal,
+      patchReminder({
+        slot: slotOf(original),
+        id: original.id,
+        timeOfDay: '8:45 pm',
+        label: 'x',
+        message: 'y',
+      }).refusal,
     ).toMatch(/valid time/)
     expect(
-      patchReminder({ slot: slotOf(original), id: original.id, timeOfDay: '20:45', label: '', message: 'y' })
-        .refusal,
+      patchReminder({
+        slot: slotOf(original),
+        id: original.id,
+        timeOfDay: '20:45',
+        label: '',
+        message: 'y',
+      }).refusal,
     ).toMatch(/valid time/)
   })
 

@@ -291,7 +291,11 @@ export async function readNinaImageTestAction(
 
   const base = {
     quotaLeft,
-    promptPreview: assembleNinaImageTestPrompt({ tuning, prefs, hasReference: referenceUrl != null }),
+    promptPreview: assembleNinaImageTestPrompt({
+      tuning,
+      prefs,
+      hasReference: referenceUrl != null,
+    }),
     referenceUrl,
   }
 

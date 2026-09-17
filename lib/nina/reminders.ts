@@ -298,7 +298,11 @@ export function patchReminder(input: ReminderPatchInput): ReminderPatchResult {
   const message = input.message.trim()
 
   if (!REMINDER_TIME_RE.test(timeOfDay) || label.length === 0 || message.length === 0) {
-    return { slot: input.slot, changed: false, refusal: 'needs a valid time, a label and a message' }
+    return {
+      slot: input.slot,
+      changed: false,
+      refusal: 'needs a valid time, a label and a message',
+    }
   }
 
   const target = input.slot.reminders.find(

@@ -463,7 +463,12 @@ describe('the tool schemas', () => {
   it('keeps the reminder clock pattern equal to the Zod pattern that validates it', () => {
     const items = (
       SEND_TOOL.input_schema as unknown as {
-        properties: Record<string, { items?: { properties?: Record<string, { pattern?: string; enum?: readonly string[] }> } }>
+        properties: Record<
+          string,
+          {
+            items?: { properties?: Record<string, { pattern?: string; enum?: readonly string[] }> }
+          }
+        >
       }
     ).properties.reminders!.items!
     expect(items.properties!.timeOfDay!.pattern).toBe(NINA_REMINDER_TIME_PATTERN)

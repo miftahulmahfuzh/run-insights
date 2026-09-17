@@ -855,7 +855,9 @@ describe('the prompt', () => {
       ootd: 'a cream turtleneck and wide-leg trousers',
       prefs: prefsWith({ wardrobe: '' }),
     })
-    expect(prompt).toContain('Her outfit for this photograph: a cream turtleneck and wide-leg trousers.')
+    expect(prompt).toContain(
+      'Her outfit for this photograph: a cream turtleneck and wide-leg trousers.',
+    )
     expect(prompt).not.toContain('heather-grey racerback tank')
   })
 

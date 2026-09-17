@@ -66,7 +66,9 @@ function target(
 beforeEach(async () => {
   afterCallbacks.length = 0
   vi.resetModules()
-  describeNinaImages.mockReset().mockResolvedValue({ description: 'fresh prose', completionTokens: 60 })
+  describeNinaImages
+    .mockReset()
+    .mockResolvedValue({ description: 'fresh prose', completionTokens: 60 })
   embedNinaText.mockReset().mockResolvedValue(EMBEDDING)
   fake = installFakeDb()
   deferred = await import('@/lib/admin/ninaMediaDeferredDescribe')
@@ -80,7 +82,11 @@ afterEach(() => {
 
 describe('the vision subject follows the photograph, not a hard-coded side', () => {
   it("a 'generated' target gets the SELF witness", async () => {
-    await deferred.fillNinaMessageImageDescribeTargets(USER, [target({ kind: 'generated' })], 60_000)
+    await deferred.fillNinaMessageImageDescribeTargets(
+      USER,
+      [target({ kind: 'generated' })],
+      60_000,
+    )
 
     expect(describeNinaImages).toHaveBeenCalledTimes(1)
     expect(describeNinaImages.mock.calls[0]?.[1]).toMatchObject({ subject: 'self' })

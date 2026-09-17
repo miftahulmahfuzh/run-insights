@@ -614,7 +614,10 @@ export function ninaPhotoRefPreloadUrls(
     )
   }
   adjacent.push(
-    ...paginateNinaPhotoRefs(deduped, { offset: bounds.offset + bounds.limit, limit: bounds.limit }),
+    ...paginateNinaPhotoRefs(deduped, {
+      offset: bounds.offset + bounds.limit,
+      limit: bounds.limit,
+    }),
   )
   return adjacent.map((row) => row.thumbUrl ?? row.blobUrl)
 }

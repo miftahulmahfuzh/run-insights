@@ -69,7 +69,10 @@ function albumCount(): string {
 }
 
 /** The candidate predicate, in both statements of the album arm. */
-const ALBUM_SCOPED = ['"nina_avatars"."user_id" = $', '"description_embedding" is not null'] as const
+const ALBUM_SCOPED = [
+  '"nina_avatars"."user_id" = $',
+  '"description_embedding" is not null',
+] as const
 
 describe('the album candidate set is ownership-scoped, embedding-only, and pointer-free', () => {
   it('holds for the ranked page and for the coverage count alike', async () => {

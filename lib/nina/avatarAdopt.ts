@@ -98,9 +98,7 @@ function ninaAdoptedAvatarPathname(userId: string, id: string, ext: NinaAvatarEx
  * adoption is a promotion and nothing is copied. See the phase plan's flagged-deviation table.
  */
 export type NinaAdoptTarget =
-  | { kind: 'image'; imageId: string }
-  | { kind: 'avatar'; avatarId: string }
-  | { kind: 'none' }
+  { kind: 'image'; imageId: string } | { kind: 'avatar'; avatarId: string } | { kind: 'none' }
 
 /**
  * What the adoption did, or why it did not. Every `ok: false` is a TRUE answer to a legitimate

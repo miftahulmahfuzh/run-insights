@@ -153,10 +153,7 @@ export async function listNinaMessageImageDescribeBacklog(
       and(
         eq(ninaMessageImages.userId, userId),
         isOriginalPhoto(),
-        or(
-          isNull(ninaMessageImages.description),
-          isNull(ninaMessageImages.descriptionEmbedding),
-        ),
+        or(isNull(ninaMessageImages.description), isNull(ninaMessageImages.descriptionEmbedding)),
       ),
     )
     .orderBy(ninaMessageImages.createdAt)

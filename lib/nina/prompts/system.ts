@@ -756,7 +756,8 @@ Mention it in passing, the way someone does when they change their picture. One 
    * `missed_usual_day`'s lecture and `silence`'s sulk), so the suffix mechanism is sufficient and
    * this stays a plain function of no arguments — `avatar_changed`'s shape.
    */
-  reminder_due: () => `He asked you to check in with him about this every day at this time, and it is that time now. "label" is what he asked for and "message" is the reason HE gave for it. You are opening this conversation.
+  reminder_due:
+    () => `He asked you to check in with him about this every day at this time, and it is that time now. "label" is what he asked for and "message" is the reason HE gave for it. You are opening this conversation.
 
 Say it in your own words, and say it for HIS reason rather than a general one. One bubble. Do not announce that this is a reminder, do not read the time back to him, and do not use the sentence you used yesterday.`,
 }

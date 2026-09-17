@@ -135,7 +135,13 @@ export async function generateNinaAvatar(request: NinaAvatarRequest): Promise<Ni
     attempts: 0,
     referenceUrl: reference?.blobUrl ?? null,
     model,
-    sidecar: sidecarText({ prompt, seed, purpose: 'avatar', model, referenceUrl: reference?.blobUrl ?? null }),
+    sidecar: sidecarText({
+      prompt,
+      seed,
+      purpose: 'avatar',
+      model,
+      referenceUrl: reference?.blobUrl ?? null,
+    }),
   })
 
   /* In-platform now — see `selfiegen.ts`'s note and `imagerun.ts`'s header. Nobody asked in chat,

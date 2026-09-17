@@ -265,7 +265,10 @@ describe('editChatPhotoDescriptionAction now nulls the vector and re-earns it', 
     fake.enqueue([{ id: ID }])
     fake.enqueue([{ id: ID }])
 
-    const result = await chatPhotoActions.editChatPhotoDescriptionAction({ id: ID, description: '' })
+    const result = await chatPhotoActions.editChatPhotoDescriptionAction({
+      id: ID,
+      description: '',
+    })
 
     expect(result.ok).toBe(true)
     expect(fake.last().params).toEqual([null, null, USER, ID])

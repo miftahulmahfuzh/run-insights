@@ -577,7 +577,10 @@ describe('a POINTER album row redirects all four actions to the linked Media row
     fake.enqueue([avatarRow({ sourceImageId: IMAGE_ID })]) // getNinaAvatar
     fake.enqueue([{ id: IMAGE_ID }]) // setNinaMessageImageDescriptionAndEmbedding RETURNING
 
-    const result = await actions.editNinaAvatarDescriptionAction({ id: ID, description: 'new words' })
+    const result = await actions.editNinaAvatarDescriptionAction({
+      id: ID,
+      description: 'new words',
+    })
 
     expect(result.ok).toBe(true)
     const update = fake.last()

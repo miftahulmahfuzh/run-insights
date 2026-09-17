@@ -82,7 +82,10 @@ export async function embedNinaMessageImageDescription(
   try {
     return await embedNinaText(buildNinaAvatarEmbedText(description, searchKeywords), { userId })
   } catch (cause) {
-    console.error('[f36] media embedding failed; the description is kept and stays unsearchable', cause)
+    console.error(
+      '[f36] media embedding failed; the description is kept and stays unsearchable',
+      cause,
+    )
     return null
   }
 }

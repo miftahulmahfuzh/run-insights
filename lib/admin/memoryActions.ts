@@ -212,7 +212,8 @@ export async function editReminderAction(input: {
   await requireAdmin()
 
   const parsed = reminderEditSchema.safeParse(input)
-  if (!parsed.success) return { ok: false, error: 'That is not a reminder edit this page can make.' }
+  if (!parsed.success)
+    return { ok: false, error: 'That is not a reminder edit this page can make.' }
   const { userId, id, timeOfDay, label, message } = parsed.data
 
   try {
