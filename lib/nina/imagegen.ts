@@ -508,6 +508,8 @@ export const NINA_PROMPT_TEMPLATE_DEFAULT = [
   '',
   'EXPRESSION AND ENERGY: {{mood}}',
   '',
+  'CAMERA ANGLE FOR THIS PHOTO: {{angle}}',
+  '',
   'NOTES: {{notes}}',
 ].join('\n')
 
@@ -611,7 +613,19 @@ function renderNinaImagePrompt(template: string, blocks: Record<string, string>)
  *  8. **`EXPRESSION AND ENERGY:`** — after the scene, so it reads as a refinement of THIS
  *     photograph rather than an amendment to who she is. UNCHANGED, and it is exactly where
  *     `tools/gen_badge_art.py` puts `--note`, for the same reason.
- *  9. **`NOTES:`** — LAST. It is the operator's catch-all amendment to this photograph ("nina is
+ *  9. **`CAMERA ANGLE FOR THIS PHOTO:`** (2026-09-17) — after everything else and before `NOTES:`,
+ *     on the same "later instruction wins" logic as items 5-6 above. Block 1's camera paragraph is
+ *     fixed prose describing one specific eye-level, three-metres-back shot, chosen to fix a
+ *     measured selfie-framing failure — it says nothing conditional on `scene`, so a scene that
+ *     asks for a genuinely different camera (an overhead top-down shot, say) leaves two competing
+ *     camera instructions in the same prompt, and the model followed the earlier, longer, more
+ *     specific one instead of `pose`'s brief mention of the real angle (`nina_turns.id
+ *     HIiyRr5_zemf`, 2026-09-17: `pose` said "shot straight from above" and the photo still came
+ *     back eye-level). `{{angle}}` is empty on every ordinary photo — quiet by default, exactly
+ *     like `{{faceLock}}` and `{{presence}}` — and the chat model is told to spend it only when the
+ *     runner explicitly asked for an unusual camera position, stated as its own late, explicit
+ *     correction rather than folded into `scene` or `pose` where block 1 outranks it.
+ *  10. **`NOTES:`** — LAST. It is the operator's catch-all amendment to this photograph ("nina is
  *     full of sweat"), the same category as `--note` and one step later, because last is where an
  *     instruction that must be able to amend everything above it belongs.
  *
@@ -648,6 +662,12 @@ export function buildNinaImagePrompt(input: {
    * three wardrobe sources: `outfit` (an explicit ask) wins over `prefs.wardrobe` (a standing
    * preference) wins over this — it only ever replaces the canon default, never a real preference. */
   ootd?: string | null
+  /** The chat model's own camera-position correction for THIS photograph — selfie only, same
+   * reasoning as `outfit`/`pose`. Blank or absent (every ordinary photo) renders no line at all,
+   * leaving block 1's fixed eye-level camera paragraph as the only camera instruction. Non-blank
+   * renders as `CAMERA ANGLE FOR THIS PHOTO: <value>`, late enough in the template to actually
+   * override block 1 rather than compete with it — see the block-order note above. */
+  angle?: string | null
   /** Her character. Only `steamy` and `flirty` reach a photograph. */
   tuning?: NinaTuning | null
   /** The operator's image preferences. Absent renders `NINA_PROMPT_LENGTH_FALLBACK`'s rung. */
@@ -746,6 +766,7 @@ export function buildNinaImagePrompt(input: {
     time: prefs.time.trim(),
     scene: input.scene.trim(),
     mood: input.mood?.trim() ?? '',
+    angle: input.angle?.trim() ?? '',
     notes: prefs.notes.trim(),
   }
 

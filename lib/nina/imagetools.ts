@@ -57,6 +57,9 @@ const GenerateImageArgsSchema = z.object({
   /** Her own invented outfit when nobody dressed her for this photo. See `buildNinaImagePrompt`'s
    * `ootd` for the precedence it sits at. */
   ootd: z.string().trim().max(200).optional(),
+  /** A per-photograph camera-position override, only when the runner asked for one — see
+   * `buildNinaImagePrompt`'s `angle` and `GENERATE_IMAGE_TOOL`'s own description of when to send it. */
+  angle: z.string().trim().max(300).optional(),
 })
 
 const handleGenerateImage: NinaToolHandler = async (
@@ -111,6 +114,7 @@ const handleGenerateImage: NinaToolHandler = async (
     outfit: parsed.data.outfit ?? null,
     pose: parsed.data.pose ?? null,
     ootd: parsed.data.ootd ?? null,
+    angle: parsed.data.angle ?? null,
     /*
      * The photograph quotes the message that asked for it (phase 7's `reply_to_id`), which is what
      * makes the answer legible when it lands two minutes after four other bubbles. Null on a

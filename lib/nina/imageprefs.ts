@@ -656,6 +656,10 @@ function compareNinaPhotoRefs(a: NinaPhotoRef, b: NinaPhotoRef): number {
  *   {{venue}} {{time}} {{notes}} — the three free-text fields, verbatim
  *   {{scene}}      — the per-photograph scene, the chat model's own argument
  *   {{mood}}       — the per-photograph EXPRESSION AND ENERGY note
+ *   {{angle}}      — the chat model's own per-photograph camera-position override (2026-09-17):
+ *                    quiet on every ordinary photo, and the one line late enough in the template to
+ *                    correct the fixed eye-level camera paragraph when a scene genuinely needs a
+ *                    different one (a top-down shot taken from directly above, say)
  *
  * **A line containing a token that expanded to empty is dropped ENTIRE.** That is what keeps
  * "VENUE: {{venue}}" from dangling when the field is empty, and what lets the FOCUS line vanish
@@ -679,6 +683,7 @@ export const NINA_IMAGE_TEMPLATE_KEYS = [
   'scene',
   'mood',
   'notes',
+  'angle',
 ] as const
 
 export type NinaImageTemplateKey = (typeof NINA_IMAGE_TEMPLATE_KEYS)[number]
@@ -751,6 +756,11 @@ export const NINA_IMAGE_TEMPLATE_SPECS: Readonly<
   notes: Object.freeze({
     key: 'notes',
     description: 'The Notes field, verbatim. Empty field, whole line gone.',
+  }),
+  angle: Object.freeze({
+    key: 'angle',
+    description:
+      "A per-photograph camera-position override the chat model sends only when the scene needs one (e.g. shot from directly overhead) — see `GENERATE_IMAGE_TOOL`'s `angle`. No override this photo, no line.",
   }),
 })
 

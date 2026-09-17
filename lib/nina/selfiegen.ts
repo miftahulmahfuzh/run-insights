@@ -61,6 +61,9 @@ export interface NinaSelfieRequest {
   /** The chat model's invented outfit for a turn nobody dressed her for — see
    * `buildNinaImagePrompt`'s `ootd`. */
   ootd?: string | null
+  /** The chat model's own camera-position override for this photograph, only when the runner asked
+   * for something other than the default eye-level shot — see `buildNinaImagePrompt`'s `angle`. */
+  angle?: string | null
   /**
    * The message this photograph answers, so it quotes it when it lands (phase 7's `reply_to_id`).
    * The chat tool passes the runner's message; the promise sweep passes the message she made the
@@ -92,6 +95,7 @@ export async function generateNinaSelfie(request: NinaSelfieRequest): Promise<Ni
   const outfit = request.outfit?.trim() || null
   const pose = request.pose?.trim() || null
   const ootd = request.ootd?.trim() || null
+  const angle = request.angle?.trim() || null
   const replyToId = request.replyToId ?? null
   const seed = Math.floor(Math.random() * SEED_MAX)
 
@@ -122,6 +126,7 @@ export async function generateNinaSelfie(request: NinaSelfieRequest): Promise<Ni
     outfit,
     pose,
     ootd,
+    angle,
     tuning,
     prefs,
     hasReference: reference != null,

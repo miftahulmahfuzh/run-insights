@@ -372,6 +372,18 @@ export const GENERATE_IMAGE_TOOL: Anthropic.Tool = {
           'skirts past mid-thigh, no pants, no boots past the ankle: her calves must stay bare and ' +
           'fully visible.',
       },
+      angle: {
+        type: 'string',
+        description:
+          'ONLY when he explicitly asks for a camera position that is NOT a normal eye-level shot ' +
+          'from a few steps away — e.g. "from directly above", "bird\'s-eye view", "top-down", "shot ' +
+          'from below". Every photo is otherwise shot eye-level, a few steps back; leave this unset ' +
+          'for that normal case. When he does ask for one, state it as its own short instruction, ' +
+          'e.g. "The camera is directly above her, looking straight down; she is lying on her back ' +
+          'looking straight up into the lens" — and make sure her described pose and gaze in ' +
+          '`scene`/`pose` actually match that camera position (looking up at an overhead camera, not ' +
+          'at a camera in front of her).',
+      },
     },
   },
 }

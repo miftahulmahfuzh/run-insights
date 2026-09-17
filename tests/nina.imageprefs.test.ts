@@ -650,8 +650,9 @@ describe('the editable prompt template (the 2026-09-10 ask, second revision)', (
 
   const VALID_MINIMAL = '{{scene}}'
 
-  it('the vocabulary is the nine value slots, and the required one is scene', () => {
+  it('the vocabulary is the ten value slots, and the required one is scene', () => {
     expect([...NINA_IMAGE_TEMPLATE_KEYS].sort()).toEqual([
+      'angle',
       'faceLock',
       'focus',
       'mood',
