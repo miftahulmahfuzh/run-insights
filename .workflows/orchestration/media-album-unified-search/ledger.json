@@ -1,0 +1,99 @@
+{
+  "branch": "feature/media-album-unified-search",
+  "coordinator": "orch-media-album-unified-search",
+  "coordinator_session_id": "27b10e90-0def-461a-ba7c-f2ea6d467806",
+  "created": "2026-09-17T02:59:39+00:00",
+  "phases": [
+    {
+      "card": null,
+      "commit": "e51555b7571506aaf376ab2cbb33d3ce9be38482",
+      "depends_on": [],
+      "difficulty": "NORMAL",
+      "n": 1,
+      "note": "Migration 0026 applied to production Neon DB; ci:schema-drift-guard OK (29 tables, 317 columns, 38 FKs, 36 indexes); full vitest suite green under --no-file-parallelism",
+      "package": "lib/db/schema/nina`, `drizzle",
+      "plan": ".workflows/plan/media-album-unified-search/phase-1.md",
+      "reported_at": "2026-09-17T03:21:41+00:00",
+      "satisfies": [
+        "R1",
+        "R2",
+        "R3"
+      ],
+      "status": "done",
+      "task_id": null,
+      "title": "Schema: media keyword/embedding columns + Album pointer FK"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [
+        1
+      ],
+      "difficulty": "HARD",
+      "n": 2,
+      "note": null,
+      "package": "lib/nina`, `lib/admin",
+      "plan": ".workflows/plan/media-album-unified-search/phase-2.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1",
+        "R2",
+        "R3"
+      ],
+      "status": "spawned",
+      "task_id": null,
+      "title": "Query/action layer: merged search, media embedding pipeline, link-not-copy promotion, deletion guard"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [
+        1,
+        2
+      ],
+      "difficulty": "NORMAL",
+      "n": 3,
+      "note": null,
+      "package": "components/admin/explorer`, `app/admin/nina",
+      "plan": ".workflows/plan/media-album-unified-search/phase-3.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1",
+        "R2",
+        "R3"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "UI: Media keyword box, merged search results, pointer-row messaging"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [
+        1,
+        2,
+        3
+      ],
+      "difficulty": "NORMAL",
+      "n": 4,
+      "note": null,
+      "package": "app/api/admin/nina`, `scripts`, `tests",
+      "plan": ".workflows/plan/media-album-unified-search/phase-4.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1",
+        "R2",
+        "R3"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Backfill + test coverage"
+    }
+  ],
+  "plan": "/home/miftah/run-insights/.workflows/orchestration/media-album-unified-search/PLAN.md",
+  "repo": "/home/miftah/run-insights",
+  "slug": "media-album-unified-search",
+  "updated": "2026-09-17T03:21:55+00:00",
+  "verified_at": "2026-09-17T03:21:03+00:00",
+  "worktree": "/home/miftah/.worktrees/run-insights/media-album-unified-search"
+}
