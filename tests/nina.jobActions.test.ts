@@ -50,9 +50,10 @@ import { NINA_TUNING_DEFAULTS } from '@/lib/nina/tuning'
  * collected callback IS the generation, not a doorbell, so the suite drives it itself and owns the
  * ordering.
  */
-const { deferred, dbRows } = vi.hoisted(() => ({
+const { deferred, dbRows, updateCalls } = vi.hoisted(() => ({
   deferred: [] as Array<() => unknown>,
   dbRows: { select: [] as unknown[], update: [] as unknown[] },
+  updateCalls: [] as unknown[],
 }))
 
 vi.mock('next/server', () => ({
@@ -82,7 +83,12 @@ vi.mock('@/lib/db', () => {
   return {
     db: {
       select: () => ({ from: () => ({ where: () => thenable(() => dbRows.select) }) }),
-      update: () => ({ set: () => ({ where: () => thenable(() => dbRows.update) }) }),
+      update: () => ({
+        set: (values: unknown) => {
+          updateCalls.push(values)
+          return { where: () => thenable(() => dbRows.update) }
+        },
+      }),
     },
   }
 })
@@ -159,6 +165,7 @@ let imagerun: Run
 
 beforeEach(async () => {
   deferred.length = 0
+  updateCalls.length = 0
   dbRows.select = failedRow()
   dbRows.update = []
 
@@ -199,7 +206,7 @@ describe('redoNinaImageJob authenticates first and refuses before it writes', ()
     const result = await actions.redoNinaImageJob({ jobId: 'not-an-id' })
 
     expect(requireUserId).toHaveBeenCalledOnce()
-    expect(result).toEqual({ ok: false, reason: 'not-found' })
+    expect(result).toEqual({ ok: false, reason: 'not-found', jobId: null })
     /* A malformed id costs no query and opens no row. */
     expect(insertNinaTurn).not.toHaveBeenCalled()
     expect(revalidatePath).not.toHaveBeenCalled()
@@ -213,7 +220,7 @@ describe('redoNinaImageJob authenticates first and refuses before it writes', ()
 
     const result = await actions.redoNinaImageJob({ jobId: FAILED_JOB })
 
-    expect(result).toEqual({ ok: false, reason: 'not-found' })
+    expect(result).toEqual({ ok: false, reason: 'not-found', jobId: null })
     expect(insertNinaTurn).not.toHaveBeenCalled()
   })
 
@@ -227,7 +234,7 @@ describe('redoNinaImageJob authenticates first and refuses before it writes', ()
 
       const result = await actions.redoNinaImageJob({ jobId: FAILED_JOB })
 
-      expect(result).toEqual({ ok: false, reason: 'not-failed' })
+      expect(result).toEqual({ ok: false, reason: 'not-failed', jobId: null })
       expect(insertNinaTurn).not.toHaveBeenCalled()
       expect(deferred).toHaveLength(0)
     }
@@ -248,7 +255,7 @@ describe('redoNinaImageJob authenticates first and refuses before it writes', ()
 
       const result = await actions.redoNinaImageJob({ jobId: FAILED_JOB })
 
-      expect(result).toEqual({ ok: false, reason: 'no-args' })
+      expect(result).toEqual({ ok: false, reason: 'no-args', jobId: null })
       expect(insertNinaTurn).not.toHaveBeenCalled()
     }
   })
@@ -263,7 +270,7 @@ describe('redoNinaImageJob authenticates first and refuses before it writes', ()
 
     const result = await actions.redoNinaImageJob({ jobId: FAILED_JOB })
 
-    expect(result).toEqual({ ok: false, reason: 'capped' })
+    expect(result).toEqual({ ok: false, reason: 'capped', jobId: null })
     expect(insertNinaTurn).not.toHaveBeenCalled()
     expect(deferred).toHaveLength(0)
   })
@@ -279,7 +286,7 @@ describe('a redo opens a NEW row from the old one’s args', () => {
   it('copies every argument verbatim and resets only attempts', async () => {
     const result = await actions.redoNinaImageJob({ jobId: FAILED_JOB })
 
-    expect(result).toEqual({ ok: true, reason: null })
+    expect(result).toEqual({ ok: true, reason: null, jobId: REOPENED_JOB })
     expect(insertNinaTurn).toHaveBeenCalledOnce()
 
     const [userId, insert] = insertNinaTurn.mock.calls[0]! as [string, { args: NinaImageJobArgs }]
@@ -414,7 +421,7 @@ describe('when the chat is gone, the photograph still lands', () => {
     getNinaMessagesByIds.mockResolvedValue([])
 
     const result = await actions.redoNinaImageJob({ jobId: FAILED_JOB })
-    expect(result).toEqual({ ok: true, reason: null })
+    expect(result).toEqual({ ok: true, reason: null, jobId: REOPENED_JOB })
     expect(deferred).toHaveLength(1)
 
     /* The suite drives the deferred work itself, so it owns the ordering — the arrangement
@@ -453,7 +460,7 @@ describe('deleteNinaImageJob authenticates first and refuses without writing', (
 
     const result = await actions.deleteNinaImageJob({ jobId: 'nope' })
 
-    expect(result).toEqual({ ok: false, reason: 'not-found' })
+    expect(result).toEqual({ ok: false, reason: 'not-found', jobId: null })
     /* requireUserId still ran — it is line one, ABOVE the shape check, so a signed-out caller is
      * bounced to sign-in rather than told their id was malformed. */
     expect(requireUserId).toHaveBeenCalledOnce()
@@ -465,7 +472,7 @@ describe('deleteNinaImageJob authenticates first and refuses without writing', (
 
     const result = await actions.deleteNinaImageJob({ jobId: FAILED_JOB })
 
-    expect(result).toEqual({ ok: false, reason: 'not-found' })
+    expect(result).toEqual({ ok: false, reason: 'not-found', jobId: null })
     /* Nothing was written, so nothing is invalidated — `removeNinaChatSession`'s rule. */
     expect(revalidatePath).not.toHaveBeenCalled()
   })
@@ -501,7 +508,7 @@ describe('a successful delete refreshes the list he is standing on, and nothing 
 
     const result = await actions.deleteNinaImageJob({ jobId: FAILED_JOB })
 
-    expect(result).toEqual({ ok: true, reason: null })
+    expect(result).toEqual({ ok: true, reason: null, jobId: null })
     expect(revalidatePath).toHaveBeenCalledWith('/nina/jobs')
   })
 
@@ -514,5 +521,144 @@ describe('a successful delete refreshes the list he is standing on, and nothing 
     await actions.deleteNinaImageJob({ jobId: FAILED_JOB })
 
     expect(revalidatePath).toHaveBeenCalledOnce()
+  })
+})
+
+/* ── the prompt edit ───────────────────────────────────────────────────────────────────────── */
+
+describe('setNinaImageJobPrompt', () => {
+  it('refuses a blank prompt without touching the database', async () => {
+    const imagejobs = await import('@/lib/nina/imagejobs')
+    dbRows.select = [{ status: 'failed' }] // armed to succeed; must not be read
+    dbRows.update = [{ id: FAILED_JOB }]
+
+    const result = await imagejobs.setNinaImageJobPrompt(USER, FAILED_JOB, '   ')
+
+    expect(result).toEqual({ ok: false, reason: 'empty-prompt' })
+  })
+
+  it('reports a foreign or unknown job the same way', async () => {
+    const imagejobs = await import('@/lib/nina/imagejobs')
+    dbRows.select = []
+
+    const result = await imagejobs.setNinaImageJobPrompt(USER, FAILED_JOB, 'a new prompt')
+
+    expect(result).toEqual({ ok: false, reason: 'not-found' })
+  })
+
+  it('refuses a row whose args are not an editable object', async () => {
+    const imagejobs = await import('@/lib/nina/imagejobs')
+    for (const args of [null, 'a string', 42]) {
+      dbRows.select = [{ args }]
+      const result = await imagejobs.setNinaImageJobPrompt(USER, FAILED_JOB, 'a new prompt')
+      expect(result).toEqual({ ok: false, reason: 'no-args' })
+    }
+  })
+
+  it('trims the prompt, keeps every other arg field, and regenerates the sidecar', async () => {
+    const imagejobs = await import('@/lib/nina/imagejobs')
+    const sidecar = [
+      'provider:   openrouter',
+      'model:      qwen/qwen-image-3-pro',
+      'purpose:    selfie',
+      'resolution: 1024x1536 2:3',
+      'seed:       4242',
+      'reference:  none (RU-18)',
+      '',
+      '--- prompt as sent ---',
+      'a photograph of nina, REJECTED WORD, late afternoon light',
+    ].join('\n')
+    dbRows.select = [{ args: { ...ARGS, sidecar } }]
+    dbRows.update = [{ id: FAILED_JOB }]
+
+    const result = await imagejobs.setNinaImageJobPrompt(
+      USER,
+      FAILED_JOB,
+      '  a photograph of nina, late afternoon light  ',
+    )
+
+    expect(result).toEqual({ ok: true })
+    expect(updateCalls).toHaveLength(1)
+    const [{ args: written }] = updateCalls as [{ args: NinaImageJobArgs }]
+    expect(written.prompt).toBe('a photograph of nina, late afternoon light')
+    /* Every other arg field survives untouched. */
+    expect(written.seed).toBe(ARGS.seed)
+    expect(written.purpose).toBe(ARGS.purpose)
+    expect(written.scene).toBe(ARGS.scene)
+    expect(written.mood).toBe(ARGS.mood)
+    expect(written.replyToId).toBe(ARGS.replyToId)
+    expect(written.source).toBe(ARGS.source)
+    expect(written.attempts).toBe(ARGS.attempts)
+    expect(written.sidecar).toBe(
+      [
+        'provider:   openrouter',
+        'model:      qwen/qwen-image-3-pro',
+        'purpose:    selfie',
+        'resolution: 1024x1536 2:3',
+        'seed:       4242',
+        'reference:  none (RU-18)',
+        '',
+        '--- prompt as sent ---',
+        'a photograph of nina, late afternoon light',
+      ].join('\n'),
+    )
+  })
+
+  it('falls back to the bare prompt as the sidecar when the marker is missing', async () => {
+    const imagejobs = await import('@/lib/nina/imagejobs')
+    dbRows.select = [{ args: { ...ARGS, sidecar: 'an old, unstructured sidecar' } }]
+    dbRows.update = [{ id: FAILED_JOB }]
+
+    const result = await imagejobs.setNinaImageJobPrompt(USER, FAILED_JOB, 'new prompt')
+
+    expect(result).toEqual({ ok: true })
+    expect(updateCalls).toHaveLength(1)
+    const [{ args: written }] = updateCalls as [{ args: NinaImageJobArgs }]
+    expect(written.prompt).toBe('new prompt')
+    expect(written.sidecar).toBe('new prompt')
+  })
+
+  it('reports not-found when the row disappears between the read and the write', async () => {
+    const imagejobs = await import('@/lib/nina/imagejobs')
+    dbRows.select = [{ args: { ...ARGS } }]
+    dbRows.update = [] // the UPDATE ... RETURNING came back empty
+
+    const result = await imagejobs.setNinaImageJobPrompt(USER, FAILED_JOB, 'new prompt')
+
+    expect(result).toEqual({ ok: false, reason: 'not-found' })
+  })
+})
+
+describe('updateNinaImageJobPrompt authenticates first and refuses before it writes', () => {
+  it('calls requireUserId above the shape check', async () => {
+    const result = await actions.updateNinaImageJobPrompt({ jobId: 'nope', prompt: 'x' })
+
+    expect(requireUserId).toHaveBeenCalledOnce()
+    expect(result).toEqual({ ok: false, reason: 'not-found' })
+    expect(revalidatePath).not.toHaveBeenCalled()
+  })
+
+  it('forwards a refusal from setNinaImageJobPrompt verbatim', async () => {
+    dbRows.select = []
+
+    const result = await actions.updateNinaImageJobPrompt({ jobId: FAILED_JOB, prompt: 'x' })
+
+    expect(result).toEqual({ ok: false, reason: 'not-found' })
+    expect(revalidatePath).not.toHaveBeenCalled()
+  })
+})
+
+describe('a successful edit revalidates this job’s own detail path', () => {
+  it('revalidates /nina/jobs/<id>, not the list', async () => {
+    dbRows.select = [{ args: { ...ARGS } }]
+    dbRows.update = [{ id: FAILED_JOB }]
+
+    const result = await actions.updateNinaImageJobPrompt({
+      jobId: FAILED_JOB,
+      prompt: 'edited prompt',
+    })
+
+    expect(result).toEqual({ ok: true, reason: null })
+    expect(revalidatePath).toHaveBeenCalledWith(`/nina/jobs/${FAILED_JOB}`)
   })
 })

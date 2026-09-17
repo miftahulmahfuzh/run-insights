@@ -5,9 +5,14 @@ import { revalidatePath } from 'next/cache'
 import { requireUserId } from '@/lib/auth/requireUserId'
 import { isValidId } from '@/lib/id'
 
-import { reopenNinaImageJob, softDeleteNinaImageJob } from './imagejobs'
+import { reopenNinaImageJob, setNinaImageJobPrompt, softDeleteNinaImageJob } from './imagejobs'
 import { fireNinaImageGeneration } from './imagerun'
-import { NINA_JOBS_HREF, type NinaJobRefusal } from './jobview'
+import {
+  NINA_JOBS_HREF,
+  ninaJobHref,
+  type NinaJobRefusal,
+  type NinaPromptEditRefusal,
+} from './jobview'
 
 /**
  * **The `/nina/jobs` row's mutations. Phase 1 puts `redoNinaImageJob` here; phase 2 appends
@@ -71,6 +76,9 @@ export interface NinaJobActionResult {
    * `components/nina/NinaJobActions.tsx` owns the `Record<NinaJobRefusal, string>` that renders it.
    */
   reason: NinaJobRefusal | null
+  /** The new job's id, on a successful `redoNinaImageJob`. `null` on every refusal and on
+   * `deleteNinaImageJob`, which never opens a row. */
+  jobId: string | null
 }
 
 /**
@@ -110,10 +118,10 @@ export async function redoNinaImageJob(input: { jobId: string }): Promise<NinaJo
   /* A segment that cannot be one of our ids is refused without a query, on `/r/[id]`'s precedent —
    * and it is refused as `not-found`, the same answer another runner's real id gets, so nothing
    * here tells a caller which ids exist. */
-  if (!isValidId(input?.jobId)) return { ok: false, reason: 'not-found' }
+  if (!isValidId(input?.jobId)) return { ok: false, reason: 'not-found', jobId: null }
 
   const reopened = await reopenNinaImageJob(userId, input.jobId)
-  if (!reopened.ok) return { ok: false, reason: reopened.reason }
+  if (!reopened.ok) return { ok: false, reason: reopened.reason, jobId: null }
 
   fireNinaImageGeneration({
     userId,
@@ -123,7 +131,7 @@ export async function redoNinaImageJob(input: { jobId: string }): Promise<NinaJo
   })
 
   revalidatePath(NINA_JOBS_HREF)
-  return { ok: true, reason: null }
+  return { ok: true, reason: null, jobId: reopened.jobId }
 }
 
 /**
@@ -170,11 +178,32 @@ export async function deleteNinaImageJob(input: { jobId: string }): Promise<Nina
   const userId = await requireUserId()
   /* Line one is the auth call, ABOVE the shape check — `app/actions/share.ts`'s asserted property,
    * so a signed-out caller is bounced to sign-in rather than told their id was malformed. */
-  if (!isValidId(input?.jobId)) return { ok: false, reason: 'not-found' }
+  if (!isValidId(input?.jobId)) return { ok: false, reason: 'not-found', jobId: null }
 
   const deleted = await softDeleteNinaImageJob(userId, input.jobId)
-  if (!deleted) return { ok: false, reason: 'not-found' }
+  if (!deleted) return { ok: false, reason: 'not-found', jobId: null }
 
   revalidatePath(NINA_JOBS_HREF)
+  return { ok: true, reason: null, jobId: null }
+}
+
+/**
+ * **R1 (edit): rewrite this job's `args.prompt`, so the exact same "Coba lagi" button on this same
+ * screen sends something the provider's content filter did not just reject.**
+ *
+ * Revalidates this job's OWN detail path — `ninaJobHref(jobId)` — never `NINA_JOBS_HREF`: the
+ * list shows no prompt at all, so there is nothing there for this edit to invalidate.
+ */
+export async function updateNinaImageJobPrompt(input: {
+  jobId: string
+  prompt: string
+}): Promise<{ ok: boolean; reason: NinaPromptEditRefusal | null }> {
+  const userId = await requireUserId()
+  if (!isValidId(input?.jobId)) return { ok: false, reason: 'not-found' }
+
+  const outcome = await setNinaImageJobPrompt(userId, input.jobId, input.prompt)
+  if (!outcome.ok) return { ok: false, reason: outcome.reason }
+
+  revalidatePath(ninaJobHref(input.jobId))
   return { ok: true, reason: null }
 }

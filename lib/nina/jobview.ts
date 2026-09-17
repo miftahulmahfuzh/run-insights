@@ -207,6 +207,19 @@ export function jobCanRedo(stage: NinaJobStage): boolean {
 export type NinaJobRefusal = 'not-found' | 'not-failed' | 'no-args' | 'capped'
 
 /**
+ * The edit-prompt control's own, smaller refusal vocabulary — kept separate from
+ * `NinaJobRefusal` so adding it does not force `components/nina/NinaJobActions.tsx`'s
+ * `Record<NinaJobRefusal, string>` to grow a case that button can never produce.
+ *
+ *   · `not-found` — no such job of his (malformed id, foreign id, unknown id, or hidden — one
+ *                   answer, same anti-oracle property as `NinaJobRefusal`'s).
+ *   · `no-args`   — the row exists but its `args` jsonb is null or not an object — nothing to
+ *                   merge the edited prompt into. Three production rows predate the column.
+ *   · `empty-prompt` — the trimmed input was blank.
+ */
+export type NinaPromptEditRefusal = 'not-found' | 'no-args' | 'empty-prompt'
+
+/**
  * `'Nunggu worker'` rather than `'Dijadwalkan'` for `dispatched`, and that one word is the whole of
  * this phase's Branch A adjustment (plan index, Branch A consequences: *"phase 4 renders
  * `NINA_JOB_STAGE_LABEL.dispatched` but must not present it as a live stage"*). "Dijadwalkan"

@@ -19,7 +19,7 @@ import {
   type NinaImagePurpose,
 } from './imagerecipe'
 import { coerceNinaImageModel } from './imageprefs'
-import type { NinaJobRefusal } from './jobview'
+import type { NinaJobRefusal, NinaPromptEditRefusal } from './jobview'
 import { countNinaTurnsSince, insertNinaMessages, insertNinaTurn } from './queries'
 import { resolveNinaSessionForMessage } from './sessionResolve'
 
@@ -283,6 +283,86 @@ export async function reopenNinaImageJob(userId: string, jobId: string): Promise
     purpose: args.purpose === 'avatar' ? 'avatar' : 'selfie',
     replyToId: typeof args.replyToId === 'string' ? args.replyToId : null,
   }
+}
+
+/** `setNinaImageJobPrompt`'s return — `{ ok: true }` carries nothing else to report. Module-local
+ * on `NinaImageReopen`'s precedent just above: the one caller (`updateNinaImageJobPrompt`)
+ * consumes it by inference and has never named it. */
+type NinaPromptEditOutcome = { ok: true } | { ok: false; reason: NinaPromptEditRefusal }
+
+/**
+ * **The "Ubah prompt" edit: rewrite `args.prompt` on a job that already exists, so a retry can
+ * send different words than the ones the provider's content filter just rejected.**
+ *
+ * Editable regardless of `status` — this is an admin-only debugging control, not gated on
+ * `jobCanRedo` the way the retry button itself is (see the design doc). Same owner-scoped WHERE
+ * as `reopenNinaImageJob`'s: `userId`, `id`, `kind = 'image'`, `deletedAt IS NULL`.
+ *
+ * The sidecar is regenerated rather than left stale: `NinaJobDetail` shows
+ * `withCostSourceLine(sidecar, costSource) ?? prompt`, which prefers the sidecar whenever one
+ * exists — so leaving the OLD sidecar in place after an edit would keep showing the rejected text
+ * the runner just tried to fix. `replaceSidecarPrompt` keeps every metadata line
+ * (`sidecarText()`'s provider/model/purpose/resolution/seed/reference — none of which changed)
+ * and swaps only what comes after `--- prompt as sent ---`.
+ */
+export async function setNinaImageJobPrompt(
+  userId: string,
+  jobId: string,
+  prompt: string,
+): Promise<NinaPromptEditOutcome> {
+  const trimmed = prompt.trim()
+  if (trimmed === '') return { ok: false, reason: 'empty-prompt' }
+
+  const [row] = await db
+    .select({ args: ninaTurns.args })
+    .from(ninaTurns)
+    .where(
+      and(
+        eq(ninaTurns.userId, userId),
+        eq(ninaTurns.id, jobId),
+        eq(ninaTurns.kind, 'image'),
+        isNull(ninaTurns.deletedAt),
+      ),
+    )
+
+  if (row == null) return { ok: false, reason: 'not-found' }
+  if (row.args == null || typeof row.args !== 'object') return { ok: false, reason: 'no-args' }
+
+  const args = row.args as Partial<NinaImageJobArgs>
+  const nextArgs = {
+    ...args,
+    prompt: trimmed,
+    sidecar: replaceSidecarPrompt(typeof args.sidecar === 'string' ? args.sidecar : '', trimmed),
+  } as NinaImageJobArgs
+
+  const updated = await db
+    .update(ninaTurns)
+    .set({ args: nextArgs })
+    .where(
+      and(
+        eq(ninaTurns.userId, userId),
+        eq(ninaTurns.id, jobId),
+        eq(ninaTurns.kind, 'image'),
+        isNull(ninaTurns.deletedAt),
+      ),
+    )
+    .returning({ id: ninaTurns.id })
+
+  if (updated.length === 0) return { ok: false, reason: 'not-found' }
+  return { ok: true }
+}
+
+/**
+ * Keeps `sidecarText()`'s metadata block intact and swaps only the text after
+ * `--- prompt as sent ---` for the edited prompt. Falls back to the bare prompt when the marker
+ * is missing (an old or malformed sidecar) — `NinaJobDetail`'s own `sidecar ?? prompt`
+ * type-honesty arm, applied here instead of there.
+ */
+function replaceSidecarPrompt(sidecar: string, newPrompt: string): string {
+  const marker = '--- prompt as sent ---'
+  const idx = sidecar.indexOf(marker)
+  if (idx === -1) return newPrompt
+  return sidecar.slice(0, idx + marker.length) + '\n' + newPrompt
 }
 
 /** Module-local since the 2026-09-12 YAGNI sweep: `claimNinaImageJob`'s callers never named it. */
