@@ -33,6 +33,23 @@ export type NinaTurnKind = 'chat' | 'proactive' | 'image' | 'vision'
 export type NinaTurnStatus = 'pending' | 'ok' | 'repaired' | 'failed'
 
 /**
+ * **Where the LATEST write to `cost_micro_usd` got its number.** `'openrouter'` when the provider's
+ * `usage.cost`/`usage.total_cost` was read off the response (`readReportedCostMicroUsd`);
+ * `'fallback'` when nothing usable came back and `NINA_IMAGE_COST_MICRO_USD` stood in for it.
+ *
+ * **This column OVERWRITES; it does not accumulate like `cost_micro_usd` does.** A job that burned
+ * two attempts has one cumulative total but two possibly-different provenances, and the runner
+ * asked to see "the exact prompt of image generation... etc" for a single job screen, not a spend
+ * ledger per attempt — so this records the LATEST attempt's answer, the same way `latency_ms` and
+ * `error_code` already do. Every writer that touches `cost_micro_usd` for a real (non-zero, known)
+ * spend sets this in the same statement; a write that adds nothing to the ledger (an unknown retry
+ * spend, a stale sweep) leaves it alone via `coalesce(new, cost_source)`.
+ *
+ * Plain `text` with `.$type<>()`, exactly like `status` above — adding a member is not a migration.
+ */
+export type NinaImageCostSource = 'openrouter' | 'fallback'
+
+/**
  * **The audit trail for every model call Nina makes.** One row per call, written whether it
  * succeeded or not — this is the table that answers "why did that turn take nineteen seconds",
  * "how much has she cost this month" and "how often does the repair round-trip actually fire",
@@ -93,6 +110,9 @@ export const ninaTurns = pgTable(
     latencyMs: integer('latency_ms'),
     /** Millionths of a USD. See the header — never a float, never dollars. */
     costMicroUsd: integer('cost_micro_usd'),
+    /** See `NinaImageCostSource`'s own header. NULL for every non-image turn and every image job
+     * whose ledger has never been written to (still pending, or predates this column). */
+    costSource: text('cost_source').$type<NinaImageCostSource>(),
     status: text('status').$type<NinaTurnStatus>().notNull(),
     /**
      * Free text, ours not the provider's. NULL on success.

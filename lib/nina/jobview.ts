@@ -363,6 +363,48 @@ export function formatMicroUsd(micro: number | null | undefined): string {
   return `$${(micro / 1_000_000).toFixed(3)}`
 }
 
+/**
+ * Where `nina_turns.cost_source` came from, in the runner's own words for the "Catatan foto"
+ * block — structural, on this file's own rule against importing a row type: the column's real
+ * name is `NinaImageCostSource` (`lib/db/schema/nina/chat.ts`), and this is that column's two
+ * values, spelled the way a reader sees them.
+ */
+export function formatCostSourceLabel(source: 'openrouter' | 'fallback' | null): string | null {
+  if (source === 'openrouter') return 'openrouter api response'
+  if (source === 'fallback') return 'fallback constant'
+  return null
+}
+
+/**
+ * **Splices "cost source: …" into the sidecar text, right after "resolution:".** The line cannot
+ * be part of `sidecarText()` itself (`lib/nina/imagegen.ts`) — that block is written once, at job
+ * OPEN, before the call that decides the source even runs — so it is added here, at RENDER time,
+ * from the job's own `costSource` column instead.
+ *
+ * Two honest no-ops: `sidecar === null` (the bare-prompt case, no metadata block to splice into)
+ * and a sidecar whose first line is not `provider:` — an old row from before this convention
+ * existed — both pass through unchanged rather than guessing where a line belongs. So does a job
+ * whose cost is not known yet (`source === null`: still pending, or predates this column) — no
+ * line is better than a blank one, the same call `NinaJobPhoto`'s absent icon makes.
+ */
+export function withCostSourceLine(
+  sidecar: string | null,
+  source: 'openrouter' | 'fallback' | null,
+): string | null {
+  if (sidecar == null) return sidecar
+  const label = formatCostSourceLabel(source)
+  if (label == null) return sidecar
+
+  const lines = sidecar.split('\n')
+  if (lines[0] !== 'provider:   openrouter') return sidecar
+
+  const resolutionIdx = lines.findIndex((line) => line.startsWith('resolution:'))
+  if (resolutionIdx === -1) return sidecar
+
+  lines.splice(resolutionIdx + 1, 0, `cost source: ${label}`)
+  return lines.join('\n')
+}
+
 /** `4716` seconds → `1:18:36`. Re-exported so a screen imports one module, not two. */
 export function formatJobSeconds(seconds: number | null | undefined): string {
   return formatDuration(seconds)

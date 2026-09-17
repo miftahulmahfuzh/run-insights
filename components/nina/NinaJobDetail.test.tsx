@@ -34,6 +34,7 @@ function props(overrides?: Partial<Props>): Props {
     model: 'glm-4.6v',
     attempts: 2,
     costMicroUsd: 80_000,
+    costSource: 'openrouter',
     latencyMs: 74_000,
     createdAtMs: CREATED_AT_MS,
     createdAtLabel: '20 Aug, 17:02',
@@ -151,5 +152,49 @@ describe('NinaJobDetail', () => {
         'Job ini nggak nyimpen catatan fotonya — barisnya dibuat sebelum catatan itu ada.',
       ),
     ).toBeInTheDocument()
+  })
+
+  const REAL_SHAPE_SIDECAR = [
+    'provider:   openrouter',
+    'model:      glm-4.6v',
+    'purpose:    selfie',
+    'resolution: 1024x1536 2:3',
+    'seed:       42',
+    'reference:  none (RU-18)',
+    '',
+    '--- prompt as sent ---',
+    'sebuah foto selfie di pantai',
+  ].join('\n')
+
+  it('cost source lands right after resolution — openrouter', () => {
+    render(<NinaJobDetail {...props({ sidecar: REAL_SHAPE_SIDECAR, costSource: 'openrouter' })} />)
+    expect(screen.getByText(/cost source: openrouter api response/)).toBeInTheDocument()
+  })
+
+  it('cost source lands right after resolution — fallback', () => {
+    render(<NinaJobDetail {...props({ sidecar: REAL_SHAPE_SIDECAR, costSource: 'fallback' })} />)
+    expect(screen.getByText(/cost source: fallback constant/)).toBeInTheDocument()
+  })
+
+  it('no cost source yet renders no line at all — not a blank one', () => {
+    render(<NinaJobDetail {...props({ sidecar: REAL_SHAPE_SIDECAR, costSource: null })} />)
+    expect(screen.queryByText(/cost source/)).not.toBeInTheDocument()
+  })
+
+  it('an old sidecar shape (no "provider:" line) is left exactly as it was', () => {
+    render(
+      <NinaJobDetail
+        {...props({
+          sidecar: 'model: glm-4.6v\n--- prompt as sent ---\nsebuah foto selfie di pantai',
+          costSource: 'openrouter',
+        })}
+      />,
+    )
+    expect(screen.queryByText(/cost source/)).not.toBeInTheDocument()
+  })
+
+  it('a bare prompt (no sidecar at all) never grows a cost source line', () => {
+    render(<NinaJobDetail {...props({ sidecar: null, costSource: 'openrouter' })} />)
+    expect(screen.queryByText(/cost source/)).not.toBeInTheDocument()
   })
 })

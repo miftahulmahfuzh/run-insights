@@ -69,6 +69,7 @@ export async function runOneJob(
       detail: `store: ${String(cause)}`,
       /* The generation SUCCEEDED and was billed; only the storage failed. */
       costMicroUsd: outcome.costMicroUsd,
+      costSource: outcome.costSource,
     })
   }
 
@@ -93,6 +94,7 @@ export async function runOneJob(
       latencyMs: outcome.latencyMs,
       detail: `finish: ${String(cause)}`,
       costMicroUsd: outcome.costMicroUsd,
+      costSource: outcome.costSource,
     })
   }
 

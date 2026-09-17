@@ -7,6 +7,7 @@ import {
   NINA_JOBS_HREF,
   NINA_JOB_JUMP_NOTE,
   NINA_JOB_STAGE_LABEL,
+  formatCostSourceLabel,
   formatJobLatency,
   formatMicroUsd,
   jobCanRedo,
@@ -22,6 +23,7 @@ import {
   planJobJump,
   planJobPhoto,
   toNinaJobListItems,
+  withCostSourceLine,
 } from '@/lib/nina/jobview'
 
 describe('the deep link is its own parameter', () => {
@@ -297,6 +299,46 @@ describe('the numbers', () => {
   it('renders latency as a duration and a miss as the missing marker', () => {
     expect(formatJobLatency(73_925)).toBe('1:14')
     expect(formatJobLatency(null)).not.toMatch(/\d/)
+  })
+})
+
+describe('cost source — where the latest Biaya total write got its number', () => {
+  const REAL_SHAPE_SIDECAR = [
+    'provider:   openrouter',
+    'model:      glm-4.6v',
+    'purpose:    selfie',
+    'resolution: 1024x1536 2:3',
+    'seed:       42',
+    'reference:  none (RU-18)',
+    '',
+    '--- prompt as sent ---',
+    'sebuah foto selfie di pantai',
+  ].join('\n')
+
+  it('spells the two column values the way a reader sees them', () => {
+    expect(formatCostSourceLabel('openrouter')).toBe('openrouter api response')
+    expect(formatCostSourceLabel('fallback')).toBe('fallback constant')
+    expect(formatCostSourceLabel(null)).toBeNull()
+  })
+
+  it('inserts the line right after "resolution:", not anywhere else', () => {
+    const spliced = withCostSourceLine(REAL_SHAPE_SIDECAR, 'openrouter')
+    const lines = spliced?.split('\n') ?? []
+    const resolutionIdx = lines.findIndex((l) => l.startsWith('resolution:'))
+    expect(lines[resolutionIdx + 1]).toBe('cost source: openrouter api response')
+  })
+
+  it('a null sidecar (bare prompt) passes through untouched', () => {
+    expect(withCostSourceLine(null, 'openrouter')).toBeNull()
+  })
+
+  it('an unknown source (still pending, or predates the column) inserts nothing', () => {
+    expect(withCostSourceLine(REAL_SHAPE_SIDECAR, null)).toBe(REAL_SHAPE_SIDECAR)
+  })
+
+  it('a sidecar from before this convention existed is left exactly as it was', () => {
+    const oldShape = 'model: glm-4.6v\n--- prompt as sent ---\nhalo'
+    expect(withCostSourceLine(oldShape, 'openrouter')).toBe(oldShape)
   })
 })
 

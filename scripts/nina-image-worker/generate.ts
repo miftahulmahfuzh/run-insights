@@ -22,7 +22,16 @@ import { classifyImageFailure } from '../../lib/nina/imagefail.ts'
 import type { NinaImageFailure } from '../../lib/nina/imagefail.ts'
 
 export type WorkerOutcome =
-  | { ok: true; b64: string; costMicroUsd: number; latencyMs: number }
+  | {
+      ok: true
+      b64: string
+      costMicroUsd: number
+      /** `'openrouter'` when `usage.cost`/`usage.total_cost` was present; `'fallback'` when the
+       * constant just below stood in for it. Computed HERE, before the substitution, because
+       * `costMicroUsd` above may already be the constant and stop being self-describing. */
+      costSource: 'openrouter' | 'fallback'
+      latencyMs: number
+    }
   | { ok: false; kind: NinaImageFailure; latencyMs: number; detail: string }
 
 /**
@@ -214,6 +223,7 @@ export async function generate(
     b64,
     /* The index measured `usage.cost` present at $0.040. The constant is the fallback only. */
     costMicroUsd: reportedCost ?? NINA_IMAGE_COST_MICRO_USD,
+    costSource: reportedCost != null ? 'openrouter' : 'fallback',
     latencyMs: Date.now() - startedAt,
   }
 }
