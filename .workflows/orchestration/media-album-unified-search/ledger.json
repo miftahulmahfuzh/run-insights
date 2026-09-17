@@ -68,7 +68,7 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "51f2f67",
       "depends_on": [
         1,
         2,
@@ -76,24 +76,24 @@
       ],
       "difficulty": "NORMAL",
       "n": 4,
-      "note": null,
+      "note": "backfill 112\u2192118 rows drained (embedded 118, failed 0); source col drift fixed source:'admin' in fixtures",
       "package": "app/api/admin/nina`, `scripts`, `tests",
       "plan": ".workflows/plan/media-album-unified-search/phase-4.md",
-      "reported_at": null,
+      "reported_at": "2026-09-17T04:47:57+00:00",
       "satisfies": [
         "R1",
         "R2",
         "R3"
       ],
-      "status": "spawned",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P2-APP-A001",
       "title": "Backfill + test coverage"
     }
   ],
   "plan": "/home/miftah/run-insights/.workflows/orchestration/media-album-unified-search/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "media-album-unified-search",
-  "updated": "2026-09-17T04:30:33+00:00",
+  "updated": "2026-09-17T04:47:57+00:00",
   "verified_at": "2026-09-17T03:21:03+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/media-album-unified-search"
 }
