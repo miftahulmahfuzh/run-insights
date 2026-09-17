@@ -2,14 +2,17 @@ import { describe, expect, it } from 'vitest'
 
 import { readRepoCode } from './support/importGraph'
 import {
+  clampNinaAboutPage,
   NINA_ABOUT_HREF,
   NINA_ABOUT_PHOTO_PARAM,
   NINA_ABOUT_RETURN_PARAM,
+  NINA_ABOUT_TAB_PARAM,
   aboutPhotoHref,
   aboutPhotoIdOutsideGallery,
   aboutViewerLists,
   decodeAboutPhoto,
   decodeAboutReturnTo,
+  decodeAboutTab,
   encodeAboutPhoto,
   type NinaAlbumPhoto,
   type NinaGalleryPhoto,
@@ -159,10 +162,88 @@ describe('aboutViewerLists is the rule for which list the viewer renders', () =>
     expect(lists.chat[lists.chat.length - 1]).toEqual(resolved)
   })
 
-  it('the album arm never carries the resolved photo', () => {
+  it('the album arm never carries the RESOLVED CHAT photo', () => {
     const lists = aboutViewerLists({ album, gallery: [], resolvedChatPhoto: photo(OLD_ID) })
     expect(lists.album).toEqual(album)
     expect(lists.album).toHaveLength(1)
+  })
+
+  it('appends the resolved CURRENT AVATAR when the loaded album page misses it', () => {
+    const resolvedCurrentAvatar: NinaAlbumPhoto = {
+      id: 'avatarOLD00001',
+      url: 'https://x.example/old.png',
+      kind: 'avatar',
+      label: 'Foto profil Nina',
+      isCurrent: true,
+      description: null,
+    }
+    const lists = aboutViewerLists({
+      album,
+      gallery: [],
+      resolvedChatPhoto: null,
+      resolvedCurrentAvatar,
+    })
+    expect(lists.album).toEqual([...album, resolvedCurrentAvatar])
+  })
+
+  it('does not duplicate the current avatar when the loaded page already has it', () => {
+    const lists = aboutViewerLists({
+      album,
+      gallery: [],
+      resolvedChatPhoto: null,
+      resolvedCurrentAvatar: album[0],
+    })
+    expect(lists.album).toEqual(album)
+  })
+
+  it('the two resolvers are independent — one arm resolving does not touch the other', () => {
+    const gallery = [photo(IMAGE_ID)]
+    const resolvedChatPhoto = photo(OLD_ID, 'generated')
+    const resolvedCurrentAvatar: NinaAlbumPhoto = { ...album[0]!, id: 'avatarOLD00001' }
+    const lists = aboutViewerLists({ album, gallery, resolvedChatPhoto, resolvedCurrentAvatar })
+    expect(lists.chat).toEqual([...gallery, resolvedChatPhoto])
+    expect(lists.album).toEqual([...album, resolvedCurrentAvatar])
+  })
+})
+
+describe('decodeAboutTab reads ?tab= — the tab switch this URL now carries', () => {
+  it('defaults to profile for absence, malformed input, or a repeated parameter', () => {
+    expect(decodeAboutTab(undefined)).toBe('profile')
+    expect(decodeAboutTab(null)).toBe('profile')
+    expect(decodeAboutTab('')).toBe('profile')
+    expect(decodeAboutTab('profile')).toBe('profile')
+    expect(decodeAboutTab('Media')).toBe('profile') // exact literal only
+    expect(decodeAboutTab(['media', 'media'])).toBe('profile')
+  })
+
+  it('reads media from the exact literal', () => {
+    expect(decodeAboutTab('media')).toBe('media')
+  })
+
+  it('NINA_ABOUT_TAB_PARAM is "tab"', () => {
+    expect(NINA_ABOUT_TAB_PARAM).toBe('tab')
+  })
+})
+
+describe('clampNinaAboutPage — the one sanitizer for a page number from anywhere', () => {
+  it('accepts a positive integer, truncating a float', () => {
+    expect(clampNinaAboutPage(3)).toBe(3)
+    expect(clampNinaAboutPage(3.9)).toBe(3)
+  })
+
+  it('a numeric string parses — the shape a cookie hands back', () => {
+    expect(clampNinaAboutPage('7')).toBe(7)
+  })
+
+  it('anything that is not a usable positive integer floors to 1', () => {
+    expect(clampNinaAboutPage(0)).toBe(1)
+    expect(clampNinaAboutPage(-4)).toBe(1)
+    expect(clampNinaAboutPage(Number.NaN)).toBe(1)
+    expect(clampNinaAboutPage(Number.POSITIVE_INFINITY)).toBe(1)
+    expect(clampNinaAboutPage('not-a-page')).toBe(1)
+    expect(clampNinaAboutPage('')).toBe(1)
+    expect(clampNinaAboutPage(undefined)).toBe(1)
+    expect(clampNinaAboutPage(null)).toBe(1)
   })
 })
 
@@ -232,7 +313,11 @@ describe('the screen renders the viewer over the merged list and the grid over t
 
   it('derives every viewer list through aboutViewerLists', () => {
     const source = readRepoCode(SCREEN)
-    expect(source).toContain('aboutViewerLists({ album, gallery, resolvedChatPhoto })')
+    expect(source).toContain('aboutViewerLists({')
+    expect(source).toContain('album: albumItems,')
+    expect(source).toContain('gallery: galleryItems,')
+    expect(source).toContain('resolvedChatPhoto,')
+    expect(source).toContain('resolvedCurrentAvatar,')
     expect(source).toContain('const resolvedChatPhoto = resolvedPhoto ?? null')
   })
 
@@ -244,10 +329,12 @@ describe('the screen renders the viewer over the merged list and the grid over t
     expect(source).toContain('viewerLists.chat[open.index]')
   })
 
-  it('the Media grid keeps mapping the gallery prop — the URL never changes the grid', () => {
-    /* Invariant 8. `viewerLists.chat` would typecheck here and still be the bug. */
+  it('the Media grid keeps mapping the loaded page, not the merged viewer list — invariant 8', () => {
+    /* `viewerLists.chat` would typecheck here and still be the bug: the grid must map the exact
+     * array `galleryItems` state holds (this page's own rows), never the resolved-photo-appended
+     * list the viewer opens over. */
     const source = readRepoCode(SCREEN)
-    expect(source).toContain('cells={gallery.map(toCell)}')
+    expect(source).toContain('cells={galleryItems.map(toCell)}')
   })
 
   it('parses the URL through the shared codec, and imports nothing from the attach grammar', () => {

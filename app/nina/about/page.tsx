@@ -1,86 +1,109 @@
+import { cookies } from 'next/headers'
+
 import { AppShell } from '@/components/ui/AppShell'
 import { NinaAboutScreen } from '@/components/nina/NinaAboutScreen'
 import { requireUserId } from '@/lib/auth/requireUserId'
 import {
+  NINA_ABOUT_MEDIA_PAGE_COOKIE,
+  NINA_ABOUT_PAGE_SIZE,
   NINA_ABOUT_PHOTO_PARAM,
+  NINA_ABOUT_PROFILE_PAGE_COOKIE,
   NINA_ABOUT_RETURN_PARAM,
-  NINA_GALLERY_LIMIT,
+  NINA_ABOUT_TAB_PARAM,
   aboutPhotoIdOutsideGallery,
   albumPhotos,
+  clampNinaAboutPage,
   decodeAboutReturnTo,
+  decodeAboutTab,
   galleryPhotos,
   ninaAvatarView,
+  type NinaAlbumPhoto,
 } from '@/lib/nina/album'
-import { getNinaMessageImage, listNinaAvatars, listNinaMessageImages } from '@/lib/nina/queries'
+import {
+  getCurrentNinaAvatar,
+  getNinaMessageImage,
+  listNinaAvatarsPage,
+  listNinaMediaPhotos,
+} from '@/lib/nina/queries'
 
 /**
  * `/nina/about` — her detail page (R17), reached by tapping her avatar in the chat header.
  *
- * ── TWO INDEXED READS — AND A THIRD, ONLY WHEN A DEEP LINK NEEDS IT ───────────────────────────
- * Every read here is an index lookup, none of them joins, and none of them writes. The third
- * read, `getNinaMessageImage`, is a single-row lookup scoped to `(user_id, id)` — and it runs
- * ONLY when `?photo=chat.<id>` names an id the gallery window (the newest `NINA_GALLERY_LIMIT`)
- * does not hold, decided by `aboutPhotoIdOutsideGallery` over rows already in hand. The common
- * case — no parameter, or a parameter the gallery holds — costs exactly the two reads it always
- * cost.
+ * ── FOUR READS, ONE OF THEM A SINGLE ROW, AND A FIFTH ONLY WHEN A DEEP LINK NEEDS IT ──────────
+ * `listNinaAvatarsPage` and `listNinaMediaPhotos` are each a real `?page=` window now (2026-09-17,
+ * nina-about-pagination) — every photograph in the system is reachable through Previous/Next
+ * (`components/nina/NinaAboutScreen.tsx`'s client-side pager), not just the newest render-capped
+ * batch `listNinaAvatars`/`listNinaMessageImages` used to read in full. `getCurrentNinaAvatar` is
+ * the one true single-row lookup: the hero's face and, when the current avatar is not on the
+ * loaded profile page, the resolver that keeps the hero's viewer correct (see below).
+ * `getNinaMessageImage`, unchanged, is the `?photo=chat.<id>` deep-link resolver — it runs ONLY
+ * when `aboutPhotoIdOutsideGallery` finds the id outside the loaded media page.
  *
- * `listNinaAvatars` reads `nina_avatars_user_created_idx`; `listNinaMessageImages` reads
- * `nina_message_images_user_created_idx` with no join, which is phase 1's stated reason for that
- * table existing rather than a `jsonb` column. No model call, so invariant 4 is satisfied
- * structurally: there is nothing here for the payload-boundary grep to object to.
+ * ── WHICH PAGE OF EACH TAB — THE COOKIE, NOT ALWAYS PAGE 1 ────────────────────────────────────
+ * A runner who left off on Media page 3 should not land back on page 1 every time they reopen
+ * this screen — "so we don't keep reloading everything from zero every time" was the ask. The two
+ * fetch actions (`lib/nina/aboutPageActions.ts`) write a cookie on every page change; this render
+ * reads it back to seed the FIRST fetch. A missing or garbled cookie (`clampNinaAboutPage`) reads
+ * as page 1, never an error.
  *
- * ── THE DEEP LINK IS RESOLVED ON THE SERVER, AND `description` STAYS HERE ─────────────────────
- * `?photo=chat.<id>` used to open only when the id sat inside the gallery list, so a photograph
- * older than the newest 200 resolved to a closed viewer — the one silent miss R3 cannot afford.
- * The miss now falls through to `getNinaMessageImage` (`lib/nina/queries.ts`), whose own docstring
- * names it the `?photo=` deep-link read and which never filters `isOriginalPhoto()`: an album face
- * re-attached into the conversation re-opens here too, which is correct — the viewer re-shows
- * bytes that exist, and the render reads must not hide what a bubble can show (the four-reads rule
- * in `queries.ts`).
- *
- * The resolved row is mapped through `galleryPhotos([row])[0]` before it crosses into client
- * props, and that mapping is the invariant, not a nicety: the read projects `imageColumns`, so
- * the row carries `description` — `glm-4.6v`'s private prose (invariant 5) — and `galleryPhotos`
- * is the step that strips it. A deleted or foreign id resolves to `null`, and the screen treats
- * `null` exactly as it treated the old `index < 0`: a closed viewer, never an error.
+ * ── THE HERO'S CURRENT-AVATAR RESOLVER (pagination's one correctness cost) ───────────────────
+ * Before pagination, `listNinaAvatars` read the whole album, so the current avatar was always in
+ * memory and the hero's tap could always find it by `findIndex`. Now the loaded page may not hold
+ * it. `resolvedCurrentAvatar` is `null` when the current avatar IS on the loaded page (the common
+ * case — a fresh generation is also the newest row) and otherwise the single row
+ * `getCurrentNinaAvatar` already fetched, mapped through `albumPhotos([row])[0]` so it strips
+ * `description` the same way every other album row does. `aboutViewerLists` appends it to the
+ * album arm, exactly the way the chat side's `resolvedPhoto` has worked since R3.
  *
  * `PageProps<'/nina/about'>` is Next 16's globally available helper — not an import — and
- * `searchParams` is a PROMISE that must be awaited: the shape `app/nina/jobs/[id]/page.tsx`
- * documents for `params` and `app/nina/page.tsx` destructures for its own parameters.
+ * `searchParams` is a PROMISE that must be awaited, same as `cookies()`.
  *
  * ── WHY THERE IS NO `loading.tsx`, HERE OR AT `app/nina/` ─────────────────────────────────────
  * D-4. One at `app/nina/` would wrap this route too, which is the specific thing phase 4 declined
  * to impose on a page it did not own; and this page's index lookups resolve inside one paint, so a
  * skeleton would flash and be replaced. `app/(app)/loading.tsx`'s docstring records the measured
  * cost of getting that wrong in the other direction.
- *
- * ── THE CURRENT PHOTO IS TAKEN FROM THE ALBUM, NOT RE-QUERIED ─────────────────────────────────
- * `listNinaAvatars` already returns the row with `is_current`, so calling `getCurrentNinaAvatar`
- * here as well would be a second round trip for a row we are holding. `ninaAvatarView(null)` is
- * what an empty album means (D-2) and it is the same function the chat header uses, so the two
- * surfaces cannot disagree about which face is hers.
  */
 
 export default async function NinaAboutPage({ searchParams }: PageProps<'/nina/about'>) {
   const userId = await requireUserId()
-  const { [NINA_ABOUT_PHOTO_PARAM]: photoParam, [NINA_ABOUT_RETURN_PARAM]: returnParam } =
-    await searchParams
+  const {
+    [NINA_ABOUT_PHOTO_PARAM]: photoParam,
+    [NINA_ABOUT_RETURN_PARAM]: returnParam,
+    [NINA_ABOUT_TAB_PARAM]: tabParam,
+  } = await searchParams
+  const cookieStore = await cookies()
+  const profilePage = clampNinaAboutPage(cookieStore.get(NINA_ABOUT_PROFILE_PAGE_COOKIE)?.value)
+  const mediaPage = clampNinaAboutPage(cookieStore.get(NINA_ABOUT_MEDIA_PAGE_COOKIE)?.value)
 
-  const [avatars, images] = await Promise.all([
-    listNinaAvatars(userId),
-    listNinaMessageImages(userId, { limit: NINA_GALLERY_LIMIT }),
+  const [avatarPage, mediaPageResult, currentRow] = await Promise.all([
+    listNinaAvatarsPage(userId, {
+      limit: NINA_ABOUT_PAGE_SIZE,
+      offset: (profilePage - 1) * NINA_ABOUT_PAGE_SIZE,
+    }),
+    listNinaMediaPhotos(userId, {
+      limit: NINA_ABOUT_PAGE_SIZE,
+      offset: (mediaPage - 1) * NINA_ABOUT_PAGE_SIZE,
+    }),
+    getCurrentNinaAvatar(userId),
   ])
 
-  const current = avatars.find((row) => row.isCurrent) ?? null
-  const gallery = galleryPhotos(images)
+  const album = albumPhotos(avatarPage.rows)
+  const gallery = galleryPhotos(mediaPageResult.rows)
+
+  const resolvedCurrentAvatar: NinaAlbumPhoto | null =
+    currentRow == null || avatarPage.rows.some((row) => row.id === currentRow.id)
+      ? null
+      : (albumPhotos([currentRow])[0] ?? null)
 
   /*
    * ── THE MEMBERSHIP CHECK RUNS OVER ROWS ALREADY READ, BEFORE THE SINGLE-ROW READ ────────────
    * `aboutPhotoIdOutsideGallery` is pure: parse, section, shape, membership — no query. Only a
    * MISS reaches `getNinaMessageImage`, so the common page view costs zero extra round trips,
    * and a hand-typed id that cannot be one of ours (`isValidId`) costs not even that. `gallery`
-   * is the exact list this render is about to show, so the check and the Media grid can never
-   * disagree about what "in the window" means.
+   * is the LOADED media page, so the check and the Media grid can never disagree about what "in
+   * the window" means — a smaller window than before pagination, so this single-row fallback now
+   * fires more often, which is exactly what it exists for.
    *
    * A row that resolves is mapped through `galleryPhotos([row])[0]` HERE, on the server, because
    * that mapping is what strips `description` (invariant 5) — the read's projection carries it,
@@ -109,10 +132,16 @@ export default async function NinaAboutPage({ searchParams }: PageProps<'/nina/a
         so this prop is safe to hand down by construction, not by review.
       */}
       <NinaAboutScreen
-        avatar={ninaAvatarView(current)}
-        album={albumPhotos(avatars)}
+        avatar={ninaAvatarView(currentRow)}
+        initialTab={decodeAboutTab(tabParam)}
+        album={album}
+        albumTotal={avatarPage.total}
+        albumPage={profilePage}
         gallery={gallery}
+        galleryTotal={mediaPageResult.total}
+        galleryPage={mediaPage}
         resolvedPhoto={resolvedPhoto}
+        resolvedCurrentAvatar={resolvedCurrentAvatar}
         returnTo={returnTo}
       />
     </AppShell>

@@ -230,36 +230,10 @@ export async function adoptNinaMessageImage(
 }
 
 /**
- * Phase 13's gallery: every image in the conversation, newest first, his and hers together. Reads
- * `nina_message_images_user_created_idx` with no join — which is the whole reason this is a table
- * and not a `jsonb` column on `nina_messages`.
- *
- * **F37 R3: not quite every image — a REFERENCE is skipped.** `/nina/about`'s Media section is a
- * collection of the photographs in the conversation, and a row whose bytes are already in the
- * album (or already further up the feed) is the same photograph, not a second one. The row itself
- * is untouched and its bubble still renders it; see `isOriginalPhoto` for the three reads that
- * filter and the four that must not.
- *
- * `limit` still bounds the ROWS RETURNED and not the rows examined, so hiding a reference lets one
- * more original through rather than leaving a gap — which is what the caller wants from a feed.
- */
-export async function listNinaMessageImages(
-  userId: string,
-  opts: { limit: number },
-): Promise<NinaImageRow[]> {
-  return db
-    .select(imageColumns)
-    .from(ninaMessageImages)
-    .where(and(eq(ninaMessageImages.userId, userId), isOriginalPhoto()))
-    .orderBy(desc(ninaMessageImages.createdAt), desc(ninaMessageImages.id))
-    .limit(opts.limit)
-}
-
-/**
  * One conversation photo by id, ownership-scoped. The mirror of `getNinaAvatar` in `lib/nina/queries/avatars.ts`, and it
  * exists for the same reason: `app/nina/page.tsx` has to turn ONE id from a URL into ONE blob URL
- * during a render, and `listNinaMessageImages(...).find(...)` reads up to `NINA_GALLERY_LIMIT`
- * rows to answer it.
+ * during a render, and a full list-then-find would read up to `NINA_GALLERY_LIMIT` rows to answer
+ * it.
  *
  * `null` for "not yours" and for "does not exist" alike — this module's stated rule, and here it is
  * also the security property: a page that distinguishes them is a page that tells a stranger which
@@ -318,7 +292,7 @@ export async function getNinaMessageImagesForMessages(
  * wider: one session, one row.
  *
  * ── ORIGINALS ONLY, AND THE PREDICATE IS THIS MODULE'S OWN ───────────────────────────────────
- * `isOriginalPhoto()` is in the WHERE for `listNinaMessageImages`' reason and one sharper one: the
+ * `isOriginalPhoto()` is in the WHERE for `listNinaMediaPhotos`' reason and one sharper one: the
  * caller's next act is to COPY these bytes into `nina_avatars`, and a reference renders bytes that
  * already live somewhere else — copying one would file a second copy of a photograph the original
  * still owns. That is `setChatPhotoAsAvatarAction`'s rule, enforced here at the read so the chat
@@ -334,7 +308,7 @@ export async function getNinaMessageImagesForMessages(
  * (`nina_message_images_user_created_idx`); the message-side one is the ownership belt-and-braces
  * this module's rule 2 asks for, and it costs nothing on a primary-key join.
  *
- * `(created_at desc, id desc)` is `listNinaMessageImages`' ordering with the same `id` tiebreak,
+ * `(created_at desc, id desc)` is `listNinaMediaPhotos`' ordering with the same `id` tiebreak,
  * because rows written in one statement tie on `created_at`. The projection is `imageColumns`, so
  * the caller gets `pathname` (it needs the container), `description` (it seeds the album row's) and
  * the measurements, in the one row shape this module has.
@@ -378,7 +352,7 @@ export async function getLatestOriginalNinaSessionPhoto(
  * definition is this file's normal order, not a trick.
  *
  * ── NEWEST FIRST, AND WHY THE CALLER CARES ───────────────────────────────────────────────────
- * `(created_at desc, id desc)` is `listNinaMessageImages`'s ordering with the same `id` tiebreak
+ * `(created_at desc, id desc)` is `listNinaMediaPhotos`'s ordering with the same `id` tiebreak
  * (rows written in one statement tie on `created_at`). For a dedup caller any original with the
  * bytes is a correct attach target, but the newest one is the least likely to have been deleted
  * between this read and the write that follows — which is what keeps the attach arm's
@@ -508,11 +482,11 @@ export async function findNinaSignedOriginals(userId: string): Promise<
  *
  * ── THE COLLECTION READS IT FILTERS, AND THE ONES IT MUST NEVER ───────────────────────
  * Filtered — the COLLECTION reads, which describe a set of photographs to a human:
- *   · `listNinaMessageImages`   → /nina/about's Media feed
  *   · `listNinaPhotoReferences` (`queries/imageprefs.ts`) → the reference picker's chat-side rows,
  *     via `generatedChatPhotoScope` below
  *   · `listNinaMediaPhotos` + `countNinaMediaPhotos` → /admin/nina?view=media and its tree badge,
- *                                 via `mediaCollectionScope` — the all-kinds superset of the
+ *                                 AND (2026-09-17) `/nina/about`'s Media tab, via
+ *                                 `mediaCollectionScope` — the all-kinds superset of the
  *                                 generated pair, sharing THIS predicate so a reference cannot
  *                                 sneak into one view while another hides it.
  *
@@ -615,11 +589,12 @@ export function isOriginalPhoto(): SQL | undefined {
  * spellings are held together by `tests/nina.photoRefs.test.ts`, which pins this exact text, and
  * by `tests/admin.chatPhotoAdoption.test.ts:132`, which pins the writer's.
  *
- * ── WHY THE OTHER TWO SCOPES DO NOT GET THIS ARM ─────────────────────────────────────────────
- * `mediaCollectionScope` and `listNinaMessageImages` must NOT grow it. An adopted chat row is
- * still a real photograph in a real bubble, and the Media view is where the operator goes to
- * Replace or Remove it; hiding it there would take away the only handle on it. The user asked for
- * the PICKER to deduplicate, and the picker is the only surface that changes.
+ * ── WHY `mediaCollectionScope` DOES NOT GET THIS ARM ─────────────────────────────────────────
+ * An adopted chat row is still a real photograph in a real bubble, and the Media view — both of
+ * its surfaces, `/admin/nina?view=media` and `/nina/about`'s Media tab — is where the operator or
+ * the runner goes to Replace, Remove or just look at it; hiding it there would take away the only
+ * handle on it. The user asked for the PICKER to deduplicate, and the picker is the only surface
+ * that changes.
  */
 export function generatedChatPhotoScope(userId: string) {
   /* The outer parentheses are load-bearing and hand-written, for `removeNinaSession`'s measured
@@ -645,10 +620,11 @@ export function generatedChatPhotoScope(userId: string) {
 /* ============================================================================
  * §5a-2 The Media view — every ORIGINAL photograph, both kinds (R1)
  *
- * `/admin/nina?view=media` reads these. The membership is the exact set `/nina/about`'s Media
- * section shows (`listNinaMessageImages` + `isOriginalPhoto`) — NOT `/admin/photos`' generated-only
- * scope: the folder the user asked for is "semua foto - foto yang saat ini ada di Media", his
- * uploads included. Kept beside the generated pair rather than merged into it on purpose:
+ * `/admin/nina?view=media` reads these, and so (2026-09-17) does `/nina/about`'s Media tab — one
+ * scope, one read, shared by both surfaces rather than two definitions that happen to agree. NOT
+ * `/admin/photos`' generated-only scope: the folder the user asked for is "semua foto - foto yang
+ * saat ini ada di Media", his uploads included. Kept beside the generated pair rather than merged
+ * into it on purpose:
  * `generatedChatPhotoScope` outlives that surface's purge entirely — the image-reference picker
  * (`listNinaPhotoReferences`) still reads it — so the two scopes sit side by side for good, each
  * the one definition of its own surface.

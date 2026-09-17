@@ -3,15 +3,21 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { routerPush, routerRefresh } = vi.hoisted(() => ({
+const { routerPush, routerRefresh, routerReplace } = vi.hoisted(() => ({
   routerPush: vi.fn(),
   routerRefresh: vi.fn(),
+  routerReplace: vi.fn(),
 }))
 // `useSearchParams` reads the LIVE location each render, which is exactly the integration the
 // screen depends on: the open photo is DERIVED from the URL, never mirrored into state, so a
 // test re-renders after a history write the way Next's patched history re-renders for real.
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: routerPush, refresh: routerRefresh, replace: vi.fn(), back: vi.fn() }),
+  useRouter: () => ({
+    push: routerPush,
+    refresh: routerRefresh,
+    replace: routerReplace,
+    back: vi.fn(),
+  }),
   useSearchParams: () => new URLSearchParams(window.location.search),
 }))
 
@@ -20,6 +26,14 @@ const { attachNinaPhotoToChat, deleteNinaChatPhoto } = vi.hoisted(() => ({
   deleteNinaChatPhoto: vi.fn(),
 }))
 vi.mock('@/lib/nina/albumActions', () => ({ attachNinaPhotoToChat, deleteNinaChatPhoto }))
+
+const { fetchNinaAlbumPage, fetchNinaMediaPage } = vi.hoisted(() => ({
+  fetchNinaAlbumPage: vi.fn(),
+  fetchNinaMediaPage: vi.fn(),
+}))
+// The real module pulls in `next/headers` and the db layer — real server-only weight this
+// happy-dom test must never load. The pager tests below stub these directly.
+vi.mock('@/lib/nina/aboutPageActions', () => ({ fetchNinaAlbumPage, fetchNinaMediaPage }))
 
 const { useSavePhoto } = vi.hoisted(() => ({ useSavePhoto: vi.fn() }))
 // The save ladder is useSavePhoto's, covered by the ChatPhotoActions file from its own seam. Only
@@ -53,6 +67,7 @@ import {
 import { attachStripPadBottomCss, NINA_KEYBOARD_OVERLAP_VAR } from '@/lib/nina/chatview'
 
 const AVATAR: NinaAvatarView = {
+  id: 'a2',
   src: 'https://blob.example/avatar.jpg',
   natural: { width: 1200, height: 900 },
   crop: null,
@@ -110,6 +125,8 @@ function at(section: 'album' | 'chat', id: string) {
 beforeEach(() => {
   attachNinaPhotoToChat.mockReset().mockResolvedValue({ ok: true, next: '/nina?s=sess-9' })
   deleteNinaChatPhoto.mockReset().mockResolvedValue({ ok: true })
+  fetchNinaAlbumPage.mockReset()
+  fetchNinaMediaPage.mockReset()
   useSavePhoto.mockReset().mockReturnValue({
     busy: false,
     notice: null,
@@ -118,6 +135,7 @@ beforeEach(() => {
   })
   routerPush.mockReset()
   routerRefresh.mockReset()
+  routerReplace.mockReset()
   window.history.replaceState(null, '', '/nina/about')
 })
 
@@ -162,6 +180,98 @@ describe('NinaAboutScreen — the page', () => {
     expect(
       screen.getByText('Belum ada foto di chat. Kirim satu ke Nina, atau minta dia kirim.'),
     ).toBeInTheDocument()
+  })
+
+  it('switching tabs writes ?tab= into the URL via router.replace, never a navigation', () => {
+    renderScreen()
+    fireEvent.click(screen.getByRole('tab', { name: 'Media' }))
+    expect(routerReplace).toHaveBeenCalledWith('/nina/about?tab=media')
+    expect(routerPush).not.toHaveBeenCalled()
+  })
+
+  it('switching back to Foto profil strips the tab parameter', () => {
+    window.history.replaceState(null, '', '/nina/about?tab=media')
+    renderScreen({ initialTab: 'media' })
+    fireEvent.click(screen.getByRole('tab', { name: 'Foto profil' }))
+    expect(routerReplace).toHaveBeenCalledWith('/nina/about')
+  })
+})
+
+describe('NinaAboutScreen — pagination', () => {
+  it('a single-page collection shows no Previous/Next row', () => {
+    renderScreen()
+    expect(screen.queryByText(/Halaman/)).not.toBeInTheDocument()
+  })
+
+  it('a multi-page collection shows the page line and the two controls', () => {
+    renderScreen({ albumTotal: 45 })
+    expect(screen.getByText(/Halaman 1 dari 2/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Sebelumnya' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Berikutnya' })).toBeEnabled()
+  })
+
+  it('Berikutnya fetches the next page from the server and renders it — no navigation', async () => {
+    fetchNinaAlbumPage.mockResolvedValue({
+      items: [albumPhoto('a3'), albumPhoto('a4')],
+      total: 45,
+      page: 2,
+    })
+    renderScreen({ albumTotal: 45 })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Berikutnya' }))
+    expect(fetchNinaAlbumPage).toHaveBeenCalledWith(2)
+
+    await waitFor(() => expect(screen.getByText(/Halaman 2 dari 2/)).toBeInTheDocument())
+    expect(screen.getByRole('button', { name: 'Sebelumnya' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Berikutnya' })).toBeDisabled()
+    expect(routerPush).not.toHaveBeenCalled()
+    expect(routerReplace).not.toHaveBeenCalled()
+  })
+
+  it('a page already fetched this mount is served from cache — no second server call', async () => {
+    fetchNinaAlbumPage.mockResolvedValue({ items: [albumPhoto('a3')], total: 45, page: 2 })
+    renderScreen({ albumTotal: 45 })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Berikutnya' }))
+    await waitFor(() => expect(fetchNinaAlbumPage).toHaveBeenCalledTimes(1))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sebelumnya' }))
+    await waitFor(() => expect(screen.getByText(/Halaman 1 dari 2/)).toBeInTheDocument())
+    // Page 1 was the server's own initial props — never re-fetched.
+    expect(fetchNinaAlbumPage).toHaveBeenCalledTimes(1)
+  })
+
+  it('the Media tab pages independently through fetchNinaMediaPage', async () => {
+    fetchNinaMediaPage.mockResolvedValue({
+      items: [galleryPhoto('c9', 'his')],
+      total: 60,
+      page: 2,
+    })
+    renderScreen({ galleryTotal: 60 })
+    fireEvent.click(screen.getByRole('tab', { name: 'Media' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Berikutnya' }))
+    expect(fetchNinaMediaPage).toHaveBeenCalledWith(2)
+    expect(fetchNinaAlbumPage).not.toHaveBeenCalled()
+  })
+})
+
+describe('NinaAboutScreen — the hero when the current avatar is off the loaded page', () => {
+  it('opens the server-resolved current avatar, appended to the album viewer arm', () => {
+    const resolvedCurrentAvatar = albumPhoto('a-current', true)
+    renderScreen({
+      album: [albumPhoto('a1'), albumPhoto('a2')], // neither is current — the loaded page missed it
+      resolvedCurrentAvatar,
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Lihat foto profil Nina ukuran penuh' }))
+    expect(window.location.search).toBe(`?${NINA_ABOUT_PHOTO_PARAM}=album.a-current`)
+  })
+
+  it('with no resolver needed, the hero still opens the current photo already on the page', () => {
+    renderScreen() // default fixture: a2 isCurrent, both on the loaded page
+    fireEvent.click(screen.getByRole('button', { name: 'Lihat foto profil Nina ukuran penuh' }))
+    expect(window.location.search).toBe(`?${NINA_ABOUT_PHOTO_PARAM}=album.a2`)
   })
 })
 

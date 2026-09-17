@@ -16,6 +16,7 @@ import { db } from '@/lib/db'
 import { ninaAvatars, ninaFolders } from '@/lib/db/schema'
 import { newId } from '@/lib/id'
 import {
+  NINA_ABOUT_PAGE_SIZE,
   NINA_ADMIN_BATCH_MAX,
   NINA_ADMIN_MANIFEST_MAX,
   NINA_ADMIN_PAGE_SIZE,
@@ -28,6 +29,7 @@ import type {
   NinaAvatarFolderPage,
   NinaAvatarInsert,
   NinaAvatarManifestEntry,
+  NinaAvatarPage,
   NinaAvatarRow,
   NinaFolderRenameResult,
 } from './shapes'
@@ -1019,6 +1021,35 @@ export async function countNinaAvatars(userId: string): Promise<number> {
     .from(ninaAvatars)
     .where(eq(ninaAvatars.userId, userId))
   return counted[0]?.total ?? 0
+}
+
+/**
+ * One page of the WHOLE album, newest first, plus the total — `/nina/about`'s "Foto profil" tab.
+ *
+ * Modelled on `listNinaAvatarsInFolder` above with one delta: no `folder` predicate, for the same
+ * reason `countNinaAvatars` (which this shares its total with) has none — the runner's own album
+ * view has no folder concept to filter by. Same `NINA_ABOUT_PAGE_SIZE` default-and-ceiling
+ * discipline: a caller may ask for fewer rows and cannot ask for more.
+ */
+export async function listNinaAvatarsPage(
+  userId: string,
+  opts: { limit?: number; offset?: number } = {},
+): Promise<NinaAvatarPage> {
+  const limit = Math.max(1, Math.min(opts.limit ?? NINA_ABOUT_PAGE_SIZE, NINA_ABOUT_PAGE_SIZE))
+  const offset = Math.max(0, Math.trunc(opts.offset ?? 0))
+
+  const [rows, total] = await Promise.all([
+    db
+      .select(avatarColumns)
+      .from(ninaAvatars)
+      .where(eq(ninaAvatars.userId, userId))
+      .orderBy(desc(ninaAvatars.createdAt), desc(ninaAvatars.id))
+      .limit(limit)
+      .offset(offset),
+    countNinaAvatars(userId),
+  ])
+
+  return { rows, total }
 }
 
 /**

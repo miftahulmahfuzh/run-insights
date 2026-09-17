@@ -14,9 +14,12 @@ import { installFakeDb, uninstallFakeDb, type FakeDb } from './support/fakeDb'
  *
  * Three properties, and the SECOND is the one most likely to rot:
  *
- *   1. The three COLLECTION reads skip a reference. `listNinaPhotoReferences`' chat-side read
- *      shares `generatedChatPhotoScope` with its own `total` — since 2026-09-17's dedup pass, both
- *      come off the same statement, so they cannot drift apart by construction.
+ *   1. The COLLECTION reads skip a reference — `listNinaPhotoReferences`' chat-side read and
+ *      `listNinaMediaPhotos` (which `/nina/about`'s Media tab and `/admin/nina?view=media` now
+ *      both read; one scope, `mediaCollectionScope`, since 2026-09-17's pagination pass folded the
+ *      former's one caller into the latter). `listNinaPhotoReferences`' own `total` shares
+ *      `generatedChatPhotoScope` with its rows statement, so the two cannot drift apart by
+ *      construction.
  *   2. The reads that make a photograph RENDER, or that build Nina's context, carry NO such
  *      predicate — invariant 2, written as an ABSENCE on purpose. A future "consistency" cleanup
  *      that adds the filter to `getNinaMessageImagesForMessages` blanks a photograph in a live
@@ -93,19 +96,6 @@ function whereOf(sql: string): string {
 }
 
 describe('the collection listings skip a reference (R1, R3)', () => {
-  it('listNinaMessageImages — /nina/about loses the duplicate and the album face', async () => {
-    fake.enqueue([])
-    await queries.listNinaMessageImages('u1', { limit: 200 })
-
-    const { sql } = fake.only()
-    const where = whereOf(sql)
-    for (const predicate of REFERENCE_SKIPPED) expect(where, predicate).toContain(predicate)
-    // Still the same one indexed read it always was: user_id equality, (created_at, id) already
-    // in index order, limit real.
-    expect(where).toContain('"user_id" = $')
-    expect(sql).toContain('limit')
-  })
-
   it('listNinaPhotoReferences — the chat-side read still skips a reference', async () => {
     // Two statements now (2026-09-17's dedup pass folded the two counts into the same full reads):
     // Q0 the album read, Q1 the chat read, in `Promise.all` array order.
@@ -153,17 +143,11 @@ describe('the picker drops a photograph her album has already adopted', () => {
     for (const predicate of ADOPTED_SKIPPED) expect(where, predicate).toContain(predicate)
   })
 
-  it('the Media view and /nina/about keep the adopted photograph — absence on purpose', async () => {
-    /* The user asked for the PICKER to deduplicate, and only the picker. These reads take
-     * `isOriginalPhoto()` directly (`listNinaMessageImages`) or through `mediaCollectionScope`
-     * (`listNinaMediaPhotos`), and must not grow the album lookup: an adopted chat row is still a
-     * real photograph in a real bubble, and the Media view is the only place it can be Replaced
-     * or Removed. */
-    fake.enqueue([])
-    await queries.listNinaMessageImages('u1', { limit: 200 })
-    expect(whereOf(fake.only().sql)).not.toContain('source_key')
-
-    fake.reset()
+  it('the Media view — both surfaces — keeps the adopted photograph, absence on purpose', async () => {
+    /* The user asked for the PICKER to deduplicate, and only the picker. `listNinaMediaPhotos`
+     * (through `mediaCollectionScope`, `/admin/nina?view=media` AND `/nina/about`'s Media tab since
+     * 2026-09-17) must not grow the album lookup: an adopted chat row is still a real photograph in
+     * a real bubble, and the Media view is the only place it can be Replaced or Removed. */
     fake.enqueue([], [[0]])
     await queries.listNinaMediaPhotos('u1')
     expect(fake.queries).toHaveLength(2)

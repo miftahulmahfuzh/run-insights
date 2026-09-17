@@ -7,9 +7,15 @@ import * as React from 'react'
  *
  * ── WHY ONE COMPONENT FOR THE ALBUM AND THE GALLERY ───────────────────────────────────────────
  * They differ in exactly two ways: the album rings its current photo, and the gallery shows two
- * parties. Everything else — three columns, `aspect-square`, `object-cover`, a `<button>` per cell,
+ * parties. Everything else — column count, `aspect-square`, `object-cover`, a `<button>` per cell,
  * the tap target — is identical, and two components would be two chances for them to drift the way
  * `ScreenshotStrip`'s arrows and its swipe drifted before F18 unified them.
+ *
+ * ── 3 COLUMNS ON A PHONE, 10 ON DESKTOP (nina-about-pagination) ────────────────────────────────
+ * `NinaAboutScreen` now pages both grids at `NINA_ABOUT_PAGE_SIZE` (30) rows at a time — the same
+ * number `components/admin/PhotoReferencePicker.tsx` settled on for the identical reason: 30 is
+ * divisible by both 3 and 10, so a full page tiles as a clean sheet with no trailing gap on either
+ * breakpoint. Only the collection's last (partial) page can ever leave a row short.
  *
  * ── `bg-ink-3/20`, NOT `bg-paper-2` ──────────────────────────────────────────────────────────
  * Phase 6 settled this after phases 4, 7 and 8 argued it: `ink-3` is a mid-grey in BOTH schemes, so
@@ -42,7 +48,7 @@ export function NinaPhotoGrid({
   if (cells.length === 0) return null
 
   return (
-    <ul className="grid grid-cols-3 gap-1">
+    <ul className="grid grid-cols-3 gap-1 lg:grid-cols-10">
       {cells.map((cell, i) => (
         <li key={cell.id} className="overflow-hidden rounded-field bg-ink-3/20">
           <button

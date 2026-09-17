@@ -485,6 +485,20 @@ export interface NinaAvatarFolderPage {
 }
 
 /**
+ * One page of the WHOLE album — every folder, the `/nina/about` "Foto profil" tab's read.
+ *
+ * Deliberately not `NinaAvatarFolderPage`: that one scopes to a single folder (`folder = $2`),
+ * and the runner's own album view has no folder concept to filter by — it must show every avatar
+ * regardless of which folder the admin file manager filed it under. Structurally identical
+ * `{ rows, total }` pair, same reason `total` is its own statement (see that interface).
+ */
+export interface NinaAvatarPage {
+  rows: NinaAvatarRow[]
+  /** Every avatar this user has, across every folder — not just this page. */
+  total: number
+}
+
+/**
  * One ranked row of a semantic search over the album — `NinaAvatarRow` plus the score it ranked on.
  *
  * A SUPERSET of `NinaAvatarRow` rather than a parallel shape, deliberately: `app/admin/nina/page.tsx`

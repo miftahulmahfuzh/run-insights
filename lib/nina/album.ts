@@ -219,6 +219,13 @@ export interface ImageLike {
 
 /** What the header avatar and the detail page's hero need, and nothing more. */
 export interface NinaAvatarView {
+  /**
+   * The row's own id, or `null` for the committed constant. Pagination's addition: the hero on
+   * `/nina/about` opens the album viewer at the current photo, and once the album is a paginated
+   * read the current photo may not be on the loaded page — this id is what lets the screen resolve
+   * it anyway (`aboutViewerLists`'s `resolvedCurrentAvatar`).
+   */
+  id: string | null
   src: string
   natural: { width: number | null; height: number | null }
   crop: NinaCropInput | null
@@ -266,6 +273,7 @@ export interface NinaGalleryPhoto {
 export function ninaAvatarView(row: AvatarLike | null | undefined): NinaAvatarView {
   if (row == null) {
     return {
+      id: null,
       src: NINA_AVATAR_FALLBACK_SRC,
       natural: { width: null, height: null },
       crop: null,
@@ -274,6 +282,7 @@ export function ninaAvatarView(row: AvatarLike | null | undefined): NinaAvatarVi
     }
   }
   return {
+    id: row.id,
     src: row.blobUrl,
     natural: { width: row.width, height: row.height },
     crop: { scale: row.cropScale, x: row.cropX, y: row.cropY },
@@ -317,7 +326,7 @@ export function albumPhotos(rows: readonly AvatarLike[]): NinaAlbumPhoto[] {
 /**
  * Every photograph in the conversation, both parties, newest first.
  *
- * `listNinaMessageImages` orders `(created_at desc, id desc)` and reads
+ * `listNinaMediaPhotos` orders `(created_at desc, id desc)` and reads
  * `nina_message_images_user_created_idx` with no join — which is phase 1's stated reason for the
  * table existing at all. So again: preserved, not re-sorted.
  *
@@ -387,6 +396,49 @@ export const NINA_ABOUT_PHOTO_PARAM = 'photo'
  * mints cannot name an off-app target even from a caller bug.
  */
 export const NINA_ABOUT_RETURN_PARAM = 'return'
+
+/**
+ * Which of the two tabs is showing — `profile` is Foto profil, `media` is Media. In the URL (not
+ * only client state) so a Next/Previous fetch, a reload, or a back-swipe all keep the runner on
+ * the tab they were viewing instead of snapping back to Foto profil.
+ */
+export const NINA_ABOUT_TAB_PARAM = 'tab'
+
+export type NinaAboutTab = 'profile' | 'media'
+
+/** Anything but the exact literal `'media'` reads as `'profile'` — the tab bar's own default. */
+export function decodeAboutTab(raw: unknown): NinaAboutTab {
+  return raw === 'media' ? 'media' : 'profile'
+}
+
+/**
+ * How many photographs one page of Foto profil or Media holds — 10 columns x 3 rows on desktop,
+ * 3 x 10 on phones, the same tiling `NINA_PHOTO_REF_PAGE_SIZE` (the photo-reference picker,
+ * `lib/nina/imageprefs.ts`) already settled on for the identical grid shape. A separate constant
+ * rather than a shared import: that module is deliberately zero-import (its header) so it stays
+ * loadable from the image-generation worker, and this page is not part of that boundary.
+ */
+export const NINA_ABOUT_PAGE_SIZE = 30
+
+/**
+ * Where the last page a runner viewed is remembered across a reload — one cookie per tab, written
+ * by the fetch action that serves each page (`lib/nina/aboutPageActions.ts`) and read on the
+ * server render that seeds the first page. Non-sensitive: a page number, not a credential.
+ */
+export const NINA_ABOUT_PROFILE_PAGE_COOKIE = 'nina-about-ppage'
+export const NINA_ABOUT_MEDIA_PAGE_COOKIE = 'nina-about-mpage'
+
+/**
+ * The one sanitizer for a page number from anywhere untrusted — a cookie string, a hand-edited
+ * fetch argument. `Number(raw)` folds `undefined`/`null`/`''`/garbage to `NaN` the same way
+ * `Number.parseInt` would for a string, so one coercion covers every source without a caller
+ * having to know which shape it is handing in. Never a page below 1: that is the answer for
+ * "start over", not an error.
+ */
+export function clampNinaAboutPage(raw: unknown): number {
+  const truncated = Math.trunc(Number(raw))
+  return Number.isFinite(truncated) && truncated > 0 ? truncated : 1
+}
 
 /**
  * Which list the parameter's section names: `album` is her profile album, `chat` is the Media
@@ -480,19 +532,38 @@ export interface NinaAboutViewerLists {
  *   - a resolved out-of-window photograph is by definition OLDER than everything in the window,
  *     so last is also where newest-first order says it belongs.
  *
- * The album arm never carries the resolved photo. An `album.<id>` deep link has no resolver
- * behind it on purpose: nothing outside a tap on the album grid itself mints one, the album read
- * is unpaginated (`albumPhotos` slices only for the render), and an avatar id is not a
+ * The album arm never carries a resolved CHAT photo. An `album.<id>` deep link has no resolver of
+ * its own: nothing outside a tap on the album grid mints one, and an avatar id is not a
  * `nina_message_images` row — the read that would resolve it does not exist. Refusing the
  * `album` section is `aboutPhotoIdOutsideGallery`'s business, not this function's.
+ *
+ * ── `resolvedCurrentAvatar`: THE ALBUM'S OWN RESOLVER, NOW THAT IT IS PAGINATED ─────────────────
+ * The hero avatar opens the album viewer at the CURRENT photo, which used to be safe unconditionally
+ * because `listNinaAvatars` read the whole album. Now that the album is a paginated read
+ * (`listNinaAvatarsPage`), the current avatar can be on a page the runner is not looking at. The
+ * page resolves it with the same cheap single-row lookup the header avatar already used
+ * (`getCurrentNinaAvatar`) and hands it here; it is appended — same rule as the chat resolver,
+ * skipped when the loaded page already has it, so the grid's indices never shift under it.
  */
 export function aboutViewerLists(input: {
   album: readonly NinaAlbumPhoto[]
   gallery: readonly NinaGalleryPhoto[]
   resolvedChatPhoto: NinaGalleryPhoto | null
+  resolvedCurrentAvatar?: NinaAlbumPhoto | null
 }): NinaAboutViewerLists {
-  if (input.resolvedChatPhoto == null) return { album: input.album, chat: input.gallery }
-  return { album: input.album, chat: [...input.gallery, input.resolvedChatPhoto] }
+  const chat =
+    input.resolvedChatPhoto == null ? input.gallery : [...input.gallery, input.resolvedChatPhoto]
+
+  const resolvedCurrentAvatar = input.resolvedCurrentAvatar ?? null
+  const alreadyLoaded =
+    resolvedCurrentAvatar != null &&
+    input.album.some((photo) => photo.id === resolvedCurrentAvatar.id)
+  const album =
+    resolvedCurrentAvatar == null || alreadyLoaded
+      ? input.album
+      : [...input.album, resolvedCurrentAvatar]
+
+  return { album, chat }
 }
 
 /**

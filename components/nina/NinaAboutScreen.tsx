@@ -16,12 +16,16 @@ import {
   deleteNinaChatPhoto,
   type NinaAttachTarget,
 } from '@/lib/nina/albumActions'
+import { fetchNinaAlbumPage, fetchNinaMediaPage } from '@/lib/nina/aboutPageActions'
 import {
+  NINA_ABOUT_PAGE_SIZE,
   NINA_ABOUT_PHOTO_PARAM,
+  NINA_ABOUT_TAB_PARAM,
   NINA_ATTACH_MAX_CHARS,
   aboutViewerLists,
   decodeAboutPhoto,
   encodeAboutPhoto,
+  type NinaAboutTab,
   type NinaAlbumPhoto,
   type NinaAvatarView,
   type NinaGalleryPhoto,
@@ -70,31 +74,53 @@ interface Open {
 
 export function NinaAboutScreen({
   avatar,
-  album,
-  gallery,
+  album: initialAlbum,
+  albumTotal: albumTotalProp,
+  albumPage: albumPageProp,
+  gallery: initialGallery,
+  galleryTotal: galleryTotalProp,
+  galleryPage: galleryPageProp,
   resolvedPhoto,
+  resolvedCurrentAvatar = null,
   returnTo,
+  initialTab,
 }: {
   avatar: NinaAvatarView
+  /** The Foto profil tab's LOADED page — 30 at a time (`NINA_ABOUT_PAGE_SIZE`), not the album. */
   album: readonly NinaAlbumPhoto[]
+  /** Every avatar this user has, across every page — how the pager computes its page count. */
+  albumTotal?: number
+  /** 1-based: which page `album` is. Seeded from a cookie, so a reload resumes where it left off. */
+  albumPage?: number
+  /** The Media tab's LOADED page — same pagination shape as `album`, over the conversation's photos. */
   gallery: readonly NinaGalleryPhoto[]
+  galleryTotal?: number
+  galleryPage?: number
   /**
-   * **A photograph the URL names but the gallery window dropped — resolved on the server, or
+   * **A photograph the URL names but the loaded Media page dropped — resolved on the server, or
    * null.** Optional and nullable, and both absences are the SAME answer downstream.
    *
-   * `?photo=chat.<id>` used to open only when the id sat inside `gallery` — the newest
-   * `NINA_GALLERY_LIMIT` originals — so a photograph older than the window resolved to
-   * `index < 0` and the viewer silently did not open. The page now falls such a miss through
-   * `getNinaMessageImage` (the deep-link read; it never filters references, so a re-attached
-   * album face re-opens too) and maps the row through `galleryPhotos([row])[0]` before handing it
-   * here — the mapping is what strips `description`, `glm-4.6v`'s private prose, from the row
-   * (invariant 5). A deleted or foreign id arrives as `null` and behaves exactly like the old
-   * miss: a closed viewer, never an error.
+   * `?photo=chat.<id>` opens only when the id sits inside the LOADED page of `gallery` — 30 rows,
+   * narrower now that the Media tab paginates than the 200-row window it used to be — so a
+   * photograph off that page resolves to `index < 0` and the viewer would silently not open. The
+   * page falls such a miss through `getNinaMessageImage` (the deep-link read; it never filters
+   * references, so a re-attached album face re-opens too) and maps the row through
+   * `galleryPhotos([row])[0]` before handing it here — the mapping is what strips `description`,
+   * `glm-4.6v`'s private prose, from the row (invariant 5). A deleted or foreign id arrives as
+   * `null` and behaves exactly like the old miss: a closed viewer, never an error.
    *
    * The photo is VIEWER-ONLY. `aboutViewerLists` appends it to the chat arm of the viewer's lists
-   * and to nothing else; the Media grid keeps mapping the `gallery` prop (invariant 8).
+   * and to nothing else; the Media grid keeps mapping the loaded page (invariant 8).
    */
   resolvedPhoto?: NinaGalleryPhoto | null
+  /**
+   * **The current avatar, resolved on the server ONLY when the loaded profile page does not
+   * already hold it — null otherwise, including the common case.** Pagination's counterpart to
+   * `resolvedPhoto`: the hero avatar opens the album viewer at the current photo, which used to be
+   * safe unconditionally because the album read was unpaginated. `aboutViewerLists` appends it to
+   * the album arm exactly the way `resolvedPhoto` joins the chat arm.
+   */
+  resolvedCurrentAvatar?: NinaAlbumPhoto | null
   /**
    * **The deep link's RETURN leg, already decoded and sanitized on the server.** Where the close
    * should land the runner instead of `/nina/about` — the origin page a deep link like Detail
@@ -108,11 +134,111 @@ export function NinaAboutScreen({
    * this screen had before the leg existed: strip the parameter in place.
    */
   returnTo?: string | null
+  /** Which tab the server's `?tab=` decoded to. Defaults to Foto profil, same as the URL codec. */
+  initialTab?: NinaAboutTab
 }) {
   const router = useRouter()
   const searchParams = useSearchParams()
-  /** Which of the two photo sections is showing. Local UI state — the URL stays for the viewer. */
-  const [activeTab, setActiveTab] = React.useState<'profile' | 'media'>('profile')
+  /**
+   * Which of the two photo sections is showing. Seeded from the URL (`?tab=`) rather than always
+   * `'profile'`, and pushed back into the URL on every tap (`handleTabChange` below) — so a page
+   * you fetch client-side (Next/Previous never navigates; see `goToAlbumPage`/`goToMediaPage`) and
+   * a plain reload both keep you on the tab you were viewing instead of snapping back to Foto
+   * profil.
+   */
+  const [activeTab, setActiveTab] = React.useState<NinaAboutTab>(initialTab ?? 'profile')
+
+  /**
+   * ── PAGINATION: ONE PAGE IN MEMORY AT A TIME, FETCHED CLIENT-SIDE, NEVER A NAVIGATION ────────
+   * `albumItems`/`galleryItems` are what the grids and the viewer actually render — seeded from
+   * the server's first page, replaced by `goToAlbumPage`/`goToMediaPage` on a Previous/Next tap.
+   * `*Cache` holds every page already fetched this mount (keyed by page number) so paging back
+   * never re-hits the server — the "don't keep reloading everything from zero" ask. A full reload
+   * still starts from the cookie-remembered page (`app/nina/about/page.tsx`), which is the part a
+   * client cache cannot help with.
+   */
+  const [albumItems, setAlbumItems] = React.useState<readonly NinaAlbumPhoto[]>(initialAlbum)
+  const [albumPage, setAlbumPage] = React.useState(albumPageProp ?? 1)
+  const [albumTotal, setAlbumTotal] = React.useState(albumTotalProp ?? initialAlbum.length)
+  const [albumPaging, setAlbumPaging] = React.useState(false)
+  const albumCache = React.useRef(
+    new Map<number, { items: readonly NinaAlbumPhoto[]; total: number }>([
+      [albumPageProp ?? 1, { items: initialAlbum, total: albumTotalProp ?? initialAlbum.length }],
+    ]),
+  )
+
+  const [galleryItems, setGalleryItems] =
+    React.useState<readonly NinaGalleryPhoto[]>(initialGallery)
+  const [galleryPage, setGalleryPage] = React.useState(galleryPageProp ?? 1)
+  const [galleryTotal, setGalleryTotal] = React.useState(galleryTotalProp ?? initialGallery.length)
+  const [galleryPaging, setGalleryPaging] = React.useState(false)
+  const galleryCache = React.useRef(
+    new Map<number, { items: readonly NinaGalleryPhoto[]; total: number }>([
+      [
+        galleryPageProp ?? 1,
+        { items: initialGallery, total: galleryTotalProp ?? initialGallery.length },
+      ],
+    ]),
+  )
+
+  const goToAlbumPage = React.useCallback(async (page: number) => {
+    const cached = albumCache.current.get(page)
+    if (cached) {
+      setAlbumItems(cached.items)
+      setAlbumTotal(cached.total)
+      setAlbumPage(page)
+      return
+    }
+    setAlbumPaging(true)
+    try {
+      const result = await fetchNinaAlbumPage(page)
+      albumCache.current.set(result.page, { items: result.items, total: result.total })
+      setAlbumItems(result.items)
+      setAlbumTotal(result.total)
+      setAlbumPage(result.page)
+    } finally {
+      setAlbumPaging(false)
+    }
+  }, [])
+
+  const goToMediaPage = React.useCallback(async (page: number) => {
+    const cached = galleryCache.current.get(page)
+    if (cached) {
+      setGalleryItems(cached.items)
+      setGalleryTotal(cached.total)
+      setGalleryPage(page)
+      return
+    }
+    setGalleryPaging(true)
+    try {
+      const result = await fetchNinaMediaPage(page)
+      galleryCache.current.set(result.page, { items: result.items, total: result.total })
+      setGalleryItems(result.items)
+      setGalleryTotal(result.total)
+      setGalleryPage(result.page)
+    } finally {
+      setGalleryPaging(false)
+    }
+  }, [])
+
+  const albumPageCount = Math.max(1, Math.ceil(albumTotal / NINA_ABOUT_PAGE_SIZE))
+  const galleryPageCount = Math.max(1, Math.ceil(galleryTotal / NINA_ABOUT_PAGE_SIZE))
+
+  /**
+   * Tab switches write `?tab=` alongside the tap — `router.replace` (not `push`; a tab flip is not
+   * a history entry any more than the picker's own tab bar would be) — so the URL and the visible
+   * tab can never read as two different answers to "which tab is this".
+   */
+  const handleTabChange = React.useCallback(
+    (tab: NinaAboutTab) => {
+      setActiveTab(tab)
+      const url = new URL(window.location.href)
+      if (tab === 'profile') url.searchParams.delete(NINA_ABOUT_TAB_PARAM)
+      else url.searchParams.set(NINA_ABOUT_TAB_PARAM, tab)
+      router.replace(`${url.pathname}${url.search}`)
+    },
+    [router],
+  )
   const [question, setQuestion] = React.useState('')
   /* Which send is in flight — `'recent'` or `'new'` — or `null` when neither is. One flight for
    * two controls: it names the button that shows the dots and disables the other one. */
@@ -132,14 +258,22 @@ export function NinaAboutScreen({
   const resolvedChatPhoto = resolvedPhoto ?? null
 
   /**
-   * One list per section, in render order. `aboutViewerLists`' whole job is appending the
-   * resolved photo to the chat arm and to nothing else. Every reader below (`open`, `openAt`,
-   * `onIndex`, `attach`, `openChatPhoto`) goes through THIS object rather than the raw props, so
-   * the viewer's indices and its id reads cannot drift from the list the viewer actually shows.
+   * One list per section, in render order — over the LOADED page of each, not the whole
+   * collection. `aboutViewerLists` appends the resolved chat photo to the chat arm and the
+   * resolved current avatar to the album arm, each only when the loaded page does not already
+   * hold it. Every reader below (`open`, `openAt`, `onIndex`, `attach`, `openChatPhoto`) goes
+   * through THIS object rather than the raw state, so the viewer's indices and its id reads
+   * cannot drift from the list the viewer actually shows.
    */
   const viewerLists = React.useMemo(
-    () => aboutViewerLists({ album, gallery, resolvedChatPhoto }),
-    [album, gallery, resolvedChatPhoto],
+    () =>
+      aboutViewerLists({
+        album: albumItems,
+        gallery: galleryItems,
+        resolvedChatPhoto,
+        resolvedCurrentAvatar,
+      }),
+    [albumItems, galleryItems, resolvedChatPhoto, resolvedCurrentAvatar],
   )
 
   const albumViewer: ViewerPhoto[] = React.useMemo(
@@ -353,9 +487,20 @@ export function NinaAboutScreen({
     }
   }, [deleting, openChatPhoto, router, sending])
 
+  /**
+   * The hero taps INTO the album viewer at her current photo — safe unconditionally before
+   * pagination (the whole album was always in memory) and no longer so: the loaded page may not
+   * hold it. Find the current photo's ID on the loaded page first, falling back to the resolved
+   * one the server hands down when it is not there, then locate that id in `viewerLists.album`
+   * (which is where `resolvedCurrentAvatar`, when present, actually lives — see `aboutViewerLists`).
+   * `Math.max(0, …)` only matters for the pathological case of neither existing — an empty album
+   * cannot happen (`albumPhotos` always returns at least the fallback entry).
+   */
+  const currentAlbumId =
+    albumItems.find((photo) => photo.isCurrent)?.id ?? resolvedCurrentAvatar?.id
   const currentAlbumIndex = Math.max(
     0,
-    album.findIndex((photo) => photo.isCurrent),
+    viewerLists.album.findIndex((photo) => photo.id === currentAlbumId),
   )
 
   return (
@@ -396,7 +541,7 @@ export function NinaAboutScreen({
           id="nina-about-tab-profile"
           aria-selected={activeTab === 'profile'}
           aria-controls="nina-about-panel-profile"
-          onClick={() => setActiveTab('profile')}
+          onClick={() => handleTabChange('profile')}
           className={cn(
             'flex-1 rounded-pill px-4 py-2 text-[13px] font-semibold transition-colors',
             activeTab === 'profile' ? 'bg-ink text-card' : 'text-ink-2',
@@ -410,7 +555,7 @@ export function NinaAboutScreen({
           id="nina-about-tab-media"
           aria-selected={activeTab === 'media'}
           aria-controls="nina-about-panel-media"
-          onClick={() => setActiveTab('media')}
+          onClick={() => handleTabChange('media')}
           className={cn(
             'flex-1 rounded-pill px-4 py-2 text-[13px] font-semibold transition-colors',
             activeTab === 'media' ? 'bg-ink text-card' : 'text-ink-2',
@@ -427,7 +572,17 @@ export function NinaAboutScreen({
           aria-labelledby="nina-about-tab-profile"
           className="mb-7"
         >
-          <NinaPhotoGrid cells={album.map(toCell)} onOpen={(index) => openAt('album', index)} />
+          <NinaPhotoGrid
+            cells={albumItems.map(toCell)}
+            onOpen={(index) => openAt('album', index)}
+          />
+          <NinaAboutPager
+            page={albumPage}
+            pageCount={albumPageCount}
+            total={albumTotal}
+            busy={albumPaging}
+            onPage={goToAlbumPage}
+          />
         </section>
       ) : (
         <section
@@ -436,12 +591,24 @@ export function NinaAboutScreen({
           aria-labelledby="nina-about-tab-media"
           className="mb-7"
         >
-          {gallery.length === 0 ? (
+          {galleryItems.length === 0 ? (
             <p className="text-[13px] text-ink-3">
               Belum ada foto di chat. Kirim satu ke Nina, atau minta dia kirim.
             </p>
           ) : (
-            <NinaPhotoGrid cells={gallery.map(toCell)} onOpen={(index) => openAt('chat', index)} />
+            <>
+              <NinaPhotoGrid
+                cells={galleryItems.map(toCell)}
+                onOpen={(index) => openAt('chat', index)}
+              />
+              <NinaAboutPager
+                page={galleryPage}
+                pageCount={galleryPageCount}
+                total={galleryTotal}
+                busy={galleryPaging}
+                onPage={goToMediaPage}
+              />
+            </>
           )}
         </section>
       )}
@@ -632,6 +799,59 @@ function toCell(photo: NinaAlbumPhoto | NinaGalleryPhoto): NinaGridCell {
     label: photo.label,
     isCurrent: (photo as NinaAlbumPhoto).isCurrent === true,
   }
+}
+
+/**
+ * The Previous/Next row under each grid — one page of `NINA_ABOUT_PAGE_SIZE`, so every photograph
+ * in the collection is reachable rather than only the render-capped newest batch. Renders nothing
+ * for a single-page collection, the common case: most albums and most conversations do not yet
+ * hold 30 photographs.
+ *
+ * `onPage` is `goToAlbumPage`/`goToMediaPage` — a client fetch, never a navigation (the runner's
+ * own choice over a `?page=` link): the page shell never remounts and `busy` is this tap's own
+ * flight, not the attach strip's.
+ */
+function NinaAboutPager({
+  page,
+  pageCount,
+  total,
+  busy,
+  onPage,
+}: {
+  page: number
+  pageCount: number
+  total: number
+  busy: boolean
+  onPage: (page: number) => void
+}) {
+  if (pageCount <= 1) return null
+  return (
+    <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+      <p className="text-[11px] font-medium text-ink-3 tabular-nums">
+        Halaman {page} dari {pageCount} &middot; {total} foto
+      </p>
+      <div className="flex gap-2">
+        <Button
+          type="button"
+          size="md"
+          variant="secondary"
+          disabled={busy || page <= 1}
+          onClick={() => onPage(page - 1)}
+        >
+          Sebelumnya
+        </Button>
+        <Button
+          type="button"
+          size="md"
+          variant="secondary"
+          disabled={busy || page >= pageCount}
+          onClick={() => onPage(page + 1)}
+        >
+          Berikutnya
+        </Button>
+      </div>
+    </div>
+  )
 }
 
 /*

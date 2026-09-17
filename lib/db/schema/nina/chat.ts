@@ -617,10 +617,11 @@ export const ninaMessageImages = pgTable(
      * download control and Nina's own prompt read this table by `message_id`
      * (`getNinaMessageImagesForMessages`, `getNinaMessageImage`,
      * `dbNinaSourceGateway.readMessageWindow`). A message with no image row of its own is a blank
-     * bubble. So the row stays, these columns mark it, and only the three COLLECTION reads
-     * (`listNinaMessageImages`, `countNinaChatPhotos` — the reference picker's chat-side total,
-     * `listNinaMediaPhotos` + `countNinaMediaPhotos` — the Media view and its badge) skip it — one
-     * predicate, `isOriginalPhoto()` in `lib/nina/queries.ts`.
+     * bubble. So the row stays, these columns mark it, and only the COLLECTION reads
+     * (`countNinaChatPhotos` — the reference picker's chat-side total, `listNinaMediaPhotos` +
+     * `countNinaMediaPhotos` — the Media view and its badge, read by BOTH `/admin/nina?view=media`
+     * and `/nina/about`'s Media tab since 2026-09-17) skip it — one predicate, `isOriginalPhoto()`
+     * in `lib/nina/queries.ts`.
      *
      * **Two columns and not one polymorphic pointer**, because the two targets are two tables and
      * a real foreign key on each is what makes `SET NULL` possible at all. The shape is

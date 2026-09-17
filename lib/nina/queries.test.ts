@@ -40,6 +40,11 @@ import * as barrel from '@/lib/nina/queries'
  * `listNinaAvatarIdsInFolderTree` (the folder delete's pre-read). All three exist so an orphaned
  * reference row is measured before `ON DELETE SET NULL` reclassifies it — see
  * `lib/nina/provenancePromotion.ts`.
+ *
+ * nina-about-pagination (2026-09-17): one name swapped for another, net zero — `listNinaAvatarsPage`
+ * added (the paginated album read `/nina/about`'s Foto profil tab now uses) and
+ * `listNinaMessageImages` removed (its one caller, the same page's old Media read, moved to the
+ * already-paginated `listNinaMediaPhotos`).
  */
 const BARREL_VALUE_EXPORTS = [
   'adoptNinaMessageImage',
@@ -110,9 +115,13 @@ const BARREL_VALUE_EXPORTS = [
   'listNinaAvatarManifest',
   'listNinaAvatars',
   'listNinaAvatarsInFolder',
+  // nina-about-pagination (2026-09-17): the whole-album paged read `/nina/about`'s Foto profil tab
+  // needs now that it no longer reads `listNinaAvatars` unbounded — documented growth, paired with
+  // the SAME commit's removal of `listNinaMessageImages` (its one caller moved to the
+  // already-paginated `listNinaMediaPhotos`, leaving it with no caller left).
+  'listNinaAvatarsPage',
   'listNinaMediaPhotos',
   'listNinaMemoryFacts',
-  'listNinaMessageImages',
   'listNinaMessages',
   'listNinaMessagesAfter',
   'listNinaPhotoReferences',

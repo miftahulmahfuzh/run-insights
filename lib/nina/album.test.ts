@@ -47,6 +47,7 @@ describe('ninaAvatarView', () => {
   it('null means the committed constant, with no crop (D-2)', () => {
     const view = ninaAvatarView(null)
     expect(view).toEqual({
+      id: null,
       src: NINA_AVATAR_FALLBACK_SRC,
       natural: { width: null, height: null },
       crop: null,
@@ -57,11 +58,13 @@ describe('ninaAvatarView', () => {
 
   it('undefined behaves as null', () => {
     expect(ninaAvatarView(undefined).isFallback).toBe(true)
+    expect(ninaAvatarView(undefined).id).toBeNull()
   })
 
-  it('a row becomes its blob url, its natural size and its stored triple', () => {
+  it('a row becomes its id, its blob url, its natural size and its stored triple', () => {
     const view = ninaAvatarView(avatar({ cropScale: 1.4, cropX: -120, cropY: 60 }))
     expect(view.isFallback).toBe(false)
+    expect(view.id).toBe('av000000000a')
     expect(view.src).toBe('https://blob.example/nina/u1/avatar-av000000000a.jpg')
     expect(view.natural).toEqual({ width: 1024, height: 1365 })
     expect(view.crop).toEqual({ scale: 1.4, x: -120, y: 60 })

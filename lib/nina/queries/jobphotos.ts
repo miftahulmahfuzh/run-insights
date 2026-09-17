@@ -111,7 +111,7 @@ export interface NinaJobPhotoRow {
  *
  * ── WHY `kind = 'generated'`, THE ORDER, AND THE ONE ROW ──────────────────────────────────────
  * `generated` excludes HIS uploads, which share the table. The order is the gallery's own —
- * `(created_at desc, id desc)`, `listNinaMessageImages`' — so `LIMIT 1` is deterministic even if a
+ * `(created_at desc, id desc)`, `listNinaMediaPhotos`' — so `LIMIT 1` is deterministic even if a
  * job ever carried two photographs; today both writers write exactly one, so the tiebreak is
  * insurance rather than a fix.
  *
