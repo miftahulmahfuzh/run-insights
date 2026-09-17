@@ -60,8 +60,10 @@ import type { PhotoReferenceItem } from './photoReferenceModel'
  * `PHOTO_REFERENCE_MIN_TILE_PX` is the `minmax()` floor for the fluid tablet range (`sm` to `lg`):
  * `auto-fill` drops a column before it lets a tile go under 92 px — 2.1x `docs/design-brief.md`'s
  * 44 pt minimum. Below `sm` (phones) the grid is a fixed 3 columns, comfortably clear of the floor
- * even on a narrow screen; at `lg` and up (desktop) it is a fixed 10 columns, which — paired with
- * `NINA_PHOTO_REF_PAGE_SIZE`'s 50-row page — draws as a clean 5-row sheet with no ragged edge.
+ * even on a narrow screen; at `lg` and up (desktop) it is a fixed 10 columns. `NINA_PHOTO_REF_PAGE_SIZE`
+ * is 30 — divisible by both 3 and 10 — so a full page tiles as a clean sheet with no trailing gap
+ * on either breakpoint: 10x3 on desktop, 3x10 on phones. Only the collection's last (partial) page
+ * can ever leave a row short.
  *
  * ── IT READS NOTHING AND WRITES NOTHING ─────────────────────────────────────────────────────────
  * No Server Action is imported, no `fetch()` is called, and there is no database read here or
