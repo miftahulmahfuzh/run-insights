@@ -25,23 +25,23 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "63940f2",
       "depends_on": [
         1
       ],
       "difficulty": "HARD",
       "n": 2,
-      "note": null,
+      "note": "tsc + full vitest (361 files, 6292 tests) + lint green; searchNinaAvatarsBy* renamed to searchNinaPhotosBy*, NinaAvatarSearchRow/Page to NinaPhotoSearchRow/Page \u2014 phase 3 imports the new names; AdminSearchHit gained 3 required fields (origin, searchKeywords, negativeSearchKeywords) and phase 3's SearchResultsGrid.test.tsx fixture was already patched here to keep tsc green",
       "package": "lib/nina`, `lib/admin",
       "plan": ".workflows/plan/media-album-unified-search/phase-2.md",
-      "reported_at": null,
+      "reported_at": "2026-09-17T04:04:19+00:00",
       "satisfies": [
         "R1",
         "R2",
         "R3"
       ],
-      "status": "spawned",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P2-NIN-A002",
       "title": "Query/action layer: merged search, media embedding pipeline, link-not-copy promotion, deletion guard"
     },
     {
@@ -62,7 +62,7 @@
         "R2",
         "R3"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": null,
       "title": "UI: Media keyword box, merged search results, pointer-row messaging"
     },
@@ -93,7 +93,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/media-album-unified-search/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "media-album-unified-search",
-  "updated": "2026-09-17T03:21:55+00:00",
+  "updated": "2026-09-17T04:04:55+00:00",
   "verified_at": "2026-09-17T03:21:03+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/media-album-unified-search"
 }

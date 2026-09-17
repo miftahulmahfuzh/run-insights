@@ -6,7 +6,7 @@
 **Worktree:** `/home/miftah/.worktrees/run-insights/media-album-unified-search`
 **Branch:** `feature/media-album-unified-search` (base: `origin/main` @ `b8b4aeb`)
 **Phases:** 4
-**Status:** phase 1/4 complete
+**Status:** phase 2/4 complete
 **Coordinator:** —
 
 ---
@@ -68,7 +68,7 @@ there against a real Postgres rather than asserted.
 | # | Title | Satisfies | Package | Files | Depends on | Difficulty | Plan | TaskID | Card |
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
 | 1 ✅ | Schema: media keyword/embedding columns + Album pointer FK | R1, R2, R3 | `lib/db/schema/nina`, `drizzle` | 7 | — | NORMAL | `.workflows/plan/media-album-unified-search/phase-1.md` | P2-DB-A002 | — |
-| 2 | Query/action layer: merged search, media embedding pipeline, link-not-copy promotion, deletion guard | R1, R2, R3 | `lib/nina`, `lib/admin` | 23 | 1 | HARD | `.workflows/plan/media-album-unified-search/phase-2.md` | P2-NIN-A002 | — |
+| 2 ✅ | Query/action layer: merged search, media embedding pipeline, link-not-copy promotion, deletion guard | R1, R2, R3 | `lib/nina`, `lib/admin` | 23 | 1 | HARD | `.workflows/plan/media-album-unified-search/phase-2.md` | P2-NIN-A002 | — |
 | 3 | UI: Media keyword box, merged search results, pointer-row messaging | R1, R2, R3 | `components/admin/explorer`, `app/admin/nina` | 12 | 1, 2 | NORMAL | `.workflows/plan/media-album-unified-search/phase-3.md` | P2-CA-A006 | — |
 | 4 | Backfill + test coverage | R1, R2, R3 | `app/api/admin/nina`, `scripts`, `tests` | 6 | 1, 2, 3 | NORMAL | `.workflows/plan/media-album-unified-search/phase-4.md` | P2-APP-A001 | — |
 
