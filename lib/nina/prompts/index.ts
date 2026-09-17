@@ -124,7 +124,22 @@
  * turn whose `send` call could carry a `reminders` array is a turn `nina_turns` has to be able to
  * tell from version 9's, which is the whole job of this constant. This is the SINGLE bump for the
  * set: it is a one-phase set and no other file touches the constant. */
-export const NINA_PROMPT_VERSION = 10
+/* 11 — the nina-avatar-existing-photo set, R2. **A NEW TOOL, and no system text.** `./tools.ts`
+ * gained `SET_AVATAR_FROM_PHOTO_TOOL` (`set_avatar_from_photo`, one optional-in-Zod `because`) and
+ * one appended sentence on `SET_AVATAR_TOOL.description`; `./system.ts` was not opened, so
+ * `buildNinaSystemPrompt` is byte-identical to version 10's at every tuning and
+ * `tests/__snapshots__/nina.prompts.test.ts.snap` passes UNREGENERATED (the snapshot does not cover
+ * tool schemas).
+ *
+ * What she can now do that she could not before: make a photograph that ALREADY EXISTS her profile
+ * picture — the one he just attached, or the last one this conversation showed — instead of being
+ * forced through `set_avatar`, whose only mode is to invent a scene and start a generation. The
+ * production turn on 2026-09-17 02:43 is the evidence: "ganti profpic lu pake foto ini" produced
+ * `tool_calls = set_avatar` and a brand-new alleyway photo. A turn whose `body.tools` carries an
+ * eighth tool is a turn `nina_turns` has to be able to tell from version 10's, which is the whole job
+ * of this constant. This is the SINGLE bump for the set: it is a one-phase set and no other file
+ * touches the constant. */
+export const NINA_PROMPT_VERSION = 11
 
 export {
   NINA_REPAIR_PREAMBLE,
