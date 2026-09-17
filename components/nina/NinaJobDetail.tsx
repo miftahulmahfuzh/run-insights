@@ -1,15 +1,22 @@
 'use client'
 
-import { ButtonLink, Card, Stat } from '@/components/ui'
+import { useRouter } from 'next/navigation'
+import * as React from 'react'
+
+import { Button, ButtonLink, Card, Stat } from '@/components/ui'
+import { redoNinaImageJob } from '@/lib/nina/jobActions'
 import {
   NINA_JOB_JUMP_NOTE,
   formatJobLatency,
   formatMicroUsd,
+  jobCanRedo,
+  ninaJobHref,
   withCostSourceLine,
   type NinaJobJump,
   type NinaJobPhoto,
   type NinaJobStage,
 } from '@/lib/nina/jobview'
+import { NOTE } from './NinaJobActions'
 import { NinaJobElapsed } from './NinaJobElapsed'
 
 /**
@@ -62,6 +69,7 @@ import { NinaJobElapsed } from './NinaJobElapsed'
  * neither exists, the line says so instead of rendering an empty card.
  */
 export function NinaJobDetail({
+  jobId,
   stage,
   stageLabel,
   errorLabel,
@@ -81,6 +89,7 @@ export function NinaJobDetail({
   jump,
   photo,
 }: {
+  jobId: string
   stage: NinaJobStage
   stageLabel: string
   errorLabel: string | null
@@ -109,6 +118,22 @@ export function NinaJobDetail({
   photo: NinaJobPhoto
 }) {
   const open = stage === 'queued' || stage === 'dispatched' || stage === 'running'
+
+  const router = useRouter()
+  const [retryNote, setRetryNote] = React.useState<string | null>(null)
+  const [retryPending, startRetryTransition] = React.useTransition()
+
+  function retry() {
+    setRetryNote(null)
+    startRetryTransition(async () => {
+      const outcome = await redoNinaImageJob({ jobId })
+      if (!outcome.ok || outcome.jobId == null) {
+        setRetryNote(NOTE[outcome.reason ?? 'not-found'])
+        return
+      }
+      router.push(ninaJobHref(outcome.jobId))
+    })
+  }
 
   return (
     <div className="space-y-4">
@@ -178,7 +203,23 @@ export function NinaJobDetail({
               <Maximize2Icon />
             </ButtonLink>
           )}
+          {jobCanRedo(stage) && (
+            <Button
+              variant="secondary"
+              size="md"
+              loading={retryPending}
+              aria-label="Coba lagi"
+              onClick={retry}
+            >
+              <RedoIcon />
+            </Button>
+          )}
         </div>
+        {retryNote !== null && (
+          <p role="status" className="mt-2 text-[12px] font-semibold text-red">
+            {retryNote}
+          </p>
+        )}
       </Card>
 
       <Card className="grid grid-cols-2 gap-4 p-5">
@@ -282,6 +323,28 @@ function Maximize2Icon() {
       <path d="m21 3-7 7" />
       <path d="m3 21 7-7" />
       <path d="M9 21H3v-6" />
+    </svg>
+  )
+}
+
+/** "Coba lagi" — `NinaJobActions.tsx`'s `RedoIcon`, copied verbatim: same glyph, same verb, a
+ * different screen. `aria-hidden`, because the button already carries the accessible name. */
+function RedoIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="size-[18px]" fill="none" aria-hidden="true">
+      <path
+        d="M20 12a8 8 0 1 1-2.34-5.66"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+      <path
+        d="M20 4v5h-5"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   )
 }

@@ -73,7 +73,9 @@ import { ninaJobTitle, type NinaJobListItem, type NinaJobRefusal } from '@/lib/n
  * Phase 2's delete reuses `not-found` verbatim: "the row is not there any more" is the same fact
  * whichever button asked.
  */
-const NOTE: Record<NinaJobRefusal, string> = {
+/** Exported so `NinaJobDetail.tsx`'s retry button — same action, same refusals, a different
+ * screen — renders the identical Indonesian sentence instead of a second copy that can drift. */
+export const NOTE: Record<NinaJobRefusal, string> = {
   'not-found': 'Job ini sudah nggak ada.',
   'not-failed': 'Cuma job yang gagal yang bisa diulang.',
   'no-args': 'Job lama ini nggak nyimpan prompt-nya, jadi nggak bisa diulang.',
