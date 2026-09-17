@@ -44,9 +44,21 @@ import type { NinaImagePrefs } from '../imageprefs'
  * The face itself is NOT deleted. The index's Decisions table settles that: *"the face keeps its
  * sentences and loses its primacy"*. All four of `NINA_FACE`'s actual face sentences survive
  * verbatim below; what changed is that the body is now read first.
+ *
+ * ── THE RATIO CLAUSE, ADDED TO ELEMENT 0 (2026-09-17) ─────────────────────────────────────────
+ * Job `lvCrq8Zz4smA`'s photograph came back with calves that read visibly shorter than the
+ * thighs, on a runner's own complaint. "Very long calves" alone gives a diffusion model no
+ * anchor for how long is long, and the pose most selfies ask for (bent forward, hands on the
+ * thighs) foreshortens the calves toward the ground while the thighs sit closer to and squarer on
+ * the lens — perspective actively working against the bare adjective. Stating the ratio against
+ * the thighs, rather than leaving "long" to mean whatever the model's training prior says, is what
+ * `pull-image-gen-job`'s diagnosis of that job recommended, baked into the unconditional canon
+ * instead of a one-off admin override so every generation gets it, not just a redo of one job.
+ * `imagegen.ts`'s `NINA_SELFIE_STYLE_SUFFIX` carries the same ratio again, unconditionally, for the
+ * reason stated there — this element alone is not read at every rung's every block.
  */
 export const NINA_BODY_SENTENCES: readonly string[] = [
-  `She has got an alluring body, big boobs and very long calves. This silhouette is the point of the photograph and it must be visible in it.`,
+  `She has got an alluring body, big boobs and very long calves — calves that read as long as, or longer than, her thighs, never shorter. This silhouette is the point of the photograph and it must be visible in it.`,
   `Her chest is full and heavy and her waist is narrow.`,
   `Her butt is round, high and prominent, standing out from her back rather than flattening into it.`,
   `Her thighs are thick and strong, filling whatever she is wearing, with a runner's muscle visible under soft skin.`,
@@ -60,8 +72,13 @@ export const NINA_BODY_SENTENCES: readonly string[] = [
  * spelling drifting away from the canon; `tests/nina.imagerecipe.test.ts` asserts this string
  * really is the enumeration inside `NINA_BODY_SENTENCES[0]`, so the extraction cannot silently
  * stop agreeing with the sentence it came from.
+ *
+ * The ratio clause (2026-09-17, see the header above) rides along here rather than as a sixth,
+ * separate fact: it is a property OF the calves fact, not a new one, and the editable template's
+ * SUBJECT line has always spliced this constant in whole rather than word by word.
  */
-export const NINA_BODY_FACTS = 'big boobs and very long calves'
+export const NINA_BODY_FACTS =
+  'big boobs and very long calves — calves that read as long as, or longer than, her thighs, never shorter'
 
 /** The full render. Every sentence, in order. */
 export const NINA_BODY = NINA_BODY_SENTENCES.join(' ')

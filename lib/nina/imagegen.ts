@@ -123,7 +123,27 @@ const NINA_SELFIE_STYLE_PREFIX = `A candid photograph of her, taken by another p
  */
 const NINA_SELFIE_FRAMING_DEFAULT = `Shot on a 50 mm lens from about three metres back, at chest height, so the perspective is flat and human: her head is normal-sized and in natural proportion to her tall body, her long legs read their full length, and nothing is stretched or squeezed by a close wide-angle. Frame her whole body with room to spare, the top of her head and her long feet both comfortably inside the picture and floor visible below her feet; her long feet and long calves are never cropped, never flattened against the bottom edge and never shrunk by perspective.`
 
-const NINA_SELFIE_STYLE_SUFFIX = `Natural daylight, slightly imperfect framing, shallow depth of field, visible skin texture, no studio lighting, no retouching, no text, no watermark, no logo, no border. Realistic photograph, not an illustration and not a render, the kind of picture a friend takes and sends in a chat app.`
+/**
+ * **The calf-to-thigh ratio clause (2026-09-17), and why it lives in the SUFFIX and not the
+ * framing sentence it sits beside.**
+ *
+ * Job `lvCrq8Zz4smA`: a bent-forward beach pose, hands braced on the thighs. `pull-image-gen-job`'s
+ * diagnosis of the photograph found the calves reading visibly shorter than the thighs — the pose
+ * puts the thighs closer to and squarer on the lens while the calves recede toward the ground, and
+ * `NINA_SELFIE_FRAMING_DEFAULT`'s bare "long calves" claim gave the model no ratio to hold against
+ * that foreshortening. `NINA_BODY_SENTENCES[0]`'s new ratio clause (`persona/appearance.ts`) says
+ * the same thing about who she is; this sentence says it about the shot, so the instruction survives
+ * whichever body sentences a rung actually spends.
+ *
+ * It is in the SUFFIX, unconditionally after `{{angle}}`, rather than folded into
+ * `NINA_SELFIE_FRAMING_DEFAULT` — the header above `NINA_SELFIE_STYLE_PREFIX` is exactly why: a
+ * chat-model `angle` override REPLACES that framing sentence wholesale, so anything added there
+ * would vanish on every photo the model was asked to shoot from an unusual angle, which is the
+ * common case this file's own worked examples come from. The ratio is a body-proportion fact, not
+ * a camera-position one — it does not compete with whatever `{{angle}}` says about where the
+ * camera is, so it belongs where it is sent on every selfie, angle override or not.
+ */
+const NINA_SELFIE_STYLE_SUFFIX = `Her calves read as long as, or longer than, her thighs — supermodel, runway-model leg proportions, the knee sitting at the exact midpoint of her leg or lower, never above it. This ratio holds regardless of pose: bent forward, crouching, or with her legs angled toward or away from the lens, her calves must never read shorter than her thighs. Natural daylight, slightly imperfect framing, shallow depth of field, visible skin texture, no studio lighting, no retouching, no text, no watermark, no logo, no border. Realistic photograph, not an illustration and not a render, the kind of picture a friend takes and sends in a chat app.`
 
 /**
  * The avatar variant. Same camera, tighter crop, because the result is rendered inside a 28-44 px
