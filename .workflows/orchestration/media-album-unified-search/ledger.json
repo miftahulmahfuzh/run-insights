@@ -46,24 +46,24 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "5dfad3b076706511ac79b4336363e1548a373b1c",
       "depends_on": [
         1,
         2
       ],
       "difficulty": "NORMAL",
       "n": 3,
-      "note": null,
+      "note": "Phase 3 UI landed; media pane keyword boxes, merged search labeling, pointer read/write redirection all verified live against dev server. PLAN.md tick still uncommitted on main in the main checkout \u2014 needs a manual commit there.",
       "package": "components/admin/explorer`, `app/admin/nina",
       "plan": ".workflows/plan/media-album-unified-search/phase-3.md",
-      "reported_at": null,
+      "reported_at": "2026-09-17T04:29:55+00:00",
       "satisfies": [
         "R1",
         "R2",
         "R3"
       ],
-      "status": "spawned",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P2-CA-A006",
       "title": "UI: Media keyword box, merged search results, pointer-row messaging"
     },
     {
@@ -93,7 +93,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/media-album-unified-search/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "media-album-unified-search",
-  "updated": "2026-09-17T04:04:55+00:00",
+  "updated": "2026-09-17T04:29:55+00:00",
   "verified_at": "2026-09-17T03:21:03+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/media-album-unified-search"
 }
