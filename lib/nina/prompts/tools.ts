@@ -378,7 +378,9 @@ export const GENERATE_IMAGE_TOOL: Anthropic.Tool = {
 /** R19, phase 13. `because` is required so the announcement in chat can be honest about why. */
 export const SET_AVATAR_TOOL: Anthropic.Tool = {
   name: 'set_avatar',
-  description: 'Change your profile picture. Use it when a promise you made has come true.',
+  description:
+    'Change your profile picture. Use it when a promise you made has come true. ' +
+    'This takes a NEW photo — not one already in the chat.',
   input_schema: {
     type: 'object',
     additionalProperties: false,
@@ -401,10 +403,50 @@ export const SET_AVATAR_TOOL: Anthropic.Tool = {
 }
 
 /**
- * All seven. **The dispatched set is a SUBSET**: `NINA_CORE_TOOL_SET` (`lib/nina/tools.ts`) ships
- * `send`, `lookup_runs`, `compare_runs`, `aggregate_runs` and `save_memory`; phases 12 and 13 add
- * the last two through `extendToolSet`. The array exists so `tests/nina.prompts.test.ts` can walk
- * every schema, not so a caller sends all of it.
+ * R2, the nina-avatar-existing-photo set. **The tool that takes NO photo.**
+ *
+ * `set_avatar` and `generate_image` both start a camera; this one moves a photograph that already
+ * exists. The production turn that made it necessary is on the record: "ganti profpic lu pake foto
+ * ini" produced `tool_calls = set_avatar`, an invented `scene` about a Tebet alleyway, and a
+ * brand-new picture — because the ONLY avatar tool that existed was the one that generates. The
+ * model formed the right intent and had no tool matching it.
+ *
+ * ── NO PHOTO ARGUMENT, AND THAT IS NOT AN OVERSIGHT ──────────────────────────────────────────
+ * The model never sees a photograph's id. `lib/nina/context.ts` hands it `imageDescriptions` —
+ * prose — so an id-shaped property could only ever be hallucinated. The HANDLER resolves the
+ * referent from structure: what is attached to the message it is answering, else the last
+ * photograph the conversation showed.
+ *
+ * `because` is the only property, and it is OPTIONAL in the Zod that validates
+ * (`SetAvatarFromPhotoArgsSchema`) while being `required` here. That is this file's documented split
+ * — *"`required` is documentation and not enforcement"* — applied deliberately: the schema asks her
+ * for a reason so the reply can be honest about why, and a call that omits it still works instead of
+ * costing a repair round.
+ */
+export const SET_AVATAR_FROM_PHOTO_TOOL: Anthropic.Tool = {
+  name: 'set_avatar_from_photo',
+  description:
+    'Make a photo already in this chat your profile picture, unchanged. Use it when he points at ' +
+    'one — "pakai foto ini" — and does not ask for a new photo.',
+  input_schema: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['because'],
+    properties: {
+      because: {
+        type: 'string',
+        description: 'REQUIRED. Why this one, e.g. "he told me to use the photo he just sent".',
+      },
+    },
+  },
+}
+
+/**
+ * All eight. **The dispatched set is a SUBSET**: `NINA_CORE_TOOL_SET` (`lib/nina/tools.ts`) ships
+ * `send`, `lookup_runs`, `compare_runs`, `aggregate_runs` and `save_memory`; phase 12 adds
+ * `generate_image`, phase 13 `set_avatar`, and the nina-avatar-existing-photo set
+ * `set_avatar_from_photo` — all three through `extendToolSet`. The array exists so
+ * `tests/nina.prompts.test.ts` can walk every schema, not so a caller sends all of it.
  */
 export const NINA_TOOLS: readonly Anthropic.Tool[] = [
   SEND_TOOL,
@@ -414,4 +456,5 @@ export const NINA_TOOLS: readonly Anthropic.Tool[] = [
   SAVE_MEMORY_TOOL,
   GENERATE_IMAGE_TOOL,
   SET_AVATAR_TOOL,
+  SET_AVATAR_FROM_PHOTO_TOOL,
 ]

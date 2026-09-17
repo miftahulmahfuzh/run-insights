@@ -2,7 +2,7 @@
 
 **Package Path**: `lib/nina`
 **Package Code**: NIN
-**Last Updated**: 2026-09-16
+**Last Updated**: 2026-09-17
 **Total Active Tasks**: 0
 
 ## Quick Stats
@@ -12,7 +12,7 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 55
+- Completed: 56
 - Archived: 36
 
 ---
@@ -34,6 +34,23 @@
 (all thirty-five completed tasks were archived on 2026-09-12 — see Archive; full
 per-task detail — Context, Drift, Decided, Files — survives in git history and in
 `.workflows/package_readme.md`)
+
+- [x] **P1-NIN-A054** Phase 1: Add `set_avatar_from_photo`: adopt an existing photo as Nina's avatar from chat
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns `lib/nina/queries/images.ts` (new query), new `lib/nina/avatarAdopt.ts` (adoption core + resolver), `lib/nina/prompts/tools.ts` (new tool schema), `lib/nina/prompts/index.ts` (prompt version bump), `lib/nina/avatartools.ts` (new handler + tool set), `tests/nina.prompts.test.ts` (updated pinned tool list), new `tests/nina.avatarFromPhoto.test.ts`. Exit criteria: adopts attached photo; falls back to most recent original session photo; refuses reference rows cleanly; refuses with no eligible photo; idempotent re-adoption; announced_at set atomically with promotion; tsc clean; vitest green.
+  - **Status**: done
+  - **Plan Set**: `NINA_AVATAR_EXISTING_PHOTO_PLAN.md` (phase 1 of 1)
+  - **Satisfies**: R2 — Nina changes her profile picture using a specific existing photo the runner selects, with no new generation
+  - **Depends on**: none
+  - **Plan**: `.workflows/plan/P1-NIN-A054.md`
+  - **Completed**: 2026-09-17 10:33
+  - **Method**: /do
+  - **Files**: lib/nina/queries/images.ts, lib/nina/avatarAdopt.ts, lib/nina/prompts/tools.ts, lib/nina/prompts/index.ts, lib/nina/avatartools.ts, tests/nina.prompts.test.ts, tests/nina.avatarFromPhoto.test.ts, lib/nina/queries.test.ts
+  - **Drift**: lib/nina/queries.test.ts's frozen barrel-export list needed the new getLatestOriginalNinaSessionPhoto name added — not named in the phase plan's Files table, but a mechanical consequence of the barrel's `export *` re-export, same class as the NINA_PROMPT_VERSION bump.
+  - **Decided**: lib/nina/queries.test.ts frozen barrel list missing new export → added getLatestOriginalNinaSessionPhoto alphabetically (Rung 6: surrounding convention, forced follow-on — same category as the NINA_PROMPT_VERSION bump and tests/nina.prompts.test.ts's tool-list update; the barrel test's own header comment documents this class of growth as expected)
+    tests/nina.avatarFromPhoto.test.ts's `announceStatement()` helper (as drafted in the phase plan) matched any `"announced_at" =` substring, which hit `setCurrentNinaAvatar`'s re-arm-to-NULL statement first → tightened the match to require `"announced_at" is null`, unique to `markNinaAvatarAnnounced`'s WHERE clause. Test-only correctness fix, not a scope change.
+  - **Verification**: `npm run typecheck` (next typegen + tsc --noEmit) clean; targeted `npx vitest run tests/nina.avatarFromPhoto.test.ts tests/nina.prompts.test.ts lib/nina/tools.test.ts tests/admin.chatPhotoAdoption.test.ts tests/nina.photoRefs.test.ts` 193/193; full `npm test` 6269 tests across 358 files, all passed; `npm run build` compiled successfully (Turbopack, Next.js 16.3.1)
 
 - [x] **P1-NIN-A053** Phase 1: Natural-language recurring reminders
   - **Difficulty**: HARD

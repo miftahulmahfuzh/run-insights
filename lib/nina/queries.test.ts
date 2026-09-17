@@ -74,6 +74,9 @@ const BARREL_VALUE_EXPORTS = [
   // surfacing through the barrel's `export *` — the set's only documented growth (83 → 85).
   'generatedChatPhotoScope',
   'getCurrentNinaAvatar',
+  // nina-avatar-existing-photo phase 1, R2: the session-scoped fallback read for "which photo did
+  // he mean" — surfaces through the barrel's `export *` like every other `./queries/images` export.
+  'getLatestOriginalNinaSessionPhoto',
   'getNinaAvatar',
   'getNinaAvatarBySourceKey',
   'getNinaIdentity',

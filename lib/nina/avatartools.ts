@@ -2,9 +2,10 @@ import 'server-only'
 
 import { z } from 'zod'
 
-import { SET_AVATAR_TOOL } from './prompts/tools'
+import { SET_AVATAR_FROM_PHOTO_TOOL, SET_AVATAR_TOOL } from './prompts/tools'
 import { extendToolSet, type NinaToolAnswer, type NinaToolHandler, type NinaToolSet } from './tools'
 import { NINA_CHAT_TOOL_SET } from './imagetools'
+import { setNinaAvatarFromExistingPhoto } from './avatarAdopt'
 import { generateNinaAvatar } from './avatargen'
 import { getCurrentNinaAvatar } from './queries'
 
@@ -57,6 +58,48 @@ export const SET_AVATAR_ANSWERS = {
 } as const
 
 /**
+ * `set_avatar_from_photo`'s arguments. `because` is OPTIONAL here while the JSON schema marks it
+ * `required` — the deliberate split `lib/nina/prompts/tools.ts` documents (*"`required` is
+ * documentation and not enforcement"*). The schema asks her for a reason; Zod refusing a call that
+ * omitted one would spend a whole tool round to punish her for a field nothing reads.
+ *
+ * It stays `z.object` rather than `z.any()` so a non-object payload is still caught, which is the
+ * one case that genuinely earns `isError: true`.
+ */
+export const SetAvatarFromPhotoArgsSchema = z.object({
+  because: z.string().trim().max(600).optional(),
+})
+
+export type SetAvatarFromPhotoArgs = z.infer<typeof SetAvatarFromPhotoArgsSchema>
+
+/**
+ * What she is told, per outcome. Written for a MODEL, never rendered — the same contract as
+ * `SET_AVATAR_ANSWERS`, and the deliberate INVERSE of its `queued` line: this change is already
+ * done when the handler returns, so she must say so plainly instead of saying the camera is running.
+ */
+export const SET_AVATAR_FROM_PHOTO_ANSWERS = {
+  done:
+    'Foto itu sudah jadi profpic lo, beneran, sekarang juga — bukan lagi diproses. ' +
+    'Bilang ke dia kalau sudah lo pasang, satu bubble, pakai kalimat lo sendiri. ' +
+    'JANGAN bilang lo lagi ambil foto atau lagi nunggu apa-apa.',
+  already:
+    'Foto itu memang sudah jadi profpic lo dari sebelumnya. Bilang apa adanya, santai, ' +
+    'jangan pura-pura baru ganti.',
+  reference:
+    'Foto itu cuma tampilan ulang dari foto yang aslinya ada di tempat lain, jadi nggak bisa ' +
+    'dipakai langsung. Minta dia tunjuk atau kirim foto aslinya. Tanpa istilah teknis.',
+  none:
+    'Nggak ketahuan foto mana yang dia maksud di obrolan ini. Tanya balik fotonya yang mana, ' +
+    'santai, satu kalimat. JANGAN mulai ambil foto baru.',
+  unsupported:
+    'Bentuk file foto itu nggak bisa dipakai buat profpic. Bilang apa adanya, singkat, ' +
+    'tanpa istilah teknis.',
+  failed:
+    'Gagal masang fotonya. Bilang apa adanya, singkat, tanpa istilah teknis, dan jangan ' +
+    'janji ulang di kalimat yang sama.',
+} as const
+
+/**
  * `set_avatar` dispatch. **Never throws** — phase 3's `dispatchNinaTool` would turn a rejection
  * into an `isError` answer anyway, and a thrown exception here would cost a whole chat turn over
  * one tool call.
@@ -105,12 +148,74 @@ export const handleSetAvatar: NinaToolHandler = async (args, ctx): Promise<NinaT
 }
 
 /**
- * All six tools, and the set `lib/nina/turnrun.ts` actually passes.
+ * `set_avatar_from_photo` dispatch — R2. **Never throws**, for `handleSetAvatar`'s reason.
  *
- * Layered rather than redefined: phase 3 ships four, phase 12 adds `generate_image`, this adds
- * `set_avatar`. `extendToolSet` throws at module load on a duplicate name, in the phase that added
- * it — which is the only time anyone can fix it.
+ * ── THE ONE THING IT DOES THAT `handleSetAvatar` MUST NOT ─────────────────────────────────────
+ * It lets her say the change has happened, because it has. There is no generation, no job row and
+ * no worker: `setNinaAvatarFromExistingPhoto` copies bytes and writes two rows inside this request,
+ * and `lib/nina/avatarAdopt.ts` marks the row announced in the same breath so phase 10's
+ * `avatar_changed` cron cannot announce it a second time tomorrow.
+ *
+ * ── AND THE `in_flight` GUARD IS DELIBERATELY ABSENT ─────────────────────────────────────────
+ * `handleSetAvatar` refuses while an unannounced GENERATED avatar is in the air, because a second
+ * generation would queue two announcements for one conversation. This tool queues none — it
+ * announces inline — so the guard has nothing to protect, and applying it would refuse a legitimate
+ * "pakai foto ini" just because a selfie happened to be developing.
+ *
+ * Every refusal below is `isError: false`: these are true answers to a legitimate request, not
+ * malformed calls (ruling (g)). The one `isError: true` is a payload that is not an object at all.
+ */
+export const handleSetAvatarFromPhoto: NinaToolHandler = async (
+  args,
+  ctx,
+): Promise<NinaToolAnswer> => {
+  const parsed = SetAvatarFromPhotoArgsSchema.safeParse(args ?? {})
+  if (!parsed.success) {
+    return {
+      answer: { ok: false, why: 'set_avatar_from_photo cuma menerima `because`, berupa teks.' },
+      isError: true,
+    }
+  }
+
+  const result = await setNinaAvatarFromExistingPhoto(ctx.userId, ctx.sourceMessageId)
+
+  if (result.ok) {
+    return {
+      answer: {
+        ok: true,
+        note: result.changed
+          ? SET_AVATAR_FROM_PHOTO_ANSWERS.done
+          : SET_AVATAR_FROM_PHOTO_ANSWERS.already,
+      },
+      isError: false,
+    }
+  }
+
+  const note =
+    result.kind === 'reference'
+      ? SET_AVATAR_FROM_PHOTO_ANSWERS.reference
+      : result.kind === 'unsupported'
+        ? SET_AVATAR_FROM_PHOTO_ANSWERS.unsupported
+        : result.kind === 'none' || result.kind === 'missing'
+          ? SET_AVATAR_FROM_PHOTO_ANSWERS.none
+          : SET_AVATAR_FROM_PHOTO_ANSWERS.failed
+
+  return { answer: { ok: false, note }, isError: false }
+}
+
+/**
+ * All eight tools, and the set `lib/nina/turnrun.ts` actually passes.
+ *
+ * Layered rather than redefined: phase 3 ships four, phase 12 adds `generate_image`, phase 13
+ * `set_avatar`, and the nina-avatar-existing-photo set `set_avatar_from_photo`. `extendToolSet`
+ * throws at module load on a duplicate name, in the phase that added it — which is the only time
+ * anyone can fix it.
+ *
+ * `set_avatar_from_photo` is added HERE and in the same call as `set_avatar`, so the pair that the
+ * model has to choose between can never be split across two sets: a build in which only one of them
+ * is dispatchable is the exact failure this feature exists to remove.
  */
 export const NINA_FULL_TOOL_SET: NinaToolSet = extendToolSet(NINA_CHAT_TOOL_SET, [
   { tool: SET_AVATAR_TOOL, handler: handleSetAvatar },
+  { tool: SET_AVATAR_FROM_PHOTO_TOOL, handler: handleSetAvatarFromPhoto },
 ])

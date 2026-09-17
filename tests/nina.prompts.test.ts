@@ -412,7 +412,7 @@ describe('the tool schemas', () => {
     }
   })
 
-  it('defines the seven tools phases 3, 12 and 13 expect, under these exact names', () => {
+  it('defines the eight tools phases 3, 12, 13 and R2 expect, under these exact names', () => {
     expect(NINA_TOOLS.map((t) => t.name)).toEqual([
       'send',
       'lookup_runs',
@@ -421,6 +421,7 @@ describe('the tool schemas', () => {
       'save_memory',
       'generate_image',
       'set_avatar',
+      'set_avatar_from_photo',
     ])
   })
 
