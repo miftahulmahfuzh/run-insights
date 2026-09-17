@@ -220,14 +220,18 @@ describe('NinaJobDetail', () => {
     expect(screen.queryByText(/cost source/)).not.toBeInTheDocument()
   })
 
-  it('a failed job draws a retry control; a done one does not', () => {
+  it('a failed job and a done job both draw a retry control; a still-running one does not', () => {
     const { unmount } = render(
       <NinaJobDetail {...props({ stage: 'failed', stageLabel: 'Gagal' })} />,
     )
     expect(screen.getByRole('button', { name: 'Coba lagi' })).toBeInTheDocument()
     unmount()
 
-    render(<NinaJobDetail {...props({ stage: 'done' })} />)
+    const { unmount: unmountDone } = render(<NinaJobDetail {...props({ stage: 'done' })} />)
+    expect(screen.getByRole('button', { name: 'Coba lagi' })).toBeInTheDocument()
+    unmountDone()
+
+    render(<NinaJobDetail {...props({ stage: 'running' })} />)
     expect(screen.queryByRole('button', { name: 'Coba lagi' })).not.toBeInTheDocument()
   })
 

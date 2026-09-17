@@ -160,7 +160,7 @@ describe('toNinaJobListItems', () => {
     expect(item!.href).toBe(ninaJobHref('aaaaaaaaaaaa'))
   })
 
-  it('offers a redo on the failed row and on no other', () => {
+  it('offers a redo on the failed row and the done row, and on no other', () => {
     /*
      * The two derivations that share one `stage`: a row that shows a failure sentence is exactly a
      * row that offers a redo. Coupling them here rather than in the component is the point of
@@ -175,7 +175,7 @@ describe('toNinaJobListItems', () => {
     expect(failed!.errorLabel).not.toBeNull()
 
     const [done] = toNinaJobListItems([{ ...base, status: 'ok', errorCode: null }])
-    expect(done!.canRedo).toBe(false)
+    expect(done!.canRedo).toBe(true)
   })
 
   it('titles a row by its scene, and by its purpose when it has none', () => {
@@ -189,9 +189,13 @@ describe('toNinaJobListItems', () => {
   })
 })
 
-describe('jobCanRedo is R1’s one rule, and it is narrow', () => {
+describe('jobCanRedo says yes to failed and done, and to nothing still in progress', () => {
   it('says yes to a failed job', () => {
     expect(jobCanRedo('failed')).toBe(true)
+  })
+
+  it('says yes to a done job too — a redo of a successful job re-fires its own args, e.g. after an edited prompt', () => {
+    expect(jobCanRedo('done')).toBe(true)
   })
 
   it('never offers a redo for a job something is already retrying', () => {
@@ -205,12 +209,6 @@ describe('jobCanRedo is R1’s one rule, and it is narrow', () => {
       expect(jobIsOpen(stage)).toBe(true)
       expect(jobCanRedo(stage)).toBe(false)
     }
-  })
-
-  it('never offers a redo for a photograph that already exists', () => {
-    /* A re-roll of a `done` job is a different feature nobody asked for, and it costs one of six
-     * generations a day. */
-    expect(jobCanRedo('done')).toBe(false)
   })
 })
 

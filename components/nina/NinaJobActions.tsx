@@ -77,7 +77,7 @@ import { ninaJobTitle, type NinaJobListItem, type NinaJobRefusal } from '@/lib/n
  * screen — renders the identical Indonesian sentence instead of a second copy that can drift. */
 export const NOTE: Record<NinaJobRefusal, string> = {
   'not-found': 'Job ini sudah nggak ada.',
-  'not-failed': 'Cuma job yang gagal yang bisa diulang.',
+  'in-progress': 'Job ini masih jalan, tungguin dulu ya.',
   'no-args': 'Job lama ini nggak nyimpan prompt-nya, jadi nggak bisa diulang.',
   capped: 'Jatah foto hari ini sudah habis. Coba lagi besok ya.',
 }
@@ -127,7 +127,8 @@ export function NinaJobActions({ item }: { item: NinaJobListItem }) {
         {/*
           R2's control, and it renders on EVERY row — a done job, a queued job and a failed job all
           get it, because "so i can keep the job list tidy and pristine" is about the whole list.
-          Redo is failed-only and gated above; this one is not gated at all.
+          Redo is gated above (failed or done only, never a job still in progress); this one is not
+          gated at all.
 
           A SIBLING of the row's <Link>, never a child: `SessionRow` records the rule ("a <button>
           inside an <a> is invalid and breaks the link's hit testing"), and phase 1's slot is where

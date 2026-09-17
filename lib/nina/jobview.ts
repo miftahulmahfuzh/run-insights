@@ -146,28 +146,30 @@ export function jobIsOpen(stage: NinaJobStage): boolean {
  * comparison, and it is here because the plan set's invariant 6 says a rule a screen obeys is a
  * rule a test reaches.
  *
- * ── WHY `failed` AND NOTHING ELSE (plan index, *Decisions*, rung 5) ───────────────────────────
- * The user's own words are *"clicking this will redo the **failed** job"*, and each of the other
- * four stages has its own reason to be refused:
+ * ── WHY `failed` OR `done`, AND NOTHING ELSE ──────────────────────────────────────────────────
+ * R1's own words were *"clicking this will redo the **failed** job"* — that half is unchanged.
+ * `done` joined it later, on an explicit ask: a runner iterating on a prompt (via "Ubah prompt")
+ * wants to re-fire the SAME job's own successful photograph with the edited words, not just a
+ * refused one, to see whether the new prompt actually fixes what the photograph got wrong. The
+ * other three stages keep their original reason to be refused:
  *
  *   · `queued` / `dispatched` / `running` — the job is ALREADY being retried. `reviveNinaImageJobs`
  *     re-fires a `queued` row on the next `/nina` render and `claimNinaImageJob` bounds the whole
  *     thing at `NINA_IMAGE_MAX_ATTEMPTS`. A redo here would open a SECOND row for one photograph
  *     and bill twice for it.
- *   · `done` — the photograph exists and is in the chat. Re-rolling it is a different feature
- *     nobody asked for, and it costs one of six generations a day.
  *
  * ── AND WHY THE SERVER CHECKS IT AGAIN ANYWAY ─────────────────────────────────────────────────
  * **A control is not a guard.** This function decides whether a button is DRAWN; `redoNinaImageJob`
- * refuses a non-failed job independently, from the row it read under the runner's own `userId`,
- * because a `jobId` arriving from a browser is a claim and never a fact (plan invariant 3).
+ * refuses a job still in progress independently, from the row it read under the runner's own
+ * `userId`, because a `jobId` arriving from a browser is a claim and never a fact (plan invariant
+ * 3).
  *
- * Purpose is deliberately NOT part of the rule. A failed AVATAR job is redoable too: it re-runs
- * through `finishAvatar`, writes `nina_avatars`, and leaves `announced_at` NULL so the next cron
- * tick makes her mention it — which is exactly what a redo of that job should do.
+ * Purpose is deliberately NOT part of the rule. A failed OR done AVATAR job is redoable too: it
+ * re-runs through `finishAvatar`, writes `nina_avatars`, and leaves `announced_at` NULL so the next
+ * cron tick makes her mention it — which is exactly what a redo of that job should do.
  */
 export function jobCanRedo(stage: NinaJobStage): boolean {
-  return stage === 'failed'
+  return stage === 'failed' || stage === 'done'
 }
 
 /**
@@ -193,18 +195,20 @@ export function jobCanRedo(stage: NinaJobStage): boolean {
  * bundle's type graph; declaring it in `jobActions.ts` would make a `server-only` module import a
  * `'use server'` one, which is backwards.
  *
- *   · `not-found`  — no such job of his. Covers a malformed id, another runner's id, and an id
- *                    that never existed: one answer, so nothing leaks which ids are real.
- *   · `not-failed` — the row is `pending`, `ok` or `repaired`. See `jobCanRedo`.
- *   · `no-args`    — the row cannot be redone FROM. `lib/db/schema.ts` says it in as many words:
- *                    *"a job whose args were only ever in the dispatch payload is a job that can
- *                    never be retried"*, and three production rows predate the column.
- *   · `capped`     — `ninaImageQuotaLeft` is 0. A money cap, not a feature cap.
+ *   · `not-found`   — no such job of his. Covers a malformed id, another runner's id, and an id
+ *                     that never existed: one answer, so nothing leaks which ids are real.
+ *   · `in-progress` — the row is still `pending` — queued, dispatched or running. See `jobCanRedo`:
+ *                     `failed` and `done` are both redoable now, so this is the one status left to
+ *                     refuse.
+ *   · `no-args`     — the row cannot be redone FROM. `lib/db/schema.ts` says it in as many words:
+ *                     *"a job whose args were only ever in the dispatch payload is a job that can
+ *                     never be retried"*, and three production rows predate the column.
+ *   · `capped`      — `ninaImageQuotaLeft` is 0. A money cap, not a feature cap.
  *
  * PHASE 2's delete action reuses this union and needs no new member: a delete is refused only when
  * the row is not his, which is `'not-found'`.
  */
-export type NinaJobRefusal = 'not-found' | 'not-failed' | 'no-args' | 'capped'
+export type NinaJobRefusal = 'not-found' | 'in-progress' | 'no-args' | 'capped'
 
 /**
  * The edit-prompt control's own, smaller refusal vocabulary — kept separate from

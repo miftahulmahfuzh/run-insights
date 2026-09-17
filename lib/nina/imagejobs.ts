@@ -168,18 +168,23 @@ export const NINA_IMAGE_DUPLICATE_NOTE =
 /**
  * **R1's redo. It INSERTS; it never resets.**
  *
- * ── WHY A NEW ROW AND NOT AN UPDATE OF THE FAILED ONE (plan index *Decisions*, rung 1) ────────
+ * Widened to `done` rows too on a later, explicit ask: a runner iterating on a prompt via "Ubah
+ * prompt" wants to re-fire that same successful job's edited args and see the new photograph, not
+ * just retry a refusal. `jobCanRedo`'s header has the rule; everything below about "the old row"
+ * now reads for a failed OR a done one.
+ *
+ * ── WHY A NEW ROW AND NOT AN UPDATE OF THE OLD ONE (plan index *Decisions*, rung 1) ────────────
  * `nina_turns` is the money ledger. Every writer in this file accumulates with
  * `coalesce(cost_micro_usd, 0) + spend` for one stated reason — *"money is never spent silently"* —
- * and a redo that flipped the failed row back to `status = 'pending'` would delete a billed
- * attempt from the audit trail: the `$0.04` it recorded, the `error_code` that says WHY it died,
- * and the `latency_ms` that says how long it took to die. The runner opens `/nina/jobs` precisely
- * to read those three numbers. So the failed row is READ and left exactly as it is, and the retry
- * is a second row that will accumulate its own spend. Two rows, two bills, two truths.
+ * and a redo that flipped the old row back to `status = 'pending'` would delete a billed attempt
+ * from the audit trail: the `$0.04` it recorded, the `error_code` (or lack of one) that says how it
+ * ended, and the `latency_ms` that says how long it took. The runner opens `/nina/jobs` precisely
+ * to read those three numbers. So the old row is READ and left exactly as it is, and the retry is a
+ * second row that will accumulate its own spend. Two rows, two bills, two truths.
  *
- * The visible consequence is deliberate: after a redo, `/nina/jobs` shows BOTH — the old `Gagal`
- * row and a new `Antre` row above it. That is the ledger being honest, and it is also why the
- * redo control stays on the failed row afterwards.
+ * The visible consequence is deliberate: after a redo, `/nina/jobs` shows BOTH — the old `Gagal` or
+ * `Selesai` row and a new `Antre` row above it. That is the ledger being honest, and it is also why
+ * the redo control stays on the old row afterwards.
  *
  * ── THE ARGS ARE COPIED VERBATIM (rung 6) ─────────────────────────────────────────────────────
  * Same `prompt`, same `seed`, same `replyToId`, same `scene`, same `mood`, same `sidecar`, same
@@ -222,7 +227,7 @@ export const NINA_IMAGE_DUPLICATE_NOTE =
 type NinaImageReopen =
   | {
       ok: true
-      /** The NEW row. The failed one keeps its own id and its own numbers. */
+      /** The NEW row. The old one — failed or done — keeps its own id and its own numbers. */
       jobId: string
       purpose: NinaImagePurpose
       /** Copied verbatim. May name a message that no longer exists — see `finishSelfie`. */
@@ -263,8 +268,10 @@ export async function reopenNinaImageJob(userId: string, jobId: string): Promise
 
   /* `jobCanRedo` decides whether the BUTTON is drawn. This decides whether the JOB is opened, and
    * it asks the database rather than the browser. Same rule, two enforcement points, and the
-   * second one is the only one that counts. */
-  if (row.status !== 'failed') return { ok: false, reason: 'not-failed' }
+   * second one is the only one that counts. `failed` and `done` (`'ok'`/`'repaired'`) both pass;
+   * `'pending'` is the one status left to refuse — the job is still queued, dispatched or running,
+   * and `reviveNinaImageJobs`/`claimNinaImageJob` already own retrying it. */
+  if (row.status === 'pending') return { ok: false, reason: 'in-progress' }
 
   const args = row.args
   if (!isRedoableArgs(args)) return { ok: false, reason: 'no-args' }

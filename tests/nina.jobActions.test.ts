@@ -224,19 +224,34 @@ describe('redoNinaImageJob authenticates first and refuses before it writes', ()
     expect(insertNinaTurn).not.toHaveBeenCalled()
   })
 
-  it('refuses a job that did not fail, even though no button would have offered one', async () => {
-    /* D3, and the reason it is enforced twice: a control is not a guard. */
-    for (const status of ['pending', 'ok', 'repaired']) {
+  it('refuses a job still in progress, even though no button would have offered one', async () => {
+    /* D3, and the reason it is enforced twice: a control is not a guard. `failed` and `done`
+     * (`'ok'`/`'repaired'`) are both redoable now — see the next describe block — so `'pending'`
+     * is the one status left to refuse: the job is already queued, dispatched or running. */
+    vi.clearAllMocks()
+    requireUserId.mockResolvedValue(USER)
+    countNinaTurnsSince.mockResolvedValue(0)
+    dbRows.select = failedRow({ status: 'pending' })
+
+    const result = await actions.redoNinaImageJob({ jobId: FAILED_JOB })
+
+    expect(result).toEqual({ ok: false, reason: 'in-progress', jobId: null })
+    expect(insertNinaTurn).not.toHaveBeenCalled()
+    expect(deferred).toHaveLength(0)
+  })
+
+  it('redoes a done job too — the row is `ok` or `repaired`, not just `failed`', async () => {
+    for (const status of ['ok', 'repaired']) {
       vi.clearAllMocks()
       requireUserId.mockResolvedValue(USER)
       countNinaTurnsSince.mockResolvedValue(0)
+      insertNinaTurn.mockResolvedValue(REOPENED_JOB)
       dbRows.select = failedRow({ status })
 
       const result = await actions.redoNinaImageJob({ jobId: FAILED_JOB })
 
-      expect(result).toEqual({ ok: false, reason: 'not-failed', jobId: null })
-      expect(insertNinaTurn).not.toHaveBeenCalled()
-      expect(deferred).toHaveLength(0)
+      expect(result).toEqual({ ok: true, reason: null, jobId: REOPENED_JOB })
+      expect(insertNinaTurn).toHaveBeenCalledOnce()
     }
   })
 
@@ -276,7 +291,7 @@ describe('redoNinaImageJob authenticates first and refuses before it writes', ()
   })
 
   it('revalidates nothing when it refuses', async () => {
-    dbRows.select = failedRow({ status: 'ok' })
+    dbRows.select = failedRow({ status: 'pending' })
     await actions.redoNinaImageJob({ jobId: FAILED_JOB })
     expect(revalidatePath).not.toHaveBeenCalled()
   })
