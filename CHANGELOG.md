@@ -8,6 +8,77 @@ Feature codes (`F01`–`F33`) refer to the plan files in [`docs/plans/archive/`]
 (`R-nn`) refer to `RECONCILIATION_v0.1.0.md`, the v0.1.0 arbitration record — removed from the
 tree in September 2026, readable in git history.
 
+## [v1.3.0] - 2026-09-17
+
+The admin album's semantic search stopped being an Album-only feature: Media (Nina's chat
+photos) now carries the same embedding, search-keyword and negative-keyword columns Album
+already had, and the two tables search as one merged, deduplicated result list. "Set as her
+profile picture" no longer copies bytes into a second row — it links the Album entry to the
+Media original, so editing the description or either keyword field from either pane changes the
+same underlying data. Nina also picked up a genuine memory feature: natural-language recurring
+daily reminders, recognised in chat and delivered every day thereafter through the existing
+proactive-message cron. A run of prompt-tuning fixes tightened how her selfies and avatar
+generations anchor to a reference photo, and `/nina/about` got real pagination on its Foto profil
+and Media tabs plus a smaller, icon-only pager.
+
+50 commits, 159 files changed (+42,910/-1,825 lines), 6,384 unit tests across 365 files — up from
+6,183 tests at v1.2.0. Live at **[runins.site](https://runins.site)**.
+
+### Added
+
+- **Natural-language recurring reminders** (`nina-natural-reminders`, 2 phases). A runner can ask
+  Nina in ordinary prose ("remind me every day at 8:45 PM to sleep") and she recognises it,
+  confirms it in her own reply, and delivers it as a chat message + push notification once per
+  Jakarta calendar day thereafter. Expressed through a new optional `reminders` field on
+  `SEND_TOOL`'s payload (create/cancel), persisted in the existing `nina_memory_slots` jsonb
+  column (no migration needed), and fired by the existing evening cron's `decideProactive` engine
+  ahead of every other proactive reason. Phase 2 added admin CRUD for reminders in
+  `/admin/memory`.
+- **Unified semantic search across Album and Media, with link-not-copy profile-picture promotion**
+  (`media-album-unified-search`, 4 phases). Media (`nina_message_images`) gained the
+  `description_embedding`, `search_keywords` and `negative_search_keywords` columns Album already
+  had, plus a backfill route + script + tests for the 154 pre-existing rows. The admin search bar
+  now returns one merged, deduplicated list across both tables. "Set as her profile picture" from
+  a Media photo now creates a pointer Album row instead of copying bytes into a new Blob object —
+  the pointer carries no independent description/keywords of its own, so editing either pane
+  edits the one real copy. Media's detail pane gained the same search-keyword and
+  negative-keyword boxes Album already had, with pointer-row messaging explaining the link.
+- **`set_avatar_from_photo`** — a new chat tool letting Nina adopt an already-existing photograph
+  as her profile picture with no image-generation job. She resolves "this photo" herself (the
+  photo attached to the runner's current message, else the most recent original photo in the same
+  session); a reference/re-share row is flattened to what it points at before adoption, and a
+  bare reference is refused outright.
+- **Real pagination for `/nina/about`'s Foto profil and Media tabs**, replacing the earlier
+  load-everything view. The admin's photo-reference picker gained matching pagination with
+  content-hash deduplication, prefetching of adjacent pages, and the selected anchor's id shown
+  on click.
+- The job detail's Catatan foto now shows the cost source under the resolution.
+- Recraft V4.1, Seedream 4.5, and Seedream 5.0 Pro added to the image-generation model dropdown.
+
+### Changed
+
+- A run of selfie/avatar-generation prompt tuning: chat selfies and avatar generations now anchor
+  to the saved photo reference; her face locks to the attached reference photo when Face is
+  ticked; pose and outfit vary when neither is specified instead of repeating; invented
+  pose/outfit no longer hides or bends her legs; `generate_image` gained a dedicated outfit slot;
+  the "hips are wide" clause was dropped from the body canon.
+- The image-generation prompt override was promoted to the shipped default again, after further
+  hand-tuning.
+- The photo-reference grid is now properly responsive (3 columns on phone, 10 on desktop), its
+  page size shrunk to 30 so it tiles clean on both breakpoints, and its status line shrunk to fit
+  one row at the `xs` breakpoint.
+- `/nina/about`'s pager switched from text ("Sebelumnya"/"Berikutnya") pinned to the right edge to
+  centered, icon-only chevrons with the page/total line between them.
+- `README.md` was leaned down to what a first-time visitor needs, and its mention of Nina's photo
+  model swapped to Seedream 5.0 Pro.
+- Stray analyzer and plan markdown files were again removed from the repo root; a
+  `prettier --write` pass kept CI's `format:check` green.
+
+### Fixed
+
+- The camera no longer fires twice for one message.
+- Missing `content_hash` on `nina_avatars` was backfilled, with the one gap cache-filled.
+
 ## [v1.2.0] - 2026-09-16
 
 Nina got busier: she now pushes a notification for nearly everything she does — a photo
@@ -589,6 +660,7 @@ phone.
   excluded unless `VITEST_INTEGRATION=1` / `LLM_LIVE_TEST=1` are set, so a green `npm test` is not a
   statement about Postgres or about the model.
 
+[v1.3.0]: https://github.com/miftahulmahfuzh/run-insights/releases/tag/v1.3.0
 [v1.2.0]: https://github.com/miftahulmahfuzh/run-insights/releases/tag/v1.2.0
 [v1.1.0]: https://github.com/miftahulmahfuzh/run-insights/releases/tag/v1.1.0
 [v1.0.0]: https://github.com/miftahulmahfuzh/run-insights/releases/tag/v1.0.0
