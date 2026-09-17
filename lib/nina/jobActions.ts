@@ -71,6 +71,9 @@ export interface NinaJobActionResult {
    * `components/nina/NinaJobActions.tsx` owns the `Record<NinaJobRefusal, string>` that renders it.
    */
   reason: NinaJobRefusal | null
+  /** The new job's id, on a successful `redoNinaImageJob`. `null` on every refusal and on
+   * `deleteNinaImageJob`, which never opens a row. */
+  jobId: string | null
 }
 
 /**
@@ -110,10 +113,10 @@ export async function redoNinaImageJob(input: { jobId: string }): Promise<NinaJo
   /* A segment that cannot be one of our ids is refused without a query, on `/r/[id]`'s precedent —
    * and it is refused as `not-found`, the same answer another runner's real id gets, so nothing
    * here tells a caller which ids exist. */
-  if (!isValidId(input?.jobId)) return { ok: false, reason: 'not-found' }
+  if (!isValidId(input?.jobId)) return { ok: false, reason: 'not-found', jobId: null }
 
   const reopened = await reopenNinaImageJob(userId, input.jobId)
-  if (!reopened.ok) return { ok: false, reason: reopened.reason }
+  if (!reopened.ok) return { ok: false, reason: reopened.reason, jobId: null }
 
   fireNinaImageGeneration({
     userId,
@@ -123,7 +126,7 @@ export async function redoNinaImageJob(input: { jobId: string }): Promise<NinaJo
   })
 
   revalidatePath(NINA_JOBS_HREF)
-  return { ok: true, reason: null }
+  return { ok: true, reason: null, jobId: reopened.jobId }
 }
 
 /**
@@ -170,11 +173,11 @@ export async function deleteNinaImageJob(input: { jobId: string }): Promise<Nina
   const userId = await requireUserId()
   /* Line one is the auth call, ABOVE the shape check — `app/actions/share.ts`'s asserted property,
    * so a signed-out caller is bounced to sign-in rather than told their id was malformed. */
-  if (!isValidId(input?.jobId)) return { ok: false, reason: 'not-found' }
+  if (!isValidId(input?.jobId)) return { ok: false, reason: 'not-found', jobId: null }
 
   const deleted = await softDeleteNinaImageJob(userId, input.jobId)
-  if (!deleted) return { ok: false, reason: 'not-found' }
+  if (!deleted) return { ok: false, reason: 'not-found', jobId: null }
 
   revalidatePath(NINA_JOBS_HREF)
-  return { ok: true, reason: null }
+  return { ok: true, reason: null, jobId: null }
 }

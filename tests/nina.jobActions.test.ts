@@ -199,7 +199,7 @@ describe('redoNinaImageJob authenticates first and refuses before it writes', ()
     const result = await actions.redoNinaImageJob({ jobId: 'not-an-id' })
 
     expect(requireUserId).toHaveBeenCalledOnce()
-    expect(result).toEqual({ ok: false, reason: 'not-found' })
+    expect(result).toEqual({ ok: false, reason: 'not-found', jobId: null })
     /* A malformed id costs no query and opens no row. */
     expect(insertNinaTurn).not.toHaveBeenCalled()
     expect(revalidatePath).not.toHaveBeenCalled()
@@ -213,7 +213,7 @@ describe('redoNinaImageJob authenticates first and refuses before it writes', ()
 
     const result = await actions.redoNinaImageJob({ jobId: FAILED_JOB })
 
-    expect(result).toEqual({ ok: false, reason: 'not-found' })
+    expect(result).toEqual({ ok: false, reason: 'not-found', jobId: null })
     expect(insertNinaTurn).not.toHaveBeenCalled()
   })
 
@@ -227,7 +227,7 @@ describe('redoNinaImageJob authenticates first and refuses before it writes', ()
 
       const result = await actions.redoNinaImageJob({ jobId: FAILED_JOB })
 
-      expect(result).toEqual({ ok: false, reason: 'not-failed' })
+      expect(result).toEqual({ ok: false, reason: 'not-failed', jobId: null })
       expect(insertNinaTurn).not.toHaveBeenCalled()
       expect(deferred).toHaveLength(0)
     }
@@ -248,7 +248,7 @@ describe('redoNinaImageJob authenticates first and refuses before it writes', ()
 
       const result = await actions.redoNinaImageJob({ jobId: FAILED_JOB })
 
-      expect(result).toEqual({ ok: false, reason: 'no-args' })
+      expect(result).toEqual({ ok: false, reason: 'no-args', jobId: null })
       expect(insertNinaTurn).not.toHaveBeenCalled()
     }
   })
@@ -263,7 +263,7 @@ describe('redoNinaImageJob authenticates first and refuses before it writes', ()
 
     const result = await actions.redoNinaImageJob({ jobId: FAILED_JOB })
 
-    expect(result).toEqual({ ok: false, reason: 'capped' })
+    expect(result).toEqual({ ok: false, reason: 'capped', jobId: null })
     expect(insertNinaTurn).not.toHaveBeenCalled()
     expect(deferred).toHaveLength(0)
   })
@@ -279,7 +279,7 @@ describe('a redo opens a NEW row from the old one’s args', () => {
   it('copies every argument verbatim and resets only attempts', async () => {
     const result = await actions.redoNinaImageJob({ jobId: FAILED_JOB })
 
-    expect(result).toEqual({ ok: true, reason: null })
+    expect(result).toEqual({ ok: true, reason: null, jobId: REOPENED_JOB })
     expect(insertNinaTurn).toHaveBeenCalledOnce()
 
     const [userId, insert] = insertNinaTurn.mock.calls[0]! as [string, { args: NinaImageJobArgs }]
@@ -414,7 +414,7 @@ describe('when the chat is gone, the photograph still lands', () => {
     getNinaMessagesByIds.mockResolvedValue([])
 
     const result = await actions.redoNinaImageJob({ jobId: FAILED_JOB })
-    expect(result).toEqual({ ok: true, reason: null })
+    expect(result).toEqual({ ok: true, reason: null, jobId: REOPENED_JOB })
     expect(deferred).toHaveLength(1)
 
     /* The suite drives the deferred work itself, so it owns the ordering — the arrangement
@@ -453,7 +453,7 @@ describe('deleteNinaImageJob authenticates first and refuses without writing', (
 
     const result = await actions.deleteNinaImageJob({ jobId: 'nope' })
 
-    expect(result).toEqual({ ok: false, reason: 'not-found' })
+    expect(result).toEqual({ ok: false, reason: 'not-found', jobId: null })
     /* requireUserId still ran — it is line one, ABOVE the shape check, so a signed-out caller is
      * bounced to sign-in rather than told their id was malformed. */
     expect(requireUserId).toHaveBeenCalledOnce()
@@ -465,7 +465,7 @@ describe('deleteNinaImageJob authenticates first and refuses without writing', (
 
     const result = await actions.deleteNinaImageJob({ jobId: FAILED_JOB })
 
-    expect(result).toEqual({ ok: false, reason: 'not-found' })
+    expect(result).toEqual({ ok: false, reason: 'not-found', jobId: null })
     /* Nothing was written, so nothing is invalidated — `removeNinaChatSession`'s rule. */
     expect(revalidatePath).not.toHaveBeenCalled()
   })
@@ -501,7 +501,7 @@ describe('a successful delete refreshes the list he is standing on, and nothing 
 
     const result = await actions.deleteNinaImageJob({ jobId: FAILED_JOB })
 
-    expect(result).toEqual({ ok: true, reason: null })
+    expect(result).toEqual({ ok: true, reason: null, jobId: null })
     expect(revalidatePath).toHaveBeenCalledWith('/nina/jobs')
   })
 
