@@ -13,6 +13,7 @@ import {
   mergeNinaPhotoRefs,
   NINA_IMAGE_PREFS_DEFAULTS,
   ninaPhotoRefBounds,
+  ninaPhotoRefPreloadUrls,
   paginateNinaPhotoRefs,
   type NinaImagePrefs,
   type NinaImagePrefsWrite,
@@ -245,6 +246,12 @@ export async function writeNinaImagePrefs(
  * any captions (just like ios album app)"*, and a field the grid must not render is a field this
  * read must not ship — the same discipline `listNinaAvatarManifest` applies to its own projection.
  * `contentHash` rides along only far enough to dedupe; `toImageReferenceOption` never reads it.
+ *
+ * ── `preloadUrls` IS THE SAME DEDUPED ARRAY, SLICED TWICE MORE ───────────────────────────────
+ * `ninaPhotoRefPreloadUrls` reads the pages either side of `bounds` out of `deduped` — no second
+ * database read, since the whole collection is already in memory by the time it runs. It exists so
+ * the operator's likely next click (`Previous`/`Next`) finds its thumbnails already warming in the
+ * browser rather than starting cold.
  */
 export async function listNinaPhotoReferences(
   userId: string,
@@ -298,6 +305,7 @@ export async function listNinaPhotoReferences(
     total: deduped.length,
     offset: bounds.offset,
     limit: bounds.limit,
+    preloadUrls: ninaPhotoRefPreloadUrls(deduped, bounds),
   }
 }
 

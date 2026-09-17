@@ -492,6 +492,12 @@ export interface NinaPhotoRefPage {
   readonly total: number
   readonly offset: number
   readonly limit: number
+  /**
+   * Thumbnail (or original) URLs for the page either side of this one — `ninaPhotoRefPreloadUrls`'s
+   * answer, free of charge: the whole deduped collection is already in memory by the time a page is
+   * sliced from it, so warming the browser's cache for a likely Next/Previous costs no second read.
+   */
+  readonly preloadUrls: readonly string[]
 }
 
 /** The clamped window a page was requested with. */
@@ -574,6 +580,36 @@ export function paginateNinaPhotoRefs(
   bounds: NinaPhotoRefBounds,
 ): NinaPhotoRef[] {
   return rows.slice(bounds.offset, bounds.offset + bounds.limit)
+}
+
+/**
+ * **Warm the browser for a likely `Previous`/`Next` before the operator asks for it.** Thumbnail
+ * (or original, for the chat half) URLs one page either side of `bounds` — never the current page
+ * itself, which the browser already has open.
+ *
+ * This costs no second database read: by the time a caller has `deduped` in hand, the whole
+ * collection is already in memory, so slicing two more windows out of the same array is free. The
+ * previous window is omitted entirely on the first page (`bounds.offset === 0`), where it would
+ * otherwise degenerate to the current page's own rows. Past the last page, `paginateNinaPhotoRefs`
+ * already answers `[]`, so there is nothing to special-case there.
+ */
+export function ninaPhotoRefPreloadUrls(
+  deduped: readonly NinaPhotoRef[],
+  bounds: NinaPhotoRefBounds,
+): string[] {
+  const adjacent: NinaPhotoRef[] = []
+  if (bounds.offset > 0) {
+    adjacent.push(
+      ...paginateNinaPhotoRefs(deduped, {
+        offset: Math.max(0, bounds.offset - bounds.limit),
+        limit: bounds.limit,
+      }),
+    )
+  }
+  adjacent.push(
+    ...paginateNinaPhotoRefs(deduped, { offset: bounds.offset + bounds.limit, limit: bounds.limit }),
+  )
+  return adjacent.map((row) => row.thumbUrl ?? row.blobUrl)
 }
 
 function refTime(ref: NinaPhotoRef): number {

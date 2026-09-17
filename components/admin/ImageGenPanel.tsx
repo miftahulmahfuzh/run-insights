@@ -206,6 +206,13 @@ export interface ImageGenPanelProps {
   photoPage: number
   /** `Math.max(1, Math.ceil(photoTotal / NINA_PHOTO_REF_PAGE_SIZE))`, computed by the page. */
   photoPageCount: number
+  /**
+   * Thumbnail (or original) URLs for the page either side of `photoPage` —
+   * `listNinaPhotoReferences(userId, opts).preloadUrls`, computed server-side from the same deduped
+   * read at no extra database cost. The picker renders these as `<link rel="prefetch">` hints so a
+   * `Previous`/`Next` click finds its images already warming in the browser.
+   */
+  photoPreloadUrls: readonly string[]
 }
 
 export function ImageGenPanel({
@@ -218,6 +225,7 @@ export function ImageGenPanel({
   photoTotal,
   photoPage,
   photoPageCount,
+  photoPreloadUrls,
 }: ImageGenPanelProps) {
   /* What the controls show and edit. */
   const [draft, setDraft] = React.useState<ImageGenDraft>(prefs)
@@ -750,7 +758,9 @@ export function ImageGenPanel({
           total={photoTotal}
           page={photoPage}
           pageCount={photoPageCount}
+          preloadUrls={photoPreloadUrls}
           value={selectedKey}
+          selectedId={draft.reference.id}
           onChange={(next) => setReference(parseReferenceKey(next))}
         />
 

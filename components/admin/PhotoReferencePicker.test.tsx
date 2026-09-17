@@ -30,7 +30,9 @@ function picker(props?: Partial<Parameters<typeof PhotoReferencePicker>[0]>) {
       total={3}
       page={1}
       pageCount={1}
+      preloadUrls={[]}
       value={PHOTO_REFERENCE_NONE}
+      selectedId=""
       onChange={onChange}
       {...props}
     />,
@@ -135,7 +137,9 @@ describe('PhotoReferencePicker', () => {
         total={0}
         page={1}
         pageCount={1}
+        preloadUrls={[]}
         value={PHOTO_REFERENCE_NONE}
+        selectedId=""
         onChange={vi.fn()}
       />,
     )
@@ -178,6 +182,37 @@ describe('PhotoReferencePicker', () => {
     expect(screen.getByText(/page 1 of 1/)).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Previous' })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Next' })).not.toBeInTheDocument()
+  })
+
+  it('prints the selected id in the footer, to tell two same-looking tiles apart', () => {
+    picker({ value: 'b', selectedId: '87sdf34r' })
+    expect(screen.getByText(/selected #87sdf34r/)).toBeInTheDocument()
+  })
+
+  it('omits the "selected #" segment entirely when nothing is selected', () => {
+    picker({ value: PHOTO_REFERENCE_NONE, selectedId: '' })
+    expect(screen.queryByText(/selected #/)).not.toBeInTheDocument()
+  })
+
+  it('still prints the selected id when the reference is not on this page (the "missing" case)', () => {
+    // The whole point: a duplicate reachable from two pages is identified by id from EITHER one,
+    // whether or not the saved selection happens to be drawn on the current page.
+    picker({ value: 'gone', selectedId: 'gone' })
+    expect(screen.getByText(/selected #gone/)).toBeInTheDocument()
+  })
+
+  it('renders a prefetch hint for every preload URL, hoisted into <head>', () => {
+    picker({ preloadUrls: ['https://blob.example/next1.jpg', 'https://blob.example/next2.jpg'] })
+    const links = document.head.querySelectorAll('link[rel="prefetch"]')
+    const hrefs = [...links].map((link) => link.getAttribute('href'))
+    expect(hrefs).toContain('https://blob.example/next1.jpg')
+    expect(hrefs).toContain('https://blob.example/next2.jpg')
+    for (const link of links) expect(link).toHaveAttribute('as', 'image')
+  })
+
+  it('renders no prefetch hints when there is nothing to warm', () => {
+    picker({ preloadUrls: [] })
+    expect(document.head.querySelectorAll('link[rel="prefetch"]')).toHaveLength(0)
   })
 
   it('offers "Clear reference" only when something is chosen, and clearing hands back the empty value', async () => {
@@ -239,7 +274,9 @@ function pickerRender(props: Partial<Parameters<typeof PhotoReferencePicker>[0]>
       total={0}
       page={1}
       pageCount={1}
+      preloadUrls={[]}
       value={PHOTO_REFERENCE_NONE}
+      selectedId=""
       onChange={vi.fn()}
       {...props}
     />,

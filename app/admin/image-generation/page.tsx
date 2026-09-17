@@ -172,6 +172,7 @@ export default async function AdminImageGenerationPage(
         photoTotal={referencePage.total}
         photoPage={page}
         photoPageCount={pageCount}
+        photoPreloadUrls={referencePage.preloadUrls}
       />
     </div>
   )

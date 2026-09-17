@@ -36,6 +36,7 @@ import {
   NINA_PROMPT_TEMPLATE_MAX,
   ninaImageFocusKeysOn,
   ninaPhotoRefBounds,
+  ninaPhotoRefPreloadUrls,
   ninaPromptLengthRungFor,
   paginateNinaPhotoRefs,
   validateNinaImageTemplate,
@@ -429,6 +430,51 @@ describe('the picker page is provable without a database — merge, dedupe, pagi
         ref('chat', 'c1', '2026-09-05T00:00:00Z', { contentHash: 'H2' }),
       ]
       expect(dedupeNinaPhotoRefs(rows).map((r) => r.id)).toEqual(['a1', 'c1'])
+    })
+  })
+
+  describe('ninaPhotoRefPreloadUrls — warms the browser for a likely Previous/Next', () => {
+    const rows = Array.from({ length: 12 }, (_, i) =>
+      ref('album', `a${i}`, `2026-09-01T00:00:00.${String(i).padStart(3, '0')}Z`),
+    )
+
+    it('on the first page, offers only the next page — there is no previous to warm', () => {
+      const urls = ninaPhotoRefPreloadUrls(rows, { offset: 0, limit: 4 })
+      expect(urls).toEqual(paginateNinaPhotoRefs(rows, { offset: 4, limit: 4 }).map((r) => r.blobUrl))
+    })
+
+    it('on a middle page, offers both neighbours and never the current page itself', () => {
+      const urls = ninaPhotoRefPreloadUrls(rows, { offset: 4, limit: 4 })
+      const previous = paginateNinaPhotoRefs(rows, { offset: 0, limit: 4 }).map((r) => r.blobUrl)
+      const next = paginateNinaPhotoRefs(rows, { offset: 8, limit: 4 }).map((r) => r.blobUrl)
+      expect(urls).toEqual([...previous, ...next])
+      const current = paginateNinaPhotoRefs(rows, { offset: 4, limit: 4 }).map((r) => r.blobUrl)
+      for (const url of current) expect(urls).not.toContain(url)
+    })
+
+    it('on the last page, the next window is empty rather than special-cased', () => {
+      const urls = ninaPhotoRefPreloadUrls(rows, { offset: 8, limit: 4 })
+      expect(urls).toEqual(paginateNinaPhotoRefs(rows, { offset: 4, limit: 4 }).map((r) => r.blobUrl))
+    })
+
+    it('prefers the thumbnail, falling back to the original — the tile\'s own rule', () => {
+      // Current page is row 0 (offset 0, limit 1); the preload window is row 1, the "next" page.
+      const withThumb = [
+        ref('album', 'current', '2026-09-02T00:00:00Z'),
+        ref('album', 'a1', '2026-09-01T00:00:00Z', { thumbUrl: 'https://t/a1.jpg' }),
+      ]
+      const withoutThumb = [
+        ref('chat', 'current', '2026-09-02T00:00:00Z'),
+        ref('chat', 'c1', '2026-09-01T00:00:00Z'),
+      ]
+      expect(ninaPhotoRefPreloadUrls(withThumb, { offset: 0, limit: 1 })).toEqual(['https://t/a1.jpg'])
+      expect(ninaPhotoRefPreloadUrls(withoutThumb, { offset: 0, limit: 1 })).toEqual([
+        withoutThumb[1]!.blobUrl,
+      ])
+    })
+
+    it('answers [] for an empty collection', () => {
+      expect(ninaPhotoRefPreloadUrls([], { offset: 0, limit: 4 })).toEqual([])
     })
   })
 })

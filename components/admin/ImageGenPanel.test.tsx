@@ -73,6 +73,7 @@ function panel(p: ImageGenDraft = prefs(), defaults: ImageGenDraft = prefs()) {
       photoTotal={0}
       photoPage={1}
       photoPageCount={1}
+      photoPreloadUrls={[]}
     />,
   )
 }
@@ -265,6 +266,7 @@ describe('ImageGenPanel — the commit moments', () => {
         photoTotal={0}
         photoPage={1}
         photoPageCount={1}
+        photoPreloadUrls={[]}
       />,
     )
     fireEvent.change(screen.getByRole('slider'), { target: { value: '80' } })

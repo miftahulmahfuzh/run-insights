@@ -62,18 +62,22 @@ import type { PhotoReferenceItem } from './photoReferenceModel'
  * resolves to three columns at ~112 px inside a padded panel, or four at ~93 px without it.
  *
  * ── IT READS NOTHING AND WRITES NOTHING ─────────────────────────────────────────────────────────
- * No Server Action is imported, no fetch is made, and there is no database read here or anywhere
- * downstream of here. The rows arrive as plain serializable props from the page that owns the read
- * (phase 1's union, mapped on the server by phase 4's page), and the selection leaves through
- * `onChange` into phase 4's draft, which phase 4's one save persists. Invariant 9: no drizzle type
- * and no Zod schema crosses this boundary.
+ * No Server Action is imported, no `fetch()` is called, and there is no database read here or
+ * anywhere downstream of here. The rows arrive as plain serializable props from the page that owns
+ * the read (phase 1's union, mapped on the server by phase 4's page), and the selection leaves
+ * through `onChange` into phase 4's draft, which phase 4's one save persists. Invariant 9: no
+ * drizzle type and no Zod schema crosses this boundary. The `<link rel="prefetch">` hints below are
+ * a browser resource hint, not a fetch this code performs — they name URLs the server already
+ * computed and let the browser decide whether and when to act on them.
  */
 export function PhotoReferencePicker({
   items,
   total,
   page,
   pageCount,
+  preloadUrls,
   value,
+  selectedId,
   onChange,
 }: {
   /**
@@ -89,8 +93,21 @@ export function PhotoReferencePicker({
   page: number
   /** `Math.max(1, Math.ceil(total / pageSize))` — always at least 1, even for an empty collection. */
   pageCount: number
+  /**
+   * Thumbnail (or original) URLs for the page either side of `page` — `listNinaPhotoReferences`'s
+   * `preloadUrls`, rendered below as `<link rel="prefetch">` hints so a `Previous`/`Next` click
+   * finds its images already warming in the browser instead of starting cold.
+   */
+  preloadUrls: readonly string[]
   /** The saved (or drafted) selection. `PHOTO_REFERENCE_NONE` (`''`) means no reference. */
   value: string
+  /**
+   * The selection's raw id, straight off `NinaImageReference.id` — never parsed out of `value`.
+   * `''` when nothing is selected, matching `value`. Shown in the footer so a photograph that
+   * looks the same on two different pages (an unhashed duplicate `dedupeNinaPhotoRefs` could not
+   * prove identical — see that function's header) can still be told apart by id.
+   */
+  selectedId: string
   /** Called with the next value — a `key`, or `PHOTO_REFERENCE_NONE` to clear. */
   onChange: (next: string) => void
   /**
@@ -106,6 +123,16 @@ export function PhotoReferencePicker({
 
   return (
     <section aria-labelledby={headingId} className="mb-6">
+      {/*
+       * React 19 hoists a `<link>` rendered anywhere in the tree into `<head>`, deduping by `href`
+       * — no `next/head`, no portal. `rel="prefetch"` (not `preload`): this is a resource for a
+       * LIKELY next navigation, not one the current render needs, so it should not compete with
+       * this page's own images for bandwidth or priority.
+       */}
+      {preloadUrls.map((url) => (
+        <link key={url} rel="prefetch" as="image" href={url} />
+      ))}
+
       <div className="mb-1.5 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <h3 id={headingId} className="text-[13px] font-semibold text-ink">
           Photo reference
@@ -194,6 +221,7 @@ export function PhotoReferencePicker({
 
           <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
             <p className="text-[12px] font-medium text-ink-3 tabular-nums">
+              {selectedId !== '' && <>selected #{selectedId} &middot; </>}
               Showing {items.length} of {total} &middot; page {page} of {pageCount}
             </p>
             <div className="flex flex-wrap items-center gap-2">
