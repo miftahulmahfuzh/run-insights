@@ -630,6 +630,10 @@ describe('one save, not eleven — plan invariant 7', () => {
       /* The 2026-09-18 "generate a fresh value" icon. Not a write — it fills the draft, the field
        * still commits on its own existing blur. */
       'generateImageFieldValueAction',
+      /* The 2026-09-18 "regenerate all four" icon — the batch sibling. Unlike the action above,
+       * a success here IS routed through the one whole-row save (via the panel's own
+       * `commitImmediate`), not a second write path of its own. */
+      'generateAllImageFieldValuesAction',
     ]
     for (const name of exported) {
       expect(
@@ -700,8 +704,9 @@ describe('the panel commits itself — no staged-commit row', () => {
     expect(code).toContain('setReference(parseReferenceKey(next))')
     /* `commitImmediate` appears once as the definition and once per call site that rides it:
      * setFocus, setReference, the template reset, the model select, the 2026-09-18 hairstyle
-     * select, the 2026-09-18 camera-angle select — seven in all. */
-    expect((code.match(/commitImmediate\(/g) ?? []).length).toBe(7)
+     * select, the 2026-09-18 camera-angle select, and the 2026-09-18 "regenerate all four"
+     * batch icon — eight in all. */
+    expect((code.match(/commitImmediate\(/g) ?? []).length).toBe(8)
   })
 
   it('does not fire a save for a draft identical to the saved row', () => {

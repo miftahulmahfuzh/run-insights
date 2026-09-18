@@ -7,6 +7,7 @@ import { PhotoReferencePicker } from '@/components/admin/PhotoReferencePicker'
 import { TOUCH_TARGET } from '@/components/admin/touch'
 import { Button, CONTROL_CLASS } from '@/components/ui'
 import {
+  generateAllImageFieldValuesAction,
   generateImageFieldValueAction,
   saveNinaImagePrefsAction,
   type AdminImageGenResult,
@@ -220,6 +221,9 @@ export function ImageGenPanel({
   const [fieldGen, setFieldGen] = React.useState<
     Partial<Record<'wardrobe' | 'venue' | 'time' | 'notes', 'loading' | 'error'>>
   >({})
+  /* The 2026-09-18 "regenerate all four" icon in the header — one status for the whole batch,
+   * `fieldGen`'s own shape but with nothing to key on since it touches every field at once. */
+  const [allFieldGen, setAllFieldGen] = React.useState<'loading' | 'error' | null>(null)
   const [pending, startTransition] = React.useTransition()
 
   /* Refs for the four text controls' own ✕ — `SessionRow.tsx`'s pattern: the click handler
@@ -414,6 +418,23 @@ export function ImageGenPanel({
   }
 
   /**
+   * The "regenerate all four" icon in the header. One call proposes all four fields as one
+   * coherent scene; unlike `generateField` there is no single control to focus and blur
+   * afterwards, so a success here goes straight through `commitImmediate` — the same "the click IS
+   * the finished edit" path the camera/hairstyle/angle dropdowns already use.
+   */
+  async function generateAllFields() {
+    setAllFieldGen('loading')
+    const outcome = await generateAllImageFieldValuesAction()
+    if (!outcome.ok) {
+      setAllFieldGen('error')
+      return
+    }
+    setAllFieldGen(null)
+    commitImmediate({ ...draft, ...outcome.values })
+  }
+
+  /**
    * The template's route back to the shipped shell — an immediate commit, like every discrete
    * control, because the click IS the finished edit. It stores the default TEMPLATE itself rather
    * than `''`; both render identically, and the stored text is what the operator will see in the
@@ -445,11 +466,41 @@ export function ImageGenPanel({
             {saving ? 'Saving…' : clean ? 'Saved' : 'Unsaved edits'}
           </span>
         </h2>
-        <span className="text-right text-[12px] font-medium text-ink-3">
-          {on.length} of {NINA_IMAGE_FOCUS_KEYS.length} emphasised
-          {selectedKey !== '' && ' · one reference'}
-        </span>
+        <div className="flex shrink-0 items-center gap-3">
+          {/*
+           * The 2026-09-18 "regenerate all four" icon — one glm-5.3 call that proposes wardrobe,
+           * venue, time and notes together as one coherent scene, instead of four separate clicks
+           * through the per-field icons below. Those stay: this is an addition for an operator who
+           * wants everything refreshed at once, not a replacement for changing one field alone.
+           * A success here commits immediately (`generateAllFields`'s own docstring) rather than
+           * filling the draft, so the per-field icons are disabled while it runs — a click on one
+           * mid-batch would race the same draft this is about to overwrite.
+           */}
+          <button
+            type="button"
+            aria-label="Buat wardrobe, venue, time, dan notes baru sekaligus"
+            title="Buat ulang wardrobe, venue, time, dan notes sekaligus"
+            onPointerDown={(event) => event.preventDefault()}
+            onClick={() => generateAllFields()}
+            disabled={
+              allFieldGen === 'loading' ||
+              Object.values(fieldGen).some((status) => status === 'loading')
+            }
+            className="grid h-7 w-7 shrink-0 place-items-center rounded-pill text-[15px] text-ink-3 active:opacity-70 disabled:opacity-40"
+          >
+            {allFieldGen === 'loading' ? '⋯' : '✨'}
+          </button>
+          <span className="text-right text-[12px] font-medium text-ink-3">
+            {on.length} of {NINA_IMAGE_FOCUS_KEYS.length} emphasised
+            {selectedKey !== '' && ' · one reference'}
+          </span>
+        </div>
       </div>
+      {allFieldGen === 'error' && (
+        <p className="-mt-3 pb-3 text-[11px] font-medium text-red-500">
+          Gagal membuat nilai baru untuk keempat kolom — coba lagi.
+        </p>
+      )}
 
       <div className="pb-6">
         <p className="mb-6 max-w-[70ch] text-[13px] font-medium text-ink-2">
@@ -637,7 +688,7 @@ export function ImageGenPanel({
                 aria-label="Buat wardrobe baru"
                 onPointerDown={(event) => event.preventDefault()}
                 onClick={() => generateField('wardrobe', wardrobeInputRef)}
-                disabled={fieldGen.wardrobe === 'loading'}
+                disabled={fieldGen.wardrobe === 'loading' || allFieldGen === 'loading'}
                 className="grid h-7 w-7 shrink-0 place-items-center rounded-pill text-[15px] text-ink-3 active:opacity-70 disabled:opacity-40"
               >
                 {fieldGen.wardrobe === 'loading' ? '⋯' : '↻'}
@@ -694,7 +745,7 @@ export function ImageGenPanel({
                 aria-label="Buat venue baru"
                 onPointerDown={(event) => event.preventDefault()}
                 onClick={() => generateField('venue', venueInputRef)}
-                disabled={fieldGen.venue === 'loading'}
+                disabled={fieldGen.venue === 'loading' || allFieldGen === 'loading'}
                 className="grid h-7 w-7 shrink-0 place-items-center rounded-pill text-[15px] text-ink-3 active:opacity-70 disabled:opacity-40"
               >
                 {fieldGen.venue === 'loading' ? '⋯' : '↻'}
@@ -752,7 +803,7 @@ export function ImageGenPanel({
                 aria-label="Buat time baru"
                 onPointerDown={(event) => event.preventDefault()}
                 onClick={() => generateField('time', timeInputRef)}
-                disabled={fieldGen.time === 'loading'}
+                disabled={fieldGen.time === 'loading' || allFieldGen === 'loading'}
                 className="grid h-7 w-7 shrink-0 place-items-center rounded-pill text-[15px] text-ink-3 active:opacity-70 disabled:opacity-40"
               >
                 {fieldGen.time === 'loading' ? '⋯' : '↻'}
@@ -809,7 +860,7 @@ export function ImageGenPanel({
                 aria-label="Buat notes baru"
                 onPointerDown={(event) => event.preventDefault()}
                 onClick={() => generateField('notes', notesInputRef)}
-                disabled={fieldGen.notes === 'loading'}
+                disabled={fieldGen.notes === 'loading' || allFieldGen === 'loading'}
                 className="grid h-7 w-7 shrink-0 place-items-center rounded-pill text-[15px] text-ink-3 active:opacity-70 disabled:opacity-40"
               >
                 {fieldGen.notes === 'loading' ? '⋯' : '↻'}

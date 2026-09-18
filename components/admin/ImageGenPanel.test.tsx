@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ImageGenPanel } from './ImageGenPanel'
 import {
+  generateAllImageFieldValuesAction,
   generateImageFieldValueAction,
   saveNinaImagePrefsAction,
 } from '@/lib/admin/imageGenActions'
@@ -30,6 +31,8 @@ vi.mock('@/lib/admin/imageGenActions', () => ({
    * render mounts four of them, so a resolved default keeps a stray click from anyone's test
    * (a Tab-through, a broad `getAllByRole('button')`) from surfacing an unhandled rejection. */
   generateImageFieldValueAction: vi.fn().mockResolvedValue({ ok: false }),
+  /* The header's "regenerate all four" icon — the batch action's own default, same reasoning. */
+  generateAllImageFieldValuesAction: vi.fn().mockResolvedValue({ ok: false }),
 }))
 
 vi.mock('./PhotoReferencePicker', async () => {
@@ -54,6 +57,7 @@ vi.mock('@/components/admin/ImageGenTestPanel', async () => {
 
 const saveAction = vi.mocked(saveNinaImagePrefsAction)
 const generateAction = vi.mocked(generateImageFieldValueAction)
+const generateAllAction = vi.mocked(generateAllImageFieldValuesAction)
 
 function prefs(overrides?: Partial<ImageGenDraft>): ImageGenDraft {
   return {
@@ -297,6 +301,48 @@ describe('ImageGenPanel — the commit moments', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Buat wardrobe baru' }))
     })
     expect(screen.getByText(/Gagal membuat nilai baru/)).toBeInTheDocument()
+    expect(wardrobeBox()).toHaveValue('')
+    expect(saveAction).not.toHaveBeenCalled()
+  })
+
+  it('the "regenerate all" icon fills and SAVES all four fields in one call — unlike the per-field icons', async () => {
+    const batchValues = {
+      wardrobe: 'silk robe',
+      venue: 'rooftop bar',
+      time: 'blue hour',
+      notes: 'windy',
+    }
+    // The action returns the row AS STORED — with the batch values in it — so the merge adopts
+    // cleanly, `a focus checkbox commits on CHANGE, immediately`'s own reasoning.
+    saveAction.mockResolvedValue({ ok: true, prefs: prefs(batchValues) })
+    generateAllAction.mockResolvedValueOnce({ ok: true, values: batchValues })
+    panel()
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Buat wardrobe, venue, time, dan notes baru sekaligus' }),
+    )
+    await advance(0)
+    await advance(0) // second flush: the save's own promise chain settles here
+
+    expect(generateAllAction).toHaveBeenCalledWith()
+    expect(wardrobeBox()).toHaveValue('silk robe')
+    // A whole-row save, exactly like a dropdown pick — no extra blur needed.
+    expect(saveAction).toHaveBeenCalledTimes(1)
+    const sent = saveAction.mock.calls[0]![0]!
+    expect(sent.wardrobe).toBe('silk robe')
+    expect(sent.venue).toBe('rooftop bar')
+    expect(sent.time).toBe('blue hour')
+    expect(sent.notes).toBe('windy')
+  })
+
+  it('shows an inline error and saves nothing when the batch call fails', async () => {
+    generateAllAction.mockResolvedValueOnce({ ok: false })
+    panel()
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Buat wardrobe, venue, time, dan notes baru sekaligus' }),
+    )
+    await advance(0)
+
+    expect(screen.getByText(/Gagal membuat nilai baru untuk keempat kolom/)).toBeInTheDocument()
     expect(wardrobeBox()).toHaveValue('')
     expect(saveAction).not.toHaveBeenCalled()
   })

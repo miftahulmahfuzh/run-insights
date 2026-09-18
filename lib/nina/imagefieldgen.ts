@@ -1,10 +1,17 @@
 import 'server-only'
 
+import { z } from 'zod'
+
 import { narrativeClient } from '@/lib/llm/client'
 import { narrativeModel } from '@/lib/llm/textModel'
 import type Anthropic from '@anthropic-ai/sdk'
 
-import { NINA_IMAGE_TEXT_SPECS, coerceNinaImageText, type NinaImageTextKey } from './imageprefs'
+import {
+  NINA_IMAGE_TEXT_KEYS,
+  NINA_IMAGE_TEXT_SPECS,
+  coerceNinaImageText,
+  type NinaImageTextKey,
+} from './imageprefs'
 
 /**
  * ════════════════════════════════════════════════════════════════════════════════════════════
@@ -181,6 +188,262 @@ export async function generateImageFieldValue(
     /* `narrativeClient()` itself can throw — it reads `@/lib/env`. Belt and braces: this
      * function's whole contract with its one caller is that it never throws. */
     console.warn('[nina.imagefieldgen] pass failed', { error: String(cause) })
+    return null
+  }
+}
+
+/**
+ * ════════════════════════════════════════════════════════════════════════════════════════════
+ *  ONE CALL THAT PROPOSES ALL FOUR FIELDS AT ONCE — the 2026-09-18 icon's sibling.
+ *
+ *  The single-field pass above is one click, one field, one call — an operator who wants all four
+ *  refreshed pays for four separate round-trips. This is the batch version: one `glm-5.3` call,
+ *  one tool with all four properties required, so the model proposes a coherent scene in a single
+ *  response instead of four independent ones that happen to agree.
+ *
+ *  Same never-throws contract as the single-field pass, but with the one difference the user asked
+ *  for: a malformed or partially-invalid response gets ONE repair round-trip (`narrate.ts`'s
+ *  primary → Zod → one repair → silence shape) before giving up, because discarding a whole
+ *  four-field batch over one field's stray quote mark is a worse trade here than it is for a
+ *  single field the operator can just re-click.
+ * ════════════════════════════════════════════════════════════════════════════════════════════
+ */
+
+/** Four short lines instead of one — `imagefieldgen`'s single-field number, roughly ×3 for the
+ * extra fields plus headroom for a `thinking` block. */
+const IMAGE_FIELD_GEN_ALL_MAX_TOKENS = 900
+/** The single-field timeout's own number: short answers sit at the bottom of the measured
+ * 6.2–16.4 s range for this endpoint, and four short answers in one call are still one call. */
+const IMAGE_FIELD_GEN_ALL_TIMEOUT_MS = 16_000
+/** The repair call's own, separate budget — `narrate.ts`'s `BUDGET.session.repair` shape, sized
+ * down for this much smaller payload. */
+const IMAGE_FIELD_GEN_ALL_REPAIR_TIMEOUT_MS = 12_000
+
+export interface ImageFieldGenAllRequest {
+  /** Every field's own past suggestions, in any order — one avoid-list per field, the single-field
+   * pass's `recentValues` but for all four at once. */
+  recentValues: Readonly<Record<NinaImageTextKey, readonly string[]>>
+}
+
+const ImageFieldGenAllSchema = z.object({
+  wardrobe: z.string().trim().min(1).max(NINA_IMAGE_TEXT_SPECS.wardrobe.max),
+  venue: z.string().trim().min(1).max(NINA_IMAGE_TEXT_SPECS.venue.max),
+  time: z.string().trim().min(1).max(NINA_IMAGE_TEXT_SPECS.time.max),
+  notes: z.string().trim().min(1).max(NINA_IMAGE_TEXT_SPECS.notes.max),
+})
+
+export type ImageFieldGenAllValues = z.infer<typeof ImageFieldGenAllSchema>
+
+const IMAGE_FIELD_GEN_ALL_TOOL: Anthropic.Tool = {
+  name: 'field_values',
+  description: 'Propose fresh values for all four fields of this photograph — one coherent scene.',
+  input_schema: {
+    type: 'object',
+    additionalProperties: false,
+    required: [...NINA_IMAGE_TEXT_KEYS],
+    properties: Object.fromEntries(
+      NINA_IMAGE_TEXT_KEYS.map((key) => [
+        key,
+        {
+          type: 'string',
+          maxLength: NINA_IMAGE_TEXT_SPECS[key].max,
+          description:
+            `REQUIRED. One line for "${NINA_IMAGE_TEXT_SPECS[key].label}", in the style of its ` +
+            'example and within its character limit. No label, no quotes, no markdown.',
+        },
+      ]),
+    ),
+  },
+}
+
+const IMAGE_FIELD_GEN_ALL_SYSTEM_PROMPT = `You propose values for all four fields of a photograph's setup form, in one pass. You are a copywriter, not a participant: you never address anyone, you never explain a choice, and you never describe a person.
+
+Return all four values through the "field_values" tool. Nothing else — no labels, no quotes, no markdown, no trailing period unless a field's style example has one.
+
+Stay inside each field's own character limit. Match the style and level of detail of each field's example. The four values describe ONE photograph, so they must plausibly belong in the same scene together — do not contradict each other. Never repeat, or closely paraphrase, a value listed as already used for that field.`
+
+function buildImageFieldGenAllRequest(request: ImageFieldGenAllRequest): string {
+  const lines: string[] = []
+  for (const key of NINA_IMAGE_TEXT_KEYS) {
+    const spec = NINA_IMAGE_TEXT_SPECS[key]
+    lines.push(
+      `Field: ${spec.label}`,
+      `What it means: ${spec.userSaid}`,
+      `Style example: "${spec.placeholder}"`,
+      `Character limit: ${spec.max}`,
+    )
+    const recent = request.recentValues[key]
+    if (recent.length > 0) {
+      lines.push('Already used for this field — do not repeat or paraphrase any of these:')
+      for (const value of recent) lines.push(`- ${value}`)
+    }
+    lines.push('')
+  }
+  lines.push(
+    'Propose one fresh, coherent value for each of the four fields through the field_values tool.',
+  )
+  return lines.join('\n')
+}
+
+/** `describeInsightIssues`'s own shape (`lib/llm/schema.ts`) — kept local rather than imported,
+ * this module's own header's reason: "six lines duplicated beats a coupling". */
+function describeImageFieldGenAllIssues(error: unknown): string {
+  const issues = (error as { issues?: Array<{ path: unknown[]; message: string }> })?.issues
+  if (!Array.isArray(issues)) return String(error)
+  return issues
+    .slice(0, 12)
+    .map((issue) => `- ${issue.path.join('.') || '(root)'}: ${issue.message}`)
+    .join('\n')
+}
+
+/** `findImageFieldGenBlock`'s own reason: a `thinking` block can arrive in front of the answer. */
+function findImageFieldGenAllBlock(message: Anthropic.Message): Anthropic.ToolUseBlock | null {
+  for (const block of message.content) {
+    if (block.type === 'tool_use' && block.name === IMAGE_FIELD_GEN_ALL_TOOL.name) return block
+  }
+  return null
+}
+
+/** The same normaliser every field's own value goes through — collapses whitespace and cuts at
+ * that field's own cap, so a suggestion can never violate the bound the input enforces. `null`
+ * when any one field clamps to empty: a batch that is missing a field is not a usable batch. */
+function coerceImageFieldGenAllValues(
+  parsed: ImageFieldGenAllValues,
+): ImageFieldGenAllValues | null {
+  const out: Record<NinaImageTextKey, string> = { wardrobe: '', venue: '', time: '', notes: '' }
+  for (const key of NINA_IMAGE_TEXT_KEYS) {
+    const value = coerceNinaImageText(key, parsed[key])
+    if (value === '') return null
+    out[key] = value
+  }
+  return out
+}
+
+function baseAllBody(
+  model: string,
+  messages: Anthropic.MessageParam[],
+): Anthropic.MessageCreateParamsNonStreaming {
+  return {
+    model,
+    max_tokens: IMAGE_FIELD_GEN_ALL_MAX_TOKENS,
+    system: IMAGE_FIELD_GEN_ALL_SYSTEM_PROMPT,
+    messages,
+    tools: [IMAGE_FIELD_GEN_ALL_TOOL],
+    tool_choice: { type: 'tool', name: IMAGE_FIELD_GEN_ALL_TOOL.name },
+    /* Kept, not relied on — the single-field pass's note: a `thinking` block has arrived on this
+     * endpoint with the flag set anyway. */
+    thinking: { type: 'disabled' },
+  }
+}
+
+/**
+ * The one repair round-trip. `narrate.ts`'s `attemptRepair`, shaped the same way and for the same
+ * reason: user → assistant(echoed malformed JSON) → user(issues), not a `tool_result` block —
+ * this endpoint is only Anthropic-*compatible*, and the plain three-turn text shape is the one
+ * idiom this repo already trusts against it.
+ */
+async function attemptImageFieldGenAllRepair(
+  client: ImageFieldGenClientLike,
+  model: string,
+  messages: Anthropic.MessageParam[],
+  malformed: unknown,
+  issues: string,
+): Promise<ImageFieldGenAllValues | null> {
+  const repairMessages: Anthropic.MessageParam[] = [
+    ...messages,
+    { role: 'assistant', content: JSON.stringify(malformed) },
+    {
+      role: 'user',
+      content:
+        'That did not fit the field_values tool:\n' +
+        issues +
+        '\n\nReuse exactly what you already had except where it was flagged, and call ' +
+        'field_values again with all four fields corrected.',
+    },
+  ]
+
+  let message: Anthropic.Message
+  try {
+    message = await client.messages.create(baseAllBody(model, repairMessages), {
+      timeout: IMAGE_FIELD_GEN_ALL_REPAIR_TIMEOUT_MS,
+    })
+  } catch (cause) {
+    console.warn('[nina.imagefieldgen] batch repair call failed', { error: String(cause) })
+    return null
+  }
+
+  if (message.stop_reason === 'max_tokens') return null
+  const block = findImageFieldGenAllBlock(message)
+  if (block === null) return null
+  const parsed = ImageFieldGenAllSchema.safeParse(block.input)
+  if (!parsed.success) return null
+  return coerceImageFieldGenAllValues(parsed.data)
+}
+
+/** The testable core. Client injected, no database, no environment beyond the model id. */
+export async function generateAllImageFieldValuesWith(
+  client: ImageFieldGenClientLike,
+  request: ImageFieldGenAllRequest,
+  options: { model: string },
+): Promise<ImageFieldGenAllValues | null> {
+  const messages: Anthropic.MessageParam[] = [
+    { role: 'user', content: buildImageFieldGenAllRequest(request) },
+  ]
+
+  let message: Anthropic.Message
+  try {
+    message = await client.messages.create(baseAllBody(options.model, messages), {
+      timeout: IMAGE_FIELD_GEN_ALL_TIMEOUT_MS,
+    })
+  } catch (cause) {
+    /* Never `console.error`: a click that produced no suggestion is an expected state of this
+     * feature, and every field is simply left as it was. */
+    console.warn('[nina.imagefieldgen] batch call failed', { error: String(cause) })
+    return null
+  }
+
+  if (message.stop_reason === 'max_tokens') {
+    console.warn('[nina.imagefieldgen] batch response hit the token ceiling', {
+      maxTokens: IMAGE_FIELD_GEN_ALL_MAX_TOKENS,
+    })
+    return null
+  }
+
+  const block = findImageFieldGenAllBlock(message)
+  if (block === null) return null
+
+  const parsed = ImageFieldGenAllSchema.safeParse(block.input)
+  if (parsed.success) return coerceImageFieldGenAllValues(parsed.data)
+
+  return attemptImageFieldGenAllRepair(
+    client,
+    options.model,
+    messages,
+    block.input,
+    describeImageFieldGenAllIssues(parsed.error),
+  )
+}
+
+/**
+ * **The wired pass, and the symbol the payload-boundary guard names.** Called from exactly one
+ * place: `generateAllImageFieldValuesAction` (`lib/admin/imageGenActions.ts`), a Server Action
+ * fired by the "regenerate all" icon in the panel header.
+ *
+ * **Never throws.** A click that yields nothing leaves every field exactly as it was; the operator
+ * can just click again, or fall back to the single-field icons.
+ */
+export async function generateAllImageFieldValues(
+  request: ImageFieldGenAllRequest,
+  deps: { client?: ImageFieldGenClientLike; model?: string } = {},
+): Promise<ImageFieldGenAllValues | null> {
+  try {
+    return await generateAllImageFieldValuesWith(deps.client ?? narrativeClient(), request, {
+      model: deps.model ?? (await narrativeModel()),
+    })
+  } catch (cause) {
+    /* `narrativeClient()` itself can throw — it reads `@/lib/env`. Belt and braces: this
+     * function's whole contract with its one caller is that it never throws. */
+    console.warn('[nina.imagefieldgen] batch pass failed', { error: String(cause) })
     return null
   }
 }

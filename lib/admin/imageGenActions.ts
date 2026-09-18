@@ -12,9 +12,13 @@ import {
   type NinaImagePrefsWriteInput,
 } from '@/lib/admin/schema'
 import { isValidId } from '@/lib/id'
-import { generateImageFieldValue } from '@/lib/nina/imagefieldgen'
+import { generateAllImageFieldValues, generateImageFieldValue } from '@/lib/nina/imagefieldgen'
 import { getNinaImageJobDetail, ninaImageQuotaLeft } from '@/lib/nina/imagejobs'
-import { validateNinaImageTemplate, type NinaImagePrefsWrite } from '@/lib/nina/imageprefs'
+import {
+  NINA_IMAGE_TEXT_KEYS,
+  validateNinaImageTemplate,
+  type NinaImagePrefsWrite,
+} from '@/lib/nina/imageprefs'
 import { ninaImageDailyCap } from '@/lib/nina/imagerecipe'
 import { assembleNinaImageTestPrompt, dispatchNinaImageTest } from '@/lib/nina/imagetest'
 import {
@@ -387,6 +391,51 @@ export async function generateImageFieldValueAction(
     return { ok: true, value }
   } catch (cause) {
     console.error('[imgn] admin image field generate failed', cause)
+    return { ok: false }
+  }
+}
+
+/* ── the 2026-09-18 "regenerate all four" icon ───────────────────────────────────────────────
+ *
+ * One action, one call, all four fields — the batch sibling of the action above, for an operator
+ * who wants a fresh coherent scene instead of four separate clicks. No client input: unlike the
+ * single-field action, there is no "current draft" context to read, because all four fields are
+ * being proposed together in the one call rather than one at a time around three fixed neighbours.
+ *
+ * Unlike the single-field action, this ONE calls `commitImmediate` from the panel rather than
+ * filling the draft and waiting on a blur — there is no single control to blur after a four-field
+ * fill — so a success here is a save. It still never calls `revalidatePath` itself: the save that
+ * follows is `saveNinaImagePrefsAction`'s own call, same as any other panel edit.
+ */
+
+export type GenerateAllImageFieldValuesResult =
+  { ok: true; values: Record<(typeof NINA_IMAGE_TEXT_KEYS)[number], string> } | { ok: false }
+
+/**
+ * Ask the model for fresh values for all four text fields at once, reading each field's own
+ * history for its avoid-list. `requireAdmin()` first, same order as every action in this file.
+ */
+export async function generateAllImageFieldValuesAction(): Promise<GenerateAllImageFieldValuesResult> {
+  const { userId } = await requireAdmin()
+
+  try {
+    const recentValues = Object.fromEntries(
+      await Promise.all(
+        NINA_IMAGE_TEXT_KEYS.map(
+          async (field) => [field, await readRecentFieldValues(userId, field)] as const,
+        ),
+      ),
+    ) as Record<(typeof NINA_IMAGE_TEXT_KEYS)[number], string[]>
+
+    const values = await generateAllImageFieldValues({ recentValues })
+    if (values === null) return { ok: false }
+
+    await Promise.all(
+      NINA_IMAGE_TEXT_KEYS.map((field) => recordFieldValue(userId, field, values[field])),
+    )
+    return { ok: true, values }
+  } catch (cause) {
+    console.error('[imgn] admin image batch field generate failed', cause)
     return { ok: false }
   }
 }
