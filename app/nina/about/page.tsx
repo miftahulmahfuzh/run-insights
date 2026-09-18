@@ -10,6 +10,7 @@ import {
   NINA_ABOUT_PROFILE_PAGE_COOKIE,
   NINA_ABOUT_RETURN_PARAM,
   NINA_ABOUT_TAB_PARAM,
+  aboutAlbumIdOutsideGallery,
   aboutPhotoIdOutsideGallery,
   albumPhotos,
   clampNinaAboutPage,
@@ -21,6 +22,7 @@ import {
 } from '@/lib/nina/album'
 import {
   getCurrentNinaAvatar,
+  getNinaAvatar,
   getNinaMessageImage,
   listNinaAvatarsPage,
   listNinaMediaPhotos,
@@ -29,7 +31,7 @@ import {
 /**
  * `/nina/about` — her detail page (R17), reached by tapping her avatar in the chat header.
  *
- * ── FOUR READS, ONE OF THEM A SINGLE ROW, AND A FIFTH ONLY WHEN A DEEP LINK NEEDS IT ──────────
+ * ── FOUR READS, ONE OF THEM A SINGLE ROW, AND UP TO TWO MORE WHEN A DEEP LINK NEEDS THEM ──────
  * `listNinaAvatarsPage` and `listNinaMediaPhotos` are each a real `?page=` window now (2026-09-17,
  * nina-about-pagination) — every photograph in the system is reachable through Previous/Next
  * (`components/nina/NinaAboutScreen.tsx`'s client-side pager), not just the newest render-capped
@@ -37,7 +39,12 @@ import {
  * the one true single-row lookup: the hero's face and, when the current avatar is not on the
  * loaded profile page, the resolver that keeps the hero's viewer correct (see below).
  * `getNinaMessageImage`, unchanged, is the `?photo=chat.<id>` deep-link resolver — it runs ONLY
- * when `aboutPhotoIdOutsideGallery` finds the id outside the loaded media page.
+ * when `aboutPhotoIdOutsideGallery` finds the id outside the loaded media page. `getNinaAvatar`
+ * (2026-09-18) is its album twin: `/nina/jobs/[id]`'s reference-photo button deep-links to
+ * `?photo=album.<avatarId>`, and that avatar is neither the current one nor necessarily on the
+ * loaded profile page — before this read existed, that miss just failed to open the viewer, no
+ * error, no sign anything was wrong. Runs ONLY when `aboutAlbumIdOutsideGallery` finds the id
+ * outside the loaded profile page, same gate.
  *
  * ── WHICH PAGE OF EACH TAB — THE COOKIE, NOT ALWAYS PAGE 1 ────────────────────────────────────
  * A runner who left off on Media page 3 should not land back on page 1 every time they reopen
@@ -116,6 +123,19 @@ export default async function NinaAboutPage({ searchParams }: PageProps<'/nina/a
   const resolvedPhoto = resolvedRow == null ? null : (galleryPhotos([resolvedRow])[0] ?? null)
 
   /*
+   * The album twin of the block above: `?photo=album.<id>` — `/nina/jobs/[id]`'s reference-photo
+   * button — named an avatar the loaded profile page does not hold (and which is not necessarily
+   * the current avatar either, since a job's reference can be any past avatar). Same shape, same
+   * gate: only a MISS reaches `getNinaAvatar`, and the mapped row is what crosses into the prop
+   * (`albumPhotos` strips `description`, same as `galleryPhotos` does for the chat arm).
+   */
+  const deepLinkAlbumId = aboutAlbumIdOutsideGallery(photoParam, album)
+  const resolvedAlbumRow =
+    deepLinkAlbumId === null ? null : await getNinaAvatar(userId, deepLinkAlbumId)
+  const resolvedAlbumPhoto =
+    resolvedAlbumRow == null ? null : (albumPhotos([resolvedAlbumRow])[0] ?? null)
+
+  /*
    * The deep link's RETURN leg, decoded where every other URL fact on this page is decoded. The
    * value is sanitized by `decodeAboutReturnTo` itself — an off-app or malformed target degrades
    * to `null`, which the screen reads as "close in place", the behaviour the link had before the
@@ -142,6 +162,7 @@ export default async function NinaAboutPage({ searchParams }: PageProps<'/nina/a
         galleryPage={mediaPage}
         resolvedPhoto={resolvedPhoto}
         resolvedCurrentAvatar={resolvedCurrentAvatar}
+        resolvedAlbumPhoto={resolvedAlbumPhoto}
         returnTo={returnTo}
       />
     </AppShell>

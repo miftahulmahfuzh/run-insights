@@ -84,6 +84,7 @@ export function NinaAboutScreen({
   galleryPage: galleryPageProp,
   resolvedPhoto,
   resolvedCurrentAvatar = null,
+  resolvedAlbumPhoto = null,
   returnTo,
   initialTab,
 }: {
@@ -123,6 +124,16 @@ export function NinaAboutScreen({
    * the album arm exactly the way `resolvedPhoto` joins the chat arm.
    */
   resolvedCurrentAvatar?: NinaAlbumPhoto | null
+  /**
+   * **An avatar the URL names by id (`?photo=album.<id>`) that the loaded profile page dropped —
+   * resolved on the server, or null.** `/nina/jobs/[id]`'s "reference photo" button is the one
+   * link that mints this shape: the avatar a job was anchored to, which is neither the current
+   * avatar (that case is `resolvedCurrentAvatar`, above) nor necessarily on the loaded page — a
+   * redo can point a job at any past avatar. Same append rule as the other two resolvers;
+   * `aboutViewerLists` de-duplicates it against `resolvedCurrentAvatar` in case both name the same
+   * row.
+   */
+  resolvedAlbumPhoto?: NinaAlbumPhoto | null
   /**
    * **The deep link's RETURN leg, already decoded and sanitized on the server.** Where the close
    * should land the runner instead of `/nina/about` — the origin page a deep link like Detail
@@ -262,10 +273,10 @@ export function NinaAboutScreen({
   /**
    * One list per section, in render order — over the LOADED page of each, not the whole
    * collection. `aboutViewerLists` appends the resolved chat photo to the chat arm and the
-   * resolved current avatar to the album arm, each only when the loaded page does not already
-   * hold it. Every reader below (`open`, `openAt`, `onIndex`, `attach`, `openChatPhoto`) goes
-   * through THIS object rather than the raw state, so the viewer's indices and its id reads
-   * cannot drift from the list the viewer actually shows.
+   * resolved current avatar and/or the resolved deep-linked avatar to the album arm, each only
+   * when the loaded page does not already hold it. Every reader below (`open`, `openAt`, `onIndex`,
+   * `attach`, `openChatPhoto`) goes through THIS object rather than the raw state, so the viewer's
+   * indices and its id reads cannot drift from the list the viewer actually shows.
    */
   const viewerLists = React.useMemo(
     () =>
@@ -274,8 +285,9 @@ export function NinaAboutScreen({
         gallery: galleryItems,
         resolvedChatPhoto,
         resolvedCurrentAvatar,
+        resolvedAlbumPhoto,
       }),
-    [albumItems, galleryItems, resolvedChatPhoto, resolvedCurrentAvatar],
+    [albumItems, galleryItems, resolvedChatPhoto, resolvedCurrentAvatar, resolvedAlbumPhoto],
   )
 
   const albumViewer: ViewerPhoto[] = React.useMemo(

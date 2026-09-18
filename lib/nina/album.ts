@@ -557,24 +557,35 @@ export interface NinaAboutViewerLists {
  * page resolves it with the same cheap single-row lookup the header avatar already used
  * (`getCurrentNinaAvatar`) and hands it here; it is appended — same rule as the chat resolver,
  * skipped when the loaded page already has it, so the grid's indices never shift under it.
+ *
+ * ── `resolvedAlbumPhoto`: THE `album.<id>` DEEP LINK'S OWN RESOLVER ──────────────────────────
+ * The other reference a link into this screen can name — `/nina/jobs/[id]`'s "reference photo"
+ * button, `aboutPhotoHref('album', avatarId, …)` — points at whichever avatar a job was anchored
+ * to, which is neither the current avatar nor necessarily on the loaded profile page (a redo can
+ * pick any past avatar as its reference). `aboutAlbumIdOutsideGallery` names that id when it is
+ * missing from `input.album`; the page resolves it with `getNinaAvatar`, the same single-row read
+ * `resolvedCurrentAvatar` already uses, and hands it here. Appended by the same rule, and
+ * de-duplicated against `resolvedCurrentAvatar` — the two resolvers can name the same avatar (the
+ * job's reference photo happens to also be the current one) and the append must not double it.
  */
 export function aboutViewerLists(input: {
   album: readonly NinaAlbumPhoto[]
   gallery: readonly NinaGalleryPhoto[]
   resolvedChatPhoto: NinaGalleryPhoto | null
   resolvedCurrentAvatar?: NinaAlbumPhoto | null
+  resolvedAlbumPhoto?: NinaAlbumPhoto | null
 }): NinaAboutViewerLists {
   const chat =
     input.resolvedChatPhoto == null ? input.gallery : [...input.gallery, input.resolvedChatPhoto]
 
-  const resolvedCurrentAvatar = input.resolvedCurrentAvatar ?? null
-  const alreadyLoaded =
-    resolvedCurrentAvatar != null &&
-    input.album.some((photo) => photo.id === resolvedCurrentAvatar.id)
-  const album =
-    resolvedCurrentAvatar == null || alreadyLoaded
-      ? input.album
-      : [...input.album, resolvedCurrentAvatar]
+  const loadedIds = new Set(input.album.map((photo) => photo.id))
+  const extras: NinaAlbumPhoto[] = []
+  for (const extra of [input.resolvedCurrentAvatar ?? null, input.resolvedAlbumPhoto ?? null]) {
+    if (extra === null || loadedIds.has(extra.id)) continue
+    loadedIds.add(extra.id)
+    extras.push(extra)
+  }
+  const album = extras.length === 0 ? input.album : [...input.album, ...extras]
 
   return { album, chat }
 }
@@ -591,9 +602,10 @@ export function aboutViewerLists(input: {
  * cannot be one of ours (`isValidId` — the cheap shape check before a query, `app/nina/jobs/[id]`'s
  * stated rule, so a hand-typed URL costs the page nothing at all).
  *
- * The `album` section is refused HERE and not by the codec on purpose: `decodeAboutPhoto` must
- * keep parsing `album.<id>` — the screen opens album photos through it — while the RESOLVER has
- * no album arm, because an album miss is a render-cap artifact and not the R3 window.
+ * The `album` section is refused HERE and answered by `aboutAlbumIdOutsideGallery` below instead:
+ * the two sections resolve against different tables (`nina_message_images` vs `nina_avatars`, via
+ * `getNinaMessageImage` vs `getNinaAvatar`), so one predicate reading one list correctly cannot
+ * also read the other — same division the query layer already keeps between the two reads.
  */
 export function aboutPhotoIdOutsideGallery(
   raw: unknown,
@@ -603,4 +615,25 @@ export function aboutPhotoIdOutsideGallery(
   if (parsed === null || parsed.section !== 'chat') return null
   if (!isValidId(parsed.id)) return null
   return gallery.some((photo) => photo.id === parsed.id) ? null : parsed.id
+}
+
+/**
+ * **The album twin of `aboutPhotoIdOutsideGallery`** — same membership-miss shape, run against
+ * the LOADED ALBUM page for the `album` section a bare avatar id names.
+ *
+ * Before this existed, an `album.<id>` deep link — `/nina/jobs/[id]`'s reference-photo button —
+ * only opened when that avatar was either the current one or already on the loaded profile page;
+ * anything else missed the screen's `findIndex` and the viewer silently did not open, landing the
+ * runner on the plain about page with no sign anything had gone wrong. `getNinaAvatar`
+ * (`lib/nina/queries/avatars.ts`) is the single-row, ownership-scoped read that closes the gap —
+ * the same one `resolvedCurrentAvatar` already uses for the current-avatar case.
+ */
+export function aboutAlbumIdOutsideGallery(
+  raw: unknown,
+  album: readonly NinaAlbumPhoto[],
+): string | null {
+  const parsed = decodeAboutPhoto(raw)
+  if (parsed === null || parsed.section !== 'album') return null
+  if (!isValidId(parsed.id)) return null
+  return album.some((photo) => photo.id === parsed.id) ? null : parsed.id
 }

@@ -7,6 +7,7 @@ import {
   NINA_ABOUT_PHOTO_PARAM,
   NINA_ABOUT_RETURN_PARAM,
   NINA_ABOUT_TAB_PARAM,
+  aboutAlbumIdOutsideGallery,
   aboutPhotoHref,
   aboutPhotoIdOutsideGallery,
   aboutViewerLists,
@@ -205,6 +206,59 @@ describe('aboutViewerLists is the rule for which list the viewer renders', () =>
     expect(lists.chat).toEqual([...gallery, resolvedChatPhoto])
     expect(lists.album).toEqual([...album, resolvedCurrentAvatar])
   })
+
+  it('appends the resolved DEEP-LINKED avatar when the loaded album page misses it', () => {
+    const resolvedAlbumPhoto: NinaAlbumPhoto = {
+      id: 'avatarREF00001',
+      url: 'https://x.example/ref.png',
+      kind: 'avatar',
+      label: 'Foto profil Nina',
+      isCurrent: false,
+      description: null,
+    }
+    const lists = aboutViewerLists({
+      album,
+      gallery: [],
+      resolvedChatPhoto: null,
+      resolvedAlbumPhoto,
+    })
+    expect(lists.album).toEqual([...album, resolvedAlbumPhoto])
+  })
+
+  it('does not duplicate the deep-linked avatar when the loaded page already has it', () => {
+    const lists = aboutViewerLists({
+      album,
+      gallery: [],
+      resolvedChatPhoto: null,
+      resolvedAlbumPhoto: album[0],
+    })
+    expect(lists.album).toEqual(album)
+  })
+
+  it('appends both extras when the current avatar and the deep-linked avatar differ', () => {
+    const resolvedCurrentAvatar: NinaAlbumPhoto = { ...album[0]!, id: 'avatarOLD00001' }
+    const resolvedAlbumPhoto: NinaAlbumPhoto = { ...album[0]!, id: 'avatarREF00001' }
+    const lists = aboutViewerLists({
+      album,
+      gallery: [],
+      resolvedChatPhoto: null,
+      resolvedCurrentAvatar,
+      resolvedAlbumPhoto,
+    })
+    expect(lists.album).toEqual([...album, resolvedCurrentAvatar, resolvedAlbumPhoto])
+  })
+
+  it('does not double an avatar named by both resolvers at once', () => {
+    const same: NinaAlbumPhoto = { ...album[0]!, id: 'avatarSAME0001' }
+    const lists = aboutViewerLists({
+      album,
+      gallery: [],
+      resolvedChatPhoto: null,
+      resolvedCurrentAvatar: same,
+      resolvedAlbumPhoto: same,
+    })
+    expect(lists.album).toEqual([...album, same])
+  })
 })
 
 describe('decodeAboutTab reads ?tab= — the tab switch this URL now carries', () => {
@@ -277,6 +331,33 @@ describe('aboutPhotoIdOutsideGallery is the membership-miss predicate', () => {
   })
 })
 
+describe('aboutAlbumIdOutsideGallery is the album twin of the same predicate', () => {
+  it('answers the id the server must resolve, and only that id', () => {
+    expect(aboutAlbumIdOutsideGallery(`album.${OLD_ID}`, album)).toBe(OLD_ID)
+  })
+
+  it('answers null when the loaded album page holds it — the common case costs zero queries', () => {
+    expect(aboutAlbumIdOutsideGallery(`album.${album[0]!.id}`, album)).toBeNull()
+  })
+
+  it('answers null for the chat section — that miss is aboutPhotoIdOutsideGallery’s job', () => {
+    expect(aboutAlbumIdOutsideGallery(`chat.${OLD_ID}`, album)).toBeNull()
+  })
+
+  it('answers null for every malformed shape — a hand-typed URL buys no query', () => {
+    expect(aboutAlbumIdOutsideGallery(null, album)).toBeNull()
+    expect(aboutAlbumIdOutsideGallery(undefined, album)).toBeNull()
+    expect(aboutAlbumIdOutsideGallery(['album', OLD_ID], album)).toBeNull()
+    expect(aboutAlbumIdOutsideGallery('album.', album)).toBeNull()
+    expect(aboutAlbumIdOutsideGallery('no-dot', album)).toBeNull()
+  })
+
+  it('answers null for a well-formed but impossible id — isValidId gates the read', () => {
+    expect(aboutAlbumIdOutsideGallery('album.short', album)).toBeNull()
+    expect(aboutAlbumIdOutsideGallery('album.not-an-id-!!', album)).toBeNull()
+  })
+})
+
 /**
  * The wiring, as source claims — `environment: 'node'` cannot render a server page or a client
  * component, so what is testable is the shape (`tests/nina.galleryDelete.test.ts`'s pattern, whose
@@ -307,6 +388,18 @@ describe('the about page resolves the miss on the server, as source claims', () 
     expect(source).toContain('resolvedPhoto={resolvedPhoto}')
     expect(source).not.toContain('description')
   })
+
+  it('gates the album deep-link read on its own membership miss, same shape as the chat one', () => {
+    const source = readRepoCode(PAGE)
+    expect(source).toContain('aboutAlbumIdOutsideGallery(photoParam, album)')
+    expect(source).toContain('deepLinkAlbumId === null')
+  })
+
+  it('strips description at the boundary for the album resolver too', () => {
+    const source = readRepoCode(PAGE)
+    expect(source).toContain('albumPhotos([resolvedAlbumRow])')
+    expect(source).toContain('resolvedAlbumPhoto={resolvedAlbumPhoto}')
+  })
 })
 
 describe('the screen renders the viewer over the merged list and the grid over the gallery', () => {
@@ -319,6 +412,7 @@ describe('the screen renders the viewer over the merged list and the grid over t
     expect(source).toContain('gallery: galleryItems,')
     expect(source).toContain('resolvedChatPhoto,')
     expect(source).toContain('resolvedCurrentAvatar,')
+    expect(source).toContain('resolvedAlbumPhoto,')
     expect(source).toContain('const resolvedChatPhoto = resolvedPhoto ?? null')
   })
 
