@@ -536,6 +536,11 @@ function compareNinaPhotoRefs(a: NinaPhotoRef, b: NinaPhotoRef): number {
  *   {{hairstyle}}  — the Hairstyle preset's sentence (2026-09-18). Sits INSIDE the face
  *                    paragraph, same reason as `{{angle}}`: never empty, because there is always
  *                    one hairstyle selected
+ *   {{buttClause}} — the SUBJECT paragraph's butt sentence (2026-09-18, job `lUARJrfreQta`),
+ *                    angle-aware the same way `{{angle}}` is: the original "standing out from her
+ *                    back" claim for `eye_level`/`low_angle`, a variant with no camera-relative
+ *                    visibility claim for `overhead`, where the original is geometrically
+ *                    impossible. Sits INSIDE the SUBJECT paragraph, never empty — same reason
  *
  * **A line containing a token that expanded to empty is dropped ENTIRE.** That is what keeps
  * "VENUE: {{venue}}" from dangling when the field is empty, and what lets the FOCUS line vanish
@@ -561,6 +566,7 @@ export const NINA_IMAGE_TEMPLATE_KEYS = [
   'notes',
   'angle',
   'hairstyle',
+  'buttClause',
 ] as const
 
 export type NinaImageTemplateKey = (typeof NINA_IMAGE_TEMPLATE_KEYS)[number]
@@ -643,6 +649,11 @@ export const NINA_IMAGE_TEMPLATE_SPECS: Readonly<
     key: 'hairstyle',
     description:
       'The Hairstyle preset, as one sentence. Sits inside the face paragraph, not its own line, and is never empty — like `{{angle}}`, there is always a hairstyle selected.',
+  }),
+  buttClause: Object.freeze({
+    key: 'buttClause',
+    description:
+      "The SUBJECT paragraph's butt sentence — the original claim for the eye-level and low-angle presets, or a variant with no camera-relative visibility claim for overhead, where the original is geometrically impossible. Sits inside the SUBJECT paragraph, not its own line, and is never empty — like `{{angle}}`, there is always a camera angle selected.",
   }),
 })
 

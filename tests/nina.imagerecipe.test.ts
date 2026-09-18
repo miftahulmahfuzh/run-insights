@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ADMIN_AVATAR_CONTENT_TYPES, ADMIN_AVATAR_MAX_UPLOAD_BYTES } from '@/lib/admin/avatars'
 import {
   buildNinaImagePrompt,
+  NINA_BODY_BUTT_SENTENCES,
   NINA_CAMERA_ANGLE_SENTENCES,
   NINA_PROMPT_TEMPLATE_DEFAULT,
   sidecarText,
@@ -526,6 +527,70 @@ describe('the prompt', () => {
         prefs: prefsWith({ cameraAngle: key }),
       })
       for (const sentence of Object.values(NINA_CAMERA_ANGLE_SENTENCES)) {
+        expect(prompt).not.toContain(sentence)
+      }
+    }
+  })
+
+  /* ────────────────────────────────────────────────────────────────────────────────────────────
+   * §7d — THE BUTT CLAUSE, CAMERA-ANGLE-AWARE (2026-09-18, job `lUARJrfreQta`)
+   * ──────────────────────────────────────────────────────────────────────────────────────────*/
+
+  it('§7d: eye_level and low_angle keep the original butt sentence, unchanged', () => {
+    for (const key of ['eye_level', 'low_angle'] as const) {
+      expect(NINA_BODY_BUTT_SENTENCES[key]).toBe(NINA_BODY_SENTENCES[2])
+      const prompt = buildNinaImagePrompt({
+        purpose: 'selfie',
+        scene: 'on the track',
+        prefs: prefsWith({ cameraAngle: key }),
+      })
+      expect(prompt).toContain('standing out from her back rather than flattening into it')
+    }
+  })
+
+  it('§7d: overhead swaps in a sentence that names the fact without a camera-relative visibility claim', () => {
+    expect(NINA_BODY_BUTT_SENTENCES.overhead).not.toBe(NINA_BODY_SENTENCES[2])
+    expect(NINA_BODY_BUTT_SENTENCES.overhead).not.toContain('standing out from her back')
+
+    const fromPrefs = buildNinaImagePrompt({
+      purpose: 'selfie',
+      scene: 'on the track',
+      prefs: prefsWith({ cameraAngle: 'overhead' }),
+    })
+    const fromChatModel = buildNinaImagePrompt({
+      purpose: 'selfie',
+      scene: 'on the track',
+      angle: 'overhead',
+    })
+    for (const prompt of [fromPrefs, fromChatModel]) {
+      expect(prompt).toContain(NINA_BODY_BUTT_SENTENCES.overhead)
+      expect(prompt).not.toContain('standing out from her back')
+      // The fact survives — only the geometry claim is dropped.
+      expect(prompt).toMatch(/Her butt is round, high and (?:prominent|full)/)
+    }
+  })
+
+  it("§7d: regression — job `lUARJrfreQta`'s exact shape no longer ships the contradiction", () => {
+    // The runner asked "foto lo telentang ngeliat kamera diatas" (lying on her back, camera
+    // directly overhead); the operator's standing preset had just been set to `overhead`.
+    const prompt = buildNinaImagePrompt({
+      purpose: 'selfie',
+      scene:
+        'Nina lying on her back on a bed in warm afternoon light, looking up into the camera held directly above her, her whole body relaxed in frame, a playful smirk on her lips',
+      prefs: prefsWith({ cameraAngle: 'overhead' }),
+    })
+    expect(prompt).toContain(NINA_CAMERA_ANGLE_SENTENCES.overhead)
+    expect(prompt).not.toContain('standing out from her back rather than flattening into it')
+  })
+
+  it('§7d: avatar-purpose photos never spend a butt-clause sentence at all — NINA_BODY_AVATAR replaces it', () => {
+    for (const key of NINA_CAMERA_ANGLE_KEYS) {
+      const prompt = buildNinaImagePrompt({
+        purpose: 'avatar',
+        scene: 'x',
+        prefs: prefsWith({ cameraAngle: key }),
+      })
+      for (const sentence of Object.values(NINA_BODY_BUTT_SENTENCES)) {
         expect(prompt).not.toContain(sentence)
       }
     }

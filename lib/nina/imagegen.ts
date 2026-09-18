@@ -148,6 +148,36 @@ export const NINA_CAMERA_ANGLE_SENTENCES: Readonly<Record<NinaCameraAngleKey, st
   })
 
 /**
+ * **The butt clause, camera-angle-aware (2026-09-18, job `lUARJrfreQta`).**
+ *
+ * `NINA_SELFIE_STYLE_PREFIX`'s header already tells this story twice: a fixed sentence outside
+ * `{{angle}}` that makes a claim about where the camera is, or what it sees, fights a chat-model
+ * `{{angle}}` override instead of losing to it — a diffusion model has no "ignore the earlier
+ * sentence". `lUARJrfreQta` is the same mechanism a third time, one level further out. The runner
+ * asked for "foto lo telentang ngeliat kamera diatas" (lying on her back, camera directly
+ * overhead); `{{angle}}` correctly resolved to `overhead`, and the photo still came back arched
+ * up and shot at a steep-but-not-vertical angle. `NINA_BODY_SENTENCES[2]` is why:
+ * "standing out from her back rather than flattening into it" is a viewing-geometry claim, and it
+ * is impossible to satisfy directly above someone lying flat on her back — the butt is pressed
+ * into the mattress, on the far side of her body from the lens. Faced with that plus `overhead`,
+ * the model split the difference instead of visibly breaking one instruction.
+ *
+ * PLAN INVARIANT 4 (`persona/appearance.ts`'s header above `NINA_BODY_SENTENCES`) still holds:
+ * every angle gets a sentence naming her butt round, high and full, so no angle drops the fact.
+ * Only the ONE clause that asserts a specific, camera-relative visibility varies, and only for
+ * `overhead`, where that claim is the one this file just described as unsatisfiable. `eye_level`
+ * and `low_angle` keep `NINA_BODY_SENTENCES[2]` verbatim — neither angle has ever shown this
+ * contradiction, so there is nothing measured to change there.
+ */
+export const NINA_BODY_BUTT_SENTENCES: Readonly<Record<NinaCameraAngleKey, string>> = Object.freeze(
+  {
+    eye_level: NINA_BODY_SENTENCES[2]!,
+    low_angle: NINA_BODY_SENTENCES[2]!,
+    overhead: `Her butt is round, high and full — a body fact true of her regardless of whether this angle happens to show it.`,
+  },
+)
+
+/**
  * **The calf-to-thigh ratio clause (2026-09-17), and why it lives in the SUFFIX and not the
  * framing sentence it sits beside.**
  *
@@ -371,11 +401,13 @@ function ninaMoodBlock(mood: string | null | undefined): string {
  * rather than hand-copied, so the template cannot drift from the words the built-in assembly
  * uses — there is one home for each sentence.
  *
- * The body paragraph carries the first THREE canon sentences, verbatim — sentence 0's own
- * enumeration (`NINA_BODY_FACTS`), then sentences 1 and 2 — the shipped default. The four facts
- * are prose here, not a token: `{{bodyFacts}}` was dropped because it could only ever expand to
- * this one constant, which made it a decoration on `{{focus}}`'s real job rather than a second
- * control.
+ * The body paragraph carries the first THREE canon sentences — sentence 0's own enumeration
+ * (`NINA_BODY_FACTS`), then sentence 1 verbatim, then `{{buttClause}}` standing in for sentence 2.
+ * The four facts are prose here, not a token: `{{bodyFacts}}` was dropped because it could only
+ * ever expand to this one constant, which made it a decoration on `{{focus}}`'s real job rather
+ * than a second control. `{{buttClause}}` is the one exception, added 2026-09-18 for job
+ * `lUARJrfreQta`: unlike the enumeration, sentence 2 genuinely has more than one correct value —
+ * see `NINA_BODY_BUTT_SENTENCES`'s header for the contradiction that forced it.
  *
  * The face paragraph IS a token, unlike the body: `NINA_FACE_TEMPLATE_LINE` (`lib/nina/persona/appearance.ts`)
  * carries the same fixed prose `NINA_FACE` always did, with `{{hairstyle}}` standing in for the
@@ -397,7 +429,7 @@ export const NINA_PROMPT_TEMPLATE_DEFAULT = [
   '',
   'SUBJECT:',
   `She has got an alluring body, ${NINA_BODY_FACTS}. This silhouette is the point of the photograph and it ` +
-    `must be visible in it. ${NINA_BODY_SENTENCES[1]} ${NINA_BODY_SENTENCES[2]}`,
+    `must be visible in it. ${NINA_BODY_SENTENCES[1]} {{buttClause}}`,
   '',
   NINA_FACE_TEMPLATE_LINE,
   '',
@@ -677,6 +709,7 @@ export function buildNinaImagePrompt(input: {
     scene: input.scene.trim(),
     mood: input.mood?.trim() ?? '',
     angle: angleValue,
+    buttClause: NINA_BODY_BUTT_SENTENCES[angleKey],
     hairstyle: NINA_HAIRSTYLE_SENTENCES[prefs.hairstyle],
     notes: prefs.notes.trim(),
   }
