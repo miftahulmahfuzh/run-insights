@@ -1,5 +1,7 @@
 import type Anthropic from '@anthropic-ai/sdk'
 
+import { NINA_CAMERA_ANGLE_KEYS } from '@/lib/nina/imageprefs'
+
 /**
  * **Every tool Nina can call, as a constant. No logic, no I/O** — the same shape as
  * `lib/llm/prompts/narrate.ts`'s `REPORT_TOOL`, so a test can assert a schema without importing
@@ -374,12 +376,13 @@ export const GENERATE_IMAGE_TOOL: Anthropic.Tool = {
       },
       angle: {
         type: 'string',
+        enum: [...NINA_CAMERA_ANGLE_KEYS],
         description:
-          'ONLY when he explicitly asks for a camera position other than the normal eye-level shot ' +
-          'from a few steps away — e.g. "from directly above", "bird\'s-eye view", "top-down", "shot ' +
-          'from below". One sentence stating where the camera is, e.g. "The camera is directly ' +
-          'above her, looking straight down; she is lying on her back looking straight up into the ' +
-          'lens." Leave unset otherwise. Make sure `scene`/`pose` match it.',
+          'ONLY when he explicitly asks for a camera position other than your standing default — ' +
+          '"overhead" for "from directly above"/"bird\'s-eye view"/"top-down", "low_angle" for ' +
+          '"from below"/"looking up at you". Leave unset otherwise, including when he asks for the ' +
+          'normal shot back ("eye_level" is your default already — only send it to override a photo ' +
+          'you just shot at a different angle). Make sure `scene`/`pose` match whichever you send.',
       },
     },
   },

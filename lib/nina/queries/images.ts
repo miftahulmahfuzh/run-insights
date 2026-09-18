@@ -150,6 +150,9 @@ export async function insertNinaMessageImages(
         perceptualHash: normalizeClaimedPerceptualHash(row.perceptualHash),
         perceptualSig: normalizeClaimedPerceptualSig(row.perceptualSig),
         sortOrder: row.sortOrder ?? 0,
+        /* The 2026-09-18 fullscreen-to-job-detail link. Coalesced the same way the two provenance
+         * ids above are: only `finishSelfie` sends one, everything else binds NULL. */
+        turnId: row.turnId ?? null,
       })),
     )
     .returning(imageColumns)

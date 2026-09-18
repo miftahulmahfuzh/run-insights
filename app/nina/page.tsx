@@ -485,6 +485,9 @@ export default async function NinaPage({ searchParams }: PageProps<'/nina'>) {
      * `imageColumns` selects it, and this mapping is the boundary that stops it. */
     imageIds: photosByMessage.get(row.id)?.ids,
     imageKinds: photosByMessage.get(row.id)?.kinds,
+    /* The 2026-09-18 fullscreen-to-job-detail link. `messageColumns` already selects `turn_id` —
+     * no new read — so this is a straight pass-through, `replyToId`'s own shape. */
+    turnId: row.turnId,
     /* R13. Resolved for EVERY row regardless of who wrote it, so phase 10's `run_committed`
      * proactive message — which writes the same column — gets its card for free. */
     attachment: row.runId == null ? null : (attachments.get(row.runId) ?? null),

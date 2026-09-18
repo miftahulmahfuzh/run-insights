@@ -6,10 +6,12 @@ import {
   ADMIN_IMAGE_PREVIEW_SCENE,
   changedImageGenFields,
   focusOnKeys,
+  hasImageCameraAngleCopy,
   hasImageFocusCopy,
   hasImageHairstyleCopy,
   hasImageModelCopy,
   IMAGE_REFERENCE_NONE,
+  imageCameraAngleLabel,
   imageFocusCopy,
   imageGenDraftEquals,
   IMAGEGEN_DIAL_COMMIT_DEBOUNCE_MS,
@@ -27,6 +29,7 @@ import {
 } from '@/lib/admin/imageGenModel'
 import { ninaImagePrefsWriteSchema } from '@/lib/admin/schema'
 import {
+  NINA_CAMERA_ANGLE_KEYS,
   NINA_HAIRSTYLE_KEYS,
   NINA_IMAGE_FOCUS_KEYS,
   NINA_IMAGE_MODEL_IDS,
@@ -321,6 +324,14 @@ describe('mergeImageGenAfterSave — the post-save canonical merge', () => {
     expect(changedImageGenFields(merged, sent)).toEqual(['hairstyle'])
   })
 
+  it('carries the 2026-09-18 camera-angle preset through the same scalar rule', () => {
+    const sent: ImageGenDraft = { ...DEFAULTS, cameraAngle: 'overhead' }
+    const pickedSince: ImageGenDraft = { ...sent, cameraAngle: 'low_angle' }
+    const merged = mergeImageGenAfterSave(pickedSince, sent, sent)
+    expect(merged.cameraAngle).toBe('low_angle')
+    expect(changedImageGenFields(merged, sent)).toEqual(['cameraAngle'])
+  })
+
   it('carries the focus map through the same per-key rule', () => {
     const key = NINA_IMAGE_FOCUS_KEYS[0]
     const sent: ImageGenDraft = { ...DEFAULTS, focus: { ...DEFAULTS.focus, [key]: true } }
@@ -458,6 +469,20 @@ describe('ninaImagePrefsWriteSchema — the boundary', () => {
     for (const forged of ['mohawk', 'ponytail_', '', null, 42]) {
       expect(
         ninaImagePrefsWriteSchema.safeParse(payload({ hairstyle: forged as never })).success,
+        String(forged),
+      ).toBe(false)
+    }
+  })
+
+  it('the 2026-09-18 camera-angle preset is a closed enum — every declared key in, everything else out', () => {
+    for (const key of NINA_CAMERA_ANGLE_KEYS) {
+      expect(ninaImagePrefsWriteSchema.safeParse(payload({ cameraAngle: key })).success, key).toBe(
+        true,
+      )
+    }
+    for (const forged of ['dutch-tilt', 'eye_level_', '', null, 42]) {
+      expect(
+        ninaImagePrefsWriteSchema.safeParse(payload({ cameraAngle: forged as never })).success,
         String(forged),
       ).toBe(false)
     }
@@ -738,11 +763,11 @@ describe('the panel commits itself — no staged-commit row', () => {
     const code = codeOnly(PANEL)
     expect(code).toContain('setFocus(key, event.target.checked)')
     expect(code).toContain('setReference(parseReferenceKey(next))')
-    /* Each name appears once as the definition and once per call site that rides it: six
+    /* Each name appears once as the definition and once per call site that rides it: seven
      * `commitImmediate` (definition, setFocus, setReference, the template reset, the model
-     * select, the 2026-09-18 hairstyle select) and two `scheduleDialCommit` (definition, the
-     * dial's onChange). Nothing else may route to either. */
-    expect((code.match(/commitImmediate\(/g) ?? []).length).toBe(6)
+     * select, the 2026-09-18 hairstyle select, the 2026-09-18 camera-angle select) and two
+     * `scheduleDialCommit` (definition, the dial's onChange). Nothing else may route to either. */
+    expect((code.match(/commitImmediate\(/g) ?? []).length).toBe(7)
     expect((code.match(/scheduleDialCommit\(/g) ?? []).length).toBe(2)
   })
 
@@ -904,5 +929,21 @@ describe('hasImageHairstyleCopy / imageHairstyleLabel', () => {
     for (const key of NINA_HAIRSTYLE_KEYS)
       expect(imageHairstyleLabel(key).length).toBeGreaterThan(0)
     expect(imageHairstyleLabel('mystery_cut')).toBe(prettifyFocusKey('mystery_cut'))
+  })
+})
+
+/* ── the camera-angle dropdown's copy pair (the 2026-09-18 ask, second half) ────────────────── */
+
+describe('hasImageCameraAngleCopy / imageCameraAngleLabel', () => {
+  it('answers the closed three-key enum and nothing else', () => {
+    for (const key of NINA_CAMERA_ANGLE_KEYS) expect(hasImageCameraAngleCopy(key), key).toBe(true)
+    expect(hasImageCameraAngleCopy('dutch-tilt')).toBe(false)
+    expect(hasImageCameraAngleCopy('')).toBe(false)
+  })
+
+  it('labels every declared key, and degrades an unknown one to the prettified fallback', () => {
+    for (const key of NINA_CAMERA_ANGLE_KEYS)
+      expect(imageCameraAngleLabel(key).length).toBeGreaterThan(0)
+    expect(imageCameraAngleLabel('mystery_angle')).toBe(prettifyFocusKey('mystery_angle'))
   })
 })

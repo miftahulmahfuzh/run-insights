@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useLayoutEffect, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -13,7 +14,7 @@ import {
 } from '@/lib/nina/attach'
 import { composerBottomCss, composerPadBottomCss } from '@/lib/nina/chatview'
 import { SW_MESSAGE_TYPE, mergeServerMessages } from '@/lib/nina/live'
-import { JOB_JUMP_PARAM } from '@/lib/nina/jobview'
+import { JOB_JUMP_PARAM, ninaJobHref } from '@/lib/nina/jobview'
 import { buildQuote, type QuoteView } from '@/lib/nina/reply'
 import { type NinaFlightView } from '@/lib/nina/turnflight'
 import { ChatPhotoActions } from './ChatPhotoActions'
@@ -665,8 +666,51 @@ export function ChatScreen({
               }
             />
           }
+          /*
+           * The 2026-09-18 fullscreen-to-job-detail link — the OTHER direction of
+           * `NinaJobDetail`'s "open this job's photograph full-screen" button (`Maximize2Icon`).
+           * `photo.id` is `ChatViewerPhoto`'s job id, set only on a generated photo whose caption
+           * bubble carries a `turn_id` — see `chatViewerPhotos`. Absent renders nothing, the same
+           * promise every other `headerAction` caller keeps.
+           */
+          headerAction={(photo) =>
+            photo.id == null ? null : (
+              <Link
+                href={ninaJobHref(photo.id)}
+                onClick={closeViewer}
+                aria-label="Buka detail job foto ini"
+                title="Buka detail job foto ini"
+                className="grid size-11 place-items-center rounded-pill text-card"
+              >
+                <JobDetailIcon className="size-5" />
+              </Link>
+            )
+          }
         />
       )}
     </>
+  )
+}
+
+/** "Buka detail job foto ini". Lucide's `receipt-text`, verbatim — the job detail page is
+ * literally her "Catatan foto" (photo notes) card. `aria-hidden`: the link already carries the
+ * accessible name. */
+function JobDetailIcon({ className }: { className: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z" />
+      <path d="M8 7h8" />
+      <path d="M8 11h8" />
+      <path d="M8 15h5" />
+    </svg>
   )
 }

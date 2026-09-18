@@ -48,6 +48,7 @@ import {
 } from '@/lib/nina/tuning'
 
 import {
+  NINA_CAMERA_ANGLE_KEYS,
   NINA_HAIRSTYLE_KEYS,
   NINA_IMAGE_FOCUS_KEYS,
   NINA_IMAGE_MODEL_IDS,
@@ -837,6 +838,12 @@ export const ninaImagePrefsWriteSchema = z.object({
    * existed; this is the write-side refusal for a forged or stale client.
    */
   hairstyle: z.enum(NINA_HAIRSTYLE_KEYS),
+  /**
+   * The 2026-09-18 camera-angle preset — `hairstyle`'s own reasoning: `coerceNinaCameraAngle`
+   * remains the read-side degrade for a row written before this preference existed; this is the
+   * write-side refusal for a forged or stale client.
+   */
+  cameraAngle: z.enum(NINA_CAMERA_ANGLE_KEYS),
 })
 export type NinaImagePrefsWriteInput = z.infer<typeof ninaImagePrefsWriteSchema>
 

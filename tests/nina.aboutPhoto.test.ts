@@ -32,6 +32,7 @@ function photo(id: string, kind: 'upload' | 'generated' = 'upload'): NinaGallery
     kind,
     side,
     label: side === 'hers' ? 'Foto Nina' : 'Foto kamu',
+    turnId: null,
   }
 }
 

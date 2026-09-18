@@ -94,6 +94,7 @@ function galleryPhoto(id: string, side: 'his' | 'hers' = 'his'): NinaGalleryPhot
     kind: side === 'his' ? 'upload' : 'generated',
     side,
     label: side === 'his' ? 'Foto kamu' : 'Foto Nina',
+    turnId: null,
   }
 }
 

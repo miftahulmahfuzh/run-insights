@@ -416,6 +416,9 @@ async function finishSelfie(
     {
       messageId: message.id,
       kind: 'generated',
+      /* The 2026-09-18 fullscreen-to-job-detail link — see the column's own header
+       * (`lib/db/schema/nina/chat.ts`) for why this is copied here rather than joined later. */
+      turnId: jobId,
       /* The plan, not `image`: a deduped row carries the KEEPER's object and the keeper's id, so
        * `isOriginalPhoto()` hides it from the Media feed while the bubble still renders it. */
       blobUrl: writePlan.row.blobUrl,

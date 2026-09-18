@@ -10,10 +10,12 @@ import {
   type NinaAppearanceDetail,
 } from '@/lib/nina/persona'
 import {
+  NINA_CAMERA_ANGLE_KEYS,
   NINA_IMAGE_FOCUS_KEYS,
   NINA_IMAGE_PREFS_DEFAULTS,
   NINA_IMAGE_TEMPLATE_TOKEN_RE,
   validateNinaImageTemplate,
+  type NinaCameraAngleKey,
   type NinaImageFocusKey,
   type NinaImagePrefs,
   type NinaImageTemplateKey,
@@ -101,28 +103,50 @@ import { NINA_IMAGE_ASPECT, NINA_IMAGE_RESOLUTION, type NinaImagePurpose } from 
  * RU-18 still holds: no clause here may claim a picture that is not in the payload is
  * authoritative, and the word "reference" does not appear (`tests/nina.imagerecipe.test.ts:855`).
  *
- * ── WHY THE FRAMING SENTENCE IS ITS OWN CONSTANT, SPLICED IN RATHER THAN APPENDED TO ─────────────
- * The middle sentence below ("Shot on a 50 mm lens... floor visible below her feet") is a claim
- * about WHERE THE CAMERA IS: eye-level, a few metres back, standing framing. It is measurably
- * correct for the ordinary photo this paragraph was written to fix, and measurably WRONG for one
- * the chat model was explicitly asked to shoot from directly overhead (`nina_turns` `HIiyRr5_zemf`
- * and `cPl8-4p26cqA`, both 2026-09-17): `scene`/`pose` correctly said "from directly above" and
- * "looking straight up into the lens", and the photo still came back closer to eye-level, because
- * this sentence was ALSO in the prompt, unconditionally, saying the opposite. A diffusion model
- * has no "ignore the earlier sentence" — appending a correction after a standing contradiction
- * measurably blends the two rather than picking one (the second job: an improvement, still not a
- * true 90°). The only fix that removes the contradiction rather than out-shouting it is to never
- * SEND both sentences at once — hence `{{angle}}` sits INSIDE this paragraph, in the framing
- * sentence's own place, and REPLACES it exactly the way `outfit` already replaces the wardrobe
- * line (`wardrobeValue` below) rather than joining it.
+ * ── WHY THE PREFIX NO LONGER NAMES A CAMERA POSITION, AND WHY THE ANGLE IS A CLOSED SET NOW ───────
+ * The paragraph used to open with a FIXED, unconditional claim — "taken by another person standing
+ * a few steps away" — sitting right beside `{{angle}}`. That was itself the same class of bug this
+ * file had already fixed once: `nina_turns` `HIiyRr5_zemf` and `cPl8-4p26cqA` (2026-09-17) showed a
+ * diffusion model blending a fixed EYE-LEVEL framing sentence with a chat-model overhead request
+ * rather than picking one, and the fix then was to let `{{angle}}` replace that middle sentence
+ * wholesale instead of following it. `OIF0bLCf4MMC` (2026-09-18, `/pull-image-gen-job`'s diagnosis)
+ * showed the SAME mechanism one level up: the chat model correctly overrode the middle sentence
+ * with "the camera is directly above her, looking straight down", and the photo still came back a
+ * low, ground-level shot along her body — because the PREFIX's "standing a few steps away" was
+ * still there, unconditionally, saying the opposite, and a diffusion model has no "ignore the
+ * earlier sentence" any more here than it did the first time.
+ *
+ * The fix is the same shape at a wider scope: nothing outside `{{angle}}` may claim a camera
+ * position. The prefix below keeps only the true anti-selfie invariants (no raised arm, no phone,
+ * no mirror) — never true or false depending on where the camera is — and the WHOLE camera-position
+ * clause, prefix opening and framing sentence both, moves into `NINA_CAMERA_ANGLE_SENTENCES`, one
+ * complete paragraph per preset. `{{angle}}` no longer takes free text for the same reason: prose
+ * the chat model composes can always reintroduce a second, competing camera claim (that is
+ * literally how `OIF0bLCf4MMC` happened, one layer removed) — a closed set of vetted sentences
+ * cannot.
  */
-const NINA_SELFIE_STYLE_PREFIX = `A candid photograph of her, taken by another person standing a few steps away. This is not a selfie: no raised arm reaching toward the camera, no phone and no hand held near the lens, no mirror and no mirror reflection, and she is not holding the camera herself.`
+const NINA_SELFIE_STYLE_PREFIX = `A candid photograph of her. This is not a selfie: no raised arm reaching toward the camera, no phone and no hand held near the lens, no mirror and no mirror reflection, and she is not holding the camera herself.`
 
 /**
- * The default framing sentence — camera position and proportion only. Replaced wholesale by the
- * chat model's own `angle` sentence when one is sent; see the header above `NINA_SELFIE_STYLE_PREFIX`.
+ * **One complete camera-position paragraph per `NinaCameraAngleKey`** (`lib/nina/imageprefs.ts`) —
+ * distance, lens, and proportion all in the one sentence group, so nothing here has to coexist with
+ * a competing claim anywhere else in block 1. See the header above `NINA_SELFIE_STYLE_PREFIX` for
+ * why this replaced a fixed prefix clause plus a single overridable framing sentence.
+ *
+ * `eye_level` is the unchanged default — the exact sentence `NINA_SELFIE_FRAMING_DEFAULT` used to
+ * be, with the prefix's old opening folded in verbatim so the assembled paragraph reads
+ * byte-identical to before for every operator who never touches the new dropdown.
+ *
+ * `overhead` is modelled on the sentence that actually worked (`/pull-image-gen-job`'s
+ * `ciN2DbsKNFcj` and the corrected `OIF0bLCf4MMC`): a drone, directly above, nothing at ground
+ * level to blend against.
  */
-const NINA_SELFIE_FRAMING_DEFAULT = `Shot on a 50 mm lens from about three metres back, at chest height, so the perspective is flat and human: her head is normal-sized and in natural proportion to her tall body, her long legs read their full length, and nothing is stretched or squeezed by a close wide-angle. Frame her whole body with room to spare, the top of her head and her long feet both comfortably inside the picture and floor visible below her feet; her long feet and long calves are never cropped, never flattened against the bottom edge and never shrunk by perspective.`
+export const NINA_CAMERA_ANGLE_SENTENCES: Readonly<Record<NinaCameraAngleKey, string>> =
+  Object.freeze({
+    eye_level: `Taken by another person standing a few steps away, shot on a 50 mm lens from about three metres back, at chest height, so the perspective is flat and human: her head is normal-sized and in natural proportion to her tall body, her long legs read their full length, and nothing is stretched or squeezed by a close wide-angle. Frame her whole body with room to spare, the top of her head and her long feet both comfortably inside the picture and floor visible below her feet; her long feet and long calves are never cropped, never flattened against the bottom edge and never shrunk by perspective.`,
+    overhead: `Taken by a drone directly above her, looking straight down at her from a bird's-eye view — the camera is perfectly overhead, not from the side and not at an angle, with no ground-level presence and no person standing nearby in the frame.`,
+    low_angle: `Taken by another person crouched low near her feet, the camera close to the ground looking up along the length of her body toward her face — a dramatic low, worm's-eye perspective.`,
+  })
 
 /**
  * **The calf-to-thigh ratio clause (2026-09-17), and why it lives in the SUFFIX and not the
@@ -706,11 +730,15 @@ export function buildNinaImagePrompt(input: {
    * three wardrobe sources: `outfit` (an explicit ask) wins over `prefs.wardrobe` (a standing
    * preference) wins over this — it only ever replaces the canon default, never a real preference. */
   ootd?: string | null
-  /** The chat model's own camera-position sentence for THIS photograph — selfie only, same
-   * precedence reasoning as `outfit`/`pose`. Blank or absent (every ordinary photo) leaves
-   * `NINA_SELFIE_FRAMING_DEFAULT`'s eye-level sentence in block 1. Non-blank REPLACES that
-   * sentence in place rather than adding a second, competing one — see the header above
-   * `NINA_SELFIE_STYLE_PREFIX` for why appending a late correction does not work here. */
+  /**
+   * The chat model's own per-photo camera-angle PICK — one of `NINA_CAMERA_ANGLE_KEYS`, selfie
+   * only, same precedence reasoning as `outfit`/`pose`. Loosely typed (`string | null`, not
+   * `NinaCameraAngleKey | null`) because this function must degrade rather than throw on whatever
+   * reaches it — `coerceNinaCameraAngle`'s whole argument, applied here as an inline check rather
+   * than a call to it, because THIS field's absence means something coerce's does not: "no per-photo
+   * pick", falling through to `prefs.cameraAngle` rather than to the hard-coded default. Blank,
+   * absent or unrecognised all fall through the same way. See the header above
+   * `NINA_SELFIE_STYLE_PREFIX` for why this is a closed set and not free text any more. */
   angle?: string | null
   /** Her character. Only `steamy` and `flirty` reach a photograph. */
   tuning?: NinaTuning | null
@@ -801,10 +829,17 @@ export function buildNinaImagePrompt(input: {
           ? ootdIdea
           : NINA_DEFAULT_OUTFIT_VALUE
 
-  /* REPLACES `NINA_SELFIE_FRAMING_DEFAULT` in place — never both in the same prompt. See the
-   * header above `NINA_SELFIE_STYLE_PREFIX` for why appending a correction after it doesn't work. */
+  /*
+   * The chat model's pick when it is one of the three keys; the operator's standing default
+   * otherwise (absent, blank, or a string this vocabulary has never heard of) — never free text,
+   * and never both a preset AND a competing fixed sentence in the same paragraph. See the header
+   * above `NINA_SELFIE_STYLE_PREFIX`.
+   */
   const angleOverride = input.angle?.trim() ?? ''
-  const angleValue = angleOverride.length > 0 ? angleOverride : NINA_SELFIE_FRAMING_DEFAULT
+  const angleKey = (NINA_CAMERA_ANGLE_KEYS as readonly string[]).includes(angleOverride)
+    ? (angleOverride as NinaCameraAngleKey)
+    : prefs.cameraAngle
+  const angleValue = NINA_CAMERA_ANGLE_SENTENCES[angleKey]
 
   const blocks: Record<string, string> = {
     wardrobe: withSentenceStop(wardrobeValue),

@@ -501,6 +501,8 @@ describe('the defaults, and the coercion that never throws', () => {
       reference: { source: 'none', id: '' },
       /* The sentence NINA_FACE always carried, lifted into a selectable option (2026-09-18). */
       hairstyle: 'ponytail',
+      /* The framing sentence {{angle}} always fell back to, lifted the same way (2026-09-18). */
+      cameraAngle: 'eye_level',
     })
   })
 

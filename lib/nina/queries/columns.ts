@@ -80,6 +80,12 @@ export const imageColumns = {
    * ranker's `matchesNegativeKeyword` pass (to exclude a row from a query it names). Never folded
    * into the embedded text. Appended for its neighbour's reason. */
   negativeSearchKeywords: ninaMessageImages.negativeSearchKeywords,
+  /* The 2026-09-18 fullscreen-to-job-detail link. APPENDED, `searchKeywords`'/`avatarColumns`'
+   * `sourceImageId`'s own reason: every `imageRow()` fixture under `tests/` is a positional
+   * projection of this exact list, and an insertion anywhere above would silently re-assign every
+   * field after it rather than fail loudly. See the column's own header
+   * (`lib/db/schema/nina/chat.ts`) for what it is. */
+  turnId: ninaMessageImages.turnId,
 }
 
 /** Internal — shared with sibling query modules; never re-exported by the barrel. */

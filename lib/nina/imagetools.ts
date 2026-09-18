@@ -2,6 +2,7 @@ import 'server-only'
 
 import { z } from 'zod'
 
+import { NINA_CAMERA_ANGLE_KEYS } from '@/lib/nina/imageprefs'
 import { GENERATE_IMAGE_TOOL } from '@/lib/nina/prompts'
 import {
   extendToolSet,
@@ -57,9 +58,15 @@ const GenerateImageArgsSchema = z.object({
   /** Her own invented outfit when nobody dressed her for this photo. See `buildNinaImagePrompt`'s
    * `ootd` for the precedence it sits at. */
   ootd: z.string().trim().max(200).optional(),
-  /** A per-photograph camera-position override, only when the runner asked for one — see
-   * `buildNinaImagePrompt`'s `angle` and `GENERATE_IMAGE_TOOL`'s own description of when to send it. */
-  angle: z.string().trim().max(300).optional(),
+  /**
+   * A per-photograph camera-angle PICK, only when the runner asked for one other than the
+   * operator's standing default — see `buildNinaImagePrompt`'s `angle` and `GENERATE_IMAGE_TOOL`'s
+   * own description of when to send it. `z.enum` and not free text (2026-09-18, `/pull-image-gen-job`'s
+   * `OIF0bLCf4MMC` diagnosis): a hallucinated camera-position SENTENCE is exactly what let a fixed,
+   * unconditional clause elsewhere in the prompt out-argue it, and a closed vocabulary is the fix
+   * that cannot be undone by prose — see `lib/nina/imageprefs.ts`'s `NINA_CAMERA_ANGLE_KEYS` header.
+   */
+  angle: z.enum(NINA_CAMERA_ANGLE_KEYS).optional(),
 })
 
 const handleGenerateImage: NinaToolHandler = async (

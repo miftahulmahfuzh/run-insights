@@ -37,7 +37,35 @@ describe('chatViewerPhotos', () => {
       imageUrls: ['https://x.example/a.jpg'],
       imageKinds: ['upload'],
     })
-    expect(Object.keys(photo ?? {}).sort()).toEqual(['kind', 'label', 'url'])
+    // `id` (the 2026-09-18 fullscreen-to-job-detail link) is always a key, `undefined` on an
+    // upload — never a caption, never `description`, whatever kind the photo carries.
+    expect(Object.keys(photo ?? {}).sort()).toEqual(['id', 'kind', 'label', 'url'])
+  })
+
+  it('sets id to the job when a generated photo carries a turn_id, and leaves it undefined otherwise', () => {
+    const generated = chatViewerPhotos({
+      imageUrls: ['https://x.example/s.jpg'],
+      imageKinds: ['generated'],
+      turnId: 'jobAAAAAAAAA',
+    })
+    expect(generated[0]?.id).toBe('jobAAAAAAAAA')
+
+    // An upload never gets one, even with a turn_id on the message (a runner's own message
+    // can never carry one — only `finishSelfie`'s caption bubble does).
+    const upload = chatViewerPhotos({
+      imageUrls: ['https://x.example/a.jpg'],
+      imageKinds: ['upload'],
+      turnId: 'jobAAAAAAAAA',
+    })
+    expect(upload[0]?.id).toBeUndefined()
+
+    // A generated photo predating this column, or an avatar-purpose one with no join back to it.
+    const noJob = chatViewerPhotos({
+      imageUrls: ['https://x.example/s.jpg'],
+      imageKinds: ['generated'],
+      turnId: null,
+    })
+    expect(noJob[0]?.id).toBeUndefined()
   })
 
   it('is empty for a message with no photos, and for no message at all', () => {

@@ -227,6 +227,13 @@ export interface NinaImageInsert {
   perceptualHash?: string | null
   perceptualSig?: string | null
   sortOrder?: number
+  /**
+   * The 2026-09-18 fullscreen-to-job-detail link — `nina_turns.id`, `kind = 'generated'` only. See
+   * the column's own header (`lib/db/schema/nina/chat.ts`) for why it is copied here at insert
+   * time rather than joined from `messageId` at read time. Optional and coalesces to NULL, same as
+   * `sourceAvatarId`/`sourceImageId`: an upload has no job, and only `finishSelfie` sends one.
+   */
+  turnId?: string | null
 }
 
 /**

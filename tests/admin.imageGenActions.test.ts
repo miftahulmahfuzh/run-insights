@@ -74,6 +74,7 @@ const STORED_PREFS = {
   model: 'qwen/qwen-image-3' as const,
   reference: { source: 'chat' as const, id: 'photo123XYZ_-' },
   hairstyle: 'ponytail' as const,
+  cameraAngle: 'eye_level' as const,
 }
 
 /** A complete, valid payload — what the panel sends on every commit. */
@@ -90,6 +91,7 @@ function prefsInput(overrides: Partial<PrefsInput> = {}): PrefsInput {
     model: 'qwen/qwen-image-3',
     reference: { source: 'chat', id: 'photo123XYZ_-' },
     hairstyle: 'ponytail',
+    cameraAngle: 'eye_level',
     ...overrides,
   }
 }
@@ -127,7 +129,7 @@ describe('saveNinaImagePrefsAction', () => {
     expect(result.prefs?.wardrobe).toBe('one-piece')
     expect(result.note).toContain('Saved.')
     expect(revalidatePath).toHaveBeenCalledWith('/admin/image-generation')
-    // The adaptation seam: exactly the ten fields, picked explicitly — `userId` cannot ride.
+    // The adaptation seam: exactly the eleven fields, picked explicitly — `userId` cannot ride.
     expect(writeNinaImagePrefs).toHaveBeenCalledTimes(1)
     const [writeUser, write] = writeNinaImagePrefs.mock.calls[0] as [
       string,
@@ -135,6 +137,7 @@ describe('saveNinaImagePrefsAction', () => {
     ]
     expect(writeUser).toBe(USER)
     expect(Object.keys(write).sort()).toEqual([
+      'cameraAngle',
       'focus',
       'hairstyle',
       'model',

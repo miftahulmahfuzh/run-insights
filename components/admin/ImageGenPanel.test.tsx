@@ -67,6 +67,7 @@ function prefs(overrides?: Partial<ImageGenDraft>): ImageGenDraft {
     model: 'qwen/qwen-image-3',
     reference: { source: 'none', id: '' },
     hairstyle: 'ponytail',
+    cameraAngle: 'eye_level',
     ...overrides,
   }
 }

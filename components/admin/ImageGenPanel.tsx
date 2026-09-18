@@ -16,6 +16,7 @@ import {
   ADMIN_IMAGE_PREVIEW_SCENE,
   changedImageGenFields,
   focusOnKeys,
+  imageCameraAngleLabel,
   imageFocusCopy,
   imageGenDraftEquals,
   IMAGEGEN_DIAL_COMMIT_DEBOUNCE_MS,
@@ -31,6 +32,7 @@ import {
 } from '@/lib/admin/imageGenModel'
 import { cn } from '@/lib/cn'
 import {
+  NINA_CAMERA_ANGLE_KEYS,
   NINA_HAIRSTYLE_KEYS,
   NINA_IMAGE_FOCUS_KEYS,
   NINA_IMAGE_MODEL_IDS,
@@ -333,6 +335,7 @@ export function ImageGenPanel({
         model: sent.model,
         reference: sent.reference,
         hairstyle: sent.hairstyle,
+        cameraAngle: sent.cameraAngle,
       })
       if (!outcome.ok || outcome.prefs === undefined) {
         /* Nothing was written, so `saved` stays where it was — the panel is still pending exactly
@@ -424,6 +427,12 @@ export function ImageGenPanel({
    */
   function setHairstyle(next: string) {
     commitImmediate({ ...draft, hairstyle: next })
+  }
+
+  /** The 2026-09-18 camera-angle preset. `setHairstyle`'s own reasoning: an immediate commit, like
+   * every closed dropdown on this panel. */
+  function setCameraAngle(next: string) {
+    commitImmediate({ ...draft, cameraAngle: next })
   }
 
   /**
@@ -623,6 +632,40 @@ export function ImageGenPanel({
             </select>
             <span className="mt-1.5 block max-w-[46ch] text-[11px] font-medium text-ink-3">
               How she wears her hair in every photograph. An unknown key falls back to the default.
+            </span>
+          </label>
+        </section>
+
+        {/*
+         * The 2026-09-18 camera-angle preset. `Hairstyle`'s own reasoning, one control down: the
+         * vocabulary lives beside its coercion in `lib/nina/imageprefs.ts`, and the Zod boundary
+         * refuses anything outside it. This is also the fix for the incident that asked for it —
+         * see `NINA_CAMERA_ANGLE_KEYS`'s header in `lib/nina/imageprefs.ts` — the chat model's own
+         * per-photo pick (`generate_image`'s `angle` argument) still wins when the runner asks for
+         * something else in the moment; this dropdown is only the standing default underneath it.
+         */}
+        <section className="mb-6">
+          <label className="block">
+            <span className="mb-1.5 flex items-baseline gap-2 text-[12px] font-semibold tracking-[0.02em] text-ink-2">
+              Camera angle
+              {pendingFields.has('cameraAngle') && (
+                <span className="text-[11px] font-semibold text-accent">unsaved</span>
+              )}
+            </span>
+            <select
+              className={CONTROL_CLASS}
+              value={draft.cameraAngle}
+              onChange={(event) => setCameraAngle(event.target.value)}
+            >
+              {NINA_CAMERA_ANGLE_KEYS.map((key) => (
+                <option key={key} value={key}>
+                  {imageCameraAngleLabel(key)}
+                </option>
+              ))}
+            </select>
+            <span className="mt-1.5 block max-w-[46ch] text-[11px] font-medium text-ink-3">
+              Where the camera is by default. She can still pick a different angle for one photo
+              when he asks in chat.
             </span>
           </label>
         </section>

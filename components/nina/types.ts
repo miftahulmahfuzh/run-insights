@@ -119,6 +119,16 @@ export interface ChatMessage {
    * edit.
    */
   attachment?: RunAttachment | null
+  /**
+   * `nina_messages.turn_id` — the 2026-09-18 fullscreen-to-job-detail link. Set only on
+   * `finishSelfie`'s photo-only caption bubble, which is why it names the job for `imageIds[0]`
+   * and nothing else: this is a per-MESSAGE scalar (the message IS the job's one reply), not a
+   * per-image one, so a message with no such bubble — an ordinary reply, an upload, a re-attach —
+   * simply carries `null` and `chatViewerPhotos` renders no button for it.
+   *
+   * Absent on `ChatScreen`'s optimistic row, same reason `imageIds` is: nothing has minted it yet.
+   */
+  turnId?: string | null
 }
 
 /**

@@ -216,6 +216,17 @@ describe('nina_message_images', () => {
     ])
   })
 
+  it('carries turn_id nullable with no default and no FK — the fullscreen-to-job-detail link (2026-09-18)', () => {
+    // `nina_messages.turn_id`'s own precedent: a plain audit pointer, not a relationship, so an
+    // unrecognised or dangling value degrades to "no link" instead of blocking a write or a delete.
+    // Nullable for two reasons at once — added to a populated table (no backfill, the
+    // hairstyle/camera_angle precedent), AND every upload legitimately has none.
+    expect(sqlType(schema.ninaMessageImages, 'turn_id')).toBe('text')
+    expect(columns(schema.ninaMessageImages).get('turn_id')?.notNull).toBe(false)
+    expect(columns(schema.ninaMessageImages).get('turn_id')?.hasDefault).toBe(false)
+    expect(fkFor(schema.ninaMessageImages, 'turn_id')).toBeUndefined()
+  })
+
   it("carries the album's three search columns verbatim — R1/R2 parity for every directory", () => {
     // The user's words: "every single picture in any directory must be able to be image searched
     // and we must be able to add search keyword and negative search keyword to each of them."
@@ -738,7 +749,7 @@ describe('nina_image_prefs — how she is photographed (R4-R10)', () => {
     expect(fkFor(schema.ninaImagePrefs, 'user_id')?.onDelete).toBe('cascade')
   })
 
-  it('spells exactly the eighteen columns phases 2, 3, 4, 5 and the 2026-09-18 hairstyle preset were written against', () => {
+  it('spells exactly the nineteen columns phases 2, 3, 4, 5 and the 2026-09-18 hairstyle and camera-angle presets were written against', () => {
     expect(names(schema.ninaImagePrefs)).toEqual(
       [
         'user_id',
@@ -765,6 +776,8 @@ describe('nina_image_prefs — how she is photographed (R4-R10)', () => {
         'reference_id',
         // The 2026-09-18 hairstyle preset. Nullable — added to a table that already had rows.
         'hairstyle',
+        // The 2026-09-18 camera-angle preset. Same nullable reasoning as `hairstyle`.
+        'camera_angle',
         'updated_at',
       ].sort(),
     )
@@ -839,6 +852,16 @@ describe('nina_image_prefs — how she is photographed (R4-R10)', () => {
     expect(column?.notNull).toBe(false)
     expect(column?.hasDefault).toBe(false)
     expect(sqlType(schema.ninaImagePrefs, 'hairstyle')).toBe('text')
+  })
+
+  it("makes camera_angle NULLABLE with no SQL default — hairstyle's own precedent", () => {
+    /* Same reasoning, one column over: added to a table that already had rows, so NULL means
+     * "written before this preference existed" and `coerceNinaCameraAngle` degrades it to the
+     * default rather than needing a backfill. */
+    const column = columns(schema.ninaImagePrefs).get('camera_angle')
+    expect(column?.notNull).toBe(false)
+    expect(column?.hasDefault).toBe(false)
+    expect(sqlType(schema.ninaImagePrefs, 'camera_angle')).toBe('text')
   })
 
   it('has NO foreign key on the reference pair, because it has two possible parents', () => {

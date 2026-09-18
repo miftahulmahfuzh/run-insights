@@ -1,4 +1,6 @@
 import {
+  NINA_CAMERA_ANGLE_KEYS,
+  NINA_CAMERA_ANGLE_SPECS,
   NINA_HAIRSTYLE_KEYS,
   NINA_HAIRSTYLE_SPECS,
   NINA_IMAGE_FOCUS_KEYS,
@@ -7,6 +9,7 @@ import {
   NINA_IMAGE_MODEL_SPECS,
   NINA_IMAGE_REFERENCE_SOURCES,
   ninaPromptLengthRungFor,
+  type NinaCameraAngleKey,
   type NinaHairstyleKey,
   type NinaImageModelId,
   type NinaImagePrefs,
@@ -109,6 +112,12 @@ export interface ImageGenDraft {
    * `NINA_HAIRSTYLE_KEYS` at the save.
    */
   hairstyle: string
+  /**
+   * The 2026-09-18 camera-angle preset. A loose `string` for the same seam reason as `hairstyle` —
+   * the panel reads it opaquely through `imageCameraAngleLabel`, and the Zod boundary narrows it to
+   * `NINA_CAMERA_ANGLE_KEYS` at the save.
+   */
+  cameraAngle: string
 }
 
 /** One control's user-facing text. The label goes beside the control; the hint goes under it. */
@@ -271,6 +280,7 @@ export function toImageGenDraft(prefs: NinaImagePrefs): ImageGenDraft {
     model: prefs.model,
     reference: { source: prefs.reference.source, id: prefs.reference.id },
     hairstyle: prefs.hairstyle,
+    cameraAngle: prefs.cameraAngle,
   }
 }
 
@@ -339,6 +349,27 @@ export function hasImageHairstyleCopy(id: string): boolean {
 export function imageHairstyleLabel(id: string): string {
   if (hasImageHairstyleCopy(id)) {
     return NINA_HAIRSTYLE_SPECS[id as NinaHairstyleKey].label
+  }
+  return prettifyFocusKey(id)
+}
+
+/* ── the camera-angle dropdown's copy pair (the 2026-09-18 ask, second half) ─────────────────
+ * Same shape as the hairstyle pair immediately above: a closed vocabulary, read opaquely through
+ * these two functions, with a degrade for a key this module has never heard of. */
+
+/** Whether a key is one phase 1 actually declares. The test reads this. */
+export function hasImageCameraAngleCopy(id: string): boolean {
+  return (NINA_CAMERA_ANGLE_KEYS as readonly string[]).includes(id)
+}
+
+/**
+ * The dropdown's label, read off `NINA_CAMERA_ANGLE_SPECS`. The fallback exists for the seam — a
+ * `draft.cameraAngle` is a loose `string`, and a key this module has never heard of degrades to a
+ * readable label rather than a crash, the way `imageHairstyleLabel` does.
+ */
+export function imageCameraAngleLabel(id: string): string {
+  if (hasImageCameraAngleCopy(id)) {
+    return NINA_CAMERA_ANGLE_SPECS[id as NinaCameraAngleKey].label
   }
   return prettifyFocusKey(id)
 }
@@ -423,6 +454,7 @@ export function changedImageGenFields(next: ImageGenDraft, saved: ImageGenDraft)
   if (next.promptTemplate !== saved.promptTemplate) changed.push('promptTemplate')
   if (next.model !== saved.model) changed.push('model')
   if (next.hairstyle !== saved.hairstyle) changed.push('hairstyle')
+  if (next.cameraAngle !== saved.cameraAngle) changed.push('cameraAngle')
   if (referenceKey(next.reference) !== referenceKey(saved.reference)) changed.push('reference')
 
   for (const key of Object.keys({ ...saved.focus, ...next.focus }).sort()) {
@@ -523,6 +555,8 @@ export function mergeImageGenAfterSave(
         : current.promptTemplate,
     model: current.model === sent.model ? canonical.model : current.model,
     hairstyle: current.hairstyle === sent.hairstyle ? canonical.hairstyle : current.hairstyle,
+    cameraAngle:
+      current.cameraAngle === sent.cameraAngle ? canonical.cameraAngle : current.cameraAngle,
     reference:
       referenceKey(current.reference) === referenceKey(sent.reference)
         ? canonical.reference

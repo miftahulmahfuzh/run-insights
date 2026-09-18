@@ -128,6 +128,7 @@ function toImagePrefsWrite(input: NinaImagePrefsWriteInput): NinaImagePrefsWrite
     model: input.model,
     reference: { source: input.reference.source, id: input.reference.id },
     hairstyle: input.hairstyle,
+    cameraAngle: input.cameraAngle,
   }
 }
 
@@ -153,6 +154,7 @@ export async function saveNinaImagePrefsAction(input: {
   model: string
   reference: { source: string; id: string }
   hairstyle: string
+  cameraAngle: string
 }): Promise<AdminImageGenResult> {
   await requireAdmin()
 

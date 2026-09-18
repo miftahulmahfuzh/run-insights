@@ -1023,6 +1023,67 @@ export function coerceNinaHairstyle(value: unknown): NinaHairstyleKey {
 }
 
 /* ============================================================================
+ * §7c The camera-angle preset (the 2026-09-18 ask, second half)
+ * ==========================================================================*/
+
+/**
+ * **The three the dropdown offers.** `eye_level` is not an invention either — it is the framing
+ * sentence `{{angle}}` always fell back to (`NINA_CAMERA_ANGLE_SENTENCES.eye_level`,
+ * `lib/nina/imagegen.ts`), lifted the same way `ponytail` was: out of a fixed default and into a
+ * vocabulary member, so an operator who never opens this control gets exactly what shipped before
+ * it existed.
+ *
+ * This is also the fix for the incident that asked for it: a runner's "kamera pas di atas lo"
+ * reached the chat model's own free-text `angle` argument, which had to coexist with
+ * `NINA_SELFIE_STYLE_PREFIX`'s then-unconditional "taken by another person standing a few steps
+ * away" — a ground-level camera claim the free text could not remove, only argue with. Closing the
+ * vocabulary removes the free text: the chat model now SELECTS one of these three keys (or leaves
+ * it unset and gets the operator's own standing pick, `prefs.cameraAngle`) rather than composing a
+ * sentence that has to fight a fixed one sitting next to it in the same paragraph. See
+ * `NINA_CAMERA_ANGLE_SENTENCES`'s header for the other half.
+ *
+ * Lives HERE and not in `imagegen.ts`, for `NINA_HAIRSTYLE_KEYS`'s own reason: the `'use client'`
+ * panel renders the dropdown, the Zod boundary checks the save AND the chat tool's argument, and
+ * this module is importable from both (zero imports) while `imagegen.ts` carries the prose those
+ * keys point at.
+ */
+export const NINA_CAMERA_ANGLE_KEYS = ['eye_level', 'overhead', 'low_angle'] as const
+
+export type NinaCameraAngleKey = (typeof NINA_CAMERA_ANGLE_KEYS)[number]
+
+/** The measured default — the framing sentence `{{angle}}` always fell back to. Everything
+ * unreadable degrades to it, the same rule `coerceNinaHairstyle` applies to the hairstyle key. */
+export const NINA_CAMERA_ANGLE_DEFAULT: NinaCameraAngleKey = 'eye_level'
+
+export interface NinaCameraAngleSpec {
+  readonly key: NinaCameraAngleKey
+  /** The dropdown's label. */
+  readonly label: string
+}
+
+export const NINA_CAMERA_ANGLE_SPECS: Readonly<Record<NinaCameraAngleKey, NinaCameraAngleSpec>> =
+  Object.freeze({
+    eye_level: Object.freeze({ key: 'eye_level', label: 'Eye level, a few steps away (default)' }),
+    overhead: Object.freeze({ key: 'overhead', label: 'Directly overhead, bird’s-eye' }),
+    low_angle: Object.freeze({ key: 'low_angle', label: 'Low angle, looking up' }),
+  })
+
+/**
+ * A camera-angle key, made safe. **Anything unreadable is the default**, the same degrade
+ * `coerceNinaHairstyle` makes — a generation must never reach the camera with no framing sentence
+ * at all. Also the read-side repair for every row written before this column existed:
+ * `nina_image_prefs.camera_angle` is nullable rather than backfilled, the same
+ * `nina_tuning.*_enabled` precedent `coerceNinaHairstyle` cites, and `null` is exactly the shape an
+ * unreadable value takes here.
+ */
+export function coerceNinaCameraAngle(value: unknown): NinaCameraAngleKey {
+  if (typeof value !== 'string') return NINA_CAMERA_ANGLE_DEFAULT
+  return (NINA_CAMERA_ANGLE_KEYS as readonly string[]).includes(value)
+    ? (value as NinaCameraAngleKey)
+    : NINA_CAMERA_ANGLE_DEFAULT
+}
+
+/* ============================================================================
  * §8 The preferences themselves
  * ==========================================================================*/
 
@@ -1081,6 +1142,13 @@ export interface NinaImagePrefs {
    * coerces and nothing downstream re-reads it loosely.
    */
   readonly hairstyle: NinaHairstyleKey
+  /**
+   * The 2026-09-18 camera-angle preset. The narrow `NinaCameraAngleKey`, same reason `hairstyle`
+   * is narrow: the store coerces and nothing downstream re-reads it loosely. `buildNinaImagePrompt`
+   * reads it only when the chat model's own per-photo `angle` argument is absent or unrecognised —
+   * see that function's header.
+   */
+  readonly cameraAngle: NinaCameraAngleKey
 }
 
 /**
@@ -1111,6 +1179,7 @@ export interface NinaImagePrefsInput {
   readonly model?: unknown
   readonly reference?: unknown
   readonly hairstyle?: unknown
+  readonly cameraAngle?: unknown
 }
 
 /**
@@ -1132,6 +1201,7 @@ export const NINA_IMAGE_PREFS_DEFAULTS: NinaImagePrefs = Object.freeze({
   model: NINA_IMAGE_MODEL_DEFAULT,
   reference: NINA_IMAGE_REFERENCE_NONE,
   hairstyle: NINA_HAIRSTYLE_DEFAULT,
+  cameraAngle: NINA_CAMERA_ANGLE_DEFAULT,
 })
 
 /**
@@ -1165,5 +1235,6 @@ export function coerceNinaImagePrefs(
     model: coerceNinaImageModel(input?.model),
     reference: coerceNinaImageReference(input?.reference),
     hairstyle: coerceNinaHairstyle(input?.hairstyle),
+    cameraAngle: coerceNinaCameraAngle(input?.cameraAngle),
   }
 }

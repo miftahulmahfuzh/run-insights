@@ -345,6 +345,15 @@ export const ninaImagePrefs = pgTable('nina_image_prefs', {
    */
   hairstyle: text('hairstyle'),
 
+  /**
+   * The 2026-09-18 camera-angle preset: which of `NINA_CAMERA_ANGLE_KEYS` (`lib/nina/imageprefs.ts`)
+   * the operator's standing default is — `'eye_level' | 'overhead' | 'low_angle'`. Same nullable
+   * precedent as `hairstyle` immediately above, for the same reason: added to a populated table,
+   * `coerceNinaCameraAngle` degrades a NULL (or any unrecognised value) to the measured default
+   * rather than failing a generation, and no backfill is needed.
+   */
+  cameraAngle: text('camera_angle'),
+
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
     .notNull()
     .defaultNow()

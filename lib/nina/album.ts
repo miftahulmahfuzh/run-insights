@@ -215,6 +215,12 @@ export interface ImageLike {
   kind: string
   blobUrl: string
   createdAt: Date
+  /**
+   * The 2026-09-18 fullscreen-to-job-detail link — `nina_turns.id`, or NULL for an upload or a
+   * generated photo written before this column existed. See the column's own header
+   * (`lib/db/schema/nina/chat.ts`) for why it survives `messageId` going NULL on a session delete.
+   */
+  turnId?: string | null
 }
 
 /** What the header avatar and the detail page's hero need, and nothing more. */
@@ -258,6 +264,12 @@ export interface NinaGalleryPhoto {
   kind: string
   side: NinaPhotoSide
   label: string
+  /**
+   * The 2026-09-18 fullscreen-to-job-detail link — `ImageLike.turnId`, straight through. NULL for
+   * an upload, for an avatar-purpose generation (no join back to it — see `/pull-image-gen-job`'s
+   * own recorded gap), and for a generated photo written before this column existed.
+   */
+  turnId: string | null
 }
 
 /**
@@ -350,6 +362,7 @@ export function galleryPhotos(rows: readonly ImageLike[]): NinaGalleryPhoto[] {
       kind: row.kind,
       side,
       label: NINA_SIDE_LABEL[side],
+      turnId: row.turnId ?? null,
     }
   })
 }

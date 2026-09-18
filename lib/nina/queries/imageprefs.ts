@@ -72,6 +72,8 @@ function imagePrefsFromRow(row: NinaImagePrefsRow): NinaImagePrefs {
      * `coerceNinaHairstyle` reads a row written before this preference existed the same way it
      * reads any other unrecognised value: as the measured default. */
     hairstyle: row.hairstyle,
+    /* `row.cameraAngle`'s own header, same nullable reasoning. */
+    cameraAngle: row.cameraAngle,
   })
 }
 
@@ -103,6 +105,7 @@ function imagePrefsToColumns(prefs: NinaImagePrefsWrite) {
     referenceSource: prefs.reference.source,
     referenceId: prefs.reference.id,
     hairstyle: prefs.hairstyle,
+    cameraAngle: prefs.cameraAngle,
   }
 }
 

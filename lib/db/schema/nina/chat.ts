@@ -656,6 +656,27 @@ export const ninaMessageImages = pgTable(
     /** The generation prompt, `kind = 'generated'` only. Phase 12 writes it. */
     prompt: text('prompt'),
     /**
+     * **`nina_turns.id`, `kind = 'generated'` only** — the fullscreen-to-job-detail link
+     * (`/nina/jobs/[id]`'s R1). A plain column, no FK, on `nina_messages.turn_id`'s own precedent
+     * (`:485` above): the pointer is an audit trail into a table this one has no business
+     * cascading with, and an unrecognised or dangling value must degrade to "no link" rather than
+     * block a write or a delete.
+     *
+     * **Written by `finishSelfie` at insert time, copied from the caption message's own
+     * `turn_id`, rather than joined from it at read time.** `listNinaMediaPhotos` and
+     * `listNinaChatPhotos` deliberately read this table with NO JOIN (phase 1's stated reason the
+     * table exists at all — see `listNinaMediaPhotos`'s header), and `messageId` above goes NULL
+     * on `ON DELETE SET NULL` the moment its session is removed — which would silently take the
+     * job link with it if this were derived through that column instead of copied beside it. An
+     * orphaned photograph (F37) keeps its job link exactly as long as `nina_turns` keeps the row,
+     * which is not tied to the conversation's lifetime at all.
+     *
+     * NULL for every row written before this column existed and for every upload — the
+     * `hairstyle`/`cameraAngle` precedent (`lib/db/schema/nina/config.ts`) applied here: no
+     * backfill is required, a photograph with no job to point at simply renders no button.
+     */
+    turnId: text('turn_id'),
+    /**
      * **Hand-written search phrases, comma-separated** — media-album-unified-search R2,
      * 2026-09-17. `"tete, putih"`. `nina_avatars.search_keywords`' twin, and that column's header
      * carries the semantics for both: it is an INPUT to `description_embedding` below (folded into

@@ -3,14 +3,18 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ADMIN_AVATAR_CONTENT_TYPES, ADMIN_AVATAR_MAX_UPLOAD_BYTES } from '@/lib/admin/avatars'
 import {
   buildNinaImagePrompt,
+  NINA_CAMERA_ANGLE_SENTENCES,
   NINA_PROMPT_LENGTH_FALLBACK,
   NINA_PROMPT_RUNGS,
   NINA_PROMPT_TEMPLATE_DEFAULT,
   sidecarText,
 } from '@/lib/nina/imagegen'
 import {
+  coerceNinaCameraAngle,
   coerceNinaHairstyle,
   coerceNinaImageModel,
+  NINA_CAMERA_ANGLE_DEFAULT,
+  NINA_CAMERA_ANGLE_KEYS,
   NINA_HAIRSTYLE_DEFAULT,
   NINA_HAIRSTYLE_KEYS,
   NINA_IMAGE_FOCUS_KEYS,
@@ -277,12 +281,12 @@ describe('the prompt', () => {
       })
       const where = `band floor ${promptLength}`
       // (a) somebody else is holding the camera, and none of the three selfie tells is allowed.
-      expect(prompt, where).toContain('taken by another person standing a few steps away')
+      expect(prompt, where).toContain('Taken by another person standing a few steps away')
       expect(prompt, where).toContain('no raised arm reaching toward the camera')
       expect(prompt, where).toContain('no phone and no hand held near the lens')
       expect(prompt, where).toContain('no mirror and no mirror reflection')
       // (b) the optics that decide head size, and (c) the framing that decides whether feet survive.
-      expect(prompt, where).toContain('Shot on a 50 mm lens from about three metres back')
+      expect(prompt, where).toContain('shot on a 50 mm lens from about three metres back')
       expect(prompt, where).toContain(
         'her head is normal-sized and in natural proportion to her tall body',
       )
@@ -299,31 +303,65 @@ describe('the prompt', () => {
     }
   })
 
-  it('angle (2026-09-17): replaces the default framing sentence rather than adding a second, competing one', () => {
-    const overrideSentence =
-      'The camera is directly above her, looking straight down; she is lying on her back looking straight up into the lens.'
+  it('angle (2026-09-18): a preset key replaces the WHOLE camera-position clause, prefix opening included', () => {
     const prompt = buildNinaImagePrompt({
       purpose: 'selfie',
       scene: 'lying in a meadow, shot from directly overhead',
-      angle: overrideSentence,
+      angle: 'overhead',
     })
-    expect(prompt).toContain(overrideSentence)
-    /* The whole point: the contradicting eye-level sentence must be GONE, not merely followed by a
-     * correction — see the header above `NINA_SELFIE_STYLE_PREFIX` for why appending doesn't work
-     * against a diffusion model. */
-    expect(prompt).not.toContain('Shot on a 50 mm lens from about three metres back')
+    expect(prompt).toContain(
+      "Taken by a drone directly above her, looking straight down at her from a bird's-eye view",
+    )
+    /* The whole point (`OIF0bLCf4MMC`'s diagnosis): the contradicting ground-level claim must be
+     * GONE from BOTH the old middle sentence AND the prefix's old opening clause — a diffusion
+     * model has no "ignore the earlier sentence" against either one. */
+    expect(prompt).not.toContain('shot on a 50 mm lens from about three metres back')
     expect(prompt).not.toContain('floor visible below her feet')
+    expect(prompt).not.toContain('standing a few steps away')
     /* The rest of the camera paragraph (the anti-selfie negatives and the realism clauses either
      * side of the framing sentence) is unconditional and still there. */
-    expect(prompt).toContain('taken by another person standing a few steps away')
     expect(prompt).toContain('no raised arm reaching toward the camera')
     expect(prompt).toContain('Realistic photograph, not an illustration and not a render')
+  })
+
+  it('angle: free text is no longer honoured — it degrades to the operator default like any unrecognised value', () => {
+    /* The mechanism `OIF0bLCf4MMC` exists to close off: prose the chat model composes can always
+     * reintroduce a second, competing camera claim. A closed vocabulary cannot, so anything that
+     * is not one of `NINA_CAMERA_ANGLE_KEYS` renders the eye-level default, same as absent. */
+    const prompt = buildNinaImagePrompt({
+      purpose: 'selfie',
+      scene: 'lying in a meadow, shot from directly overhead',
+      angle: 'The camera is directly above her, looking straight down.',
+    })
+    expect(prompt).toContain('Taken by another person standing a few steps away')
+    expect(prompt).not.toContain('directly above her, looking straight down.')
+  })
+
+  it("angle absent: falls through to the OPERATOR's standing cameraAngle preset, not the hard-coded eye-level default", () => {
+    const prompt = buildNinaImagePrompt({
+      purpose: 'selfie',
+      scene: 'on a rooftop',
+      prefs: prefsWith({ cameraAngle: 'low_angle' }),
+    })
+    expect(prompt).toContain('crouched low near her feet')
+    expect(prompt).not.toContain('Taken by another person standing a few steps away')
+  })
+
+  it("angle sent: the chat model's per-photo pick wins over the operator's standing preset", () => {
+    const prompt = buildNinaImagePrompt({
+      purpose: 'selfie',
+      scene: 'on a rooftop, shot from directly overhead',
+      angle: 'overhead',
+      prefs: prefsWith({ cameraAngle: 'low_angle' }),
+    })
+    expect(prompt).toContain("bird's-eye view")
+    expect(prompt).not.toContain('crouched low near her feet')
   })
 
   it('angle absent or blank: the default eye-level framing sentence renders exactly as before', () => {
     for (const angle of [undefined, null, '', '   ']) {
       const prompt = buildNinaImagePrompt({ purpose: 'selfie', scene: 'on the track', angle })
-      expect(prompt, String(angle)).toContain('Shot on a 50 mm lens from about three metres back')
+      expect(prompt, String(angle)).toContain('shot on a 50 mm lens from about three metres back')
     }
   })
 
@@ -454,6 +492,61 @@ describe('the prompt', () => {
         prefs: prefsWith({ hairstyle: key }),
       })
       expect(prompt, key).toContain(NINA_HAIRSTYLE_SENTENCES[key])
+    }
+  })
+
+  /* ────────────────────────────────────────────────────────────────────────────────────────────
+   * §7c — THE CAMERA-ANGLE PRESET (the 2026-09-18 ask, second half — `OIF0bLCf4MMC`'s fix)
+   * ──────────────────────────────────────────────────────────────────────────────────────────*/
+
+  it('§7c: eye_level is the default, and it is the sentence {{angle}} always fell back to', () => {
+    expect(NINA_CAMERA_ANGLE_DEFAULT).toBe('eye_level')
+    const prompt = buildNinaImagePrompt({ purpose: 'selfie', scene: 'on the track' })
+    expect(prompt).toContain(NINA_CAMERA_ANGLE_SENTENCES.eye_level)
+  })
+
+  it('§7c: the coerce degrades an unreadable or unknown key to eye_level', () => {
+    for (const key of NINA_CAMERA_ANGLE_KEYS) expect(coerceNinaCameraAngle(key)).toBe(key)
+    for (const bad of [undefined, null, '', 'dutch-tilt', 42]) {
+      expect(coerceNinaCameraAngle(bad), String(bad)).toBe(NINA_CAMERA_ANGLE_DEFAULT)
+    }
+  })
+
+  it('§7c: the operator preset and the chat model per-photo pick each carry exactly their own sentence, and no other', () => {
+    for (const key of NINA_CAMERA_ANGLE_KEYS) {
+      const fromPrefs = buildNinaImagePrompt({
+        purpose: 'selfie',
+        scene: 'on the track',
+        prefs: prefsWith({ cameraAngle: key }),
+      })
+      const fromChatModel = buildNinaImagePrompt({
+        purpose: 'selfie',
+        scene: 'on the track',
+        angle: key,
+      })
+      for (const prompt of [fromPrefs, fromChatModel]) {
+        expect(prompt, key).toContain(NINA_CAMERA_ANGLE_SENTENCES[key])
+        for (const other of NINA_CAMERA_ANGLE_KEYS) {
+          if (other !== key) {
+            expect(prompt, `${key} vs ${other}`).not.toContain(NINA_CAMERA_ANGLE_SENTENCES[other])
+          }
+        }
+      }
+    }
+  })
+
+  it('§7c: avatar-purpose photos never spend {{angle}} at all — the avatar has a fixed camera', () => {
+    // The avatar shell (`NINA_AVATAR_STYLE`) never references `NINA_CAMERA_ANGLE_SENTENCES`;
+    // `cameraAngle` is a selfie-only concept and this asserts the avatar path stays untouched.
+    for (const key of NINA_CAMERA_ANGLE_KEYS) {
+      const prompt = buildNinaImagePrompt({
+        purpose: 'avatar',
+        scene: 'x',
+        prefs: prefsWith({ cameraAngle: key }),
+      })
+      for (const sentence of Object.values(NINA_CAMERA_ANGLE_SENTENCES)) {
+        expect(prompt).not.toContain(sentence)
+      }
     }
   })
 

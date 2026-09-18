@@ -22,6 +22,13 @@ export interface ChatViewerPhoto {
   kind: string
   /** `'Foto kamu'` or `'Foto Nina'`. See `chatViewerPhotos`. */
   label: string
+  /**
+   * The 2026-09-18 fullscreen-to-job-detail link — `ViewerPhoto.id`, the handle its `headerAction`
+   * needs. Set only on a `kind: 'generated'` photo whose message carries a `turn_id` (the caption
+   * bubble `finishSelfie` writes); `undefined` for every upload and for a generated photo with no
+   * job to point at (an old row, written before this column existed). See `chatViewerPhotos`.
+   */
+  id?: string
 }
 
 /**
@@ -48,16 +55,22 @@ export interface ChatViewerPhoto {
  */
 export function chatViewerPhotos(
   message:
-    | { imageUrls?: readonly string[] | null; imageKinds?: readonly string[] | null }
+    | {
+        imageUrls?: readonly string[] | null
+        imageKinds?: readonly string[] | null
+        turnId?: string | null
+      }
     | null
     | undefined,
 ): ChatViewerPhoto[] {
   const urls = message?.imageUrls
   if (urls == null || urls.length === 0) return []
   const kinds = message?.imageKinds
+  const turnId = message?.turnId
   return urls.map((url, index) => {
     const kind = kinds?.[index] ?? 'upload'
-    return { url, kind, label: NINA_SIDE_LABEL[photoSideOf(kind)] }
+    const id = kind === 'generated' && turnId != null && turnId !== '' ? turnId : undefined
+    return { url, kind, label: NINA_SIDE_LABEL[photoSideOf(kind)], id }
   })
 }
 

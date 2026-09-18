@@ -51,6 +51,48 @@ describe('generate_image forwards a per-turn outfit', () => {
 })
 
 /**
+ * **`angle` is a closed enum now (2026-09-18), not free text.** `/pull-image-gen-job`'s diagnosis
+ * of job `OIF0bLCf4MMC` found that a hallucinated camera-position SENTENCE could always reintroduce
+ * a contradiction with a fixed clause elsewhere in the prompt; `lib/nina/imageprefs.ts`'s
+ * `NINA_CAMERA_ANGLE_KEYS` closes that off at the Zod boundary, before the argument ever reaches
+ * `buildNinaImagePrompt`.
+ */
+describe('generate_image: angle is one of NINA_CAMERA_ANGLE_KEYS, not free text', () => {
+  beforeEach(async () => {
+    generateNinaSelfie.mockReset()
+    generateNinaSelfie.mockResolvedValue({ ok: true, jobId: 'j1', state: 'dispatched' })
+    hasNinaImageJobForMessage.mockReset()
+    hasNinaImageJobForMessage.mockResolvedValue(false)
+    ;({ NINA_CHAT_TOOL_SET } = await import('@/lib/nina/imagetools'))
+  })
+
+  it('passes a declared key through to generateNinaSelfie', async () => {
+    await NINA_CHAT_TOOL_SET.handlers.generate_image!(
+      { scene: 'lying in a meadow, from directly overhead', angle: 'overhead' },
+      ctx,
+    )
+    expect(generateNinaSelfie).toHaveBeenCalledWith(expect.objectContaining({ angle: 'overhead' }))
+  })
+
+  it('omitting angle forwards null, the same absent-value contract `outfit` has', async () => {
+    await NINA_CHAT_TOOL_SET.handlers.generate_image!({ scene: 'in her bedroom' }, ctx)
+    expect(generateNinaSelfie).toHaveBeenCalledWith(expect.objectContaining({ angle: null }))
+  })
+
+  it('refuses a hallucinated camera-position sentence rather than forwarding it', async () => {
+    const result = await NINA_CHAT_TOOL_SET.handlers.generate_image!(
+      {
+        scene: 'lying in a meadow, from directly overhead',
+        angle: 'The camera is directly above her, looking straight down.',
+      },
+      ctx,
+    )
+    expect(result.isError).toBe(true)
+    expect(generateNinaSelfie).not.toHaveBeenCalled()
+  })
+})
+
+/**
  * **The duplicate-dispatch guard (2026-09-17).** A revived or repaired turn for the same runner
  * message must not spend a second camera action — see `hasNinaImageJobForMessage`'s own header in
  * `lib/nina/imagejobs.ts` for the production incident this closes.

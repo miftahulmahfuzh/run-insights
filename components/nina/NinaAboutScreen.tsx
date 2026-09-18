@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 
 import { Button } from '@/components/ui/Button'
@@ -8,6 +9,7 @@ import { PhotoViewer, type ViewerPhoto } from '@/components/ui/PhotoViewer'
 import { SAVE_NOTICE_TEXT, useSavePhoto } from '@/components/ui/useSavePhoto'
 import { cn } from '@/lib/cn'
 import { attachStripPadBottomCss, NINA_KEYBOARD_OVERLAP_VAR } from '@/lib/nina/chatview'
+import { ninaJobHref } from '@/lib/nina/jobview'
 import { NinaPhotoGrid, type NinaGridCell } from './NinaPhotoGrid'
 import { NinaAvatar } from './NinaAvatar'
 import { KeyboardOverlapPublisher } from './KeyboardOverlapPublisher'
@@ -283,7 +285,14 @@ export function NinaAboutScreen({
   )
   const galleryViewer: ViewerPhoto[] = React.useMemo(
     () =>
-      viewerLists.chat.map((photo) => ({ url: photo.url, kind: photo.kind, label: photo.label })),
+      viewerLists.chat.map((photo) => ({
+        url: photo.url,
+        kind: photo.kind,
+        label: photo.label,
+        /* The 2026-09-18 fullscreen-to-job-detail link — the handle `headerAction` below needs.
+         * NULL for an upload, an avatar-purpose generation, or a photo predating this column. */
+        id: photo.turnId ?? undefined,
+      })),
     [viewerLists],
   )
 
@@ -639,6 +648,28 @@ export function NinaAboutScreen({
             onIndex={onIndex}
             onClose={close}
             subject="foto"
+            /*
+             * The 2026-09-18 fullscreen-to-job-detail link, Media tab only — `open.section ===
+             * 'album'` is her avatar photos, which have no job to link to at all (no `turn_id` join
+             * — `/pull-image-gen-job`'s own recorded gap). `photo.id` is the job id `galleryViewer`
+             * set above; absent (an upload, or a photo predating this column) renders nothing.
+             */
+            headerAction={
+              open.section === 'album'
+                ? undefined
+                : (photo) =>
+                    photo.id == null ? null : (
+                      <Link
+                        href={ninaJobHref(photo.id)}
+                        onClick={close}
+                        aria-label="Buka detail job foto ini"
+                        title="Buka detail job foto ini"
+                        className="grid size-11 place-items-center rounded-pill text-card"
+                      >
+                        <JobDetailIcon className="size-5" />
+                      </Link>
+                    )
+            }
           />
           {/*
             The attach control sits ABOVE the overlay (z-70 against its z-60) rather than inside
@@ -1002,6 +1033,29 @@ function ChevronRightIcon() {
       aria-hidden="true"
     >
       <path d="m9 18 6-6-6-6" />
+    </svg>
+  )
+}
+
+/** "Buka detail job foto ini" — `ChatScreen.tsx`'s `JobDetailIcon`, copied verbatim: same glyph,
+ * same destination, a different screen. Lucide's `receipt-text`. `aria-hidden`: the link already
+ * carries the accessible name. */
+function JobDetailIcon({ className }: { className: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z" />
+      <path d="M8 7h8" />
+      <path d="M8 11h8" />
+      <path d="M8 15h5" />
     </svg>
   )
 }
