@@ -11,6 +11,7 @@ import {
   formatMicroUsd,
   jobCanRedo,
   ninaJobHref,
+  splitSidecarReference,
   withCostSourceLine,
   withJobIdLine,
   type NinaJobJump,
@@ -334,7 +335,30 @@ export function NinaJobDetail({
           </p>
         ) : (
           <p className="text-[13px] leading-[1.55] font-medium whitespace-pre-wrap text-ink-2">
-            {withJobIdLine(withCostSourceLine(sidecar, costSource), jobId) ?? prompt}
+            {(() => {
+              const noteText =
+                withJobIdLine(withCostSourceLine(sidecar, costSource), jobId) ?? prompt ?? ''
+              const { before, referenceUrl, after } = splitSidecarReference(noteText)
+              return (
+                <>
+                  {before}
+                  {referenceUrl !== null && (
+                    <ButtonLink
+                      href={referenceUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      size="md"
+                      variant="secondary"
+                      className="mx-1 align-middle"
+                      aria-label="Lihat foto referensi ukuran penuh"
+                    >
+                      <Maximize2Icon />
+                    </ButtonLink>
+                  )}
+                  {after}
+                </>
+              )
+            })()}
           </p>
         )}
       </Card>

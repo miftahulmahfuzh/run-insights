@@ -447,6 +447,44 @@ export function withJobIdLine(sidecar: string | null, jobId: string): string | n
   return lines.join('\n')
 }
 
+/** `sidecarText()`'s exact reference-line prefix (`lib/nina/imagegen.ts`) — kept as one constant so
+ * this file and that one cannot drift apart on the two spaces after the colon. */
+const REFERENCE_LINE_PREFIX = 'reference:  '
+
+/** `sidecarText()`'s placeholder for a job that resolved no reference photo. */
+const REFERENCE_NONE_VALUE = 'none (RU-18)'
+
+/**
+ * Splits a rendered sidecar/prompt block around its "reference:" line's VALUE, so a screen can
+ * swap the raw URL for a control without hand-rolling a regex over the whole block.
+ *
+ * `before` includes the "reference:  " label itself, so a caller renders it followed immediately
+ * by the control — the same visual position the raw URL used to occupy. `after` is everything
+ * from that line's end onward, verbatim (including the leading newline, if any).
+ *
+ * Two honest no-ops, on `withCostSourceLine`'s precedent: a block with no reference line, and one
+ * whose value is the `'none (RU-18)'` placeholder (nothing to view), both answer
+ * `referenceUrl: null` with the WHOLE text in `before` — a shape this function does not recognise
+ * passes through unchanged rather than guessing where a control belongs.
+ */
+export function splitSidecarReference(text: string): {
+  before: string
+  referenceUrl: string | null
+  after: string
+} {
+  const idx = text.indexOf(REFERENCE_LINE_PREFIX)
+  if (idx === -1) return { before: text, referenceUrl: null, after: '' }
+
+  const labelEnd = idx + REFERENCE_LINE_PREFIX.length
+  const lineEnd = text.indexOf('\n', labelEnd)
+  const valueEnd = lineEnd === -1 ? text.length : lineEnd
+  const value = text.slice(labelEnd, valueEnd)
+
+  if (value === REFERENCE_NONE_VALUE) return { before: text, referenceUrl: null, after: '' }
+
+  return { before: text.slice(0, labelEnd), referenceUrl: value, after: text.slice(valueEnd) }
+}
+
 /** `4716` seconds → `1:18:36`. Re-exported so a screen imports one module, not two. */
 export function formatJobSeconds(seconds: number | null | undefined): string {
   return formatDuration(seconds)

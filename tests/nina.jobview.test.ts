@@ -22,6 +22,7 @@ import {
   parseNinaJumpParam,
   planJobJump,
   planJobPhoto,
+  splitSidecarReference,
   toNinaJobListItems,
   withCostSourceLine,
   withJobIdLine,
@@ -376,6 +377,46 @@ describe('job id line — the id spliced above "provider:" (2026-09-17)', () => 
   it('a sidecar from before this convention existed is left exactly as it was', () => {
     const oldShape = 'model: glm-4.6v\n--- prompt as sent ---\nhalo'
     expect(withJobIdLine(oldShape, 'abc123')).toBe(oldShape)
+  })
+})
+
+describe('splitSidecarReference splits around the "reference:" line\'s value', () => {
+  const withUrl = [
+    'provider:   openrouter',
+    'reference:  https://blob.example.test/nina/x/selfie-abc.jpg',
+    '',
+    '--- prompt as sent ---',
+    'sebuah foto selfie di pantai',
+  ].join('\n')
+
+  it('carries the label into `before` and the raw URL into `referenceUrl`', () => {
+    const { before, referenceUrl, after } = splitSidecarReference(withUrl)
+    expect(before.endsWith('reference:  ')).toBe(true)
+    expect(referenceUrl).toBe('https://blob.example.test/nina/x/selfie-abc.jpg')
+    expect(after.startsWith('\n')).toBe(true)
+    expect(before + after).not.toContain('https://')
+  })
+
+  it('rejoins to the original text once a caller re-inserts the URL', () => {
+    const { before, referenceUrl, after } = splitSidecarReference(withUrl)
+    expect(before + referenceUrl + after).toBe(withUrl)
+  })
+
+  it('the "none (RU-18)" placeholder answers no URL, whole text in `before`', () => {
+    const noneShape = withUrl.replace(
+      'https://blob.example.test/nina/x/selfie-abc.jpg',
+      'none (RU-18)',
+    )
+    expect(splitSidecarReference(noneShape)).toEqual({
+      before: noneShape,
+      referenceUrl: null,
+      after: '',
+    })
+  })
+
+  it('a block with no reference line at all is an honest pass-through', () => {
+    const bare = 'sebuah foto selfie di pantai'
+    expect(splitSidecarReference(bare)).toEqual({ before: bare, referenceUrl: null, after: '' })
   })
 })
 

@@ -183,6 +183,33 @@ describe('NinaJobDetail', () => {
     'sebuah foto selfie di pantai',
   ].join('\n')
 
+  const SIDECAR_WITH_REFERENCE = [
+    'provider:   openrouter',
+    'model:      glm-4.6v',
+    'purpose:    selfie',
+    'resolution: 1024x1536 2:3',
+    'seed:       42',
+    'reference:  https://blob.example.test/nina/x/selfie-abc.jpg',
+    '',
+    '--- prompt as sent ---',
+    'sebuah foto selfie di pantai',
+  ].join('\n')
+
+  it('a reference URL becomes an icon-only button opening it full screen; the raw URL never renders as text', () => {
+    render(<NinaJobDetail {...props({ sidecar: SIDECAR_WITH_REFERENCE })} />)
+    const link = screen.getByRole('link', { name: 'Lihat foto referensi ukuran penuh' })
+    expect(link).toHaveAttribute('href', 'https://blob.example.test/nina/x/selfie-abc.jpg')
+    expect(link).toHaveAttribute('target', '_blank')
+    expect(screen.queryByText(/blob\.example\.test/)).not.toBeInTheDocument()
+  })
+
+  it('the "none (RU-18)" placeholder draws no reference button', () => {
+    render(<NinaJobDetail {...props({ sidecar: REAL_SHAPE_SIDECAR })} />)
+    expect(
+      screen.queryByRole('link', { name: 'Lihat foto referensi ukuran penuh' }),
+    ).not.toBeInTheDocument()
+  })
+
   it('the job id renders above "provider:" (2026-09-17)', () => {
     render(<NinaJobDetail {...props({ jobId: 'HIiyRr5_zemf', sidecar: REAL_SHAPE_SIDECAR })} />)
     expect(screen.getByText(/job:\s+HIiyRr5_zemf/)).toBeInTheDocument()
