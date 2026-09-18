@@ -148,6 +148,35 @@ export const NINA_CAMERA_ANGLE_SENTENCES: Readonly<Record<NinaCameraAngleKey, st
   })
 
 /**
+ * **The camera check — a second, LATER reinforcement of `{{angle}}`, spent only where the
+ * contradiction has actually been measured (2026-09-18, job `sITrkxbwsWFV`).**
+ *
+ * `{{angle}}` (`NINA_CAMERA_ANGLE_SENTENCES`) already resolved to `overhead` correctly on that
+ * job — the header above `NINA_SELFIE_STYLE_PREFIX` had already fixed the earlier bug where a
+ * fixed prefix clause fought it. The photo still came back a front-on, ground-level shot with a
+ * horizon (sea and sky "behind her") in frame, because the chat model's OWN `scene` argument
+ * ("sea and bright sky behind her") is free text, and this file's own block-order rule
+ * (`buildNinaImagePrompt`'s header, point 7) says a scene naming its own place is deliberately
+ * "the later and more specific instruction" and wins. That rule is right for WHERE and WHEN; it
+ * is exactly wrong for a camera position slipped into the same sentence, which is what happened
+ * here one layer past the fix already made for `{{angle}}` itself.
+ *
+ * The fix is the same shape, one layer further out, rather than trying to sanitise free text: a
+ * short, unconditional sentence naming the same closed-set camera fact again, placed at the very
+ * end of the template — after `NOTES`, the operator's own last-word line — so it is now the
+ * truly last instruction the model reads about where the camera is, and nothing above it (scene,
+ * pose, or a hand-typed note) can out-rank it by virtue of coming later. `eye_level` stays empty
+ * — the default framing has never shown this contradiction, and an empty value drops the whole
+ * line, keeping every operator who never touches the angle dropdown on the byte-identical prompt.
+ */
+export const NINA_CAMERA_ANGLE_REMINDER: Readonly<Record<NinaCameraAngleKey, string>> =
+  Object.freeze({
+    eye_level: '',
+    overhead: `Camera check: the shot described above is still a drone directly overhead, looking straight down at her — nothing in the scene, the pose or the notes above moves the camera down to eye level, to the side, or anywhere a horizon would be visible.`,
+    low_angle: `Camera check: the shot described above is still low and close to the ground, looking up along her body — nothing in the scene, the pose or the notes above moves the camera up to eye level or overhead.`,
+  })
+
+/**
  * **The butt clause, camera-angle-aware (2026-09-18, job `lUARJrfreQta`).**
  *
  * `NINA_SELFIE_STYLE_PREFIX`'s header already tells this story twice: a fixed sentence outside
@@ -422,7 +451,10 @@ function ninaMoodBlock(mood: string | null | undefined): string {
  * Line semantics (the renderer below): a line containing a token that expanded to empty is
  * dropped ENTIRE, so the FOCUS line vanishes when nothing is ticked, POSE AND PRESENCE vanishes
  * when the dials are quiet, and VENUE / TIME / NOTES / EXPRESSION AND ENERGY vanish when their
- * fields are empty — the omit-when-empty rule the built-in assembly always had.
+ * fields are empty — the omit-when-empty rule the built-in assembly always had. The trailing
+ * `{{angleReminder}}` line follows the same rule and is the newest example of it: empty for
+ * `eye_level`, so it vanishes and the shell is unchanged for every operator who has never touched
+ * the angle dropdown; see `NINA_CAMERA_ANGLE_REMINDER`'s header for what it is for.
  */
 export const NINA_PROMPT_TEMPLATE_DEFAULT = [
   `${NINA_SELFIE_STYLE_PREFIX} {{angle}} ${NINA_SELFIE_STYLE_SUFFIX}`,
@@ -450,6 +482,8 @@ export const NINA_PROMPT_TEMPLATE_DEFAULT = [
   'EXPRESSION AND ENERGY: {{mood}}',
   '',
   'NOTES: {{notes}}',
+  '',
+  '{{angleReminder}}',
 ].join('\n')
 
 /**
@@ -552,9 +586,16 @@ function renderNinaImagePrompt(template: string, blocks: Record<string, string>)
  *  8. **`EXPRESSION AND ENERGY:`** — after the scene, so it reads as a refinement of THIS
  *     photograph rather than an amendment to who she is. UNCHANGED, and it is exactly where
  *     `tools/gen_badge_art.py` puts `--note`, for the same reason.
- *  9. **`NOTES:`** — LAST. It is the operator's catch-all amendment to this photograph ("nina is
- *     full of sweat"), the same category as `--note` and one step later, because last is where an
+ *  9. **`NOTES:`** — the operator's catch-all amendment to this photograph ("nina is full of
+ *     sweat"), the same category as `--note` and one step later, because that is where an
  *     instruction that must be able to amend everything above it belongs.
+ *  10. **the camera check (`{{angleReminder}}`)** — TRULY last, after `NOTES`, and unconditional
+ *      rather than an operator amendment. Added 2026-09-18 for job `sITrkxbwsWFV`: a `scene` (or a
+ *      hand-typed note) can encode a camera position without saying so in `{{angle}}`'s own
+ *      vocabulary, and this file's own "later wins" rule then makes THAT the effective camera
+ *      instruction. Restating the same closed-set fact one more time, after everything an operator
+ *      or the chat model could have said, closes that off. Empty for `eye_level`, so the line drops
+ *      and every prompt that never touches the angle dropdown is unchanged.
  *
  * ── `{{angle}}` IS NOT A BLOCK: IT LIVES INSIDE BLOCK 1 (2026-09-17) ──────────────────────────────
  * `NINA_SELFIE_STYLE_PREFIX`'s header has the full argument; the short version is that a "later
@@ -712,6 +753,7 @@ export function buildNinaImagePrompt(input: {
     buttClause: NINA_BODY_BUTT_SENTENCES[angleKey],
     hairstyle: NINA_HAIRSTYLE_SENTENCES[prefs.hairstyle],
     notes: prefs.notes.trim(),
+    angleReminder: NINA_CAMERA_ANGLE_REMINDER[angleKey],
   }
 
   return renderNinaImagePrompt(effectiveNinaImageTemplate(prefs), blocks)

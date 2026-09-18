@@ -567,6 +567,7 @@ export const NINA_IMAGE_TEMPLATE_KEYS = [
   'angle',
   'hairstyle',
   'buttClause',
+  'angleReminder',
 ] as const
 
 export type NinaImageTemplateKey = (typeof NINA_IMAGE_TEMPLATE_KEYS)[number]
@@ -654,6 +655,11 @@ export const NINA_IMAGE_TEMPLATE_SPECS: Readonly<
     key: 'buttClause',
     description:
       "The SUBJECT paragraph's butt sentence — the original claim for the eye-level and low-angle presets, or a variant with no camera-relative visibility claim for overhead, where the original is geometrically impossible. Sits inside the SUBJECT paragraph, not its own line, and is never empty — like `{{angle}}`, there is always a camera angle selected.",
+  }),
+  angleReminder: Object.freeze({
+    key: 'angleReminder',
+    description:
+      "A one-line camera check, restated at the very end of the prompt for overhead and low angle, so a freeform SCENE or NOTES sentence that quietly implies a different camera position (a horizon, a floor line) does not out-rank the opening paragraph's angle just by being later. Empty, and the whole line gone, for eye_level — the default framing has never shown this contradiction.",
   }),
 })
 

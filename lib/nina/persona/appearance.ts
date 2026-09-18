@@ -120,8 +120,21 @@ const NINA_FACE_PREFIX = 'A white, beautiful, tall, caucasian woman in her late 
 
 /**
  * The face paragraph's tail — everything after the hair. Unaffected by the hairstyle preset.
+ *
+ * **The eye-symmetry sentence (2026-09-18, job `sITrkxbwsWFV`, P0).** The runner flagged one eye
+ * rendering warped — an irregular iris shape and a glare-like streak across it, the other eye
+ * normal — on a photograph that also carried "Usually a little sweaty" (a wet-skin sheen) and
+ * "shallow depth of field" (`NINA_SELFIE_STYLE_SUFFIX`) with her head at a slight tilt, so the two
+ * eyes sat at different distances from the focal plane. Both are known diffusion triggers for
+ * exactly this failure — a specular highlight crossing an eye, or one eye softer than the other —
+ * and neither is a claim worth removing (the sheen and the shallow DOF are both wanted elsewhere).
+ * There is no `negative_prompt` on this provider (`buildImageRequestBody`'s header in
+ * `lib/nina/imagerecipe.ts`), so the only lever is a positive clause, and it lives HERE rather than
+ * in the selfie-only suffix because the avatar's tight face crop is exactly as exposed to this
+ * failure as the selfie is — this sentence reaches both paths the same way the rest of the face
+ * paragraph already does.
  */
-const NINA_FACE_SUFFIX = `Dark brown eyes, thick straight eyebrows, no makeup. Her expression is serious, like a magazine cover model's: composed, never smiling or laughing, lips just barely parted. Usually a little sweaty.`
+const NINA_FACE_SUFFIX = `Dark brown eyes, thick straight eyebrows, no makeup. Her expression is serious, like a magazine cover model's: composed, never smiling or laughing, lips just barely parted. Usually a little sweaty. Both eyes are wide open, sharp and in focus, perfectly symmetric with each other in shape, size and colour, never obscured by hair, shadow or glare, and never warped, doubled or mismatched between the two.`
 
 /**
  * **The hairstyle preset's vocabulary, in prose.** `ponytail` is transcribed from `nina.png`

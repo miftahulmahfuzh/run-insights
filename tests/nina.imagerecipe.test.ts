@@ -4,6 +4,7 @@ import { ADMIN_AVATAR_CONTENT_TYPES, ADMIN_AVATAR_MAX_UPLOAD_BYTES } from '@/lib
 import {
   buildNinaImagePrompt,
   NINA_BODY_BUTT_SENTENCES,
+  NINA_CAMERA_ANGLE_REMINDER,
   NINA_CAMERA_ANGLE_SENTENCES,
   NINA_PROMPT_TEMPLATE_DEFAULT,
   sidecarText,
@@ -477,6 +478,16 @@ describe('the prompt', () => {
     }
   })
 
+  it('§7b′: the eye-symmetry sentence (job `sITrkxbwsWFV`, P0) reaches both purposes', () => {
+    // NINA_FACE_SUFFIX is shared by the face paragraph, selfie and avatar alike — this is the
+    // one place a fix reaches every photograph regardless of camera angle or crop.
+    expect(NINA_FACE).toContain('never warped, doubled or mismatched between the two')
+    for (const purpose of ['selfie', 'avatar'] as const) {
+      const prompt = buildNinaImagePrompt({ purpose, scene: 'x' })
+      expect(prompt, purpose).toContain('never warped, doubled or mismatched between the two')
+    }
+  })
+
   /* ────────────────────────────────────────────────────────────────────────────────────────────
    * §7c — THE CAMERA-ANGLE PRESET (the 2026-09-18 ask, second half — `OIF0bLCf4MMC`'s fix)
    * ──────────────────────────────────────────────────────────────────────────────────────────*/
@@ -592,6 +603,73 @@ describe('the prompt', () => {
       })
       for (const sentence of Object.values(NINA_BODY_BUTT_SENTENCES)) {
         expect(prompt).not.toContain(sentence)
+      }
+    }
+  })
+
+  /* ────────────────────────────────────────────────────────────────────────────────────────────
+   * §7e — THE CAMERA CHECK (2026-09-18, job `sITrkxbwsWFV` — a `scene` beat `{{angle}}` by being
+   * later, so a same-fact reminder now sits AFTER everything, including `{{notes}}`)
+   * ──────────────────────────────────────────────────────────────────────────────────────────*/
+
+  it('§7e: eye_level carries no camera check — the default prompt is unchanged', () => {
+    expect(NINA_CAMERA_ANGLE_REMINDER.eye_level).toBe('')
+    const prompt = buildNinaImagePrompt({ purpose: 'selfie', scene: 'on the track' })
+    for (const sentence of Object.values(NINA_CAMERA_ANGLE_REMINDER)) {
+      if (sentence !== '') expect(prompt).not.toContain(sentence)
+    }
+  })
+
+  it('§7e: overhead and low_angle each carry their own camera check, and no other', () => {
+    for (const key of ['overhead', 'low_angle'] as const) {
+      const prompt = buildNinaImagePrompt({
+        purpose: 'selfie',
+        scene: 'on the track',
+        prefs: prefsWith({ cameraAngle: key }),
+      })
+      expect(prompt, key).toContain(NINA_CAMERA_ANGLE_REMINDER[key])
+      const other = key === 'overhead' ? 'low_angle' : 'overhead'
+      expect(prompt, key).not.toContain(NINA_CAMERA_ANGLE_REMINDER[other])
+    }
+  })
+
+  it('§7e: the camera check survives after NOTES, the operator’s own last-word field', () => {
+    const prompt = buildNinaImagePrompt({
+      purpose: 'selfie',
+      scene: 'on the track',
+      prefs: prefsWith({ cameraAngle: 'overhead', notes: 'make her smile a lot' }),
+    })
+    const notesAt = prompt.indexOf('make her smile a lot')
+    const checkAt = prompt.indexOf(NINA_CAMERA_ANGLE_REMINDER.overhead)
+    expect(notesAt).toBeGreaterThan(-1)
+    expect(checkAt).toBeGreaterThan(notesAt)
+  })
+
+  it('§7e: regression — job `sITrkxbwsWFV`’s exact shape now reasserts overhead after the scene', () => {
+    // The chat model's own `scene` argument named a horizon ("sea and bright sky behind her")
+    // that this file's own "later wins" rule would otherwise let outrank `{{angle}}`.
+    const prompt = buildNinaImagePrompt({
+      purpose: 'selfie',
+      scene:
+        'Nina lying on her back on a sunlit beach of pale sand, sea and bright sky behind her, whole body in frame, both legs straight and spread apart, looking straight into the camera',
+      prefs: prefsWith({ cameraAngle: 'overhead' }),
+    })
+    expect(prompt).toContain(NINA_CAMERA_ANGLE_SENTENCES.overhead)
+    const sceneAt = prompt.indexOf('sea and bright sky behind her')
+    const checkAt = prompt.indexOf(NINA_CAMERA_ANGLE_REMINDER.overhead)
+    expect(sceneAt).toBeGreaterThan(-1)
+    expect(checkAt).toBeGreaterThan(sceneAt)
+  })
+
+  it('§7e: avatar-purpose photos never spend a camera check — the avatar has a fixed camera', () => {
+    for (const key of NINA_CAMERA_ANGLE_KEYS) {
+      const prompt = buildNinaImagePrompt({
+        purpose: 'avatar',
+        scene: 'x',
+        prefs: prefsWith({ cameraAngle: key }),
+      })
+      for (const sentence of Object.values(NINA_CAMERA_ANGLE_REMINDER)) {
+        if (sentence !== '') expect(prompt).not.toContain(sentence)
       }
     }
   })
