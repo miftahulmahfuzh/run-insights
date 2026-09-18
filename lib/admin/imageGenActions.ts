@@ -120,6 +120,7 @@ function toImagePrefsWrite(input: NinaImagePrefsWriteInput): NinaImagePrefsWrite
     promptTemplate: input.promptTemplate,
     model: input.model,
     reference: { source: input.reference.source, id: input.reference.id },
+    hairstyle: input.hairstyle,
   }
 }
 
@@ -144,6 +145,7 @@ export async function saveNinaImagePrefsAction(input: {
   promptTemplate: string
   model: string
   reference: { source: string; id: string }
+  hairstyle: string
 }): Promise<AdminImageGenResult> {
   await requireAdmin()
 

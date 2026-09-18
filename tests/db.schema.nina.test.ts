@@ -738,7 +738,7 @@ describe('nina_image_prefs — how she is photographed (R4-R10)', () => {
     expect(fkFor(schema.ninaImagePrefs, 'user_id')?.onDelete).toBe('cascade')
   })
 
-  it('spells exactly the seventeen columns phases 2, 3, 4 and 5 were written against', () => {
+  it('spells exactly the eighteen columns phases 2, 3, 4, 5 and the 2026-09-18 hairstyle preset were written against', () => {
     expect(names(schema.ninaImagePrefs)).toEqual(
       [
         'user_id',
@@ -763,6 +763,8 @@ describe('nina_image_prefs — how she is photographed (R4-R10)', () => {
         // R10 — the chosen photograph, as a set plus an id. Never a blob URL.
         'reference_source',
         'reference_id',
+        // The 2026-09-18 hairstyle preset. Nullable — added to a table that already had rows.
+        'hairstyle',
         'updated_at',
       ].sort(),
     )
@@ -825,6 +827,18 @@ describe('nina_image_prefs — how she is photographed (R4-R10)', () => {
     }
     // The one exception, and it is not part of the contract: a timestamp.
     expect(columns(schema.ninaImagePrefs).get('updated_at')?.hasDefault).toBe(true)
+  })
+
+  it("makes hairstyle NULLABLE with no SQL default — the nina_tuning.*_enabled precedent, not the rest of this table's", () => {
+    /* Every other column here was NOT NULL from this table's own creation, when it held no rows
+     * yet. This one was added later, to a table that already had rows, so it follows
+     * `nina_tuning`'s `*_enabled` columns instead: NULL means "written before this preference
+     * existed," and `coerceNinaHairstyle` reads that the same way it reads any other unreadable
+     * value — as the default. No backfill, no SQL DEFAULT, no rewrite of a live table. */
+    const column = columns(schema.ninaImagePrefs).get('hairstyle')
+    expect(column?.notNull).toBe(false)
+    expect(column?.hasDefault).toBe(false)
+    expect(sqlType(schema.ninaImagePrefs, 'hairstyle')).toBe('text')
   })
 
   it('has NO foreign key on the reference pair, because it has two possible parents', () => {

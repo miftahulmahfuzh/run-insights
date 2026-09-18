@@ -48,6 +48,7 @@ import {
 } from '@/lib/nina/tuning'
 
 import {
+  NINA_HAIRSTYLE_KEYS,
   NINA_IMAGE_FOCUS_KEYS,
   NINA_IMAGE_MODEL_IDS,
   NINA_IMAGE_PROMPT_LENGTH_MAX,
@@ -829,5 +830,11 @@ export const ninaImagePrefsWriteSchema = z.object({
   model: z.enum(NINA_IMAGE_MODEL_IDS),
   /** R10's selection. Phase 5 supplies the grid; the round trip is already here. */
   reference: ninaImageReferenceSchema,
+  /**
+   * The 2026-09-18 hairstyle preset — a closed enum, `model`'s own reasoning: the store's
+   * `coerceNinaHairstyle` remains the read-side degrade for a row written before this preference
+   * existed; this is the write-side refusal for a forged or stale client.
+   */
+  hairstyle: z.enum(NINA_HAIRSTYLE_KEYS),
 })
 export type NinaImagePrefsWriteInput = z.infer<typeof ninaImagePrefsWriteSchema>

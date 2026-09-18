@@ -3,7 +3,8 @@ import {
   NINA_BODY_FACTS,
   NINA_BODY_SENTENCES,
   NINA_DEFAULT_OUTFIT_VALUE,
-  NINA_FACE,
+  NINA_FACE_TEMPLATE_LINE,
+  NINA_HAIRSTYLE_SENTENCES,
   ninaAppearance,
   withSentenceStop,
   type NinaAppearanceDetail,
@@ -505,9 +506,9 @@ function ninaMoodBlock(mood: string | null | undefined): string {
  * template field holds before the operator touches it: the REAL prompt prose (camera paragraph,
  * body canon, face paragraph, the outfit sentence, every label) with a placeholder only where a
  * per-generation or per-preference VALUE is spliced in. The prose pieces are INTERPOLATED from
- * the canon constants (`NINA_SELFIE_STYLE`, `NINA_BODY_SENTENCES`, `NINA_FACE`) rather than
- * hand-copied, so the template cannot drift from the words the built-in assembly uses — there is
- * one home for each sentence.
+ * the canon constants (`NINA_SELFIE_STYLE`, `NINA_BODY_SENTENCES`, `NINA_FACE_TEMPLATE_LINE`)
+ * rather than hand-copied, so the template cannot drift from the words the built-in assembly
+ * uses — there is one home for each sentence.
  *
  * The body paragraph carries the first THREE canon sentences, verbatim — sentence 0's own
  * enumeration (`NINA_BODY_FACTS`), then sentences 1 and 2 — the mid-rung body, which is the
@@ -515,6 +516,11 @@ function ninaMoodBlock(mood: string | null | undefined): string {
  * because it could only ever expand to this one constant, which made it a decoration on
  * `{{focus}}`'s real job rather than a second control. The length dial no longer re-cuts THIS
  * text; the template is the prompt, and the dial drives the avatar path's built-in assembly.
+ *
+ * The face paragraph IS a token, unlike the body: `NINA_FACE_TEMPLATE_LINE` (`lib/nina/persona/appearance.ts`)
+ * carries the same fixed prose `NINA_FACE` always did, with `{{hairstyle}}` standing in for the
+ * one sentence that varies (the 2026-09-18 hairstyle preset) — the `{{angle}}` treatment, not the
+ * `{{focus}}` one, because a hairstyle is always exactly one thing and never a droppable list.
  *
  * The outfit line no longer appends the canon's watch-and-track sentence — that was fixed prose
  * ("a red 400 m athletics track", "flat morning sun") competing with the operator's own
@@ -533,7 +539,7 @@ export const NINA_PROMPT_TEMPLATE_DEFAULT = [
   `She has got an alluring body, ${NINA_BODY_FACTS}. This silhouette is the point of the photograph and it ` +
     `must be visible in it. ${NINA_BODY_SENTENCES[1]} ${NINA_BODY_SENTENCES[2]}`,
   '',
-  NINA_FACE,
+  NINA_FACE_TEMPLATE_LINE,
   '',
   'Her outfit for this photograph: {{wardrobe}}',
   '',
@@ -810,6 +816,7 @@ export function buildNinaImagePrompt(input: {
     scene: input.scene.trim(),
     mood: input.mood?.trim() ?? '',
     angle: angleValue,
+    hairstyle: NINA_HAIRSTYLE_SENTENCES[prefs.hairstyle],
     notes: prefs.notes.trim(),
   }
 

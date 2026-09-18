@@ -102,7 +102,10 @@ export {
   NINA_BODY_SENTENCES,
   NINA_DEFAULT_OUTFIT_VALUE,
   NINA_FACE,
+  NINA_FACE_TEMPLATE_LINE,
+  NINA_HAIRSTYLE_SENTENCES,
   ninaAppearance,
+  ninaFaceParagraph,
   withSentenceStop,
 } from './persona/appearance'
 export type { NinaAppearanceDetail } from './persona/appearance'

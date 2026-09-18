@@ -41,7 +41,7 @@ import { generatedChatPhotoScope } from './images'
 
 /**
  * **The one place `nina_image_prefs`'s flat row and the nested model meet.** `lib/db/schema.ts`
- * spells fifteen snake_case columns; `lib/nina/imageprefs.ts` spells `focus.boobs` and
+ * spells sixteen snake_case columns; `lib/nina/imageprefs.ts` spells `focus.boobs` and
  * `reference.source`. The same three-layer boundary `tuningFromRow` describes one table over: two
  * spellings, ONE translation point, reviewable in one diff.
  *
@@ -68,6 +68,10 @@ function imagePrefsFromRow(row: NinaImagePrefsRow): NinaImagePrefs {
     promptTemplate: row.promptTemplate,
     model: row.model,
     reference: { source: row.referenceSource, id: row.referenceId },
+    /* `row.hairstyle` is nullable — see the column's own header for why — and
+     * `coerceNinaHairstyle` reads a row written before this preference existed the same way it
+     * reads any other unrecognised value: as the measured default. */
+    hairstyle: row.hairstyle,
   })
 }
 
@@ -98,6 +102,7 @@ function imagePrefsToColumns(prefs: NinaImagePrefsWrite) {
     model: prefs.model,
     referenceSource: prefs.reference.source,
     referenceId: prefs.reference.id,
+    hairstyle: prefs.hairstyle,
   }
 }
 
@@ -114,8 +119,8 @@ function imagePrefsToColumns(prefs: NinaImagePrefsWrite) {
  * thirty seconds ago is in the next photograph.
  *
  * `SELECT *` rather than a column list, and this is the second place in the file where that is
- * right: the table is one row of fifteen columns and every one of them is wanted, so a list would
- * be fifteen lines that can only ever be wrong.
+ * right: the table is one row of sixteen columns and every one of them is wanted, so a list would
+ * be sixteen lines that can only ever be wrong.
  */
 export async function readNinaImagePrefs(userId: string): Promise<NinaImagePrefs> {
   const rows = await db
@@ -128,7 +133,7 @@ export async function readNinaImagePrefs(userId: string): Promise<NinaImagePrefs
 }
 
 /**
- * **One save, not fifteen** (plan invariant 7). Upsert on `user_id` and return what was stored —
+ * **One save, not sixteen** (plan invariant 7). Upsert on `user_id` and return what was stored —
  * statement for statement, `writeNinaTuning`.
  *
  * Every paragraph of `writeNinaTuning`'s docstring applies unchanged, so they are cited rather than

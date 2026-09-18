@@ -7,11 +7,13 @@ import {
   changedImageGenFields,
   focusOnKeys,
   hasImageFocusCopy,
+  hasImageHairstyleCopy,
   hasImageModelCopy,
   IMAGE_REFERENCE_NONE,
   imageFocusCopy,
   imageGenDraftEquals,
   IMAGEGEN_DIAL_COMMIT_DEBOUNCE_MS,
+  imageHairstyleLabel,
   imageModelHint,
   imageModelLabel,
   mergeImageGenAfterSave,
@@ -25,6 +27,7 @@ import {
 } from '@/lib/admin/imageGenModel'
 import { ninaImagePrefsWriteSchema } from '@/lib/admin/schema'
 import {
+  NINA_HAIRSTYLE_KEYS,
   NINA_IMAGE_FOCUS_KEYS,
   NINA_IMAGE_MODEL_IDS,
   NINA_PROMPT_LENGTH_RUNGS,
@@ -71,6 +74,7 @@ describe('toImageGenDraft — the read-side seam', () => {
     expect(DEFAULTS.promptTemplate).toBe(NINA_IMAGE_PREFS_DEFAULTS.promptTemplate)
     expect(DEFAULTS.reference.source).toBe(NINA_IMAGE_PREFS_DEFAULTS.reference.source)
     expect(DEFAULTS.reference.id).toBe(NINA_IMAGE_PREFS_DEFAULTS.reference.id)
+    expect(DEFAULTS.hairstyle).toBe(NINA_IMAGE_PREFS_DEFAULTS.hairstyle)
   })
 
   it('copies the focus record, so a draft edit cannot reach into the row it came from', () => {
@@ -209,7 +213,7 @@ describe('changedImageGenFields — what the operator sees as unsaved', () => {
     expect(imageGenDraftEquals(DEFAULTS, toImageGenDraft(NINA_IMAGE_PREFS_DEFAULTS))).toBe(true)
   })
 
-  it('names the seven scalar fields in a fixed order', () => {
+  it('names the eight scalar fields in a fixed order', () => {
     const edited: ImageGenDraft = {
       ...DEFAULTS,
       promptLength:
@@ -222,6 +226,8 @@ describe('changedImageGenFields — what the operator sees as unsaved', () => {
       /* The id that is NOT the default — DEFAULTS.model rides NINA_IMAGE_MODEL_DEFAULT, so an
        * edit equal to the default is by definition not a changed field. */
       model: 'qwen/qwen-image-3-pro',
+      /* Same reasoning for the 2026-09-18 hairstyle preset: DEFAULTS.hairstyle is 'ponytail'. */
+      hairstyle: 'flowing',
     }
     expect(changedImageGenFields(edited, DEFAULTS)).toEqual([
       'promptLength',
@@ -231,6 +237,7 @@ describe('changedImageGenFields — what the operator sees as unsaved', () => {
       'notes',
       'promptTemplate',
       'model',
+      'hairstyle',
     ])
     expect(imageGenDraftEquals(edited, DEFAULTS)).toBe(false)
   })
@@ -304,6 +311,14 @@ describe('mergeImageGenAfterSave — the post-save canonical merge', () => {
     const merged = mergeImageGenAfterSave(typedSince, sent, canonical)
     expect(merged.notes).toBe('nina is full of sweat and glowing')
     expect(changedImageGenFields(merged, canonical)).toEqual(['notes'])
+  })
+
+  it('carries the 2026-09-18 hairstyle preset through the same scalar rule', () => {
+    const sent: ImageGenDraft = { ...DEFAULTS, hairstyle: 'flowing' }
+    const pickedSince: ImageGenDraft = { ...sent, hairstyle: 'shaggy' }
+    const merged = mergeImageGenAfterSave(pickedSince, sent, sent)
+    expect(merged.hairstyle).toBe('shaggy')
+    expect(changedImageGenFields(merged, sent)).toEqual(['hairstyle'])
   })
 
   it('carries the focus map through the same per-key rule', () => {
@@ -429,6 +444,20 @@ describe('ninaImagePrefsWriteSchema — the boundary', () => {
     for (const forged of ['gpt-image-1', 'qwen/qwen-image-3-ultra', '', null, 42]) {
       expect(
         ninaImagePrefsWriteSchema.safeParse(payload({ model: forged as never })).success,
+        String(forged),
+      ).toBe(false)
+    }
+  })
+
+  it('the 2026-09-18 hairstyle preset is a closed enum — every declared key in, everything else out', () => {
+    for (const key of NINA_HAIRSTYLE_KEYS) {
+      expect(ninaImagePrefsWriteSchema.safeParse(payload({ hairstyle: key })).success, key).toBe(
+        true,
+      )
+    }
+    for (const forged of ['mohawk', 'ponytail_', '', null, 42]) {
+      expect(
+        ninaImagePrefsWriteSchema.safeParse(payload({ hairstyle: forged as never })).success,
         String(forged),
       ).toBe(false)
     }
@@ -706,11 +735,11 @@ describe('the panel commits itself — no staged-commit row', () => {
     const code = codeOnly(PANEL)
     expect(code).toContain('setFocus(key, event.target.checked)')
     expect(code).toContain('setReference(parseReferenceKey(next))')
-    /* Each name appears once as the definition and once per call site that rides it: five
+    /* Each name appears once as the definition and once per call site that rides it: six
      * `commitImmediate` (definition, setFocus, setReference, the template reset, the model
-     * select) and two `scheduleDialCommit` (definition, the dial's onChange). Nothing else may
-     * route to either. */
-    expect((code.match(/commitImmediate\(/g) ?? []).length).toBe(5)
+     * select, the 2026-09-18 hairstyle select) and two `scheduleDialCommit` (definition, the
+     * dial's onChange). Nothing else may route to either. */
+    expect((code.match(/commitImmediate\(/g) ?? []).length).toBe(6)
     expect((code.match(/scheduleDialCommit\(/g) ?? []).length).toBe(2)
   })
 
@@ -856,5 +885,21 @@ describe('hasImageModelCopy / imageModelLabel / imageModelHint', () => {
     expect(pro).not.toBe('')
     expect(base).not.toBe(pro) // the pro hint exists because its latency story is different
     expect(imageModelHint('mystery/model')).toBe('')
+  })
+})
+
+/* ── the hairstyle dropdown's copy pair (the 2026-09-18 ask) ─────────────────────────────────── */
+
+describe('hasImageHairstyleCopy / imageHairstyleLabel', () => {
+  it('answers the closed three-key enum and nothing else', () => {
+    for (const key of NINA_HAIRSTYLE_KEYS) expect(hasImageHairstyleCopy(key), key).toBe(true)
+    expect(hasImageHairstyleCopy('mohawk')).toBe(false)
+    expect(hasImageHairstyleCopy('')).toBe(false)
+  })
+
+  it('labels every declared key, and degrades an unknown one to the prettified fallback', () => {
+    for (const key of NINA_HAIRSTYLE_KEYS)
+      expect(imageHairstyleLabel(key).length).toBeGreaterThan(0)
+    expect(imageHairstyleLabel('mystery_cut')).toBe(prettifyFocusKey('mystery_cut'))
   })
 })

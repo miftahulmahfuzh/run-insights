@@ -663,6 +663,9 @@ function compareNinaPhotoRefs(a: NinaPhotoRef, b: NinaPhotoRef): number {
  *                    unlike every other token here it is never empty, because a diffusion model
  *                    can't be told to disregard a contradicting sentence that is also in the
  *                    prompt; the override has to replace it, not follow it
+ *   {{hairstyle}}  — the Hairstyle preset's sentence (2026-09-18). Sits INSIDE the face
+ *                    paragraph, same reason as `{{angle}}`: never empty, because there is always
+ *                    one hairstyle selected
  *
  * **A line containing a token that expanded to empty is dropped ENTIRE.** That is what keeps
  * "VENUE: {{venue}}" from dangling when the field is empty, and what lets the FOCUS line vanish
@@ -687,6 +690,7 @@ export const NINA_IMAGE_TEMPLATE_KEYS = [
   'mood',
   'notes',
   'angle',
+  'hairstyle',
 ] as const
 
 export type NinaImageTemplateKey = (typeof NINA_IMAGE_TEMPLATE_KEYS)[number]
@@ -764,6 +768,11 @@ export const NINA_IMAGE_TEMPLATE_SPECS: Readonly<
     key: 'angle',
     description:
       "The opening paragraph's framing sentence: the default eye-level shot, or the chat model's own camera-position sentence in its place when the runner asked for something else (overhead, low angle, …) — see GENERATE_IMAGE_TOOL's `angle`. Sits inside the camera paragraph, not its own line, and is never empty.",
+  }),
+  hairstyle: Object.freeze({
+    key: 'hairstyle',
+    description:
+      'The Hairstyle preset, as one sentence. Sits inside the face paragraph, not its own line, and is never empty — like `{{angle}}`, there is always a hairstyle selected.',
   }),
 })
 
@@ -962,6 +971,58 @@ export function coerceNinaImageModel(value: unknown): NinaImageModelId {
 }
 
 /* ============================================================================
+ * §7b The hairstyle preset (the 2026-09-18 ask)
+ * ==========================================================================*/
+
+/**
+ * **The three the dropdown offers.** `ponytail` is not an invention — it is the sentence
+ * `NINA_FACE` always carried (`lib/nina/persona/appearance.ts`), lifted out of frozen prose and
+ * into a vocabulary member so an operator who never opens this control gets exactly what shipped
+ * before it existed. A CLOSED vocabulary, the same argument `NINA_IMAGE_MODEL_IDS` makes: the
+ * actual sentence lives in `NINA_HAIRSTYLE_SENTENCES` (`lib/nina/persona/appearance.ts`), so an
+ * unreadable key must degrade at the read rather than reach the camera with no hair sentence at
+ * all.
+ *
+ * Lives HERE and not in `appearance.ts` for `NINA_IMAGE_MODEL_IDS`'s own reason: the `'use
+ * client'` panel renders the dropdown, the Zod boundary checks the save, and this module is
+ * importable from both (zero imports) while `appearance.ts` carries the prose those keys point at.
+ */
+export const NINA_HAIRSTYLE_KEYS = ['ponytail', 'flowing', 'shaggy'] as const
+
+export type NinaHairstyleKey = (typeof NINA_HAIRSTYLE_KEYS)[number]
+
+/** The measured default — the sentence `NINA_FACE` always carried. Everything unreadable degrades
+ * to it, the same rule `coerceNinaImageModel` applies to the camera id. */
+export const NINA_HAIRSTYLE_DEFAULT: NinaHairstyleKey = 'ponytail'
+
+export interface NinaHairstyleSpec {
+  readonly key: NinaHairstyleKey
+  /** The dropdown's label. */
+  readonly label: string
+}
+
+export const NINA_HAIRSTYLE_SPECS: Readonly<Record<NinaHairstyleKey, NinaHairstyleSpec>> =
+  Object.freeze({
+    ponytail: Object.freeze({ key: 'ponytail', label: 'High ponytail (default)' }),
+    flowing: Object.freeze({ key: 'flowing', label: 'Long flowing hair' }),
+    shaggy: Object.freeze({ key: 'shaggy', label: 'Shaggy shoulder-length' }),
+  })
+
+/**
+ * A hairstyle key, made safe. **Anything unreadable is the default**, the same degrade
+ * `coerceNinaImageModel` makes — a generation must never reach the camera with no hair sentence at
+ * all. Also the read-side repair for every row written before this column existed: `nina_image_prefs.hairstyle`
+ * is nullable rather than backfilled (the `nina_tuning.*_enabled` precedent for a column added to a
+ * populated table), and `null` is exactly the shape an unreadable value takes here.
+ */
+export function coerceNinaHairstyle(value: unknown): NinaHairstyleKey {
+  if (typeof value !== 'string') return NINA_HAIRSTYLE_DEFAULT
+  return (NINA_HAIRSTYLE_KEYS as readonly string[]).includes(value)
+    ? (value as NinaHairstyleKey)
+    : NINA_HAIRSTYLE_DEFAULT
+}
+
+/* ============================================================================
  * §8 The preferences themselves
  * ==========================================================================*/
 
@@ -1015,6 +1076,11 @@ export interface NinaImagePrefs {
   readonly model: NinaImageModelId
   /** `NINA_IMAGE_REFERENCE_NONE` = an unanchored generation. */
   readonly reference: NinaImageReference
+  /**
+   * The 2026-09-18 ask. The narrow `NinaHairstyleKey`, same reason `model` is narrow: the store
+   * coerces and nothing downstream re-reads it loosely.
+   */
+  readonly hairstyle: NinaHairstyleKey
 }
 
 /**
@@ -1044,6 +1110,7 @@ export interface NinaImagePrefsInput {
   readonly promptTemplate?: unknown
   readonly model?: unknown
   readonly reference?: unknown
+  readonly hairstyle?: unknown
 }
 
 /**
@@ -1064,6 +1131,7 @@ export const NINA_IMAGE_PREFS_DEFAULTS: NinaImagePrefs = Object.freeze({
   promptTemplate: '',
   model: NINA_IMAGE_MODEL_DEFAULT,
   reference: NINA_IMAGE_REFERENCE_NONE,
+  hairstyle: NINA_HAIRSTYLE_DEFAULT,
 })
 
 /**
@@ -1096,5 +1164,6 @@ export function coerceNinaImagePrefs(
     promptTemplate: coerceNinaImageTemplate(input?.promptTemplate),
     model: coerceNinaImageModel(input?.model),
     reference: coerceNinaImageReference(input?.reference),
+    hairstyle: coerceNinaHairstyle(input?.hairstyle),
   }
 }

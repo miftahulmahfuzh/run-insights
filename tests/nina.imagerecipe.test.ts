@@ -9,7 +9,10 @@ import {
   sidecarText,
 } from '@/lib/nina/imagegen'
 import {
+  coerceNinaHairstyle,
   coerceNinaImageModel,
+  NINA_HAIRSTYLE_DEFAULT,
+  NINA_HAIRSTYLE_KEYS,
   NINA_IMAGE_FOCUS_KEYS,
   NINA_IMAGE_MODEL_DEFAULT,
   NINA_IMAGE_MODEL_IDS,
@@ -23,6 +26,8 @@ import {
   NINA_BODY,
   NINA_BODY_FACTS,
   NINA_BODY_SENTENCES,
+  NINA_FACE,
+  NINA_HAIRSTYLE_SENTENCES,
   ninaAppearance,
 } from '@/lib/nina/persona'
 import {
@@ -403,6 +408,52 @@ describe('the prompt', () => {
     expect(coerceNinaImageModel('qwen/qwen-image-3-pro')).toBe('qwen/qwen-image-3-pro')
     for (const bad of [undefined, null, '', 'gpt-image-1', 42]) {
       expect(coerceNinaImageModel(bad), String(bad)).toBe(NINA_IMAGE_MODEL_DEFAULT)
+    }
+  })
+
+  /* ────────────────────────────────────────────────────────────────────────────────────────────
+   * §7b — THE HAIRSTYLE PRESET (the 2026-09-18 ask)
+   * ──────────────────────────────────────────────────────────────────────────────────────────*/
+
+  it('§7b: ponytail is the default, and it is the sentence NINA_FACE always carried', () => {
+    // RULING A6's mitigation shape, once more: the default key's sentence and the frozen
+    // pre-feature `NINA_FACE` constant must agree, or the day one drifts, a "default" hairstyle
+    // photograph stops matching the face description everything else in the canon still assumes.
+    expect(NINA_HAIRSTYLE_DEFAULT).toBe('ponytail')
+    expect(NINA_FACE).toContain(NINA_HAIRSTYLE_SENTENCES.ponytail)
+    expect(NINA_HAIRSTYLE_SENTENCES.ponytail).toContain('high ponytail')
+  })
+
+  it('§7b: the coerce degrades an unreadable or unknown key to ponytail', () => {
+    for (const key of NINA_HAIRSTYLE_KEYS) expect(coerceNinaHairstyle(key)).toBe(key)
+    for (const bad of [undefined, null, '', 'mohawk', 42]) {
+      expect(coerceNinaHairstyle(bad), String(bad)).toBe(NINA_HAIRSTYLE_DEFAULT)
+    }
+  })
+
+  it('§7b: the selfie prompt carries exactly the selected hairstyle sentence, and no other', () => {
+    for (const key of NINA_HAIRSTYLE_KEYS) {
+      const prompt = buildNinaImagePrompt({
+        purpose: 'selfie',
+        scene: 'on the track',
+        prefs: prefsWith({ hairstyle: key }),
+      })
+      expect(prompt, key).toContain(NINA_HAIRSTYLE_SENTENCES[key])
+      for (const other of NINA_HAIRSTYLE_KEYS) {
+        if (other !== key)
+          expect(prompt, `${key} vs ${other}`).not.toContain(NINA_HAIRSTYLE_SENTENCES[other])
+      }
+    }
+  })
+
+  it('§7b: the avatar prompt (ninaAppearance) carries the same selected hairstyle sentence', () => {
+    for (const key of NINA_HAIRSTYLE_KEYS) {
+      const prompt = buildNinaImagePrompt({
+        purpose: 'avatar',
+        scene: 'x',
+        prefs: prefsWith({ hairstyle: key }),
+      })
+      expect(prompt, key).toContain(NINA_HAIRSTYLE_SENTENCES[key])
     }
   })
 

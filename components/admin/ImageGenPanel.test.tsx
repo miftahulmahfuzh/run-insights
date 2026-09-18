@@ -6,6 +6,7 @@ import { ImageGenPanel } from './ImageGenPanel'
 import { saveNinaImagePrefsAction } from '@/lib/admin/imageGenActions'
 import { IMAGEGEN_DIAL_COMMIT_DEBOUNCE_MS, type ImageGenDraft } from '@/lib/admin/imageGenModel'
 import {
+  NINA_HAIRSTYLE_KEYS,
   NINA_IMAGE_FOCUS_KEYS,
   NINA_IMAGE_MODEL_IDS,
   NINA_PROMPT_TEMPLATE_MAX,
@@ -57,6 +58,7 @@ function prefs(overrides?: Partial<ImageGenDraft>): ImageGenDraft {
     promptTemplate: 'SHELL {{scene}}',
     model: 'qwen/qwen-image-3',
     reference: { source: 'none', id: '' },
+    hairstyle: 'ponytail',
     ...overrides,
   }
 }
@@ -124,11 +126,22 @@ describe('ImageGenPanel — chrome', () => {
 
   it('renders the camera as a closed select of the model ids', () => {
     panel()
-    const select = screen.getByRole('combobox') as HTMLSelectElement
+    // Two selects now share the page (the camera, and the 2026-09-18 hairstyle preset); the
+    // camera is the first in DOM order.
+    const select = screen.getAllByRole('combobox')[0] as HTMLSelectElement
     expect([...select.querySelectorAll('option')].map((o) => o.getAttribute('value'))).toEqual([
       ...NINA_IMAGE_MODEL_IDS,
     ])
     expect(select).toHaveValue('qwen/qwen-image-3')
+  })
+
+  it('renders the hairstyle as a closed select of the preset keys', () => {
+    panel()
+    const select = screen.getAllByRole('combobox')[1] as HTMLSelectElement
+    expect([...select.querySelectorAll('option')].map((o) => o.getAttribute('value'))).toEqual([
+      ...NINA_HAIRSTYLE_KEYS,
+    ])
+    expect(select).toHaveValue('ponytail')
   })
 
   it('names the template textarea — the one control whose heading is not a label', () => {
@@ -187,10 +200,23 @@ describe('ImageGenPanel — the commit moments', () => {
   it('switching the camera commits on CHANGE', async () => {
     saveAction.mockResolvedValue({ ok: true, prefs: prefs() })
     panel()
-    fireEvent.change(screen.getByRole('combobox'), { target: { value: NINA_IMAGE_MODEL_IDS[1] } })
+    fireEvent.change(screen.getAllByRole('combobox')[0]!, {
+      target: { value: NINA_IMAGE_MODEL_IDS[1] },
+    })
     await advance(0)
     expect(saveAction).toHaveBeenCalledTimes(1)
     expect(saveAction.mock.calls[0]![0]!.model).toBe(NINA_IMAGE_MODEL_IDS[1]!)
+  })
+
+  it('switching the hairstyle commits on CHANGE', async () => {
+    saveAction.mockResolvedValue({ ok: true, prefs: prefs() })
+    panel()
+    fireEvent.change(screen.getAllByRole('combobox')[1]!, {
+      target: { value: NINA_HAIRSTYLE_KEYS[1] },
+    })
+    await advance(0)
+    expect(saveAction).toHaveBeenCalledTimes(1)
+    expect(saveAction.mock.calls[0]![0]!.hairstyle).toBe(NINA_HAIRSTYLE_KEYS[1]!)
   })
 
   it('the reference pick commits on CHANGE through the picker’s opaque key', async () => {

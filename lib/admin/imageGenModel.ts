@@ -1,10 +1,13 @@
 import {
+  NINA_HAIRSTYLE_KEYS,
+  NINA_HAIRSTYLE_SPECS,
   NINA_IMAGE_FOCUS_KEYS,
   NINA_IMAGE_FOCUS_SPECS,
   NINA_IMAGE_MODEL_IDS,
   NINA_IMAGE_MODEL_SPECS,
   NINA_IMAGE_REFERENCE_SOURCES,
   ninaPromptLengthRungFor,
+  type NinaHairstyleKey,
   type NinaImageModelId,
   type NinaImagePrefs,
 } from '@/lib/nina/imageprefs'
@@ -100,6 +103,12 @@ export interface ImageGenDraft {
    * `ninaImagePrefsWriteSchema` narrows it to `NINA_IMAGE_REFERENCE_SOURCES` at the boundary.
    */
   reference: { source: string; id: string }
+  /**
+   * The 2026-09-18 hairstyle preset. A loose `string` for the same seam reason as `model` — the
+   * panel reads it opaquely through `imageHairstyleLabel` — and the Zod boundary narrows it to
+   * `NINA_HAIRSTYLE_KEYS` at the save.
+   */
+  hairstyle: string
 }
 
 /** One control's user-facing text. The label goes beside the control; the hint goes under it. */
@@ -261,6 +270,7 @@ export function toImageGenDraft(prefs: NinaImagePrefs): ImageGenDraft {
     promptTemplate: prefs.promptTemplate,
     model: prefs.model,
     reference: { source: prefs.reference.source, id: prefs.reference.id },
+    hairstyle: prefs.hairstyle,
   }
 }
 
@@ -310,6 +320,27 @@ export function imageModelHint(id: string): string {
     return NINA_IMAGE_MODEL_SPECS[id as NinaImageModelId].hint
   }
   return ''
+}
+
+/* ── the hairstyle dropdown's copy pair (the 2026-09-18 ask) ─────────────────────────────────
+ * Same shape as the model picker's pair, one paragraph up: a closed vocabulary, read opaquely
+ * through these two functions, with a degrade for a key this module has never heard of. */
+
+/** Whether a key is one phase 1 actually declares. The test reads this. */
+export function hasImageHairstyleCopy(id: string): boolean {
+  return (NINA_HAIRSTYLE_KEYS as readonly string[]).includes(id)
+}
+
+/**
+ * The dropdown's label, read off `NINA_HAIRSTYLE_SPECS`. The fallback exists for the seam — a
+ * `draft.hairstyle` is a loose `string`, and a key this module has never heard of degrades to a
+ * readable label rather than a crash, the way `imageModelLabel` does.
+ */
+export function imageHairstyleLabel(id: string): string {
+  if (hasImageHairstyleCopy(id)) {
+    return NINA_HAIRSTYLE_SPECS[id as NinaHairstyleKey].label
+  }
+  return prettifyFocusKey(id)
 }
 
 /**
@@ -391,6 +422,7 @@ export function changedImageGenFields(next: ImageGenDraft, saved: ImageGenDraft)
   if (next.notes !== saved.notes) changed.push('notes')
   if (next.promptTemplate !== saved.promptTemplate) changed.push('promptTemplate')
   if (next.model !== saved.model) changed.push('model')
+  if (next.hairstyle !== saved.hairstyle) changed.push('hairstyle')
   if (referenceKey(next.reference) !== referenceKey(saved.reference)) changed.push('reference')
 
   for (const key of Object.keys({ ...saved.focus, ...next.focus }).sort()) {
@@ -490,6 +522,7 @@ export function mergeImageGenAfterSave(
         ? canonical.promptTemplate
         : current.promptTemplate,
     model: current.model === sent.model ? canonical.model : current.model,
+    hairstyle: current.hairstyle === sent.hairstyle ? canonical.hairstyle : current.hairstyle,
     reference:
       referenceKey(current.reference) === referenceKey(sent.reference)
         ? canonical.reference

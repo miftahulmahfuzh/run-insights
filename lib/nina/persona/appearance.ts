@@ -10,7 +10,7 @@
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  */
 
-import type { NinaImagePrefs } from '../imageprefs'
+import type { NinaHairstyleKey, NinaImagePrefs } from '../imageprefs'
 
 /* ============================================================================
  * What she looks like
@@ -112,7 +112,60 @@ export const NINA_BODY_AVATAR = `She is voluptuous — big boobs and very long c
  * a change fights the reference. Three concerns, three paragraph boundaries, one source for each
  * sentence — `NINA_APPEARANCE` is derived from the three halves rather than written a fourth time.
  */
-export const NINA_FACE = `A white, beautiful, tall, caucasian woman in her late twenties. Long dark brown hair pulled into a high ponytail with loose strands at the temples. Dark brown eyes, thick straight eyebrows, no makeup. Her expression is serious, like a magazine cover model's: composed, never smiling or laughing, lips just barely parted. Usually a little sweaty.`
+/**
+ * The face paragraph's first sentence — everything before the hair, which the 2026-09-18
+ * hairstyle preset carved out of what used to be one fixed second sentence here.
+ */
+const NINA_FACE_PREFIX = 'A white, beautiful, tall, caucasian woman in her late twenties.'
+
+/**
+ * The face paragraph's tail — everything after the hair. Unaffected by the hairstyle preset.
+ */
+const NINA_FACE_SUFFIX = `Dark brown eyes, thick straight eyebrows, no makeup. Her expression is serious, like a magazine cover model's: composed, never smiling or laughing, lips just barely parted. Usually a little sweaty.`
+
+/**
+ * **The hairstyle preset's vocabulary, in prose.** `ponytail` is transcribed from `nina.png`
+ * unchanged — the sentence `NINA_FACE` always carried, before the 2026-09-18 ask lifted it out of
+ * fixed prose and into a selectable option. The other two are the operator's own two additions.
+ *
+ * Keyed by `NinaHairstyleKey` (`../imageprefs`) rather than declared here, for the reason `NINA_FOCUS_EMPHASIS`
+ * (`lib/nina/imagegen.ts`) is keyed by `NinaImageFocusKey` and not declared beside it: the
+ * vocabulary (which keys exist, their labels) lives in the zero-import `imageprefs.ts` so the
+ * `'use client'` panel can render the dropdown, and the PROSE each key expands to lives beside
+ * every other sentence of the canon it belongs to.
+ */
+export const NINA_HAIRSTYLE_SENTENCES: Readonly<Record<NinaHairstyleKey, string>> = Object.freeze({
+  ponytail: 'Long dark brown hair pulled into a high ponytail with loose strands at the temples.',
+  flowing: 'Her long hair cascades down, falling loosely to gently conceal the sides of her face.',
+  shaggy: 'Her hair is a shaggy shoulder-length cut with bangs that fall on the sides of her face.',
+})
+
+/**
+ * The face paragraph, hair swapped in. `ninaAppearance` below calls this instead of reading a
+ * static `NINA_FACE`, so the avatar path — which goes through `ninaAppearance` — picks up the
+ * operator's hairstyle preset the same way the selfie path's `{{hairstyle}}` token does.
+ */
+export function ninaFaceParagraph(hairstyle: NinaHairstyleKey): string {
+  return `${NINA_FACE_PREFIX} ${NINA_HAIRSTYLE_SENTENCES[hairstyle]} ${NINA_FACE_SUFFIX}`
+}
+
+/**
+ * **The face paragraph, at its shipping default.** Kept as a named export — rather than inlining
+ * `ninaFaceParagraph(NINA_HAIRSTYLE_DEFAULT)` at every call site — because `tests/nina.prompts.test.ts`
+ * and `tests/nina.imagerecipe.test.ts` both assert against this exact string, and a frozen constant
+ * is the one spelling neither test has to reconstruct.
+ */
+export const NINA_FACE = ninaFaceParagraph('ponytail')
+
+/**
+ * **The face paragraph, as a template LINE.** `NINA_PROMPT_TEMPLATE_DEFAULT`
+ * (`lib/nina/imagegen.ts`) splices this in place of a static `NINA_FACE`, so the selfie shell
+ * carries a live `{{hairstyle}}` token rather than one baked-in sentence — the same "interpolated
+ * from the canon constants, not hand-copied" rule that constant's own header states for every
+ * other prose piece it assembles. Built from the same `NINA_FACE_PREFIX`/`NINA_FACE_SUFFIX`
+ * `ninaFaceParagraph` uses, so the two can never drift apart.
+ */
+export const NINA_FACE_TEMPLATE_LINE = `${NINA_FACE_PREFIX} {{hairstyle}} ${NINA_FACE_SUFFIX}`
 
 const NINA_DEFAULT_OUTFIT = `Her default outfit is a heather-grey racerback tank, black fitted running shorts, white running shoes, and a black digital watch on her left wrist. Often a white towel over one shoulder and a blue water bottle in one hand. Her home ground is a red 400 m athletics track beside a green field, in flat morning sun.`
 
@@ -235,7 +288,7 @@ export function ninaAppearance(
   const body = detail.body.trim().length > 0 ? detail.body : NINA_BODY_SENTENCES[0]!
 
   const paragraphs: string[] = [body]
-  if (detail.face) paragraphs.push(NINA_FACE)
+  if (detail.face) paragraphs.push(ninaFaceParagraph(prefs.hairstyle))
 
   /* `wardrobe` is `string` and never null — phase 1's coercer returns `''` for anything unusable
    * and has already collapsed the whitespace to single spaces and capped the length. `''` is the

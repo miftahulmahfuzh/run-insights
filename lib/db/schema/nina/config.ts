@@ -330,6 +330,21 @@ export const ninaImagePrefs = pgTable('nina_image_prefs', {
    */
   referenceId: text('reference_id').notNull(),
 
+  /**
+   * The 2026-09-18 ask: which of `NINA_HAIRSTYLE_KEYS` (`lib/nina/imageprefs.ts`) she is
+   * photographed with — `'ponytail' | 'flowing' | 'shaggy'`. No CHECK, this table's standing
+   * argument: an unknown key is a bug in one writer, and `coerceNinaHairstyle` degrades the read
+   * to the measured default rather than failing a generation.
+   *
+   * **Nullable, unlike every other column in this table, and deliberately so.** Every column
+   * above was NOT NULL from this table's own creation, when the table held no rows yet — there was
+   * no history for NULL to describe. This column is added to a table that already has rows, so it
+   * is the `nina_tuning.*_enabled` precedent instead (see that table's header): NULL means "a row
+   * written before this preference existed", `coerceNinaHairstyle(null)` reads it as the default,
+   * and no backfill is needed.
+   */
+  hairstyle: text('hairstyle'),
+
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
     .notNull()
     .defaultNow()

@@ -78,7 +78,10 @@ const EXPECTED_RUNTIME = [
   'NINA_BODY_SENTENCES',
   'NINA_DEFAULT_OUTFIT_VALUE',
   'NINA_FACE',
+  'NINA_FACE_TEMPLATE_LINE',
+  'NINA_HAIRSTYLE_SENTENCES',
   'ninaAppearance',
+  'ninaFaceParagraph',
   'withSentenceStop',
 
   /* voice.ts — the registers and the verbatim example lines */

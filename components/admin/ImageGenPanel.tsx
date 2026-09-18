@@ -15,6 +15,7 @@ import {
   imageFocusCopy,
   imageGenDraftEquals,
   IMAGEGEN_DIAL_COMMIT_DEBOUNCE_MS,
+  imageHairstyleLabel,
   imageModelHint,
   imageModelLabel,
   mergeImageGenAfterSave,
@@ -26,6 +27,7 @@ import {
 } from '@/lib/admin/imageGenModel'
 import { cn } from '@/lib/cn'
 import {
+  NINA_HAIRSTYLE_KEYS,
   NINA_IMAGE_FOCUS_KEYS,
   NINA_IMAGE_MODEL_IDS,
   NINA_IMAGE_PROMPT_LENGTH_MAX,
@@ -321,6 +323,7 @@ export function ImageGenPanel({
         promptTemplate: sent.promptTemplate,
         model: sent.model,
         reference: sent.reference,
+        hairstyle: sent.hairstyle,
       })
       if (!outcome.ok || outcome.prefs === undefined) {
         /* Nothing was written, so `saved` stays where it was — the panel is still pending exactly
@@ -404,6 +407,14 @@ export function ImageGenPanel({
    */
   function setModel(next: string) {
     commitImmediate({ ...draft, model: next })
+  }
+
+  /**
+   * The 2026-09-18 hairstyle preset — an immediate commit, `setModel`'s own reasoning: the
+   * dropdown's change IS the finished edit.
+   */
+  function setHairstyle(next: string) {
+    commitImmediate({ ...draft, hairstyle: next })
   }
 
   /**
@@ -540,6 +551,38 @@ export function ImageGenPanel({
             <span className="mt-1.5 block max-w-[46ch] text-[11px] font-medium text-ink-3">
               {imageModelHint(draft.model) ||
                 'Which camera draws her. An unknown id falls back to the measured one.'}
+            </span>
+          </label>
+        </section>
+
+        {/*
+         * The 2026-09-18 hairstyle preset. A closed dropdown, `Image model`'s own reasoning: the
+         * vocabulary lives beside its coercion in `lib/nina/imageprefs.ts`, and the Zod boundary
+         * refuses anything outside it. It commits on CHANGE, like the camera — the selection is
+         * the finished edit, and the new hairstyle is in the next photograph with no invalidation
+         * step, exactly the assembled prompt preview below shows.
+         */}
+        <section className="mb-6">
+          <label className="block">
+            <span className="mb-1.5 flex items-baseline gap-2 text-[12px] font-semibold tracking-[0.02em] text-ink-2">
+              Hairstyle
+              {pendingFields.has('hairstyle') && (
+                <span className="text-[11px] font-semibold text-accent">unsaved</span>
+              )}
+            </span>
+            <select
+              className={CONTROL_CLASS}
+              value={draft.hairstyle}
+              onChange={(event) => setHairstyle(event.target.value)}
+            >
+              {NINA_HAIRSTYLE_KEYS.map((key) => (
+                <option key={key} value={key}>
+                  {imageHairstyleLabel(key)}
+                </option>
+              ))}
+            </select>
+            <span className="mt-1.5 block max-w-[46ch] text-[11px] font-medium text-ink-3">
+              How she wears her hair in every photograph. An unknown key falls back to the default.
             </span>
           </label>
         </section>

@@ -499,6 +499,8 @@ describe('the defaults, and the coercion that never throws', () => {
        * in-platform ceiling). Pinned as a literal so a default flip is always a witnessed one. */
       model: 'qwen/qwen-image-3',
       reference: { source: 'none', id: '' },
+      /* The sentence NINA_FACE always carried, lifted into a selectable option (2026-09-18). */
+      hairstyle: 'ponytail',
     })
   })
 
@@ -650,11 +652,12 @@ describe('the editable prompt template (the 2026-09-10 ask, second revision)', (
 
   const VALID_MINIMAL = '{{scene}}'
 
-  it('the vocabulary is the ten value slots, and the required one is scene', () => {
+  it('the vocabulary is the eleven value slots, and the required one is scene', () => {
     expect([...NINA_IMAGE_TEMPLATE_KEYS].sort()).toEqual([
       'angle',
       'faceLock',
       'focus',
+      'hairstyle',
       'mood',
       'notes',
       'presence',
