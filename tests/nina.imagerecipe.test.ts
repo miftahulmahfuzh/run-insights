@@ -6,6 +6,8 @@ import {
   NINA_BODY_BUTT_SENTENCES,
   NINA_CAMERA_ANGLE_REMINDER,
   NINA_CAMERA_ANGLE_SENTENCES,
+  NINA_OVERHEAD_EXPRESSION_SENTENCE,
+  NINA_OVERHEAD_PRESENCE_SENTENCE,
   NINA_PROMPT_TEMPLATE_DEFAULT,
   sidecarText,
 } from '@/lib/nina/imagegen'
@@ -672,6 +674,119 @@ describe('the prompt', () => {
         if (sentence !== '') expect(prompt).not.toContain(sentence)
       }
     }
+  })
+
+  /* ────────────────────────────────────────────────────────────────────────────────────────────
+   * §7f — THE OVERHEAD STANCE, IRONCLAD (2026-09-18, `/pull-image-gen-job`'s `JQSyIfgUb59C`
+   * follow-up: `pose` free text was never checked against `{{angle}}`, so nothing stopped a
+   * standing/sitting pose from reaching the same prompt as an overhead camera)
+   * ──────────────────────────────────────────────────────────────────────────────────────────*/
+
+  it('§7f: eye_level and low_angle are unaffected — no stance override, dial behaviour unchanged', () => {
+    for (const key of ['eye_level', 'low_angle'] as const) {
+      const prompt = buildNinaImagePrompt({
+        purpose: 'selfie',
+        scene: 'on the track',
+        pose: 'mid-stride, arms pumping',
+        tuning: withTrait('steamy', 100),
+        prefs: prefsWith({ cameraAngle: key }),
+      })
+      expect(prompt, key).toContain('mid-stride, arms pumping')
+      expect(prompt, key).not.toContain(NINA_OVERHEAD_PRESENCE_SENTENCE)
+    }
+  })
+
+  it('§7f: overhead ignores `pose` entirely and spends the ironclad stance instead', () => {
+    const fromPrefs = buildNinaImagePrompt({
+      purpose: 'selfie',
+      scene: 'on the track',
+      pose: 'sitting up against the headboard, knees drawn in',
+      tuning: withTrait('steamy', 100),
+      prefs: prefsWith({ cameraAngle: 'overhead' }),
+    })
+    const fromChatModel = buildNinaImagePrompt({
+      purpose: 'selfie',
+      scene: 'on the track',
+      pose: 'sitting up against the headboard, knees drawn in',
+      angle: 'overhead',
+      tuning: withTrait('steamy', 100),
+    })
+    for (const prompt of [fromPrefs, fromChatModel]) {
+      expect(prompt).toContain(NINA_OVERHEAD_PRESENCE_SENTENCE)
+      expect(prompt).not.toContain('sitting up against the headboard')
+    }
+  })
+
+  it('§7f: overhead spends the stance UNCONDITIONALLY — no tuning needed at all', () => {
+    // The geometric fact holds whether or not the persona is dialed romantic: an overhead selfie
+    // is not physically possible from any pose but lying flat, so unlike every other clause
+    // `ninaPhotoPresence` renders, this one is not gated on `steamy`/`flirty`.
+    const noTuning = buildNinaImagePrompt({
+      purpose: 'selfie',
+      scene: 'on the track',
+      prefs: prefsWith({ cameraAngle: 'overhead' }),
+    })
+    const quietDials = buildNinaImagePrompt({
+      purpose: 'selfie',
+      scene: 'on the track',
+      tuning: tuned({ traits: { ...NINA_TUNING_DEFAULTS.traits, steamy: 0, flirty: 0 } }),
+      prefs: prefsWith({ cameraAngle: 'overhead' }),
+    })
+    for (const prompt of [noTuning, quietDials]) {
+      expect(prompt).toContain('POSE AND PRESENCE:')
+      expect(prompt).toContain(NINA_OVERHEAD_PRESENCE_SENTENCE)
+    }
+  })
+
+  it('§7f: a high flirty dial still joins its own clause after the stance, reworded for the geometry', () => {
+    const prompt = buildNinaImagePrompt({
+      purpose: 'selfie',
+      scene: 'on the track',
+      tuning: withTrait('flirty', 100),
+      prefs: prefsWith({ cameraAngle: 'overhead' }),
+    })
+    expect(prompt).toContain(
+      `${NINA_OVERHEAD_PRESENCE_SENTENCE} ${NINA_OVERHEAD_EXPRESSION_SENTENCE}`,
+    )
+    // The un-reworded idiom is angle-specific — it must not survive for overhead.
+    expect(prompt).not.toContain('looking straight down the lens')
+  })
+
+  it('§7f: a quiet flirty dial gets the stance with no expression clause joined on', () => {
+    const prompt = buildNinaImagePrompt({
+      purpose: 'selfie',
+      scene: 'on the track',
+      prefs: prefsWith({ cameraAngle: 'overhead' }),
+    })
+    expect(prompt).toContain(NINA_OVERHEAD_PRESENCE_SENTENCE)
+    expect(prompt).not.toContain(NINA_OVERHEAD_EXPRESSION_SENTENCE)
+  })
+
+  it("§7f: regression — job `JQSyIfgUb59C`'s exact shape now stays flat and face-up regardless of `pose`", () => {
+    // The runner asked "foto lo telentang ngeliat lurus keatas, kaki lo keduanya lurus ngangkang
+    // lebar, tangan kanan remas tete lo" — her own gaze, not a camera pick — and the standing
+    // preset was `overhead`. Even a `pose` the chat model got wrong can no longer fight it.
+    const prompt = buildNinaImagePrompt({
+      purpose: 'selfie',
+      scene:
+        'telolet di kasur kamar gw sore-sore gini, telentang ngeliat langit-langit, kedua kaki lurus diangkang lebar, tangan kanan remas dadaku sendiri, rambut berantakan di kasur',
+      pose: 'lying on her back on the bed, both legs long and straight and spread wide, knees never bending, one hand on her chest',
+      mood: 'wanting him, lips barely parted, flushed',
+      tuning: withTrait('flirty', 100),
+      prefs: prefsWith({ cameraAngle: 'overhead' }),
+    })
+    expect(prompt).toContain(NINA_CAMERA_ANGLE_SENTENCES.overhead)
+    expect(prompt).toContain(NINA_OVERHEAD_PRESENCE_SENTENCE)
+    expect(prompt).not.toContain('looking straight down the lens')
+  })
+
+  it('§7f: avatar-purpose photos never spend the overhead stance — the avatar has no {{angle}} at all', () => {
+    const prompt = buildNinaImagePrompt({
+      purpose: 'avatar',
+      scene: 'x',
+      tuning: withTrait('flirty', 100),
+    })
+    expect(prompt).not.toContain(NINA_OVERHEAD_PRESENCE_SENTENCE)
   })
 
   /* ────────────────────────────────────────────────────────────────────────────────────────────

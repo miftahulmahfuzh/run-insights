@@ -207,6 +207,44 @@ export const NINA_BODY_BUTT_SENTENCES: Readonly<Record<NinaCameraAngleKey, strin
 )
 
 /**
+ * **The overhead stance, ironclad (2026-09-18, `/pull-image-gen-job`'s `JQSyIfgUb59C` follow-up).**
+ * A selfie shot from directly above only works, physically, if she is lying flat and looking
+ * straight back up into the lens — there is no standing, sitting or crouching pose that puts her
+ * face inside a bird's-eye frame. `lUARJrfreQta`'s own header, three sentences up, already caught
+ * one symptom of this ("the photo still came back arched up and shot at a steep-but-not-vertical
+ * angle") and fixed the ONE clause making an unsatisfiable viewing-geometry claim about her butt;
+ * it left the stance itself untouched, because nothing in `POSE AND PRESENCE:` was making a
+ * geometry claim yet to fix.
+ *
+ * Every other `overhead` fix in this file (`{{angle}}` itself, the butt clause, the camera check)
+ * is a FIXED clause losing an argument it should have won against free text winning by virtue of
+ * coming later. This is the opposite shape: `ninaPhotoPresence`'s `pose` argument is exactly that
+ * free text, spent only when `steamy` is high enough, and nothing ever checked it against the
+ * camera position `{{angle}}` had already settled — a `pose` of "sitting up against the
+ * headboard" and `angle: 'overhead'` could both reach the same prompt with nothing between them.
+ * So for `overhead` specifically, `pose` is not consulted at all, and this sentence is spent
+ * UNCONDITIONALLY — not gated on `steamy`/`flirty` the way the rest of `ninaPhotoPresence` is,
+ * because a non-romantic overhead photo needs the same flat, face-up stance just as much as a
+ * romantic one does; there is no camera-consistent overhead pose this dial could opt her out of.
+ *
+ * "Not arched up" names `lUARJrfreQta`'s own measured failure directly, so the two fixes cover the
+ * two halves of the same photograph: the butt clause says what is still true of her body when the
+ * lens cannot see it flattened, this sentence says the body is flat enough for that to be true.
+ */
+export const NINA_OVERHEAD_PRESENCE_SENTENCE = `She is lying flat on her back, her whole body stretched out on the surface directly beneath the lens — not sitting up, not arched up, not propped on an elbow, not turned to one side. Her face is tilted straight back so her eyes meet the camera hovering directly above her.`
+
+/**
+ * `flirty`'s existing expression clause says "looking straight down the lens" — read literally
+ * rather than as the eye-contact idiom it is meant to be, that is backwards for a camera that is
+ * `overhead`: her eyes have to travel UP to meet a lens hovering above her, not down. `eye_level`
+ * and `low_angle` both keep the original sentence unchanged (idiomatic for a level camera, and
+ * literally correct for a low one — she looks down TOWARD it); only `overhead` gets the reworded
+ * expression, joined after `NINA_OVERHEAD_PRESENCE_SENTENCE` the same way the original joined
+ * after `pose`.
+ */
+export const NINA_OVERHEAD_EXPRESSION_SENTENCE = `Her expression is sensual and serious, lips just barely parted, like she knows exactly what she is doing. She is not smiling.`
+
+/**
  * **The calf-to-thigh ratio clause (2026-09-17), and why it lives in the SUFFIX and not the
  * framing sentence it sits beside.**
  *
@@ -280,9 +318,24 @@ function ninaPhotoPresence(
   /** The chat model's own per-photograph stance, matched to `scene`. Replaces the fixed clause
    * below rather than joining it — the same one-line-ever rule `outfit` already follows — because
    * a boudoir pose glued onto a running-track scene is what made the gallery's images look
-   * interchangeable regardless of scene. Blank or absent falls back to that fixed clause. */
+   * interchangeable regardless of scene. Blank or absent falls back to that fixed clause. NOT
+   * consulted at all for `angle: 'overhead'` — see `NINA_OVERHEAD_PRESENCE_SENTENCE`'s header. */
   pose?: string | null,
+  /** The resolved camera angle (`{{angle}}`'s own key), selfie only — `undefined` for the avatar
+   * call, which never has one. Only `'overhead'` changes anything here. */
+  angle?: NinaCameraAngleKey,
 ): string | null {
+  /*
+   * IRONCLAD, AND FIRST: before the `tuning == null` guard below, because this is not one of the
+   * two dials' clauses — it is a fact about what is physically possible to shoot from directly
+   * above. See `NINA_OVERHEAD_PRESENCE_SENTENCE`'s header for the whole argument.
+   */
+  if (purpose === 'selfie' && angle === 'overhead') {
+    return tuning != null && isDialHigh(tuning.traits.flirty)
+      ? `${NINA_OVERHEAD_PRESENCE_SENTENCE} ${NINA_OVERHEAD_EXPRESSION_SENTENCE}`
+      : NINA_OVERHEAD_PRESENCE_SENTENCE
+  }
+
   if (tuning == null) return null
 
   const clauses: string[] = []
@@ -744,7 +797,7 @@ export function buildNinaImagePrompt(input: {
     wardrobe: withSentenceStop(wardrobeValue),
     focus: focusTerms,
     faceLock: faceLockValue,
-    presence: ninaPhotoPresence('selfie', tuning, input.pose) ?? '',
+    presence: ninaPhotoPresence('selfie', tuning, input.pose, angleKey) ?? '',
     venue: prefs.venue.trim(),
     time: prefs.time.trim(),
     scene: input.scene.trim(),
