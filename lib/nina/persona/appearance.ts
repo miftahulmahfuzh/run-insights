@@ -84,6 +84,20 @@ export const NINA_BODY_FACTS =
 export const NINA_BODY = NINA_BODY_SENTENCES.join(' ')
 
 /**
+ * **The hands clause (2026-09-18, job `tyFdHavh_jmE`).** The canon named every other visible
+ * body part explicitly (calves, thighs, chest, waist, butt) but never her hands — `pull-image-gen-job`'s
+ * pull of that job found nothing about fingers or nails anywhere in the prompt, and the photograph
+ * came back with short, blunt fingers and nails with no shape to them, on a runner's own complaint
+ * ("kukunya tumpul"). Same failure category as the calf/thigh ratio bug this file's header
+ * describes above: a diffusion model given no positive instruction for a body part falls back to
+ * its generic training-set default, which for hands is frequently stubby and blunt rather than
+ * elegant. The "never claw-like" half is deliberate too, not padding — the runner's own ask was for
+ * nails a little longer than bare-cut, explicitly not the exaggerated talon length a bare "long
+ * nails" instruction tends to invite.
+ */
+export const NINA_HANDS_SENTENCE = `Her hands have long, elegant fingers with neatly manicured, gently extended almond-shaped nails — never blunt, stubby or bitten down, and never long, sharp or claw-like.`
+
+/**
  * **The avatar variant, and the one place in the canon that names its own crop.**
  *
  * `NINA_AVATAR_STYLE` asks for head and shoulders inside a 28-44 px circle. Five sentences about

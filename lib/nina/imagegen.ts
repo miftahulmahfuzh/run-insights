@@ -5,6 +5,7 @@ import {
   NINA_DEFAULT_OUTFIT_VALUE,
   NINA_FACE_TEMPLATE_LINE,
   NINA_HAIRSTYLE_SENTENCES,
+  NINA_HANDS_SENTENCE,
   ninaAppearance,
   withSentenceStop,
   type NinaAppearanceDetail,
@@ -489,7 +490,9 @@ function ninaMoodBlock(mood: string | null | undefined): string {
  * ever expand to this one constant, which made it a decoration on `{{focus}}`'s real job rather
  * than a second control. `{{buttClause}}` is the one exception, added 2026-09-18 for job
  * `lUARJrfreQta`: unlike the enumeration, sentence 2 genuinely has more than one correct value —
- * see `NINA_BODY_BUTT_SENTENCES`'s header for the contradiction that forced it.
+ * see `NINA_BODY_BUTT_SENTENCES`'s header for the contradiction that forced it. `NINA_HANDS_SENTENCE`
+ * (2026-09-18, job `tyFdHavh_jmE`) closes the paragraph unconditionally — see its own header in
+ * `persona/appearance.ts` for why hands needed the same explicit treatment the calf/thigh ratio got.
  *
  * The face paragraph IS a token, unlike the body: `NINA_FACE_TEMPLATE_LINE` (`lib/nina/persona/appearance.ts`)
  * carries the same fixed prose `NINA_FACE` always did, with `{{hairstyle}}` standing in for the
@@ -514,7 +517,7 @@ export const NINA_PROMPT_TEMPLATE_DEFAULT = [
   '',
   'SUBJECT:',
   `She has got an alluring body, ${NINA_BODY_FACTS}. This silhouette is the point of the photograph and it ` +
-    `must be visible in it. ${NINA_BODY_SENTENCES[1]} {{buttClause}}`,
+    `must be visible in it. ${NINA_BODY_SENTENCES[1]} {{buttClause}} ${NINA_HANDS_SENTENCE}`,
   '',
   NINA_FACE_TEMPLATE_LINE,
   '',

@@ -104,6 +104,7 @@ export {
   NINA_FACE,
   NINA_FACE_TEMPLATE_LINE,
   NINA_HAIRSTYLE_SENTENCES,
+  NINA_HANDS_SENTENCE,
   ninaAppearance,
   ninaFaceParagraph,
   withSentenceStop,
