@@ -122,11 +122,30 @@ export function PhotoReferencePicker({
    */
 }) {
   const headingId = React.useId()
+  const sectionRef = React.useRef<HTMLElement>(null)
+  const mountedRef = React.useRef(false)
+
+  /*
+   * `Previous`/`Next` swap the whole page's RSC payload (`?page=` is a real navigation, not local
+   * state), and `ButtonLink`'s `scroll={false}` below turns off Next's default scroll-to-top for
+   * it — so without this effect the viewport would just stay wherever it was, which on a page
+   * taller than the grid is usually still scrolled past the top. Scrolling the section itself into
+   * view puts the first row back under the pointer instead. Skipped on mount: the section is
+   * already in view on first load, and `useId` gives this instance a stable ref across the
+   * `page`-prop change a Previous/Next click causes, so the effect fires exactly on that change.
+   */
+  React.useEffect(() => {
+    if (!mountedRef.current) {
+      mountedRef.current = true
+      return
+    }
+    sectionRef.current?.scrollIntoView?.({ block: 'start' })
+  }, [page])
 
   const view = photoReferenceView({ items, value })
 
   return (
-    <section aria-labelledby={headingId} className="mb-6">
+    <section ref={sectionRef} aria-labelledby={headingId} className="mb-6">
       {/*
        * React 19 hoists a `<link>` rendered anywhere in the tree into `<head>`, deduping by `href`
        * — no `next/head`, no portal. `rel="prefetch"` (not `preload`): this is a resource for a
@@ -230,12 +249,12 @@ export function PhotoReferencePicker({
             </p>
             <div className="flex flex-wrap items-center gap-2">
               {page > 1 && (
-                <ButtonLink href={`?page=${page - 1}`} size="md" variant="secondary">
+                <ButtonLink href={`?page=${page - 1}`} scroll={false} size="md" variant="secondary">
                   Previous
                 </ButtonLink>
               )}
               {page < pageCount && (
-                <ButtonLink href={`?page=${page + 1}`} size="md" variant="secondary">
+                <ButtonLink href={`?page=${page + 1}`} scroll={false} size="md" variant="secondary">
                   Next
                 </ButtonLink>
               )}
