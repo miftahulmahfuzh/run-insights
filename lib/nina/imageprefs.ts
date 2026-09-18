@@ -994,7 +994,7 @@ export function coerceNinaHairstyle(value: unknown): NinaHairstyleKey {
  * ==========================================================================*/
 
 /**
- * **The three the dropdown offers.** `eye_level` is not an invention either — it is the framing
+ * **The dropdown's options.** `eye_level` is not an invention either — it is the framing
  * sentence `{{angle}}` always fell back to (`NINA_CAMERA_ANGLE_SENTENCES.eye_level`,
  * `lib/nina/imagegen.ts`), lifted the same way `ponytail` was: out of a fixed default and into a
  * vocabulary member, so an operator who never opens this control gets exactly what shipped before
@@ -1004,17 +1004,22 @@ export function coerceNinaHairstyle(value: unknown): NinaHairstyleKey {
  * reached the chat model's own free-text `angle` argument, which had to coexist with
  * `NINA_SELFIE_STYLE_PREFIX`'s then-unconditional "taken by another person standing a few steps
  * away" — a ground-level camera claim the free text could not remove, only argue with. Closing the
- * vocabulary removes the free text: the chat model now SELECTS one of these three keys (or leaves
+ * vocabulary removes the free text: the chat model now SELECTS one of these keys (or leaves
  * it unset and gets the operator's own standing pick, `prefs.cameraAngle`) rather than composing a
  * sentence that has to fight a fixed one sitting next to it in the same paragraph. See
  * `NINA_CAMERA_ANGLE_SENTENCES`'s header for the other half.
+ *
+ * `from_behind` is a same-day fourth member, added on the operator's own request for a preset shot
+ * from directly behind her, framed on her butt. It follows this key's closed-vocabulary rule for
+ * the same reason `overhead` and `low_angle` do: a `{{angle}}` value the operator can select from a
+ * dropdown, not free text a fixed prefix clause would have to fight.
  *
  * Lives HERE and not in `imagegen.ts`, for `NINA_HAIRSTYLE_KEYS`'s own reason: the `'use client'`
  * panel renders the dropdown, the Zod boundary checks the save AND the chat tool's argument, and
  * this module is importable from both (zero imports) while `imagegen.ts` carries the prose those
  * keys point at.
  */
-export const NINA_CAMERA_ANGLE_KEYS = ['eye_level', 'overhead', 'low_angle'] as const
+export const NINA_CAMERA_ANGLE_KEYS = ['eye_level', 'overhead', 'low_angle', 'from_behind'] as const
 
 export type NinaCameraAngleKey = (typeof NINA_CAMERA_ANGLE_KEYS)[number]
 
@@ -1033,6 +1038,7 @@ export const NINA_CAMERA_ANGLE_SPECS: Readonly<Record<NinaCameraAngleKey, NinaCa
     eye_level: Object.freeze({ key: 'eye_level', label: 'Eye level, a few steps away (default)' }),
     overhead: Object.freeze({ key: 'overhead', label: 'Directly overhead, bird’s-eye' }),
     low_angle: Object.freeze({ key: 'low_angle', label: 'Low angle, looking up' }),
+    from_behind: Object.freeze({ key: 'from_behind', label: 'From behind, focused on her butt' }),
   })
 
 /**

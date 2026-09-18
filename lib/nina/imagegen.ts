@@ -141,12 +141,20 @@ const NINA_SELFIE_STYLE_PREFIX = `A candid photograph of her. This is not a self
  * `overhead` is modelled on the sentence that actually worked (`/pull-image-gen-job`'s
  * `ciN2DbsKNFcj` and the corrected `OIF0bLCf4MMC`): a drone, directly above, nothing at ground
  * level to blend against.
+ *
+ * `from_behind` is the operator's own fourth preset: a shot taken from directly behind her, with
+ * her butt as the framing's whole point. It names the camera's position exactly the same way the
+ * other three do — never "she turns away", which is a pose claim, but "the lens is behind her",
+ * a camera claim — so it cannot end up fighting a `pose`/`scene` sentence that puts her front or
+ * side to the lens instead (`ninaPhotoPresence`'s angle-aware clauses below are the other half of
+ * that same fix).
  */
 export const NINA_CAMERA_ANGLE_SENTENCES: Readonly<Record<NinaCameraAngleKey, string>> =
   Object.freeze({
     eye_level: `Taken by another person standing a few steps away, shot on a 50 mm lens from about three metres back, at chest height, so the perspective is flat and human: her head is normal-sized and in natural proportion to her tall body, her long legs read their full length, and nothing is stretched or squeezed by a close wide-angle. Frame her whole body with room to spare, the top of her head and her long feet both comfortably inside the picture and floor visible below her feet; her long feet and long calves are never cropped, never flattened against the bottom edge and never shrunk by perspective.`,
     overhead: `Taken by a drone directly above her, looking straight down at her from a bird's-eye view — the camera is perfectly overhead, not from the side and not at an angle, with no ground-level presence and no person standing nearby in the frame.`,
     low_angle: `Taken by another person crouched low near her feet, the camera close to the ground looking up along the length of her body toward her face — a dramatic low, worm's-eye perspective.`,
+    from_behind: `Taken by another person standing directly behind her, shot on a 50 mm lens from a few steps back at hip height — the lens is behind her the whole time, never in front of her and never to her side. Her butt is the visual centre of the frame; her face is not the point of this shot and may not be visible at all. Frame her whole body with room to spare, the top of her head and her long feet both comfortably inside the picture; her long feet and long calves are never cropped, never flattened against the bottom edge and never shrunk by perspective.`,
   })
 
 /**
@@ -176,6 +184,7 @@ export const NINA_CAMERA_ANGLE_REMINDER: Readonly<Record<NinaCameraAngleKey, str
     eye_level: '',
     overhead: `Camera check: the shot described above is still a drone directly overhead, looking straight down at her — nothing in the scene, the pose or the notes above moves the camera down to eye level, to the side, or anywhere a horizon would be visible.`,
     low_angle: `Camera check: the shot described above is still low and close to the ground, looking up along her body — nothing in the scene, the pose or the notes above moves the camera up to eye level or overhead.`,
+    from_behind: `Camera check: the shot described above is still taken from directly behind her, framed on her butt — nothing in the scene, the pose or the notes above turns her to face the camera, or moves the lens to her front or her side.`,
   })
 
 /**
@@ -198,12 +207,16 @@ export const NINA_CAMERA_ANGLE_REMINDER: Readonly<Record<NinaCameraAngleKey, str
  * Only the ONE clause that asserts a specific, camera-relative visibility varies, and only for
  * `overhead`, where that claim is the one this file just described as unsatisfiable. `eye_level`
  * and `low_angle` keep `NINA_BODY_SENTENCES[2]` verbatim — neither angle has ever shown this
- * contradiction, so there is nothing measured to change there.
+ * contradiction, so there is nothing measured to change there. `from_behind` keeps it too: "standing
+ * out from her back rather than flattening into it" is a body-shape fact, not a claim about what the
+ * lens can see from a particular side, and a camera placed directly behind her is, if anything, the
+ * one angle least likely to ever contradict it.
  */
 export const NINA_BODY_BUTT_SENTENCES: Readonly<Record<NinaCameraAngleKey, string>> = Object.freeze(
   {
     eye_level: NINA_BODY_SENTENCES[2]!,
     low_angle: NINA_BODY_SENTENCES[2]!,
+    from_behind: NINA_BODY_SENTENCES[2]!,
     overhead: `Her butt is round, high and full — a body fact true of her regardless of whether this angle happens to show it.`,
   },
 )
@@ -248,6 +261,44 @@ export const NINA_OVERHEAD_PRESENCE_SENTENCE = `She is lying flat on her back, h
  * after `pose`.
  */
 export const NINA_OVERHEAD_ATTITUDE_SENTENCE = `She is fully aware of the camera and commanding it, like she knows exactly what she is doing.`
+
+/**
+ * **The steamy default pose, camera-angle-aware (added alongside `from_behind`).**
+ *
+ * The fixed fallback `ninaPhotoPresence` spends when `steamy` is high and the chat model sent no
+ * `pose` of its own said "body turned toward the lens" unconditionally — a camera-position claim
+ * exactly like the ones `NINA_SELFIE_STYLE_PREFIX`'s header already fixed twice: fine for a camera
+ * in front of her, and flatly the wrong way round for `from_behind`, where the lens is behind her
+ * by definition. `overhead` never reaches this — `ninaPhotoPresence` returns before it does, see
+ * `NINA_OVERHEAD_PRESENCE_SENTENCE`'s header — so its entry here is unreachable and kept only for
+ * the Record's own completeness, same spelling as `eye_level`/`low_angle`.
+ */
+export const NINA_STEAMY_POSE_SENTENCES: Readonly<Record<NinaCameraAngleKey, string>> =
+  Object.freeze({
+    eye_level: `She is fully aware of the camera and commanding it: weight on one hip, body turned toward the lens, chin down, holding the pose for the person photographing her.`,
+    low_angle: `She is fully aware of the camera and commanding it: weight on one hip, body turned toward the lens, chin down, holding the pose for the person photographing her.`,
+    overhead: `She is fully aware of the camera and commanding it: weight on one hip, body turned toward the lens, chin down, holding the pose for the person photographing her.`,
+    from_behind: `She is fully aware of the camera and commanding it: weight on one hip, her back and the curve of her butt toward the lens, glancing back over one shoulder toward the camera, holding the pose for the person photographing her.`,
+  })
+
+/**
+ * **The flirty gaze clause, camera-angle-aware — the same fix as `NINA_STEAMY_POSE_SENTENCES`, one
+ * dial over.** "Looking straight down the lens" is another camera-relative claim: it means she is
+ * face to face with it, which only makes sense when the lens is in front of her. For `from_behind`
+ * her face is not toward the camera at all (`NINA_CAMERA_ANGLE_SENTENCES.from_behind`), so the
+ * gaze becomes a glance back over her shoulder instead of dropping the sentence — `flirty` is a
+ * standing trait about commanding the camera's attention, and a from-behind shot can still do that
+ * without claiming a straight-on gaze it cannot have. `overhead` has its own dedicated attitude
+ * sentence (`NINA_OVERHEAD_ATTITUDE_SENTENCE`) and never reaches this record either; its entry here
+ * is unreachable, kept only for completeness.
+ */
+export const NINA_FLIRTY_GAZE_SENTENCES: Readonly<Record<NinaCameraAngleKey, string>> =
+  Object.freeze({
+    eye_level: `She is looking straight down the lens, fully aware of the camera and commanding it, like she knows exactly what she is doing.`,
+    low_angle: `She is looking straight down the lens, fully aware of the camera and commanding it, like she knows exactly what she is doing.`,
+    overhead: `She is looking straight down the lens, fully aware of the camera and commanding it, like she knows exactly what she is doing.`,
+    from_behind: `She is glancing back over one shoulder at the lens, fully aware of the camera and commanding it, like she knows exactly what she is doing.`,
+  })
 
 /**
  * **The calf-to-thigh ratio clause (2026-09-17), and why it lives in the SUFFIX and not the
@@ -327,7 +378,9 @@ function ninaPhotoPresence(
    * consulted at all for `angle: 'overhead'` — see `NINA_OVERHEAD_PRESENCE_SENTENCE`'s header. */
   pose?: string | null,
   /** The resolved camera angle (`{{angle}}`'s own key), selfie only — `undefined` for the avatar
-   * call, which never has one. Only `'overhead'` changes anything here. */
+   * call, which never has one. `'overhead'` bypasses this function's normal clauses entirely (see
+   * below); `'from_behind'` instead swaps in `NINA_STEAMY_POSE_SENTENCES`/`NINA_FLIRTY_GAZE_SENTENCES`'s
+   * own entries so neither dial's fixed clause claims a camera position that preset contradicts. */
   angle?: NinaCameraAngleKey,
 ): string | null {
   /*
@@ -343,15 +396,15 @@ function ninaPhotoPresence(
 
   if (tuning == null) return null
 
+  /* `undefined` (the avatar call never has an angle) degrades to `eye_level`'s own text — the
+   * byte-identical fallback these two clauses always rendered before `from_behind` existed. */
+  const angleKey = angle ?? 'eye_level'
   const clauses: string[] = []
 
   if (purpose === 'selfie' && isDialHigh(tuning.traits.steamy)) {
     const scenePose = pose?.trim()
     clauses.push(
-      scenePose && scenePose.length > 0
-        ? scenePose
-        : 'She is fully aware of the camera and commanding it: weight on one hip, body turned toward ' +
-            'the lens, chin down, holding the pose for the person photographing her.',
+      scenePose && scenePose.length > 0 ? scenePose : NINA_STEAMY_POSE_SENTENCES[angleKey],
     )
   }
 
@@ -367,8 +420,7 @@ function ninaPhotoPresence(
      * field, full stop, so this keeps only the gaze-and-attitude half of the original sentence.
      */
     clauses.push(
-      'She is looking straight down the lens, fully aware of the camera and commanding it, like ' +
-        'she knows exactly what she is doing.',
+      NINA_FLIRTY_GAZE_SENTENCES[angleKey],
     )
   }
 

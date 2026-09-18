@@ -381,7 +381,8 @@ export const GENERATE_IMAGE_TOOL: Anthropic.Tool = {
         description:
           'ONLY when he explicitly asks where the CAMERA sits, not where she is looking or how she ' +
           'is lying — "overhead" for a camera directly above/bird\'s-eye/top-down, "low_angle" for ' +
-          'a camera down low looking UP at her. Her own eyes looking up, or her lying on her back, ' +
+          'a camera down low looking UP at her, "from_behind" for a camera behind her framed on her ' +
+          'butt. Her own eyes looking up, or her lying on her back, ' +
           'is a fact for `scene`/`pose`, not a camera pick — leave this unset for those. Leave ' +
           'unset otherwise too, including a plain shot back: it falls to your standing default, ' +
           'which is not necessarily eye_level. Make sure `scene`/`pose` match whichever you send.',
