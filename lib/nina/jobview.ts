@@ -38,6 +38,11 @@ export function ninaJobHref(jobId: string): string {
   return `${NINA_JOBS_HREF}/${jobId}`
 }
 
+/** The "Ganti foto referensi" grid — a real page, so the entry control is a `ButtonLink`. */
+export function ninaJobAnchorHref(jobId: string): string {
+  return `${ninaJobHref(jobId)}/anchor`
+}
+
 /* ── the deep link back into the chat ─────────────────────────────────────────────────────── */
 
 /**
@@ -222,6 +227,16 @@ export type NinaJobRefusal = 'not-found' | 'in-progress' | 'no-args' | 'capped'
  *   · `empty-prompt` — the trimmed input was blank.
  */
 export type NinaPromptEditRefusal = 'not-found' | 'no-args' | 'empty-prompt'
+
+/**
+ * The "Ganti foto referensi" grid's own refusal vocabulary — `NinaPromptEditRefusal`'s shape minus
+ * `empty-prompt`, which has no counterpart here: an empty selection means "no reference", a valid
+ * value on this control, not a rejected input.
+ *
+ *   · `not-found` — no such job of his (malformed id, foreign id, unknown id, or hidden).
+ *   · `no-args`   — the row exists but its `args` jsonb is null or not an object.
+ */
+export type NinaReferenceEditRefusal = 'not-found' | 'no-args'
 
 /**
  * `'Nunggu worker'` rather than `'Dijadwalkan'` for `dispatched`, and that one word is the whole of

@@ -19,7 +19,7 @@ import {
   type NinaImagePurpose,
 } from './imagerecipe'
 import { coerceNinaImageModel } from './imageprefs'
-import type { NinaJobRefusal, NinaPromptEditRefusal } from './jobview'
+import type { NinaJobRefusal, NinaPromptEditRefusal, NinaReferenceEditRefusal } from './jobview'
 import { countNinaTurnsSince, insertNinaMessages, insertNinaTurn } from './queries'
 import { resolveNinaSessionForMessage } from './sessionResolve'
 
@@ -370,6 +370,108 @@ function replaceSidecarPrompt(sidecar: string, newPrompt: string): string {
   const idx = sidecar.indexOf(marker)
   if (idx === -1) return newPrompt
   return sidecar.slice(0, idx + marker.length) + '\n' + newPrompt
+}
+
+/**
+ * **`sidecarText()`'s "reference:  " line prefix and its `'none (RU-18)'` placeholder, spelled
+ * again here rather than imported from `lib/nina/jobview.ts`.** `replaceSidecarPrompt`'s own
+ * precedent right above: this file duplicates a literal it does not own rather than reach across
+ * for it — `jobview.ts` is a pure, structural module read by two client components and a bare
+ * `node` test, and `splitSidecarReference` there is a DISPLAY split (never a rewrite), so it has
+ * no function this module could call instead of restating the two strings.
+ */
+const REFERENCE_LINE_PREFIX = 'reference:  '
+const REFERENCE_NONE_VALUE = 'none (RU-18)'
+
+/**
+ * Keeps `sidecarText()`'s metadata block intact and swaps only the "reference:" line's value —
+ * `replaceSidecarPrompt`'s own move, applied to the other field a redo can now change. Falls back
+ * to the sidecar unchanged when the line is missing (an old or malformed sidecar): there is no
+ * bare-reference fallback the way `replaceSidecarPrompt` has a bare prompt, because a sidecar with
+ * no "reference:" line has nowhere honest to put one.
+ */
+function replaceSidecarReference(sidecar: string, newUrl: string | null): string {
+  const idx = sidecar.indexOf(REFERENCE_LINE_PREFIX)
+  if (idx === -1) return sidecar
+
+  const labelEnd = idx + REFERENCE_LINE_PREFIX.length
+  const lineEnd = sidecar.indexOf('\n', labelEnd)
+  const valueEnd = lineEnd === -1 ? sidecar.length : lineEnd
+
+  return sidecar.slice(0, labelEnd) + (newUrl ?? REFERENCE_NONE_VALUE) + sidecar.slice(valueEnd)
+}
+
+/** `setNinaImageJobReference`'s return — the same `{ ok: true } | { ok: false, reason }` shape as
+ * `NinaPromptEditOutcome`, over the narrower `NinaReferenceEditRefusal` union. Module-local on
+ * that type's own precedent: `updateNinaImageJobReference` is its one caller and consumes it by
+ * inference. */
+type NinaReferenceEditOutcome = { ok: true } | { ok: false; reason: NinaReferenceEditRefusal }
+
+/**
+ * **The "Ganti foto referensi" grid's write: rewrite `args.referenceUrl` on a job that already
+ * exists, so the same "Coba lagi" button sends a different anchor than the one the runner opened
+ * this screen to change.** `setNinaImageJobPrompt`'s own move, applied to the other half of what a
+ * redo replays verbatim (see `reopenNinaImageJob`'s header: "same `prompt`, same `seed`, … same
+ * `sidecar`" — this is the one field a runner now has a control for).
+ *
+ * Editable regardless of `status`, on `setNinaImageJobPrompt`'s own precedent, and the same
+ * owner-scoped `WHERE` it uses: `userId`, `id`, `kind = 'image'`, `deletedAt IS NULL`.
+ *
+ * **`referenceUrl` degrades exactly the way `ninaImageReferenceUrl` (`lib/nina/imagerecipe.ts`)
+ * reads it back — `https://` or nothing.** A picked photograph's Blob URL always qualifies; the
+ * "no reference" tile and the "Clear reference" button both send `null` (the grid's `''` normalises
+ * to `null` before this is ever called, see `NinaJobAnchorPicker`), and anything else unreadable
+ * degrades to `null` rather than being written into a payload that would fail an SSRF-adjacent
+ * assertion three files downstream.
+ */
+export async function setNinaImageJobReference(
+  userId: string,
+  jobId: string,
+  referenceUrl: string | null,
+): Promise<NinaReferenceEditOutcome> {
+  const normalized =
+    typeof referenceUrl === 'string' && referenceUrl.startsWith('https://') ? referenceUrl : null
+
+  const [row] = await db
+    .select({ args: ninaTurns.args })
+    .from(ninaTurns)
+    .where(
+      and(
+        eq(ninaTurns.userId, userId),
+        eq(ninaTurns.id, jobId),
+        eq(ninaTurns.kind, 'image'),
+        isNull(ninaTurns.deletedAt),
+      ),
+    )
+
+  if (row == null) return { ok: false, reason: 'not-found' }
+  if (row.args == null || typeof row.args !== 'object') return { ok: false, reason: 'no-args' }
+
+  const args = row.args as Partial<NinaImageJobArgs>
+  const nextArgs = {
+    ...args,
+    referenceUrl: normalized,
+    sidecar: replaceSidecarReference(
+      typeof args.sidecar === 'string' ? args.sidecar : '',
+      normalized,
+    ),
+  } as NinaImageJobArgs
+
+  const updated = await db
+    .update(ninaTurns)
+    .set({ args: nextArgs })
+    .where(
+      and(
+        eq(ninaTurns.userId, userId),
+        eq(ninaTurns.id, jobId),
+        eq(ninaTurns.kind, 'image'),
+        isNull(ninaTurns.deletedAt),
+      ),
+    )
+    .returning({ id: ninaTurns.id })
+
+  if (updated.length === 0) return { ok: false, reason: 'not-found' }
+  return { ok: true }
 }
 
 /** Module-local since the 2026-09-12 YAGNI sweep: `claimNinaImageJob`'s callers never named it. */

@@ -5,13 +5,19 @@ import { revalidatePath } from 'next/cache'
 import { requireUserId } from '@/lib/auth/requireUserId'
 import { isValidId } from '@/lib/id'
 
-import { reopenNinaImageJob, setNinaImageJobPrompt, softDeleteNinaImageJob } from './imagejobs'
+import {
+  reopenNinaImageJob,
+  setNinaImageJobPrompt,
+  setNinaImageJobReference,
+  softDeleteNinaImageJob,
+} from './imagejobs'
 import { fireNinaImageGeneration } from './imagerun'
 import {
   NINA_JOBS_HREF,
   ninaJobHref,
   type NinaJobRefusal,
   type NinaPromptEditRefusal,
+  type NinaReferenceEditRefusal,
 } from './jobview'
 
 /**
@@ -202,6 +208,29 @@ export async function updateNinaImageJobPrompt(input: {
   if (!isValidId(input?.jobId)) return { ok: false, reason: 'not-found' }
 
   const outcome = await setNinaImageJobPrompt(userId, input.jobId, input.prompt)
+  if (!outcome.ok) return { ok: false, reason: outcome.reason }
+
+  revalidatePath(ninaJobHref(input.jobId))
+  return { ok: true, reason: null }
+}
+
+/**
+ * **The "Ganti foto referensi" grid's write: rewrite this job's `args.referenceUrl`, so a redo
+ * anchors to the photograph the runner just picked instead of whatever this job opened with.**
+ *
+ * `updateNinaImageJobPrompt`'s own shape, over `setNinaImageJobReference` instead — same owner
+ * check inside that function, same revalidate target (this job's OWN detail path, never
+ * `NINA_JOBS_HREF`: the list shows no reference at all).
+ */
+export async function updateNinaImageJobReference(input: {
+  jobId: string
+  /** The chosen photograph's Blob URL, or `null` to leave the job unanchored. */
+  referenceUrl: string | null
+}): Promise<{ ok: boolean; reason: NinaReferenceEditRefusal | null }> {
+  const userId = await requireUserId()
+  if (!isValidId(input?.jobId)) return { ok: false, reason: 'not-found' }
+
+  const outcome = await setNinaImageJobReference(userId, input.jobId, input.referenceUrl)
   if (!outcome.ok) return { ok: false, reason: outcome.reason }
 
   revalidatePath(ninaJobHref(input.jobId))

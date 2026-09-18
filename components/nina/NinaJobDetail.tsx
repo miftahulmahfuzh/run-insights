@@ -10,6 +10,7 @@ import {
   formatJobLatency,
   formatMicroUsd,
   jobCanRedo,
+  ninaJobAnchorHref,
   ninaJobHref,
   splitSidecarReference,
   withCostSourceLine,
@@ -309,9 +310,19 @@ export function NinaJobDetail({
             Catatan foto
           </h2>
           {mode === 'view' && (
-            <Button variant="secondary" size="md" aria-label="Ubah prompt" onClick={openEdit}>
-              <PencilIcon />
-            </Button>
+            <div className="flex items-center gap-2">
+              <ButtonLink
+                href={ninaJobAnchorHref(jobId)}
+                size="md"
+                variant="secondary"
+                aria-label="Ganti foto referensi"
+              >
+                <ImagesIcon />
+              </ButtonLink>
+              <Button variant="secondary" size="md" aria-label="Ubah prompt" onClick={openEdit}>
+                <PencilIcon />
+              </Button>
+            </div>
           )}
         </div>
 
@@ -451,6 +462,29 @@ function RedoIcon() {
         strokeLinecap="round"
         strokeLinejoin="round"
       />
+    </svg>
+  )
+}
+
+/** "Ganti foto referensi" — opens `/nina/jobs/[id]/anchor`, the grid a runner picks a new anchor
+ * from. Lucide's `images`, verbatim: two stacked frames reads as "browse a gallery" rather than
+ * `maximize-2`'s "view this one full-screen", which the reference already uses for a different verb. */
+function ImagesIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="size-[18px]"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="m22 11-1.296-1.296a2.4 2.4 0 0 0-3.408 0L11 16" />
+      <path d="M4 8a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2" />
+      <circle cx="13" cy="7" r="1" fill="currentColor" />
+      <rect x="8" y="2" width="14" height="14" rx="2" />
     </svg>
   )
 }

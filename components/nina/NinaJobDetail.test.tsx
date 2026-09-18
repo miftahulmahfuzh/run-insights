@@ -121,7 +121,7 @@ describe('NinaJobDetail', () => {
     unmount()
 
     render(<NinaJobDetail {...props({ photo: { kind: 'none' } })} />)
-    expect(screen.queryByRole('link', { name: /foto/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Lihat foto ukuran penuh' })).not.toBeInTheDocument()
   })
 
   it('the degraded jump and a proved photograph render TOGETHER — sentence beside the control', () => {
