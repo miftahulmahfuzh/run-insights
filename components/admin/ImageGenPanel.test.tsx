@@ -88,8 +88,12 @@ function panel(p: ImageGenDraft = prefs()) {
 }
 
 /*
- * The five text controls in DOM order: wardrobe, venue, time, notes, template. Their wrapping
- * labels carry hint sentences, so accessible names are the whole label — index, not name.
+ * The five text controls in DOM order: wardrobe, venue, time, notes, template. Each of the four
+ * fields' `<label>` wraps ONLY its field-name text (paired to the control by `htmlFor`/`id`) — the
+ * generate button, the control itself and the ✕ are deliberately NOT inside it, so this suite
+ * indexes rather than names them, but for a different reason than a wide label used to give: see
+ * "the ✕ and typing never wake the generate button" below for what wrapping more than the text
+ * used to do.
  */
 const textboxes = () => screen.getAllByRole('textbox') as HTMLInputElement[]
 const wardrobeBox = () => textboxes()[0]!
@@ -253,6 +257,20 @@ describe('ImageGenPanel — the commit moments', () => {
   it('the ✕ buttons only exist for non-empty fields', () => {
     panel()
     expect(screen.queryByRole('button', { name: 'Kosongkan wardrobe' })).not.toBeInTheDocument()
+  })
+
+  it('clicking ✕ never wakes the generate button — a bare click runs a real <label> click element', async () => {
+    // Regression: the generate button, the input and the ✕ used to share ONE wrapping `<label>`.
+    // A `<label>` with more than one labelable descendant resolves its "labeled control" to the
+    // FIRST one in tree order — the ↻ button, since it sits in the header row above the input —
+    // and `fireEvent.click` (unlike a bare `dispatchEvent`) runs the click's default action, which
+    // for a `<label>` is to forward a synthetic click to that resolved control. So clicking ✕
+    // silently fired the generate action too. `generateAction` is mocked to resolve `{ ok: false }`
+    // by default (see the top-of-file mock), so this asserts it is never even asked.
+    panel(prefs({ wardrobe: 'hoodie' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Kosongkan wardrobe' }))
+    await advance(0)
+    expect(generateAction).not.toHaveBeenCalled()
   })
 
   it('the generate icon fills the draft and rides the ordinary blur — no direct write', async () => {

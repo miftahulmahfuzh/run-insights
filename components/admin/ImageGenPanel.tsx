@@ -229,6 +229,21 @@ export function ImageGenPanel({
   const timeInputRef = React.useRef<HTMLInputElement | null>(null)
   const notesInputRef = React.useRef<HTMLTextAreaElement | null>(null)
 
+  /*
+   * One `<label>` per field, wrapping ONLY the field-name text — never the generate button, the
+   * control, or the ✕. A `<label>` that wraps more than one labelable descendant resolves its
+   * "labeled control" to the FIRST one in tree order (here: the ↻ button, since it sits in the
+   * header row above the input) and the browser then forwards a synthetic click to THAT control
+   * whenever anything else inside the label is clicked — the ✕, or even the input itself. That is
+   * exactly the bug: clicking ✕ to clear a field was firing the generate suggestion. `Field.tsx`'s
+   * `<label htmlFor={inputId}>` beside a plain `<div className="relative">` is the same fix, one
+   * `<label>`, one labelable descendant — applied here by hand since this panel predates `Field`.
+   */
+  const wardrobeFieldId = React.useId()
+  const venueFieldId = React.useId()
+  const timeFieldId = React.useId()
+  const notesFieldId = React.useId()
+
   const pendingFields = React.useMemo(
     () => new Set(changedImageGenFields(draft, saved)),
     [draft, saved],
@@ -606,14 +621,17 @@ export function ImageGenPanel({
         </fieldset>
 
         <div className="mb-6 grid gap-5 xl:grid-cols-2">
-          <label className="block">
+          <div className="block">
             <span className="mb-1.5 flex items-center justify-between gap-2">
-              <span className="text-[12px] font-semibold tracking-[0.02em] text-ink-2">
+              <label
+                htmlFor={wardrobeFieldId}
+                className="text-[12px] font-semibold tracking-[0.02em] text-ink-2"
+              >
                 {NINA_IMAGE_TEXT_SPECS.wardrobe.label}
                 {pendingFields.has('wardrobe') && (
                   <span className="ml-2 font-semibold text-accent">unsaved</span>
                 )}
-              </span>
+              </label>
               <button
                 type="button"
                 aria-label="Buat wardrobe baru"
@@ -627,6 +645,7 @@ export function ImageGenPanel({
             </span>
             <div className="relative">
               <input
+                id={wardrobeFieldId}
                 ref={wardrobeInputRef}
                 className={cn(CONTROL_CLASS, draft.wardrobe !== '' && 'pr-11')}
                 value={draft.wardrobe}
@@ -657,16 +676,19 @@ export function ImageGenPanel({
                 Gagal membuat nilai baru — coba lagi.
               </span>
             )}
-          </label>
+          </div>
 
-          <label className="block">
+          <div className="block">
             <span className="mb-1.5 flex items-center justify-between gap-2">
-              <span className="text-[12px] font-semibold tracking-[0.02em] text-ink-2">
+              <label
+                htmlFor={venueFieldId}
+                className="text-[12px] font-semibold tracking-[0.02em] text-ink-2"
+              >
                 {NINA_IMAGE_TEXT_SPECS.venue.label}
                 {pendingFields.has('venue') && (
                   <span className="ml-2 font-semibold text-accent">unsaved</span>
                 )}
-              </span>
+              </label>
               <button
                 type="button"
                 aria-label="Buat venue baru"
@@ -680,6 +702,7 @@ export function ImageGenPanel({
             </span>
             <div className="relative">
               <input
+                id={venueFieldId}
                 ref={venueInputRef}
                 className={cn(CONTROL_CLASS, draft.venue !== '' && 'pr-11')}
                 value={draft.venue}
@@ -711,16 +734,19 @@ export function ImageGenPanel({
                 Gagal membuat nilai baru — coba lagi.
               </span>
             )}
-          </label>
+          </div>
 
-          <label className="block">
+          <div className="block">
             <span className="mb-1.5 flex items-center justify-between gap-2">
-              <span className="text-[12px] font-semibold tracking-[0.02em] text-ink-2">
+              <label
+                htmlFor={timeFieldId}
+                className="text-[12px] font-semibold tracking-[0.02em] text-ink-2"
+              >
                 {NINA_IMAGE_TEXT_SPECS.time.label}
                 {pendingFields.has('time') && (
                   <span className="ml-2 font-semibold text-accent">unsaved</span>
                 )}
-              </span>
+              </label>
               <button
                 type="button"
                 aria-label="Buat time baru"
@@ -734,6 +760,7 @@ export function ImageGenPanel({
             </span>
             <div className="relative">
               <input
+                id={timeFieldId}
                 ref={timeInputRef}
                 className={cn(CONTROL_CLASS, draft.time !== '' && 'pr-11')}
                 value={draft.time}
@@ -764,16 +791,19 @@ export function ImageGenPanel({
                 Gagal membuat nilai baru — coba lagi.
               </span>
             )}
-          </label>
+          </div>
 
-          <label className="block">
+          <div className="block">
             <span className="mb-1.5 flex items-center justify-between gap-2">
-              <span className="text-[12px] font-semibold tracking-[0.02em] text-ink-2">
+              <label
+                htmlFor={notesFieldId}
+                className="text-[12px] font-semibold tracking-[0.02em] text-ink-2"
+              >
                 {NINA_IMAGE_TEXT_SPECS.notes.label}
                 {pendingFields.has('notes') && (
                   <span className="ml-2 font-semibold text-accent">unsaved</span>
                 )}
-              </span>
+              </label>
               <button
                 type="button"
                 aria-label="Buat notes baru"
@@ -787,6 +817,7 @@ export function ImageGenPanel({
             </span>
             <div className="relative">
               <textarea
+                id={notesFieldId}
                 ref={notesInputRef}
                 className={cn(
                   CONTROL_CLASS,
@@ -822,7 +853,7 @@ export function ImageGenPanel({
                 Gagal membuat nilai baru — coba lagi.
               </span>
             )}
-          </label>
+          </div>
         </div>
 
         <PhotoReferencePicker
