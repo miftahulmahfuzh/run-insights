@@ -31,7 +31,8 @@ vi.mock('@/lib/admin/imageGenActions', () => ({
    * render mounts four of them, so a resolved default keeps a stray click from anyone's test
    * (a Tab-through, a broad `getAllByRole('button')`) from surfacing an unhandled rejection. */
   generateImageFieldValueAction: vi.fn().mockResolvedValue({ ok: false }),
-  /* The header's "regenerate all four" icon — the batch action's own default, same reasoning. */
+  /* The "regenerate all four" control, above the photo reference section — the batch action's
+   * own default, same reasoning. */
   generateAllImageFieldValuesAction: vi.fn().mockResolvedValue({ ok: false }),
 }))
 
@@ -317,9 +318,7 @@ describe('ImageGenPanel — the commit moments', () => {
     saveAction.mockResolvedValue({ ok: true, prefs: prefs(batchValues) })
     generateAllAction.mockResolvedValueOnce({ ok: true, values: batchValues })
     panel()
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Buat wardrobe, venue, time, dan notes baru sekaligus' }),
-    )
+    fireEvent.click(screen.getByRole('button', { name: 'Regenerate all four' }))
     await advance(0)
     await advance(0) // second flush: the save's own promise chain settles here
 
@@ -337,9 +336,7 @@ describe('ImageGenPanel — the commit moments', () => {
   it('shows an inline error and saves nothing when the batch call fails', async () => {
     generateAllAction.mockResolvedValueOnce({ ok: false })
     panel()
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Buat wardrobe, venue, time, dan notes baru sekaligus' }),
-    )
+    fireEvent.click(screen.getByRole('button', { name: 'Regenerate all four' }))
     await advance(0)
 
     expect(screen.getByText(/Gagal membuat nilai baru untuk keempat kolom/)).toBeInTheDocument()

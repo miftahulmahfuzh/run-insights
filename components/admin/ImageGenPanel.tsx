@@ -3,6 +3,7 @@
 import * as React from 'react'
 
 import { ImageGenTestPanel } from '@/components/admin/ImageGenTestPanel'
+import { SparklesIcon } from '@/components/admin/photoIcons'
 import { PhotoReferencePicker } from '@/components/admin/PhotoReferencePicker'
 import { TOUCH_TARGET } from '@/components/admin/touch'
 import { Button, CONTROL_CLASS } from '@/components/ui'
@@ -221,7 +222,7 @@ export function ImageGenPanel({
   const [fieldGen, setFieldGen] = React.useState<
     Partial<Record<'wardrobe' | 'venue' | 'time' | 'notes', 'loading' | 'error'>>
   >({})
-  /* The 2026-09-18 "regenerate all four" icon in the header — one status for the whole batch,
+  /* The 2026-09-18 "regenerate all four" control, above the photo reference section —
    * `fieldGen`'s own shape but with nothing to key on since it touches every field at once. */
   const [allFieldGen, setAllFieldGen] = React.useState<'loading' | 'error' | null>(null)
   const [pending, startTransition] = React.useTransition()
@@ -418,10 +419,10 @@ export function ImageGenPanel({
   }
 
   /**
-   * The "regenerate all four" icon in the header. One call proposes all four fields as one
-   * coherent scene; unlike `generateField` there is no single control to focus and blur
-   * afterwards, so a success here goes straight through `commitImmediate` — the same "the click IS
-   * the finished edit" path the camera/hairstyle/angle dropdowns already use.
+   * The "regenerate all four" control, above the photo reference section. One call proposes all
+   * four fields as one coherent scene; unlike `generateField` there is no single control to focus
+   * and blur afterwards, so a success here goes straight through `commitImmediate` — the same
+   * "the click IS the finished edit" path the camera/hairstyle/angle dropdowns already use.
    */
   async function generateAllFields() {
     setAllFieldGen('loading')
@@ -466,41 +467,11 @@ export function ImageGenPanel({
             {saving ? 'Saving…' : clean ? 'Saved' : 'Unsaved edits'}
           </span>
         </h2>
-        <div className="flex shrink-0 items-center gap-3">
-          {/*
-           * The 2026-09-18 "regenerate all four" icon — one glm-5.3 call that proposes wardrobe,
-           * venue, time and notes together as one coherent scene, instead of four separate clicks
-           * through the per-field icons below. Those stay: this is an addition for an operator who
-           * wants everything refreshed at once, not a replacement for changing one field alone.
-           * A success here commits immediately (`generateAllFields`'s own docstring) rather than
-           * filling the draft, so the per-field icons are disabled while it runs — a click on one
-           * mid-batch would race the same draft this is about to overwrite.
-           */}
-          <button
-            type="button"
-            aria-label="Buat wardrobe, venue, time, dan notes baru sekaligus"
-            title="Buat ulang wardrobe, venue, time, dan notes sekaligus"
-            onPointerDown={(event) => event.preventDefault()}
-            onClick={() => generateAllFields()}
-            disabled={
-              allFieldGen === 'loading' ||
-              Object.values(fieldGen).some((status) => status === 'loading')
-            }
-            className="grid h-7 w-7 shrink-0 place-items-center rounded-pill text-[15px] text-ink-3 active:opacity-70 disabled:opacity-40"
-          >
-            {allFieldGen === 'loading' ? '⋯' : '✨'}
-          </button>
-          <span className="text-right text-[12px] font-medium text-ink-3">
-            {on.length} of {NINA_IMAGE_FOCUS_KEYS.length} emphasised
-            {selectedKey !== '' && ' · one reference'}
-          </span>
-        </div>
+        <span className="text-right text-[12px] font-medium text-ink-3">
+          {on.length} of {NINA_IMAGE_FOCUS_KEYS.length} emphasised
+          {selectedKey !== '' && ' · one reference'}
+        </span>
       </div>
-      {allFieldGen === 'error' && (
-        <p className="-mt-3 pb-3 text-[11px] font-medium text-red-500">
-          Gagal membuat nilai baru untuk keempat kolom — coba lagi.
-        </p>
-      )}
 
       <div className="pb-6">
         <p className="mb-6 max-w-[70ch] text-[13px] font-medium text-ink-2">
@@ -906,6 +877,37 @@ export function ImageGenPanel({
             )}
           </div>
         </div>
+
+        {/*
+         * The 2026-09-18 "regenerate all four" control — one glm-5.3 call that proposes wardrobe,
+         * venue, time and notes together as one coherent scene, instead of four separate clicks
+         * through the per-field icons above. Those stay: this is an addition for an operator who
+         * wants everything refreshed at once, not a replacement for changing one field alone.
+         * `SparklesIcon` (`components/admin/photoIcons.tsx`) rather than a raw glyph — this
+         * button carries a visible label, so it goes through the `Button` component, which draws
+         * its own busy state (`LoadingDots`) instead of a second hand-rolled loading glyph.
+         * A success here commits immediately (`generateAllFields`'s own docstring) rather than
+         * filling the draft, so the per-field icons are disabled while it runs — a click on one
+         * mid-batch would race the same draft this is about to overwrite.
+         */}
+        <div className="mb-3 flex justify-end">
+          <Button
+            variant="secondary"
+            size="md"
+            type="button"
+            leadingIcon={<SparklesIcon className="size-4" />}
+            loading={allFieldGen === 'loading'}
+            disabled={Object.values(fieldGen).some((status) => status === 'loading')}
+            onClick={() => generateAllFields()}
+          >
+            Regenerate all four
+          </Button>
+        </div>
+        {allFieldGen === 'error' && (
+          <p className="-mt-2 mb-3 text-right text-[11px] font-medium text-red-500">
+            Gagal membuat nilai baru untuk keempat kolom — coba lagi.
+          </p>
+        )}
 
         <PhotoReferencePicker
           items={references}

@@ -72,9 +72,9 @@
 //   · `generateImageFieldValue` — the "generate a fresh value" icon beside Wardrobe/Venue/Time/
 //     Notes on /admin/image-generation (2026-09-18). It runs from a Server Action fired by the
 //     icon, never from the page render, which shows the saved row with no model call behind it.
-//   · `generateAllImageFieldValues` — the "regenerate all four" icon in the same panel's header
-//     (2026-09-18), its batch sibling: one call, one tool, all four fields. Same rule, same
-//     Server Action file, never the page render.
+//   · `generateAllImageFieldValues` — the "regenerate all four" control in the same panel, above
+//     the photo reference section (2026-09-18), its batch sibling: one call, one tool, all four
+//     fields. Same rule, same Server Action file, never the page render.
 //
 // Fix the code, never silence the check.
 import { readdirSync, readFileSync, statSync } from 'node:fs'
@@ -263,11 +263,11 @@ const GUARDED_CALLS = [
       join('lib', 'admin', 'imageGenActions.ts'),
     ],
     advice:
-      'The "regenerate all four" icon on /admin/image-generation is a glm-5.3 call (2026-09-18), ' +
-      'the batch sibling of generateImageFieldValue. It runs from ' +
+      'The "regenerate all four" control on /admin/image-generation is a glm-5.3 call ' +
+      '(2026-09-18), the batch sibling of generateImageFieldValue. It runs from ' +
       'generateAllImageFieldValuesAction (lib/admin/imageGenActions.ts), a Server Action fired by ' +
-      'the header icon — never from app/admin/image-generation/page.tsx, which renders the saved ' +
-      'row and awaits no model.',
+      'the control above the photo reference section — never from ' +
+      'app/admin/image-generation/page.tsx, which renders the saved row and awaits no model.',
   },
 ]
 

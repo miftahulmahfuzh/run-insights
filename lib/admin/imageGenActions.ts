@@ -395,7 +395,7 @@ export async function generateImageFieldValueAction(
   }
 }
 
-/* ── the 2026-09-18 "regenerate all four" icon ───────────────────────────────────────────────
+/* ── the 2026-09-18 "regenerate all four" control ────────────────────────────────────────────
  *
  * One action, one call, all four fields — the batch sibling of the action above, for an operator
  * who wants a fresh coherent scene instead of four separate clicks. No client input: unlike the
