@@ -22,6 +22,7 @@ import {
   parseNinaJumpParam,
   planJobJump,
   planJobPhoto,
+  planJobReferencePhoto,
   splitSidecarReference,
   toNinaJobListItems,
   withCostSourceLine,
@@ -499,5 +500,35 @@ describe('planJobPhoto — the photograph link', () => {
     expect(planJobPhoto({ jobId: JOB_ID, purpose: 'avatar', imageId: 'imgAAAAAA1234' })).toEqual({
       kind: 'none',
     })
+  })
+})
+
+describe('planJobReferencePhoto — the reference photo’s link, over the SAME viewer as the output', () => {
+  const JOB_ID = 'jobAAAAAAAAA'
+
+  it('opens the chat section when the match names a message image', () => {
+    const plan = planJobReferencePhoto({
+      jobId: JOB_ID,
+      match: { section: 'chat', id: 'imgAAAAAA1234' },
+    })
+    if (plan.kind !== 'ready') throw new Error('expected a ready plan')
+    const url = new URL(plan.href, 'https://example.test')
+    expect(url.pathname).toBe('/nina/about')
+    expect(url.searchParams.get('photo')).toBe('chat.imgAAAAAA1234')
+    expect(url.searchParams.get('return')).toBe(`/nina/jobs/${JOB_ID}`)
+  })
+
+  it('opens the album section when the match names an avatar row — unlike planJobPhoto’s fixed "chat"', () => {
+    const plan = planJobReferencePhoto({
+      jobId: JOB_ID,
+      match: { section: 'album', id: 'avaAAAAAA123' },
+    })
+    if (plan.kind !== 'ready') throw new Error('expected a ready plan')
+    const url = new URL(plan.href, 'https://example.test')
+    expect(url.searchParams.get('photo')).toBe('album.avaAAAAAA123')
+  })
+
+  it('draws nothing when the reference photo was never found — never a link the server has not proved', () => {
+    expect(planJobReferencePhoto({ jobId: JOB_ID, match: null })).toEqual({ kind: 'none' })
   })
 })

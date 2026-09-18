@@ -485,3 +485,45 @@ describe('the Media view read — /admin/nina?view=media (image-collection phase
     expect(fake.queries[1]?.params).toContain(96)
   })
 })
+
+describe('getNinaImageReferencePhoto — the job→REFERENCE photo link, by exact Blob URL', () => {
+  const URL = 'https://blob.example.test/nina/u1/selfie-ref.jpg'
+
+  it('finds a chat message image first, and never queries nina_avatars once it has', async () => {
+    fake.enqueue([[IMAGE]])
+    await expect(queries.getNinaImageReferencePhoto('u1', URL)).resolves.toEqual({
+      section: 'chat',
+      id: IMAGE,
+    })
+
+    expect(fake.queries).toHaveLength(1)
+    const { sql } = fake.only()
+    expect(sql.startsWith('select "id" from "nina_message_images"')).toBe(true)
+    const where = whereOf(sql)
+    expect(where).toContain('"nina_message_images"."user_id" = $')
+    expect(where).toContain('"nina_message_images"."blob_url" = $')
+    expect(fake.only().params).toContain(URL)
+  })
+
+  it('falls back to nina_avatars, scoped the same way, when no chat row matches', async () => {
+    const AVATAR = 'avaAAAAAAAA1'
+    fake.enqueue([], [[AVATAR]])
+    await expect(queries.getNinaImageReferencePhoto('u1', URL)).resolves.toEqual({
+      section: 'album',
+      id: AVATAR,
+    })
+
+    expect(fake.queries).toHaveLength(2)
+    const sql = fake.sqlAt(1)
+    expect(sql.startsWith('select "id" from "nina_avatars"')).toBe(true)
+    const where = whereOf(sql)
+    expect(where).toContain('"nina_avatars"."user_id" = $')
+    expect(where).toContain('"nina_avatars"."blob_url" = $')
+  })
+
+  it('answers null — never a link the server has not proved — when neither table has the URL', async () => {
+    fake.enqueue([], [])
+    await expect(queries.getNinaImageReferencePhoto('u1', URL)).resolves.toBeNull()
+    expect(fake.queries).toHaveLength(2)
+  })
+})

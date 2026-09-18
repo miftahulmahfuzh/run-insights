@@ -52,6 +52,7 @@ function props(overrides?: Partial<Props>): Props {
     nowMs: NOW_MS,
     jump: { kind: 'ready', href: '/nina?s=sess-1&at=msg000000001' },
     photo: { kind: 'ready', href: '/nina?photo=job-1' },
+    referencePhoto: { kind: 'none' },
     ...overrides,
   }
 }
@@ -195,16 +196,42 @@ describe('NinaJobDetail', () => {
     'sebuah foto selfie di pantai',
   ].join('\n')
 
-  it('a reference URL becomes an icon-only button opening it full screen; the raw URL never renders as text', () => {
-    render(<NinaJobDetail {...props({ sidecar: SIDECAR_WITH_REFERENCE })} />)
+  it('a resolved reference photo becomes an icon-only button opening the SAME full-screen viewer as the job’s own photo; the raw URL never renders as text', () => {
+    render(
+      <NinaJobDetail
+        {...props({
+          sidecar: SIDECAR_WITH_REFERENCE,
+          referencePhoto: { kind: 'ready', href: '/nina/about?photo=chat.imgAAAAAA1234' },
+        })}
+      />,
+    )
     const link = screen.getByRole('link', { name: 'Lihat foto referensi ukuran penuh' })
-    expect(link).toHaveAttribute('href', 'https://blob.example.test/nina/x/selfie-abc.jpg')
-    expect(link).toHaveAttribute('target', '_blank')
+    expect(link).toHaveAttribute('href', '/nina/about?photo=chat.imgAAAAAA1234')
+    expect(link).not.toHaveAttribute('target')
     expect(screen.queryByText(/blob\.example\.test/)).not.toBeInTheDocument()
   })
 
-  it('the "none (RU-18)" placeholder draws no reference button', () => {
-    render(<NinaJobDetail {...props({ sidecar: REAL_SHAPE_SIDECAR })} />)
+  it('a reference URL the server could not resolve to a live photo renders as plain text, never a link', () => {
+    render(
+      <NinaJobDetail
+        {...props({ sidecar: SIDECAR_WITH_REFERENCE, referencePhoto: { kind: 'none' } })}
+      />,
+    )
+    expect(
+      screen.queryByRole('link', { name: 'Lihat foto referensi ukuran penuh' }),
+    ).not.toBeInTheDocument()
+    expect(screen.getByText(/blob\.example\.test/)).toBeInTheDocument()
+  })
+
+  it('the "none (RU-18)" placeholder draws no reference button even when the server resolved one', () => {
+    render(
+      <NinaJobDetail
+        {...props({
+          sidecar: REAL_SHAPE_SIDECAR,
+          referencePhoto: { kind: 'ready', href: '/nina/about?photo=chat.imgAAAAAA1234' },
+        })}
+      />,
+    )
     expect(
       screen.queryByRole('link', { name: 'Lihat foto referensi ukuran penuh' }),
     ).not.toBeInTheDocument()

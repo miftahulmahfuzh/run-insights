@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, gte, isNotNull, or } from 'drizzle-orm'
 
 import { db } from '@/lib/db'
-import { ninaMessageImages, ninaMessages } from '@/lib/db/schema'
+import { ninaAvatars, ninaMessageImages, ninaMessages } from '@/lib/db/schema'
 
 /**
  * Split from `lib/nina/queries.ts` on 2026-09-12: this file carries that barrel's §11
@@ -246,4 +246,61 @@ export async function getNinaJobPhotoBubble(
     .orderBy(asc(ninaMessages.seq), asc(ninaMessageImages.id))
     .limit(1)
   return rows[0] ?? null
+}
+
+/* ============================================================================
+ * §13 The job → REFERENCE photograph link — Detail foto's reference button
+ * ==========================================================================*/
+
+/**
+ * Where a job's reference photograph lives, in `NinaViewerSection`'s own vocabulary
+ * (`lib/nina/album.ts`) — `'chat'` for `nina_message_images`, `'album'` for `nina_avatars`. Not a
+ * new vocabulary: `NINA_IMAGE_REFERENCE_SOURCES` (`lib/nina/imageprefs.ts`) already spells the same
+ * two names for the same two tables, because `prefs.reference.source` IS the about-viewer's section
+ * the runner picked the photograph from.
+ */
+export interface NinaJobReferenceMatch {
+  section: 'chat' | 'album'
+  id: string
+}
+
+/**
+ * **A job's reference photograph, found the only way a job row can name one after the fact: by the
+ * exact Blob URL `args.referenceUrl` recorded at dispatch time.**
+ *
+ * `nina_turns.args` carries the resolved URL and nothing else (`NinaImageJobArgs.referenceUrl`'s
+ * own header) — no `{ source, id }` pair, because `prefs.reference` can be repointed or cleared
+ * long after the job ran. So this is `isBlobPathnameReferenced`'s read shape (`lib/nina/queries/
+ * images.ts`) applied to the opposite question: that function asks "is any row still pointing at
+ * this object", checked before a delete; this asks "which row IS this object", to build the
+ * Detail foto reference button's link. Both check `nina_message_images` and `nina_avatars` by
+ * `blob_url`, both scope by `user_id` (invariant 3), and both accept the unindexed scan for the
+ * same reason: single-digit-thousands of rows per user, run a handful of times a day.
+ *
+ * `nina_message_images` first, `nina_avatars` second, and never both: `blob_url` names one Blob
+ * object, and the picker (`PhotoReferencePicker.tsx`) offers a photograph from exactly one of the
+ * two sets, never a URL shared between them. A miss on both — the reference photo was since
+ * deleted, or the job predates anchor-wiring — answers `null`, which `planJobReferencePhoto`
+ * (`lib/nina/jobview.ts`) turns into the honest `{ kind: 'none' }` a screen renders nothing extra
+ * for.
+ */
+export async function getNinaImageReferencePhoto(
+  userId: string,
+  url: string,
+): Promise<NinaJobReferenceMatch | null> {
+  const images = await db
+    .select({ id: ninaMessageImages.id })
+    .from(ninaMessageImages)
+    .where(and(eq(ninaMessageImages.userId, userId), eq(ninaMessageImages.blobUrl, url)))
+    .limit(1)
+  if (images[0] != null) return { section: 'chat', id: images[0].id }
+
+  const avatars = await db
+    .select({ id: ninaAvatars.id })
+    .from(ninaAvatars)
+    .where(and(eq(ninaAvatars.userId, userId), eq(ninaAvatars.blobUrl, url)))
+    .limit(1)
+  if (avatars[0] != null) return { section: 'album', id: avatars[0].id }
+
+  return null
 }

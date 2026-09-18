@@ -16,8 +16,13 @@ import {
   jobStage,
   planJobJump,
   planJobPhoto,
+  planJobReferencePhoto,
 } from '@/lib/nina/jobview'
-import { getNinaJobPhoto, getNinaJobPhotoBubble } from '@/lib/nina/queries'
+import {
+  getNinaImageReferencePhoto,
+  getNinaJobPhoto,
+  getNinaJobPhotoBubble,
+} from '@/lib/nina/queries'
 
 /**
  * `/nina/jobs/[id]` — R1's image-generation detail page.
@@ -91,6 +96,14 @@ export default async function NinaJobDetailPage({ params }: PageProps<'/nina/job
   const bubble = photoRow === null ? null : await getNinaJobPhotoBubble(userId, photoRow.id)
   const photo = planJobPhoto({ jobId: job.id, purpose: job.purpose, imageId: photoRow?.id ?? null })
 
+  /* The reference photo's own link, over the SAME viewer `photo` opens — resolved from the exact
+   * Blob URL `args.referenceUrl` recorded at dispatch time, since the job row names no id. `null`
+   * (unanchored job, or the reference photo has since been deleted) skips the read entirely, on
+   * `getNinaJobPhoto`'s own precedent for an avatar job. */
+  const referenceMatch =
+    job.referenceUrl === null ? null : await getNinaImageReferencePhoto(userId, job.referenceUrl)
+  const referencePhoto = planJobReferencePhoto({ jobId: job.id, match: referenceMatch })
+
   return (
     <AppShell>
       <ScreenHeader
@@ -121,6 +134,7 @@ export default async function NinaJobDetailPage({ params }: PageProps<'/nina/job
         nowMs={nowMs}
         jump={planJobJump({ purpose: job.purpose, bubble, sessionParam: SESSION_PARAM })}
         photo={photo}
+        referencePhoto={referencePhoto}
       />
     </AppShell>
   )

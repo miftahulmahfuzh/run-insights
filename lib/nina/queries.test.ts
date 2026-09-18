@@ -101,6 +101,7 @@ const BARREL_VALUE_EXPORTS = [
   'getNinaAvatar',
   'getNinaAvatarBySourceKey',
   'getNinaIdentity',
+  'getNinaImageReferencePhoto',
   'getNinaJobPhoto',
   'getNinaJobPhotoBubble',
   'getNinaMemorySlot',

@@ -99,6 +99,7 @@ export function NinaJobDetail({
   nowMs,
   jump,
   photo,
+  referencePhoto,
 }: {
   jobId: string
   stage: NinaJobStage
@@ -127,6 +128,14 @@ export function NinaJobDetail({
    * statement ("never a link the server has not proved").
    */
   photo: NinaJobPhoto
+  /**
+   * The reference photo's own link, resolved by `getNinaImageReferencePhoto` + `planJobReferencePhoto`
+   * on the server — the SAME `/nina/about` full-screen viewer `photo` opens, on purpose: the runner
+   * asked for this control to share that viewer's exact UI/UX ("Tanya soal foto ini" and its three
+   * buttons), not a plain link out. `none` means the sidecar's "reference:" line, if it names a URL
+   * at all, renders as plain text — never a link the server has not proved.
+   */
+  referencePhoto: NinaJobPhoto
 }) {
   const open = stage === 'queued' || stage === 'dispatched' || stage === 'running'
 
@@ -339,22 +348,23 @@ export function NinaJobDetail({
               const noteText =
                 withJobIdLine(withCostSourceLine(sidecar, costSource), jobId) ?? prompt ?? ''
               const { before, referenceUrl, after } = splitSidecarReference(noteText)
+              /* Only swap in the control once the SERVER has proved a photo behind that URL still
+               * exists (`referencePhoto.kind === 'ready'`) — otherwise the line passes through as
+               * plain text, `withCostSourceLine`'s own "honest no-op" for a shape this screen
+               * cannot act on. */
+              if (referenceUrl === null || referencePhoto.kind !== 'ready') return noteText
               return (
                 <>
                   {before}
-                  {referenceUrl !== null && (
-                    <ButtonLink
-                      href={referenceUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      size="md"
-                      variant="secondary"
-                      className="mx-1 align-middle"
-                      aria-label="Lihat foto referensi ukuran penuh"
-                    >
-                      <Maximize2Icon />
-                    </ButtonLink>
-                  )}
+                  <ButtonLink
+                    href={referencePhoto.href}
+                    size="md"
+                    variant="secondary"
+                    className="mx-1 align-middle"
+                    aria-label="Lihat foto referensi ukuran penuh"
+                  >
+                    <Maximize2Icon />
+                  </ButtonLink>
                   {after}
                 </>
               )

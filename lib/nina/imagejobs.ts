@@ -1110,6 +1110,13 @@ export interface NinaImageJobRecord {
    * carrying the photograph, resolved by `getNinaJobPhotoBubble` (see `planJobJump`).
    */
   replyToId: string | null
+  /**
+   * **The operator's chosen reference photograph, as the absolute Blob URL actually sent as
+   * `input_references`** — `args.referenceUrl`, read directly rather than re-derived from
+   * `sidecar`'s prose. `null` for an unanchored job, `'none'`/a since-deleted preference, and every
+   * row that predates this field. See `NinaImageJobArgs.referenceUrl`'s own header.
+   */
+  referenceUrl: string | null
 }
 
 const JOB_COLUMNS = {
@@ -1158,6 +1165,8 @@ function toJobRecord(row: {
         ? args.source
         : null,
     replyToId: typeof args?.replyToId === 'string' ? args.replyToId : null,
+    referenceUrl:
+      typeof args?.referenceUrl === 'string' && args.referenceUrl !== '' ? args.referenceUrl : null,
   }
 }
 

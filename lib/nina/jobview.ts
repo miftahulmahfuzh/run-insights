@@ -644,6 +644,37 @@ export function planJobPhoto(input: {
   }
 }
 
+/* ── the reference photograph link ───────────────────────────────────────────────────────── */
+
+/**
+ * **The reference photo's own "open full screen" link — the SAME viewer `planJobPhoto` opens for
+ * the job's output, on the SAME `NinaJobPhoto` shape, so the two controls share one idiom and one
+ * component.** The runner's own words: the reference must open with "the UI/UX ... when user click
+ * the fullscreen of image generation result — the one that has 'Tanya soal foto ini' and 3 buttons
+ * below it" — which is this app's one full-screen viewer, `/nina/about`, and nothing hand-rolled.
+ *
+ * `match` is `getNinaImageReferencePhoto`'s answer: the row `args.referenceUrl` names, found by
+ * its Blob URL, in whichever of the two sets still has it. `null` — the reference photo was since
+ * deleted, or the job predates anchor-wiring — answers `{ kind: 'none' }`, on `planJobPhoto`'s own
+ * rule: never a link the server has not proved.
+ *
+ * `match.section` is handed straight to `aboutPhotoHref` rather than hardcoded, unlike
+ * `planJobPhoto`'s literal `'chat'`: a reference can be EITHER set (`NINA_IMAGE_REFERENCE_SOURCES`,
+ * `lib/nina/imageprefs.ts`), while a job's own output is always a conversation photograph.
+ */
+export function planJobReferencePhoto(input: {
+  /** The job's id — the RETURN leg of the deep link, so closing the viewer lands back here. */
+  jobId: string
+  /** `getNinaImageReferencePhoto`'s answer, or `null` when it resolved nothing. */
+  match: { section: 'chat' | 'album'; id: string } | null
+}): NinaJobPhoto {
+  if (input.match === null) return { kind: 'none' }
+  return {
+    kind: 'ready',
+    href: aboutPhotoHref(input.match.section, input.match.id, `/nina/jobs/${input.jobId}`),
+  }
+}
+
 /* ── the soft-navigation guard ────────────────────────────────────────────────────────────── */
 
 /**
