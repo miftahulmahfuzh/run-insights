@@ -159,7 +159,24 @@
  * (The other half of this fix — `lib/nina/context.ts` flattening embedded newlines to periods, and
  * `lib/nina/imagejobs.ts`'s `hasNinaImageJobForMessage` guard against a revived turn double-firing
  * the camera — changed no prompt text and needs no bump.) */
-export const NINA_PROMPT_VERSION = 12
+/* 13 — the gaze-vs-camera fix (2026-09-18, job `JQSyIfgUb59C`). `./tools.ts` reworded
+ * `GENERATE_IMAGE_TOOL.input_schema.properties.angle.description`: it used to give "looking up at
+ * you" as the cue for `low_angle`, and a runner's "telentang ngeliat lurus keatas" ("lying on her
+ * back looking straight up") — a fact about HER own gaze, not the camera — matched that phrase
+ * closely enough to pull `low_angle` when nothing asked for one. It also claimed "'eye_level' is
+ * your default already", which is false for any operator whose `/admin/image-generation` standing
+ * `cameraAngle` is not `eye_level` — `prefs.cameraAngle` decides the fallback, not this constant.
+ * The new text says explicitly that her own eyes/lying-down are `scene`/`pose` facts, not a camera
+ * pick, and drops the false default claim. `./system.ts` was not opened, so `buildNinaSystemPrompt`
+ * is byte-identical to version 12's and `tests/__snapshots__/nina.prompts.test.ts.snap` passes
+ * UNREGENERATED (the snapshot does not cover tool schemas). A turn whose model now tells "she is
+ * looking up" apart from "shoot this from below" is a turn `nina_turns` has to be able to tell
+ * from version 12's, which is the whole job of this constant. This is the SINGLE bump for the fix:
+ * no other file touches this constant. (The other half — storing the raw `angle` argument on
+ * `nina_turns.args` via `NinaImageJobArgs.angle`/`selfiegen.ts` so a future diagnosis can read what
+ * the model actually sent instead of inferring it from the rendered prompt — changed no prompt
+ * text and needs no bump.) */
+export const NINA_PROMPT_VERSION = 13
 
 export {
   NINA_REPAIR_PREAMBLE,

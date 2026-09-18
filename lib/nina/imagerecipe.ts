@@ -660,4 +660,20 @@ export interface NinaImageJobArgs {
    * the same way `referenceUrl`'s does.
    */
   model?: string
+  /**
+   * **The chat model's own `generate_image.angle` argument, verbatim — diagnostic only.**
+   * `buildNinaImagePrompt` has already spent this by the time `prompt` lands here (it decided
+   * `{{angle}}`/`{{angleReminder}}` and there is no second use for it), so no reader may branch on
+   * this field: `prompt` is the only source of truth for what the photo actually asked the camera
+   * to do. It exists purely so `/pull-image-gen-job` can answer "did the model send an override,
+   * or did this fall through to the operator's standing `cameraAngle`" directly, instead of
+   * reverse-engineering it from which fixed sentence appears in `prompt` — the gap that turned a
+   * `/pull-image-gen-job JQSyIfgUb59C` diagnosis (2026-09-18) into a full log-and-timestamp
+   * forensic exercise: `prefs.cameraAngle` was provably `overhead` for the whole job, and this
+   * field's absence was the only reason "the model overrode it to `low_angle`" stayed an inference
+   * rather than a read. Optional for the same reason `referenceUrl`/`model` are: `nina_turns.args`
+   * is jsonb and never migrated, and every job opened before this field existed has no such key —
+   * `null` and "key absent" both mean the same thing, "no override sent".
+   */
+  angle?: string | null
 }

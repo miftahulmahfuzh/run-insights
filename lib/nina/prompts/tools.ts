@@ -378,11 +378,12 @@ export const GENERATE_IMAGE_TOOL: Anthropic.Tool = {
         type: 'string',
         enum: [...NINA_CAMERA_ANGLE_KEYS],
         description:
-          'ONLY when he explicitly asks for a camera position other than your standing default — ' +
-          '"overhead" for "from directly above"/"bird\'s-eye view"/"top-down", "low_angle" for ' +
-          '"from below"/"looking up at you". Leave unset otherwise, including when he asks for the ' +
-          'normal shot back ("eye_level" is your default already — only send it to override a photo ' +
-          'you just shot at a different angle). Make sure `scene`/`pose` match whichever you send.',
+          'ONLY when he explicitly asks where the CAMERA sits, not where she is looking or how she ' +
+          'is lying — "overhead" for a camera directly above/bird\'s-eye/top-down, "low_angle" for ' +
+          'a camera down low looking UP at her. Her own eyes looking up, or her lying on her back, ' +
+          'is a fact for `scene`/`pose`, not a camera pick — leave this unset for those. Leave ' +
+          'unset otherwise too, including a plain shot back: it falls to your standing default, ' +
+          'which is not necessarily eye_level. Make sure `scene`/`pose` match whichever you send.',
       },
     },
   },

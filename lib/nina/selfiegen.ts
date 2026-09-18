@@ -150,6 +150,9 @@ export async function generateNinaSelfie(request: NinaSelfieRequest): Promise<Ni
     attempts: 0,
     referenceUrl: reference?.blobUrl ?? null,
     model,
+    /* Diagnostic only — see `NinaImageJobArgs.angle`'s own header. Stored raw, not `angleKey`:
+     * whether this fell through to `prefs.cameraAngle` is a fact `prompt` already encodes. */
+    angle,
     sidecar: sidecarText({
       prompt,
       seed,
