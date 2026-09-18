@@ -60,14 +60,20 @@ A `nina_turns` row (`kind = 'image'`) knows the prompt it sent and the `scene`/`
 photograph — those are two more hops, each optional for a real reason:
 
 1. **Job → chat message → session.** `args.sourceMessageId` is the runner's own message that asked
-   for the photo. It is `null` for a promise-sweep-triggered photo — nobody asked in chat — which
-   the report states rather than fabricating a session for.
-2. **Job → reply message → image row (selfie only).** `finishSelfie` (`lib/nina/imagerun.ts`)
-   writes exactly one `nina_messages` row with `turn_id = <job id>` and `photo_only = true` — the
-   caption bubble — and `nina_message_images.message_id` points at THAT row, never at the job
-   directly. Skipping this hop and grabbing "the user's most recently generated image" is only ever
-   correct for the single newest job in the whole app; it is wrong for any job this tool is
-   actually asked to pull, which is why the script does not do that.
+   for the photo. It is `null` for a promise-sweep- or admin-test-triggered photo — nobody asked in
+   chat for THIS one — but `session` is still filled in for it: see point 2.
+2. **Job → reply message → image row (selfie only) — and the session fallback.** `finishSelfie`
+   (`lib/nina/imagerun.ts`) writes exactly one `nina_messages` row with `turn_id = <job id>` and
+   `photo_only = true` — the caption bubble — and `nina_message_images.message_id` points at THAT
+   row, never at the job directly. Skipping this hop and grabbing "the user's most recently
+   generated image" is only ever correct for the single newest job in the whole app; it is wrong
+   for any job this tool is actually asked to pull, which is why the script does not do that.
+   `finishSelfie` **always** resolves a session before writing this row —
+   `quoted?.sessionId ?? resolveNinaWriteSession(userId)` — so an unrequested photo still lands
+   somewhere real. The script uses this row's `session_id` to fill in `session`/`conversation`
+   whenever point 1 left them empty, so **a completed non-avatar job always reports the session it
+   landed in.** `session` comes back `null` only for a job that never wrote a message at all —
+   still `pending`/`failed`, or an avatar job (point 3).
 3. **Avatar jobs have no join at all.** `finishAvatar` writes straight to `nina_avatars` — no
    `nina_messages` row, no `turn_id` column on `nina_avatars` either. `image` is `null` and
    `imageNote` says so plainly for `purpose: 'avatar'`; that is a real architectural gap, not a bug

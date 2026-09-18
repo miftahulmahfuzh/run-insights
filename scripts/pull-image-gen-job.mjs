@@ -18,9 +18,16 @@
 // ── WHY THE JOB, THE SESSION AND THE IMAGE ARE THREE SEPARATE JOINS, NOT ONE QUERY ────────────────
 // A `nina_turns` row (`kind = 'image'`) knows the prompt it sent and the scene/pose/angle arguments
 // that built it, but nothing about the conversation — `args.sourceMessageId` is the one thread back
-// to a `nina_messages` row, and it is NULL for a promise-sweep-triggered photo (nobody asked in
-// chat), so that join is optional. The photograph is a THIRD hop, not a second: `finishSelfie`
-// (`lib/nina/imagerun.ts`) writes exactly one `nina_messages` row with `turn_id = <job id>` and
+// to a `nina_messages` row, and it is NULL for a promise-sweep- or admin-test-triggered photo
+// (nobody asked in chat FOR THIS ONE). That does NOT mean there is no session to report, though:
+// `finishSelfie` (`lib/nina/imagerun.ts`) always resolves a session before it writes anything —
+// `quoted?.sessionId ?? resolveNinaWriteSession(userId)` — so an unrequested photo still lands in
+// the runner's most recent conversation, never nowhere. So the session is pulled from WHICHEVER
+// message names it first: the trigger message when `sourceMessageId` is set, falling back to the
+// reply/caption-bubble message below when it is not — the script never reports `session: null` for
+// a job that actually completed and wrote a message, only for one that never wrote one at all
+// (still pending/failed, or an avatar job). The photograph is a THIRD hop, not a second:
+// `finishSelfie` writes exactly one `nina_messages` row with `turn_id = <job id>` and
 // `photo_only = true` — the caption bubble — and `nina_message_images.message_id` points at THAT
 // row, never at the job directly. So "pull the image for job X" is `nina_turns` -> (by `turn_id`)
 // `nina_messages` -> (by `message_id`) `nina_message_images`, and skipping the middle hop by
@@ -124,11 +131,41 @@ const args = job.args ?? {}
 
 /* ── 4. The chat that triggered it, when one exists ─────────────────────────────────────────—
  *
- * `args.sourceMessageId` is NULL for a promise-sweep photo — nobody asked in chat, so there is no
- * session and no conversation to pull. That is a legitimate answer, not a failure. */
+ * `args.sourceMessageId` is NULL for a promise-sweep or admin-test photo — nobody asked in chat
+ * for THIS one. That is NOT the same as "no session exists": step 5's reply-message hop below
+ * fills `session`/`conversation` from the caption bubble whenever this step leaves them empty, so
+ * a completed job always reports the session it actually landed in. `session` stays `null` only
+ * for a job that never wrote a message at all — still pending/failed, or an avatar job. */
 let session = null
 let triggerMessage = null
 let conversation = []
+
+/* Shared by step 4 (centered on the trigger message) and step 5's fallback (centered on the reply/
+ * caption-bubble message) — the same session+window shape either way. */
+async function loadSessionAndConversation(sessionId, centerSeq) {
+  const sessionRows = await sql`
+    select id, created_at
+    from nina_chat_sessions
+    where id = ${sessionId}
+  `
+  const windowRows = await sql`
+    select id, role, text, source, turn_id, seq
+    from nina_messages
+    where session_id = ${sessionId}
+      and seq between ${centerSeq - CONTEXT_BEFORE} and ${centerSeq + CONTEXT_AFTER}
+    order by seq asc
+  `
+  return {
+    session: sessionRows[0] ?? null,
+    conversation: windowRows.map((row) => ({
+      id: row.id,
+      role: row.role,
+      text: row.text,
+      seq: Number(row.seq),
+      linkedToJob: row.turn_id === job.id,
+    })),
+  }
+}
 
 if (typeof args.sourceMessageId === 'string') {
   const triggerRows = await sql`
@@ -139,42 +176,29 @@ if (typeof args.sourceMessageId === 'string') {
   triggerMessage = triggerRows[0] ?? null
 
   if (triggerMessage != null) {
-    const sessionRows = await sql`
-      select id, created_at
-      from nina_chat_sessions
-      where id = ${triggerMessage.session_id}
-    `
-    session = sessionRows[0] ?? null
-
-    const seq = Number(triggerMessage.seq)
-    const windowRows = await sql`
-      select id, role, text, source, turn_id, seq
-      from nina_messages
-      where session_id = ${triggerMessage.session_id}
-        and seq between ${seq - CONTEXT_BEFORE} and ${seq + CONTEXT_AFTER}
-      order by seq asc
-    `
-    conversation = windowRows.map((row) => ({
-      id: row.id,
-      role: row.role,
-      text: row.text,
-      seq: Number(row.seq),
-      linkedToJob: row.turn_id === job.id,
-    }))
+    ;({ session, conversation } = await loadSessionAndConversation(
+      triggerMessage.session_id,
+      Number(triggerMessage.seq),
+    ))
   }
 }
 
-/* ── 5. The photograph — only ever expected for a job that actually finished ─────────────────—
+/* ── 5. The photograph — and, for a job step 4 could not place, the session it landed in ─────—
  *
  * `jobStage`'s rule (`lib/nina/jobview.ts`): 'ok' or 'repaired' is done, everything else ('pending',
  * 'failed') is not. `finishSelfie` writes exactly one `nina_messages` row with `turn_id = job.id`
  * (`photo_only = true`); `nina_message_images.message_id` points at THAT row's id, never at the job.
  *
+ * That reply row ALSO carries the `session_id` `finishSelfie` resolved before writing it — the only
+ * session pointer that exists for a job whose `args.sourceMessageId` was null (step 4's own note).
+ * So this hop doubles as the session fallback: whenever step 4 leaves `session` unset, it is filled
+ * in here from the caption bubble instead, centered on ITS `seq` rather than a trigger message's.
+ *
  * `purpose === 'avatar'` has NO such join at all: `finishAvatar` (`lib/nina/imagerun.ts`) writes
  * straight to `nina_avatars` — no `nina_messages` row, no `turn_id` column on `nina_avatars` either
- * — "nobody asked in chat" by that function's own header. So an avatar job's photograph cannot be
- * resolved exactly; it is reported as a known gap rather than guessed at from `created_at`/`scene`
- * proximity, on `search-analysis.mjs`'s rule: ask (or here, say so), never pick.
+ * — "nobody asked in chat" by that function's own header. So an avatar job's photograph AND session
+ * cannot be resolved exactly; it is reported as a known gap rather than guessed at from
+ * `created_at`/`scene` proximity, on `search-analysis.mjs`'s rule: ask (or here, say so), never pick.
  */
 const isDone = job.status === 'ok' || job.status === 'repaired'
 let image = null
@@ -189,20 +213,30 @@ if (!isDone) {
   imageNote =
     'job status is done, but this is an avatar job: finishAvatar writes straight to nina_avatars ' +
     'with no turn_id column and no nina_messages row, so there is no exact join back to it from ' +
-    'the job. Check /admin/nina (the current avatar, or the folder it was filed under) by eye.'
+    'the job (and no session to report either). Check /admin/nina (the current avatar, or the ' +
+    'folder it was filed under) by eye.'
 } else {
   const replyRows = await sql`
-    select id from nina_messages where turn_id = ${job.id} and photo_only = true
+    select id, session_id, seq from nina_messages where turn_id = ${job.id} and photo_only = true
   `
   if (replyRows.length === 0) {
     imageNote =
       'job status is done but no linked message (turn_id = job.id, photo_only = true) was found — ' +
       'the row may predate that convention, or something is wrong'
   } else {
+    const replyRow = replyRows[0]
+
+    if (session == null) {
+      ;({ session, conversation } = await loadSessionAndConversation(
+        replyRow.session_id,
+        Number(replyRow.seq),
+      ))
+    }
+
     const imageRows = await sql`
       select id, message_id, blob_url, prompt, width, height, created_at
       from nina_message_images
-      where message_id = ${replyRows[0].id}
+      where message_id = ${replyRow.id}
     `
     if (imageRows.length === 0) {
       imageNote = 'job status is done and the reply message exists, but it carries no image row'
