@@ -45,12 +45,11 @@ import { generatedChatPhotoScope } from './images'
  * `reference.source`. The same three-layer boundary `tuningFromRow` describes one table over: two
  * spellings, ONE translation point, reviewable in one diff.
  *
- * It ends in `coerceNinaImagePrefs`, so a row hand-edited in `psql` to `prompt_length = 900` reaches
- * the prompt as 100 rather than as a band index of 45.
+ * It ends in `coerceNinaImagePrefs`, so a row hand-edited in `psql` to something unreadable still
+ * reaches the prompt as a usable value.
  */
 function imagePrefsFromRow(row: NinaImagePrefsRow): NinaImagePrefs {
   return coerceNinaImagePrefs({
-    promptLength: row.promptLength,
     focus: {
       face: row.focusFace,
       skin: row.focusSkin,
@@ -89,7 +88,6 @@ function imagePrefsFromRow(row: NinaImagePrefsRow): NinaImagePrefs {
  */
 function imagePrefsToColumns(prefs: NinaImagePrefsWrite) {
   return {
-    promptLength: prefs.promptLength,
     focusFace: prefs.focus.face,
     focusSkin: prefs.focus.skin,
     focusBoobs: prefs.focus.boobs,

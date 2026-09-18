@@ -52,8 +52,6 @@ import {
   NINA_HAIRSTYLE_KEYS,
   NINA_IMAGE_FOCUS_KEYS,
   NINA_IMAGE_MODEL_IDS,
-  NINA_IMAGE_PROMPT_LENGTH_MAX,
-  NINA_IMAGE_PROMPT_LENGTH_MIN,
   NINA_IMAGE_NOTES_MAX,
   NINA_IMAGE_REFERENCE_ID_MAX,
   NINA_IMAGE_REFERENCE_SOURCES,
@@ -713,11 +711,11 @@ export const shortcutDeleteSchema = z.object({
  * ==========================================================================*/
 
 /**
- * What `/admin/image-generation`'s panel may write. R4 through R9 — and R10's *selection* — arrive
+ * What `/admin/image-generation`'s panel may write. R5 through R9 — and R10's *selection* — arrive
  * as **one object**, and that is plan invariant 7 rather than a preference.
  *
- * ── ONE SAVE, NOT ELEVEN ────────────────────────────────────────────────────────────────────
- * A slider, six checkboxes, four text fields and a photograph is eleven controls. Next dispatches
+ * ── ONE SAVE, NOT TEN ───────────────────────────────────────────────────────────────────────
+ * Three dropdowns, six checkboxes, four text fields and a photograph is ten controls. Next dispatches
  * Server Actions ONE AT A TIME PER CLIENT — the fact `avatarBatchRegisterSchema` above is built
  * around and `ninaTuningWriteSchema` restates — so eleven actions is not a design, it is a stall.
  * The whole prefs object is well under a kilobyte against a 1 MB action body cap
@@ -739,12 +737,6 @@ export const shortcutDeleteSchema = z.object({
  * Every bound is IMPORTED. `lib/admin/avatars.ts`'s rule holds here too: *"a constant that is
  * agreed rather than shared is a constant that will one day disagree."*
  */
-const promptLengthSchema = z
-  .number()
-  .int()
-  .min(NINA_IMAGE_PROMPT_LENGTH_MIN)
-  .max(NINA_IMAGE_PROMPT_LENGTH_MAX)
-
 /** R5's option. A boolean and nothing else — no `"true"`, no `1`. The browser we wrote sends one. */
 const focusValueSchema = z.boolean()
 
@@ -792,8 +784,6 @@ const ninaImageReferenceSchema = z
 
 export const ninaImagePrefsWriteSchema = z.object({
   userId: userIdSchema,
-  /** R4. */
-  promptLength: promptLengthSchema,
   /**
    * R5. `strictObject` like the tuning's toggles and for the same reason. Every key is REQUIRED —
    * the panel always sends a complete map, and an absent key here would be an ambiguity between

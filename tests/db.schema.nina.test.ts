@@ -742,19 +742,17 @@ describe('nina_tuning', () => {
  * where the enable flags are nullable, and the reference pair has no foreign key where every other
  * pointer in this schema does.
  */
-describe('nina_image_prefs — how she is photographed (R4-R10)', () => {
+describe('nina_image_prefs — how she is photographed (R5-R10)', () => {
   it('is keyed by user_id and cascades from the account', () => {
     expect(cfg(schema.ninaImagePrefs).name).toBe('nina_image_prefs')
     expect(columns(schema.ninaImagePrefs).get('user_id')?.primary).toBe(true)
     expect(fkFor(schema.ninaImagePrefs, 'user_id')?.onDelete).toBe('cascade')
   })
 
-  it('spells exactly the nineteen columns phases 2, 3, 4, 5 and the 2026-09-18 hairstyle and camera-angle presets were written against', () => {
+  it('spells exactly the eighteen columns phases 2, 3, 4, 5 and the 2026-09-18 hairstyle and camera-angle presets were written against', () => {
     expect(names(schema.ninaImagePrefs)).toEqual(
       [
         'user_id',
-        // R4 — the slider, read through the five bands.
-        'prompt_length',
         // R5 — the six emphasis flags, in the order the user wrote them.
         'focus_face',
         'focus_skin',
@@ -817,16 +815,11 @@ describe('nina_image_prefs — how she is photographed (R4-R10)', () => {
     }
   })
 
-  it('stores the slider as an integer, never a float', () => {
-    expect(sqlType(schema.ninaImagePrefs, 'prompt_length')).toBe('integer')
-  })
-
   it('carries NO SQL DEFAULT on any stored value — the defaults live in TypeScript', () => {
-    // `NINA_IMAGE_PREFS_DEFAULTS` is the one definition of "unset". A `DEFAULT 50` here would be a
+    // `NINA_IMAGE_PREFS_DEFAULTS` is the one definition of "unset". A SQL `DEFAULT` here would be a
     // second copy of it in a second language, drifting silently. No row means the defaults, and
     // `writeNinaImagePrefs` always supplies all of them because it takes a whole write value.
     for (const key of [
-      'prompt_length',
       ...NINA_IMAGE_FOCUS_KEYS.map((k) => `focus_${k}`),
       'wardrobe',
       'venue',

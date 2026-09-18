@@ -8,13 +8,11 @@ import {
   NINA_IMAGE_MODEL_IDS,
   NINA_IMAGE_MODEL_SPECS,
   NINA_IMAGE_REFERENCE_SOURCES,
-  ninaPromptLengthRungFor,
   type NinaCameraAngleKey,
   type NinaHairstyleKey,
   type NinaImageModelId,
   type NinaImagePrefs,
 } from '@/lib/nina/imageprefs'
-import { ninaBand } from '@/lib/nina/tuning'
 
 /**
  * `/admin/image-generation`'s panel, as data and pure functions — the client-safe half.
@@ -25,19 +23,10 @@ import { ninaBand } from '@/lib/nina/tuning'
  * is `'use client'`. A Server Component cannot read a plain export out of a `'use client'` module,
  * so the copy and the diffing cannot live in the panel.
  *
- * **This file imports exactly TWO modules, `@/lib/nina/imageprefs` and `@/lib/nina/tuning`, and
+ * **This file imports exactly ONE module, `@/lib/nina/imageprefs`, and
  * `tests/admin.imagegen.test.ts` asserts that.** Values as well as types, because the labels, the
- * hints and the bounds all come from there — safe, and checked, precisely because both of phase 1's
- * modules have zero imports of their own.
- *
- * The second import is not a convenience. `ninaPromptLengthRungFor` takes a BAND INDEX, and the
- * band mapping is `ninaBand` in `lib/nina/tuning.ts` — which `lib/nina/imageprefs.ts` deliberately
- * does not re-declare, because a second copy of the band vocabulary is a scale that can drift.
- * Phase 1's Handoff says it directly: *"render the band caption via
- * `ninaPromptLengthRungFor(ninaBand(value).index)` and never re-derive a band from a score."*
- * Re-deriving the five boundaries locally is forbidden — a private scale is a slider the operator
- * cannot predict. `lib/admin/tuningModel.ts` already imports `@/lib/nina/tuning` for exactly this
- * class of reason, so the client-bundle safety is precedent rather than a new claim.
+ * hints and the bounds all come from there — safe, and checked, precisely because that module has
+ * zero imports of its own.
  *
  * ── THE READ-SIDE ADAPTATION SEAM ────────────────────────────────────────────────────────────
  * `toImageGenDraft` is ONE of exactly TWO functions in this phase that know phase 1's field names
@@ -54,16 +43,10 @@ import { ninaBand } from '@/lib/nina/tuning'
  * `NinaImageFocusKey` (`NINA_FOCUS_EMPHASIS`, `lib/nina/imagegen.ts`), and this file only reads
  * them, so the panel cannot promise an emphasis the prompt does not add. A label
  * typed into the JSX would be a second source of truth for a vocabulary the user dictated.
- *
- * What IS local is genuinely local: `LENGTH_BAND_NOTE` below is editorial about the SURFACE
- * ("read the assembled prompt underneath") and makes no claim about what a rung adds, which is
- * phase 2's business and is visible in the preview rather than described here.
  */
 
 /** What a browser edits: phase 1's row, with its vocabulary loosened for the adaptation seam. */
 export interface ImageGenDraft {
-  /** R4. 0-100 on phase 1's scale, read through its five bands. */
-  promptLength: number
   /**
    * R5, keyed by `NINA_IMAGE_FOCUS_KEYS`. `Record<string, boolean>` rather than the key union for
    * the same reason `TuningDraft.enabled` is loose: this is the adaptation seam, and a component
@@ -118,20 +101,6 @@ export interface ImageGenDraft {
    * `NINA_CAMERA_ANGLE_KEYS` at the save.
    */
   cameraAngle: string
-}
-
-/** One control's user-facing text. The label goes beside the control; the hint goes under it. */
-export interface ImageGenCopy {
-  label: string
-  hint: string
-  /**
-   * The band name for a slider's current value, `''` for a control that has no scale.
-   *
-   * It is a MEMBER and not something a caller digs out of `hint` with a `split('.')`, because two
-   * surfaces read it — the slider's hint here and `/admin`'s hub card — and string surgery on a
-   * sentence one of them owns is the kind of coupling that breaks when the sentence is reworded.
-   */
-  band: string
 }
 
 /**
@@ -270,7 +239,6 @@ export function parseReferenceKey(key: string): ImageGenDraft['reference'] {
  */
 export function toImageGenDraft(prefs: NinaImagePrefs): ImageGenDraft {
   return {
-    promptLength: prefs.promptLength,
     focus: { ...prefs.focus },
     wardrobe: prefs.wardrobe,
     venue: prefs.venue,
@@ -381,11 +349,6 @@ export function imageCameraAngleLabel(id: string): string {
  * ("face" under Face); the user asked for that line gone, and with it went `userSaid`, whose one
  * reader was this return value.
  *
- * A plain string, not `ImageGenCopy`, for the same rung: `band` was already always `''` here (a
- * checkbox has no scale), and a `hint` that must stay empty is an absence pinned by its own test.
- * `promptLengthCopy` keeps the `ImageGenCopy` shape because its hint and band are genuinely
- * rendered.
- *
  * The fallback exists so a running page degrades to a readable label rather than crashing on a key
  * phase 1 adds, and `tests/admin.imagegen.test.ts` fails on any key in `NINA_IMAGE_FOCUS_KEYS`
  * that reaches it — the net is for a running page, never a licence to ship an unlabelled checkbox.
@@ -398,38 +361,8 @@ export function imageFocusCopy(key: string): string {
 }
 
 /**
- * What the operator reads beside the length slider.
- *
- * The RUNG is phase 1's (`ninaPromptLengthRungFor(ninaBand(value).index)`), because the whole point of putting the slider
- * on the repo's existing five-band scale was that the operator can predict it — `/admin`'s other
- * sliders are read in bands and a private scale would be a control nobody can report back.
- *
- * The note is this file's own and is deliberately editorial about the SURFACE rather than
- * descriptive of the prompt. A sentence here claiming what a rung adds would be a promise phase 2
- * has to keep forever, and a stale one is the panel lying about text the operator can already read:
- * the assembled prompt is rendered a few centimetres below the slider, from the same assembler the
- * camera is handed, so the honest hint points at it.
- */
-const LENGTH_BAND_NOTE =
-  'The prompt template below governs her photographs; this dial drives the built-in ' +
-  'assembly the avatar path is assembled from.'
-
-export function promptLengthCopy(value: number): ImageGenCopy {
-  /* PHASE 1'S HANDOFF, VERBATIM: "It must render the band caption via
-   * `ninaPromptLengthRungFor(ninaBand(value).index)` and never re-derive a band from a score."
-   * `ninaBand` comes from `@/lib/nina/tuning` — the second of this file's two imports (A1b), and
-   * the reason `imageprefs.ts` does not carry a private copy of the five band boundaries. */
-  const rung = ninaPromptLengthRungFor(ninaBand(value).index)
-  return {
-    label: 'Prompt length',
-    hint: `${rung.label}. ${rung.axis} ${LENGTH_BAND_NOTE}`,
-    band: rung.label,
-  }
-}
-
-/**
- * Which fields differ, as stable dotted paths (`promptLength`, `wardrobe`, `venue`, `time`,
- * `notes`, `reference`, `focus.boobs`).
+ * Which fields differ, as stable dotted paths (`wardrobe`, `venue`, `time`, `notes`, `reference`,
+ * `focus.boobs`).
  *
  * One function serves three jobs, which is why it returns names instead of a boolean: the header
  * counts them, each control asks whether its own path is in the set, and `imageGenDraftEquals` is
@@ -446,7 +379,6 @@ export function promptLengthCopy(value: number): ImageGenCopy {
 export function changedImageGenFields(next: ImageGenDraft, saved: ImageGenDraft): string[] {
   const changed: string[] = []
 
-  if (next.promptLength !== saved.promptLength) changed.push('promptLength')
   if (next.wardrobe !== saved.wardrobe) changed.push('wardrobe')
   if (next.venue !== saved.venue) changed.push('venue')
   if (next.time !== saved.time) changed.push('time')
@@ -467,25 +399,6 @@ export function changedImageGenFields(next: ImageGenDraft, saved: ImageGenDraft)
 export function imageGenDraftEquals(a: ImageGenDraft, b: ImageGenDraft): boolean {
   return changedImageGenFields(a, b).length === 0
 }
-
-/**
- * How long the prompt-length dial waits after its last change before it commits — the settle
- * window of the auto-save panel (this set's R2).
- *
- * `TUNING_DIAL_COMMIT_DEBOUNCE_MS`'s argument in `lib/admin/tuningModel.ts` transfers verbatim: a
- * native `<input type="range">` fires `change` on every pointer move of a drag and on every arrow
- * keypress, and it KEEPS FOCUS after the thumb is released — so the blur rule that commits the text
- * fields below cannot transfer to the one dial this panel has, because there is no blur event that
- * means "this edit is finished". The debounce is the settle detector: one continuous drag becomes
- * one save. 600 ms sits above the tens-of-milliseconds gaps between change events inside one drag
- * and below the time it takes to wonder whether the edit landed. A separate constant rather than
- * importing the tuning one: the two windows answer to two panels, and recalibrating one is a
- * product decision about THAT panel that must not silently move the other.
- *
- * Named here rather than in the component for the same reason every bound in this file is imported
- * rather than re-declared: one home, and a test can pin it.
- */
-export const IMAGEGEN_DIAL_COMMIT_DEBOUNCE_MS = 600
 
 /**
  * The focus map's share of the post-save merge — `tuningModel.ts`'s private `mergeRecord`, with one
@@ -520,21 +433,21 @@ function mergeFocusRecord(
  * structural twin of `mergeTuningAfterSave` (`lib/admin/tuningModel.ts:315-334`), field for field.
  *
  * `writeNinaImagePrefs` coerces before it writes, and the coercion is not a no-op:
- * `coerceNinaImageText` collapses whitespace runs, trims and truncates ("  long  hugging  leggings  "
- * is stored as "long hugging leggings") and `coerceNinaImagePromptLength` clamps, so the stored row
- * can differ cosmetically from what was typed. The panel cannot keep showing the pre-coercion text
- * after the row that holds the canonical form has landed — the operator would watch the field "not
- * take" — but it also cannot adopt the stored row wholesale, because the operator may have kept
- * editing while the save was in flight, and a wholesale adoption would write the older stored value
- * over the newer local one. That is the one failure this merge exists to prevent.
+ * `coerceNinaImageText` collapses whitespace runs and trims and truncates ("  long  hugging
+ * leggings  " is stored as "long hugging leggings"), so the stored row can differ cosmetically
+ * from what was typed. The panel cannot keep showing the pre-coercion text after the row that
+ * holds the canonical form has landed — the operator would watch the field "not take" — but it
+ * also cannot adopt the stored row wholesale, because the operator may have kept editing while the
+ * save was in flight, and a wholesale adoption would write the older stored value over the newer
+ * local one. That is the one failure this merge exists to prevent.
  *
  * So: for each field, if `current` still equals what was `sent`, the field was untouched since
- * dispatch and takes the canonical value (a collapsed wardrobe appears; a clamped dial snaps to
- * what was stored); otherwise the field keeps the newer local value and remains pending — it rides
- * the next commit. `changedImageGenFields` is the same per-field comparison in boolean form, which
- * is why the merge and the pending marks always agree. The reference is decided by
- * `referenceKey(...)` — the ONE identity measure this file already uses for "is the selection the
- * same", and the one the pending mark is computed from.
+ * dispatch and takes the canonical value (a collapsed wardrobe appears); otherwise the field keeps
+ * the newer local value and remains pending — it rides the next commit. `changedImageGenFields` is
+ * the same per-field comparison in boolean form, which is why the merge and the pending marks
+ * always agree. The reference is decided by `referenceKey(...)` — the ONE identity measure this
+ * file already uses for "is the selection the same", and the one the pending mark is computed
+ * from.
  */
 export function mergeImageGenAfterSave(
   current: ImageGenDraft,
@@ -542,8 +455,6 @@ export function mergeImageGenAfterSave(
   canonical: ImageGenDraft,
 ): ImageGenDraft {
   return {
-    promptLength:
-      current.promptLength === sent.promptLength ? canonical.promptLength : current.promptLength,
     focus: mergeFocusRecord(current.focus, sent.focus, canonical.focus),
     wardrobe: current.wardrobe === sent.wardrobe ? canonical.wardrobe : current.wardrobe,
     venue: current.venue === sent.venue ? canonical.venue : current.venue,

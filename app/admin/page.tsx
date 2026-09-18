@@ -2,12 +2,7 @@ import Link from 'next/link'
 
 import { Card } from '@/components/ui'
 import { requireAdmin } from '@/lib/admin/requireAdmin'
-import {
-  focusOnKeys,
-  promptLengthCopy,
-  referenceKey,
-  toImageGenDraft,
-} from '@/lib/admin/imageGenModel'
+import { focusOnKeys, referenceKey, toImageGenDraft } from '@/lib/admin/imageGenModel'
 import { loudestDials, relationshipCopy, toTuningDraft, tuningCopy } from '@/lib/admin/tuningModel'
 import { getAdminUser } from '@/lib/admin/users'
 import { NINA_IMAGE_FOCUS_KEYS } from '@/lib/nina/imageprefs'
@@ -150,10 +145,9 @@ export default async function AdminHomePage() {
         <Card className="p-5">
           <h2 className="text-[15px] font-semibold text-ink">Image generation</h2>
           <p className="mt-1 mb-3 text-[13px] font-medium text-ink-2">
-            Prompt length {promptLengthCopy(imagePrefs.promptLength).band}
             {focused.length === 0
-              ? ', nothing emphasised'
-              : `, ${focused.length} of ${NINA_IMAGE_FOCUS_KEYS.length} emphasised`}
+              ? 'Nothing emphasised'
+              : `${focused.length} of ${NINA_IMAGE_FOCUS_KEYS.length} emphasised`}
             {referenceKey(imageDraft.reference) === '' ? ', no reference' : ', one photo reference'}
             .
           </p>

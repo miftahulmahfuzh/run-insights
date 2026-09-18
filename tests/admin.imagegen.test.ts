@@ -14,14 +14,12 @@ import {
   imageCameraAngleLabel,
   imageFocusCopy,
   imageGenDraftEquals,
-  IMAGEGEN_DIAL_COMMIT_DEBOUNCE_MS,
   imageHairstyleLabel,
   imageModelHint,
   imageModelLabel,
   mergeImageGenAfterSave,
   parseReferenceKey,
   prettifyFocusKey,
-  promptLengthCopy,
   referenceKey,
   toImageGenDraft,
   toImageReferenceOption,
@@ -33,9 +31,6 @@ import {
   NINA_HAIRSTYLE_KEYS,
   NINA_IMAGE_FOCUS_KEYS,
   NINA_IMAGE_MODEL_IDS,
-  NINA_PROMPT_LENGTH_RUNGS,
-  NINA_IMAGE_PROMPT_LENGTH_MAX,
-  NINA_IMAGE_PROMPT_LENGTH_MIN,
   NINA_IMAGE_NOTES_MAX,
   NINA_IMAGE_PREFS_DEFAULTS,
   NINA_IMAGE_REFERENCE_ID_MAX,
@@ -66,7 +61,6 @@ function payload(overrides: Partial<ImageGenDraft> = {}) {
 
 describe('toImageGenDraft — the read-side seam', () => {
   it('carries every field phase 1 declares', () => {
-    expect(DEFAULTS.promptLength).toBe(NINA_IMAGE_PREFS_DEFAULTS.promptLength)
     for (const key of NINA_IMAGE_FOCUS_KEYS) {
       expect(DEFAULTS.focus[key]).toBe(NINA_IMAGE_PREFS_DEFAULTS.focus[key])
     }
@@ -117,26 +111,6 @@ describe('the vocabulary is phase 1s, and is complete', () => {
       .toLowerCase()
     for (const clinical of ['mammary', 'gluteal', 'gluteus', 'adipose', 'posterior', 'bust']) {
       expect(labels, `a focus label says "${clinical}"`).not.toContain(clinical)
-    }
-  })
-
-  it('reads the length band off phase 1 and names it beside the slider', () => {
-    for (const value of [NINA_IMAGE_PROMPT_LENGTH_MIN, 50, NINA_IMAGE_PROMPT_LENGTH_MAX]) {
-      const copy = promptLengthCopy(value)
-      expect(copy.label.length).toBeGreaterThan(0)
-      expect(copy.hint.length).toBeGreaterThan(0)
-    }
-    /* The bottom and the top of the scale must not read as the same band, or the slider is a
-     * control the operator cannot predict — the fork the index settled by putting it on the repo's
-     * five-band scale. */
-    expect(promptLengthCopy(NINA_IMAGE_PROMPT_LENGTH_MIN).band).not.toBe(
-      promptLengthCopy(NINA_IMAGE_PROMPT_LENGTH_MAX).band,
-    )
-    /* And the band the hub card prints is one phase 1 declares, not a string this file invented. */
-    for (const value of [NINA_IMAGE_PROMPT_LENGTH_MIN, 50, NINA_IMAGE_PROMPT_LENGTH_MAX]) {
-      expect(NINA_PROMPT_LENGTH_RUNGS.map((rung) => rung.label)).toContain(
-        promptLengthCopy(value).band,
-      )
     }
   })
 
@@ -216,11 +190,9 @@ describe('changedImageGenFields — what the operator sees as unsaved', () => {
     expect(imageGenDraftEquals(DEFAULTS, toImageGenDraft(NINA_IMAGE_PREFS_DEFAULTS))).toBe(true)
   })
 
-  it('names the eight scalar fields in a fixed order', () => {
+  it('names the seven scalar fields in a fixed order', () => {
     const edited: ImageGenDraft = {
       ...DEFAULTS,
-      promptLength:
-        DEFAULTS.promptLength === NINA_IMAGE_PROMPT_LENGTH_MAX ? 0 : NINA_IMAGE_PROMPT_LENGTH_MAX,
       wardrobe: 'long hugging leggings with string bra',
       venue: 'Kuta streets in Bali',
       time: 'rainy night',
@@ -233,7 +205,6 @@ describe('changedImageGenFields — what the operator sees as unsaved', () => {
       hairstyle: 'flowing',
     }
     expect(changedImageGenFields(edited, DEFAULTS)).toEqual([
-      'promptLength',
       'wardrobe',
       'venue',
       'time',
@@ -279,14 +250,6 @@ describe('changedImageGenFields — what the operator sees as unsaved', () => {
   })
 })
 
-describe('IMAGEGEN_DIAL_COMMIT_DEBOUNCE_MS — the settle window', () => {
-  it('is 600ms: long enough that one drag is one save, short enough that Saved lands while you watch', () => {
-    /* Pinned as a literal for the same reason the tuning window is: recalibrating the window is a
-     * product decision, and this line is where it becomes an explicit one. */
-    expect(IMAGEGEN_DIAL_COMMIT_DEBOUNCE_MS).toBe(600)
-  })
-})
-
 describe('mergeImageGenAfterSave — the post-save canonical merge', () => {
   it('adopts the stored row for every field untouched since the dispatch', () => {
     /* `coerceNinaImageText` collapses whitespace runs and trims, so the stored form is not always
@@ -299,12 +262,12 @@ describe('mergeImageGenAfterSave — the post-save canonical merge', () => {
     expect(imageGenDraftEquals(merged, canonical)).toBe(true)
   })
 
-  it('keeps a dial moved after the dispatch, and leaves exactly that field pending', () => {
-    const sent: ImageGenDraft = { ...DEFAULTS, promptLength: 40 }
-    const movedSince: ImageGenDraft = { ...sent, promptLength: 90 }
-    const merged = mergeImageGenAfterSave(movedSince, sent, sent)
-    expect(merged.promptLength).toBe(90)
-    expect(changedImageGenFields(merged, sent)).toEqual(['promptLength'])
+  it('keeps a dropdown changed after the dispatch, and leaves exactly that field pending', () => {
+    const sent: ImageGenDraft = { ...DEFAULTS, cameraAngle: 'overhead' }
+    const changedSince: ImageGenDraft = { ...sent, cameraAngle: 'low_angle' }
+    const merged = mergeImageGenAfterSave(changedSince, sent, sent)
+    expect(merged.cameraAngle).toBe('low_angle')
+    expect(changedImageGenFields(merged, sent)).toEqual(['cameraAngle'])
   })
 
   it('does not clobber notes typed after the dispatch with the coerced stored value', () => {
@@ -394,25 +357,6 @@ describe('ninaImagePrefsWriteSchema — the boundary', () => {
       boolean
     >
     expect(ninaImagePrefsWriteSchema.safeParse(payload({ focus: stringly })).success).toBe(false)
-  })
-
-  it('refuses a prompt length outside phase 1s own range, and a fractional one', () => {
-    for (const bad of [
-      NINA_IMAGE_PROMPT_LENGTH_MIN - 1,
-      NINA_IMAGE_PROMPT_LENGTH_MAX + 1,
-      42.5,
-      Number.NaN,
-    ]) {
-      expect(
-        ninaImagePrefsWriteSchema.safeParse(payload({ promptLength: bad })).success,
-        `${bad}`,
-      ).toBe(false)
-    }
-    for (const good of [NINA_IMAGE_PROMPT_LENGTH_MIN, NINA_IMAGE_PROMPT_LENGTH_MAX]) {
-      expect(ninaImagePrefsWriteSchema.safeParse(payload({ promptLength: good })).success).toBe(
-        true,
-      )
-    }
   })
 
   it('bounds all four free-text fields, and accepts each empty', () => {
@@ -705,7 +649,6 @@ describe('one save, not eleven — plan invariant 7', () => {
     expect((source.match(/saveNinaImagePrefsAction\(/g) ?? []).length).toBe(1)
     const call = source.slice(source.indexOf('saveNinaImagePrefsAction({'))
     for (const field of [
-      'promptLength',
       'focus',
       'wardrobe',
       'venue',
@@ -741,14 +684,6 @@ describe('the panel commits itself — no staged-commit row', () => {
     expect(code).not.toContain('resetNinaImagePrefsAction')
   })
 
-  it('debounces the dial on the named settle window and clears the timer', () => {
-    const code = codeOnly(PANEL)
-    expect(code).toContain('IMAGEGEN_DIAL_COMMIT_DEBOUNCE_MS')
-    expect(code).toContain('setTimeout(')
-    /* Cleared on re-arm, on subsumption, and on unmount — the ImageGenTestPanel hygiene. */
-    expect(code).toContain('clearTimeout(')
-  })
-
   it('commits the five text controls on blur, and never on a keystroke timer', () => {
     const code = codeOnly(PANEL)
     expect((code.match(/onBlur=\{commitText\}/g) ?? []).length).toBe(5)
@@ -763,19 +698,16 @@ describe('the panel commits itself — no staged-commit row', () => {
     const code = codeOnly(PANEL)
     expect(code).toContain('setFocus(key, event.target.checked)')
     expect(code).toContain('setReference(parseReferenceKey(next))')
-    /* Each name appears once as the definition and once per call site that rides it: seven
-     * `commitImmediate` (definition, setFocus, setReference, the template reset, the model
-     * select, the 2026-09-18 hairstyle select, the 2026-09-18 camera-angle select) and two
-     * `scheduleDialCommit` (definition, the dial's onChange). Nothing else may route to either. */
+    /* `commitImmediate` appears once as the definition and once per call site that rides it:
+     * setFocus, setReference, the template reset, the model select, the 2026-09-18 hairstyle
+     * select, the 2026-09-18 camera-angle select — seven in all. */
     expect((code.match(/commitImmediate\(/g) ?? []).length).toBe(7)
-    expect((code.match(/scheduleDialCommit\(/g) ?? []).length).toBe(2)
   })
 
   it('does not fire a save for a draft identical to the saved row', () => {
     const code = codeOnly(PANEL)
-    /* Both paths guard with the same equality — immediate at :commitImmediate, fire-time inside
-     * the debounce callback against the live ref mirror. */
-    expect((code.match(/imageGenDraftEquals\(/g) ?? []).length).toBeGreaterThanOrEqual(3)
+    /* Guarded at both commit paths — `commitImmediate` and the text fields' `commitText`. */
+    expect((code.match(/imageGenDraftEquals\(/g) ?? []).length).toBeGreaterThanOrEqual(2)
     expect(code).toContain('mergeImageGenAfterSave(')
   })
 
@@ -798,23 +730,15 @@ describe('the panel commits itself — no staged-commit row', () => {
 
 describe('the client half stays client-safe — plan invariant 9', () => {
   /*
-   * ── RECONCILED: TWO IMPORTS, NOT ONE ────────────────────────────────────────────────────────
-   * The draft of this case asserted a single import of `@/lib/nina/imageprefs`. It is TWO, and the
-   * second one is phase 1's own instruction rather than a convenience: `ninaPromptLengthRungFor`
-   * takes a BAND INDEX, `imageprefs.ts` deliberately keeps no second copy of the band vocabulary,
-   * and phase 1's Handoff says *"render the band caption via
-   * `ninaPromptLengthRungFor(ninaBand(value).index)` and never re-derive a band from a score."*
-   * So `ninaBand` comes from `@/lib/nina/tuning`.
-   *
-   * The property that actually matters is unchanged and is what this asserts: BOTH are zero-import
-   * `lib/nina` vocabulary modules, loadable in a browser bundle and in a vitest `node`
-   * environment. `lib/admin/tuningModel.ts` imports `@/lib/nina/tuning` today on the same footing.
+   * The property that matters: `imageGenModel.ts` imports exactly ONE module,
+   * `@/lib/nina/imageprefs` — a zero-import `lib/nina` vocabulary module, loadable in a browser
+   * bundle and in a vitest `node` environment.
    */
   it('keeps imageGenModel client-safe: it imports only phase 1s zero-import vocabulary', () => {
     const source = codeOnly(MODEL)
     const imports = source.match(/^import[\s\S]*?from '([^']+)'/gm) ?? []
     expect(imports.length).toBeGreaterThan(0)
-    const allowed = ["from '@/lib/nina/imageprefs'", "from '@/lib/nina/tuning'"]
+    const allowed = ["from '@/lib/nina/imageprefs'"]
     for (const line of imports) {
       expect(
         allowed.some((from) => line.includes(from)),

@@ -2,7 +2,6 @@
 
 import * as React from 'react'
 
-import { DialSlider } from '@/components/admin/DialSlider'
 import { ImageGenTestPanel } from '@/components/admin/ImageGenTestPanel'
 import { PhotoReferencePicker } from '@/components/admin/PhotoReferencePicker'
 import { TOUCH_TARGET } from '@/components/admin/touch'
@@ -19,13 +18,11 @@ import {
   imageCameraAngleLabel,
   imageFocusCopy,
   imageGenDraftEquals,
-  IMAGEGEN_DIAL_COMMIT_DEBOUNCE_MS,
   imageHairstyleLabel,
   imageModelHint,
   imageModelLabel,
   mergeImageGenAfterSave,
   parseReferenceKey,
-  promptLengthCopy,
   referenceKey,
   type ImageGenDraft,
   type ImageReferenceOption,
@@ -36,8 +33,6 @@ import {
   NINA_HAIRSTYLE_KEYS,
   NINA_IMAGE_FOCUS_KEYS,
   NINA_IMAGE_MODEL_IDS,
-  NINA_IMAGE_PROMPT_LENGTH_MAX,
-  NINA_IMAGE_PROMPT_LENGTH_MIN,
   NINA_IMAGE_NOTES_MAX,
   NINA_IMAGE_TEMPLATE_KEYS,
   NINA_IMAGE_TEMPLATE_SPECS,
@@ -90,31 +85,19 @@ import {
  * "HOW A CELL SAVES, AND WHY IT IS BLUR AND NOT A DEBOUNCE") and this panel follows it
  * control-kind by control-kind:
  *
- *   - **The prompt-length dial commits DEBOUNCED, `IMAGEGEN_DIAL_COMMIT_DEBOUNCE_MS` after the
- *     last change.** A range input fires `change` on every pointer move and KEEPS FOCUS after the
- *     thumb is released, so blur — the text fields' moment — does not exist for a slider. The
- *     debounce is the settle detector: one continuous drag becomes one save, and the timer is
- *     cleared on re-arm, on unmount, and whenever an immediate commit has already carried
- *     everything pending.
- *   - **The six focus checkboxes and the photo reference commit on CHANGE.** A discrete control's
- *     change IS the finished edit — there is no "still dragging" state to wait out.
+ *   - **The six focus checkboxes, the three dropdowns and the photo reference commit on CHANGE.**
+ *     A discrete control's change IS the finished edit — there is no "still dragging" state to
+ *     wait out.
  *   - **The four text fields commit on BLUR.** A keystroke debounce would queue an action per
  *     sentence. Blur is exactly one write per completed edit, at the moment the edit is finished.
  *
  * ── ONE ACTION PER COMMIT, AND IT ALWAYS CARRIES THE WHOLE DRAFT ────────────────────────────
  * Plan invariant 7 survives auto-save unchanged: one Server Action, the whole row — Next
  * dispatches actions one at a time per client, so eleven controls as eleven actions would stall
- * behind each other, and each action drags a re-rendered route back with it. The pipeline leans on
- * the whole-row rule three ways: a dial change inside the settle window coalesces into one write;
- * an immediate commit (a checkbox, a pick, a field blur) carries any dial still waiting in the
- * debounce and disarms the timer, so nothing pending is lost and nothing is double-sent; and a
- * debounce that matures while a save is still in flight simply queues behind it and re-sends the
- * whole draft — idempotent, and the fire-time equality check makes the common case free.
- *
- * One honest consequence: a commit carries the text fields as they stand, so an unfinished sentence
- * can spend a moment as the stored row if the dial settles mid-edit. The alternative — sending a
- * stale value to "protect" it — would write an older draft over the operator's newer words, which
- * is the one failure this pipeline exists to prevent.
+ * behind each other, and each action drags a re-rendered route back with it. An immediate commit
+ * (a checkbox, a pick, a field blur) carries the whole draft, so it subsumes anything else pending;
+ * a save still in flight when another commit fires simply queues behind it and re-sends the whole
+ * draft — idempotent, and the fire-time equality check makes the common case free.
  *
  * ── THE ROW THE PANEL BELIEVES IN ───────────────────────────────────────────────────────────
  * `saved` is the panel's copy of the stored row. It starts as the `prefs` prop and is updated ONLY
@@ -137,11 +120,10 @@ import {
  * field edited since keeps the newer local value and stays pending, riding the next commit.
  *
  * ── NOTHING IS DISABLED WHILE A SAVE IS IN FLIGHT ───────────────────────────────────────────
- * The staged-commit panel locked every control on `pending`. Auto-save must not: locking on every
- * debounce settle would flicker the whole panel uneditable for the length of a round trip, and
- * editing during a save is safe here — the draft keeps accepting changes, the merge above protects
- * anything typed after dispatch, and the next commit carries the newest whole draft. `pending`
- * drives only the status line.
+ * The staged-commit panel locked every control on `pending`. Auto-save must not: editing during a
+ * save is safe here — the draft keeps accepting changes, the merge above protects anything typed
+ * after dispatch, and the next commit carries the newest whole draft. `pending` drives only the
+ * status line.
  *
  * ── `useTransition`, NOT `<form action={…}>` ────────────────────────────────────────────────
  * `CharacterPanel.tsx` states the reason and it is unchanged here: the plain-argument +
@@ -150,11 +132,10 @@ import {
  * every field, either way.
  *
  * ── EVERY WORD BESIDE A CONTROL COMES FROM `lib/nina/imageprefs.ts` ─────────────────────────
- * Labels, hints, placeholders and bounds are `imageFocusCopy` / `promptLengthCopy`,
- * `NINA_IMAGE_TEXT_SPECS` and the four `*_MAX` constants, which read phase 1's specs. There is no
- * copy table in this package, so the panel cannot promise an emphasis the prompt does not add —
- * and, specifically, so that the six option names stay the user's own words instead of somebody's
- * clinical synonyms for them.
+ * Labels, hints, placeholders and bounds are `imageFocusCopy`, `NINA_IMAGE_TEXT_SPECS` and the four
+ * `*_MAX` constants, which read phase 1's specs. There is no copy table in this package, so the
+ * panel cannot promise an emphasis the prompt does not add — and, specifically, so that the six
+ * option names stay the user's own words instead of somebody's clinical synonyms for them.
  *
  * ── WHAT THIS FILE MAY NOT IMPORT ───────────────────────────────────────────────────────────
  * Nothing `server-only`, and nothing that reaches drizzle or `lib/env.ts`. `lib/nina/imageprefs.ts`
@@ -172,12 +153,6 @@ export interface ImageGenPanelProps {
    * see "THE ROW THE PANEL BELIEVES IN" above for why the prop is not watched.
    */
   prefs: ImageGenDraft
-  /**
-   * `NINA_IMAGE_PREFS_DEFAULTS`, mapped — the baseline for "no longer the shipping default".
-   * The global Reset is gone; this prop now drives `DialSlider`'s `defaultValue` marker and its
-   * per-dial "default N" undo, which is the surviving route back to a single default.
-   */
-  defaults: ImageGenDraft
   /**
    * `buildNinaImagePrompt(...)`, assembled on the SERVER from the SAVED prefs.
    *
@@ -226,7 +201,6 @@ export interface ImageGenPanelProps {
 export function ImageGenPanel({
   userId,
   prefs,
-  defaults,
   promptPreview,
   defaultTemplate,
   references,
@@ -246,14 +220,7 @@ export function ImageGenPanel({
   const [fieldGen, setFieldGen] = React.useState<
     Partial<Record<'wardrobe' | 'venue' | 'time' | 'notes', 'loading' | 'error'>>
   >({})
-  /* Whether the dial debounce is armed — render-visible, because the timer itself lives in a ref
-   * and the status line has to show the pending window. */
-  const [commitArmed, setCommitArmed] = React.useState(false)
   const [pending, startTransition] = React.useTransition()
-
-  /* The one debounce. A ref because it is a timer handle, not render state; armed/disarmed above
-   * is the render-visible half. */
-  const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
 
   /* Refs for the four text controls' own ✕ — `SessionRow.tsx`'s pattern: the click handler
    * refocuses the control itself so the on-screen keyboard never drops. */
@@ -261,40 +228,17 @@ export function ImageGenPanel({
   const venueInputRef = React.useRef<HTMLInputElement | null>(null)
   const timeInputRef = React.useRef<HTMLInputElement | null>(null)
   const notesInputRef = React.useRef<HTMLTextAreaElement | null>(null)
-  /* The latest draft and saved row, for code that runs outside render (the timer's callback).
-   * Mirrored in an effect — the sanctioned home for a ref write, and the shape `CharacterPanel.tsx`
-   * uses for the same pipeline. NOT setState: the `react-hooks/set-state-in-effect` rule this repo
-   * enforces rejects that, and nothing here needs it — the pipeline's state changes all happen in
-   * event handlers and the transition. */
-  const latest = React.useRef({ draft: prefs, saved: prefs })
-  React.useEffect(() => {
-    latest.current = { draft, saved }
-  })
-
-  /* Timer hygiene, the `ImageGenTestPanel.tsx` shape: the handle is cleared on unmount, so a
-   * navigate-away inside the settle window cannot fire a save into a dead component. Cleared, not
-   * flushed — the edit was never committed, exactly as an unclicked Save was never committed in
-   * the staged-commit panel this file replaced. */
-  React.useEffect(() => {
-    return () => {
-      if (timerRef.current !== null) clearTimeout(timerRef.current)
-    }
-  }, [])
 
   const pendingFields = React.useMemo(
     () => new Set(changedImageGenFields(draft, saved)),
     [draft, saved],
   )
   const clean = pendingFields.size === 0
-  /* "Saving…" covers both halves of the pending window: a commit in flight (`pending`) and a
-   * commit waiting for the settle timer (`commitArmed`). Between the timer firing and the
-   * transition opening, React batches the two updates, so there is no gap where neither shows. */
-  const saving = pending || commitArmed
+  const saving = pending
   /* `ImageGenTestPanel`'s warning is exactly this: the assembled prompt below was built from
    * `saved`, so a draft that differs from it is a prompt the test would not actually send. */
   const dirty = !clean
   const on = focusOnKeys(draft)
-  const length = promptLengthCopy(draft.promptLength)
 
   /**
    * The draft's selection as the opaque key the picker's contract is written in. `''` is "nothing
@@ -302,15 +246,6 @@ export function ImageGenPanel({
    * selected" question in this file is asked of this string rather than of `reference.id` directly.
    */
   const selectedKey = referenceKey(draft.reference)
-
-  /** Disarm the settle timer. Safe to call when nothing is armed; the state write bails out. */
-  function disarmCommit() {
-    if (timerRef.current !== null) {
-      clearTimeout(timerRef.current)
-      timerRef.current = null
-    }
-    setCommitArmed(false)
-  }
 
   /**
    * THE one dispatch. `sent` is the exact draft that left the browser — the merge's reference
@@ -325,7 +260,6 @@ export function ImageGenPanel({
     startTransition(async () => {
       const outcome = await saveNinaImagePrefsAction({
         userId,
-        promptLength: sent.promptLength,
         focus: sent.focus,
         wardrobe: sent.wardrobe,
         venue: sent.venue,
@@ -350,44 +284,14 @@ export function ImageGenPanel({
   }
 
   /**
-   * The immediate path — the six focus checkboxes and the reference pick. `next` is the draft as
-   * this control just produced it (a `setState` has not landed when its own `onChange` runs —
-   * `MemoryTable`'s `commitFact` passes the patch for exactly this reason).
-   *
-   * Disarming is not an optimization: an immediate commit carries the WHOLE draft, so it subsumes
-   * any dial still waiting in the debounce — clearing the timer here is what makes "nothing pending
-   * is lost and nothing is double-sent" true rather than lucky.
+   * The immediate path — the six focus checkboxes, the three dropdowns and the reference pick.
+   * `next` is the draft as this control just produced it (a `setState` has not landed when its own
+   * `onChange` runs — `MemoryTable`'s `commitFact` passes the patch for exactly this reason).
    */
   function commitImmediate(next: ImageGenDraft) {
     setDraft(next)
-    disarmCommit()
     if (imageGenDraftEquals(next, saved)) return
     dispatchSave(next)
-  }
-
-  /**
-   * The dial's path — debounced. Every change re-arms the timer (one continuous drag is one save),
-   * and the fire-time check re-reads the LIVE draft and saved row through the ref mirror: if an
-   * immediate commit already sent everything while the timer ran, the dispatch is skipped rather
-   * than duplicated. A draft that matches the saved row never arms at all — the second half of
-   * "do not fire a save for a draft identical to the saved row" (the first half is this same check
-   * on the immediate path).
-   */
-  function scheduleDialCommit(next: ImageGenDraft) {
-    setDraft(next)
-    if (imageGenDraftEquals(next, saved)) {
-      disarmCommit()
-      return
-    }
-    if (timerRef.current !== null) clearTimeout(timerRef.current)
-    timerRef.current = setTimeout(() => {
-      timerRef.current = null
-      setCommitArmed(false)
-      const { draft: draftNow, saved: savedNow } = latest.current
-      if (imageGenDraftEquals(draftNow, savedNow)) return
-      dispatchSave(draftNow)
-    }, IMAGEGEN_DIAL_COMMIT_DEBOUNCE_MS)
-    setCommitArmed(true)
   }
 
   /**
@@ -414,8 +318,8 @@ export function ImageGenPanel({
 
   /**
    * §8's camera — an immediate commit, like every discrete control: the dropdown's change IS the
-   * finished edit. It rides the one whole-row save, so it carries anything still pending (the
-   * dial, an unsent textarea) exactly the way a checkbox does.
+   * finished edit. It rides the one whole-row save, so it carries anything still pending (an
+   * unsent textarea) exactly the way a checkbox does.
    */
   function setModel(next: string) {
     commitImmediate({ ...draft, model: next })
@@ -439,13 +343,12 @@ export function ImageGenPanel({
    * The five text controls' commit moment — `MemoryTable`'s rule verbatim: blur is exactly one
    * write per completed edit, at the moment the edit is finished. NEVER a keystroke debounce; see
    * the header. Typing changed ONLY the draft, so the blur reads the draft the keystrokes already
-   * landed — and it disarms first, so it carries any dial still settling.
+   * landed.
    *
    * Defined LAST among the handlers, directly above the JSX: every one of the four fields and the
    * template textarea mount it as `onBlur={commitText}`.
    */
   function commitText() {
-    disarmCommit()
     if (imageGenDraftEquals(draft, saved)) return
     dispatchSave(draft)
   }
@@ -528,8 +431,7 @@ export function ImageGenPanel({
           </span>
         </h2>
         <span className="text-right text-[12px] font-medium text-ink-3">
-          prompt length {draft.promptLength} &middot; {on.length} of {NINA_IMAGE_FOCUS_KEYS.length}{' '}
-          emphasised
+          {on.length} of {NINA_IMAGE_FOCUS_KEYS.length} emphasised
           {selectedKey !== '' && ' · one reference'}
         </span>
       </div>
@@ -537,37 +439,13 @@ export function ImageGenPanel({
       <div className="pb-6">
         <p className="mb-6 max-w-[70ch] text-[13px] font-medium text-ink-2">
           Everything on this page goes into the <strong>image</strong> prompt, not into her voice,
-          and every change saves itself — the dial when its drag settles, a checkbox or a photograph
-          the moment you pick it, the text fields when you leave them.{' '}
+          and every change saves itself — a checkbox, a dropdown or a photograph the moment you pick
+          it, the text fields when you leave them.{' '}
           <strong>There is no cache on the image path</strong>, so a saved row is in the next
           photograph she takes with no invalidation step and no deploy. What this page does{' '}
           <strong>not</strong> control is the scene — she still chooses that per photograph, and the
           preview below stands one in so the rest of the prompt is readable.
         </p>
-
-        <section className="mb-6">
-          <h3 className="text-[13px] font-semibold text-ink">Prompt length</h3>
-          <p className="mb-1 max-w-[70ch] text-[11px] font-medium text-ink-3">
-            One dial, 0 to {NINA_IMAGE_PROMPT_LENGTH_MAX}, read in the same five bands as every
-            other slider in here.
-          </p>
-          {/*
-           * No `onEnabledChange`, so `DialSlider` renders no checkbox — its own docstring names
-           * this case: *"A caller with a parameter that has no off switch … passes neither prop and
-           * gets the control as it was before R4."* There is no "off" for prompt length; the
-           * bottom of the scale is the shortest prompt, not the absence of one.
-           */}
-          <DialSlider
-            label={length.label}
-            hint={length.hint}
-            value={draft.promptLength}
-            defaultValue={defaults.promptLength}
-            min={NINA_IMAGE_PROMPT_LENGTH_MIN}
-            max={NINA_IMAGE_PROMPT_LENGTH_MAX}
-            unsaved={pendingFields.has('promptLength')}
-            onChange={(value) => scheduleDialCommit({ ...draft, promptLength: value })}
-          />
-        </section>
 
         {/*
          * §8's camera (the 2026-09-10 ask). A closed two-option select rather than a free-text
@@ -961,8 +839,8 @@ export function ImageGenPanel({
         {/*
          * The editable template shell (the 2026-09-10 ask). It sits here — after every control
          * whose values flow INTO it, before the assembled preview that shows it — because it is
-         * the outermost thing on this page: the dial, the checkboxes and the four fields are what
-         * the blocks say, and this textarea is where the blocks stand.
+         * the outermost thing on this page: the checkboxes, the dropdowns and the four fields are
+         * what the blocks say, and this textarea is where the blocks stand.
          *
          * THE GUARD IS NOT IN THE BROWSER. The textarea is an ordinary multi-line control, and
          * every protection the design promises lives on the server: `saveNinaImagePrefsAction`
@@ -1057,9 +935,9 @@ export function ImageGenPanel({
          * above it.
          *
          * `dirty` is this panel's own `pendingFields.size > 0` — transient under auto-save (true
-         * while a debounce is armed or a blur-pending edit exists), which is still exactly the
-         * warning the test wants: the test runs the SAVED row, so an operator mid-edit is warned
-         * rather than handed a verdict on a prompt he is not looking at.
+         * while a blur-pending edit exists), which is still exactly the warning the test wants:
+         * the test runs the SAVED row, so an operator mid-edit is warned rather than handed a
+         * verdict on a prompt he is not looking at.
          *
          * It sits after the assembled prompt because the verdict is about the prompt printed
          * immediately above it, so the two read as one block; and it spends money against

@@ -64,7 +64,6 @@ let actions: Actions
 
 /** The stored row shape `NinaImagePrefs` and `toImageGenDraft` agree on. */
 const STORED_PREFS = {
-  promptLength: 50,
   focus: { face: true, skin: false, boobs: false, butt: false, thighs: false, calves: false },
   wardrobe: 'black swimsuit',
   venue: '',
@@ -81,7 +80,6 @@ const STORED_PREFS = {
 function prefsInput(overrides: Partial<PrefsInput> = {}): PrefsInput {
   return {
     userId: USER,
-    promptLength: 50,
     focus: { face: true, skin: false, boobs: false, butt: false, thighs: false, calves: false },
     wardrobe: 'black swimsuit',
     venue: '',
@@ -129,7 +127,7 @@ describe('saveNinaImagePrefsAction', () => {
     expect(result.prefs?.wardrobe).toBe('one-piece')
     expect(result.note).toContain('Saved.')
     expect(revalidatePath).toHaveBeenCalledWith('/admin/image-generation')
-    // The adaptation seam: exactly the eleven fields, picked explicitly — `userId` cannot ride.
+    // The adaptation seam: exactly the ten fields, picked explicitly — `userId` cannot ride.
     expect(writeNinaImagePrefs).toHaveBeenCalledTimes(1)
     const [writeUser, write] = writeNinaImagePrefs.mock.calls[0] as [
       string,
@@ -142,7 +140,6 @@ describe('saveNinaImagePrefsAction', () => {
       'hairstyle',
       'model',
       'notes',
-      'promptLength',
       'promptTemplate',
       'reference',
       'time',
@@ -165,7 +162,9 @@ describe('saveNinaImagePrefsAction', () => {
   })
 
   it('refuses a payload outside the schema without writing', async () => {
-    const result = await actions.saveNinaImagePrefsAction(prefsInput({ promptLength: 101 }))
+    const result = await actions.saveNinaImagePrefsAction(
+      prefsInput({ model: 'not-a-real-model' as PrefsInput['model'] }),
+    )
 
     expect(result).toEqual({
       ok: false,

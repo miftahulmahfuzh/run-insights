@@ -20,7 +20,7 @@ import {
   type NinaImagePrefs,
   type NinaImageTemplateKey,
 } from '@/lib/nina/imageprefs'
-import { ninaBand, type NinaBandName, type NinaTuning } from '@/lib/nina/tuning'
+import { ninaBand, type NinaTuning } from '@/lib/nina/tuning'
 
 import { NINA_IMAGE_ASPECT, NINA_IMAGE_RESOLUTION, type NinaImagePurpose } from './imagerecipe'
 
@@ -61,12 +61,11 @@ import { NINA_IMAGE_ASPECT, NINA_IMAGE_RESOLUTION, type NinaImagePurpose } from 
  *      ADDED to an unconditional canon. Nothing any setting can do removes a body fact — PLAN
  *      INVARIANT 4, asserted as a property over every combination rather than as four examples.
  *
- * ── WHAT THE OPERATOR TYPED IS NEVER DROPPED BY THE LADDER ────────────────────────────────────
- * The prompt-length rungs below spend more or less CANON prose. They never suppress a wardrobe, a
- * venue, a time, a note or a focus selection: a control that silently discards a field somebody
- * filled in is the failure mode `lib/db/schema.ts`'s `nina_tuning` header argues against. The one
- * exception is stated where it lives — the avatar crop drops the four whole-body focus keys, for
- * the same reason `steamy` is selfie-only.
+ * ── WHAT THE OPERATOR TYPED IS NEVER DROPPED ──────────────────────────────────────────────────
+ * A wardrobe, a venue, a time, a note or a focus selection is never silently discarded: that would
+ * be the failure mode `lib/db/schema.ts`'s `nina_tuning` header argues against. The one exception
+ * is stated where it lives — the avatar crop drops the four whole-body focus keys, for the same
+ * reason `steamy` is selfie-only.
  */
 
 /**
@@ -176,14 +175,7 @@ const NINA_SELFIE_STYLE_SUFFIX = `Her calves read as long as, or longer than, he
  * exists to let an operator re-frame one by hand; this is the framing that means it usually does not
  * have to.
  */
-const NINA_AVATAR_STYLE = `A casual smartphone photograph framed as a profile picture: head and shoulders, her face filling most of the frame, looking at the camera. Natural daylight, visible skin texture, no retouching, no text, no watermark, no logo, no border. Realistic photograph, not an illustration and not a render.`
-
-/**
- * The avatar's short form. The CROP sentence is untouched at every rung — it is the whole reason
- * this style block exists, and `tests/nina.imagerecipe.test.ts:83-85` asserts
- * `head and shoulders` — so the saving comes out of the lighting refinements only.
- */
-const NINA_AVATAR_STYLE_SHORT = `A casual smartphone photograph framed as a profile picture: head and shoulders, her face filling most of the frame, looking at the camera. Natural daylight, no text, no watermark, no border. Realistic photograph, not an illustration and not a render.`
+const NINA_AVATAR_STYLE = `A casual smartphone photograph framed as a profile picture: head and shoulders, her face filling most of the frame, looking at the camera. Natural daylight, no text, no watermark, no border. Realistic photograph, not an illustration and not a render.`
 
 /**
  * **Where a dial becomes photographic — and it is phase 1's band, not a private number.**
@@ -258,135 +250,6 @@ function ninaPhotoPresence(
 }
 
 /* ============================================================================
- * THE PROMPT-LENGTH LADDER (R4)
- * ==========================================================================*/
-
-/**
- * **What one rung of the length slider buys.**
- *
- * The user asked for a sliding bar where *"the longer the prompt, the more detailed the prompt
- * would be"*. The index's Decisions table settles the units: a 0-100 slider read through the repo's
- * existing five bands, *"not a character budget"* — `/admin` already renders the band name beside
- * every slider, and a private scale is a slider the operator cannot predict.
- *
- * ── WHAT THE LADDER MAY AND MAY NOT SPEND ─────────────────────────────────────────────────────
- * It spends CANON prose: how many body sentences, whether the face paragraph is there, whether the
- * default outfit is there, how verbose the focus emphasis is, and which of the two camera forms is
- * used. It NEVER spends what the operator typed. `VENUE`, `TIME`, `NOTES` and a non-empty wardrobe
- * appear at every one of the five rungs, and a selected focus key always produces a `FOCUS:` block
- * — only its wording gets shorter.
- *
- * ── WHY `off` DROPS `POSE AND PRESENCE` AND NOTHING ELSE DOES ─────────────────────────────────
- * `off` is the one rung whose contract is "as short as this can be while still being a photograph
- * of her". Something has to go, and the pose block is the only candidate that is neither the
- * operator's own words nor a body fact: it is a derived clause from two character dials that have
- * a home of their own on `/admin/personality`. From `low` up, every block is present and the ladder
- * varies only how much is said.
- *
- * ── EVERY RUNG NAMES THE BODY ─────────────────────────────────────────────────────────────────
- * `bodySentences` is never 0, and `ninaBodyBlock` clamps it to at least 1 even if this table were
- * edited to say otherwise. `NINA_BODY_SENTENCES[0]` names all four facts on its own. That is PLAN
- * INVARIANT 4 twice over, which is proportionate: it is the requirement the user actually wrote
- * down.
- */
-export interface NinaPromptRung {
-  /** The band this rung answers, so a reader can line it up with what `/admin` shows. */
-  readonly band: NinaBandName
-  /** How many of `NINA_BODY_SENTENCES` to spend. Never 0. */
-  readonly bodySentences: number
-  /** Spend `NINA_FACE`. */
-  readonly face: boolean
-  /** Spend `NINA_DEFAULT_OUTFIT` when the operator set no wardrobe. */
-  readonly outfit: boolean
-  /** Spend `POSE AND PRESENCE:` when the dials have something to say. */
-  readonly presence: boolean
-  /** `list` = the emphasis lead only. `sentences` = the lead plus one sentence per selected key. */
-  readonly focus: 'list' | 'sentences'
-  /** Which of the two camera forms. */
-  readonly camera: 'short' | 'full'
-}
-
-/**
- * The five rungs. **All five are distinct** — a slider with two settings that render the same
- * string is a slider the operator cannot trust, and `tests/nina.imagerecipe.test.ts` asserts
- * strictly increasing length across the five band floors.
- *
- * | band | body | face | outfit | pose | focus     | camera |
- * |------|------|------|--------|------|-----------|--------|
- * | off  |  1   |  no  |   no   |  no  | list      | short  |
- * | low  |  2   |  no  |   no   | yes  | list      | short  |
- * | mid  |  3   | yes  |  yes   | yes  | list      | short  |
- * | high |  4   | yes  |  yes   | yes  | sentences | full   |
- * | max  |  5   | yes  |  yes   | yes  | sentences | full   |
- */
-export const NINA_PROMPT_RUNGS: Readonly<Record<NinaBandName, NinaPromptRung>> = Object.freeze({
-  off: Object.freeze({
-    band: 'off',
-    bodySentences: 1,
-    face: false,
-    outfit: false,
-    presence: false,
-    focus: 'list',
-    camera: 'short',
-  }),
-  low: Object.freeze({
-    band: 'low',
-    bodySentences: 2,
-    face: false,
-    outfit: false,
-    presence: true,
-    focus: 'list',
-    camera: 'short',
-  }),
-  mid: Object.freeze({
-    band: 'mid',
-    bodySentences: 3,
-    face: true,
-    outfit: true,
-    presence: true,
-    focus: 'list',
-    camera: 'short',
-  }),
-  high: Object.freeze({
-    band: 'high',
-    bodySentences: 4,
-    face: true,
-    outfit: true,
-    presence: true,
-    focus: 'sentences',
-    camera: 'full',
-  }),
-  max: Object.freeze({
-    band: 'max',
-    bodySentences: 5,
-    face: true,
-    outfit: true,
-    presence: true,
-    focus: 'sentences',
-    camera: 'full',
-  }),
-})
-
-/**
- * A stored `promptLength` resolved to a rung, through phase 1's band and no private threshold —
- * the fork this file already settled once for `isDialHigh` (see its docblock).
- */
-function ninaPromptRung(promptLength: number): NinaPromptRung {
-  return NINA_PROMPT_RUNGS[ninaBand(promptLength).name]
-}
-
-/**
- * **What a caller with no prefs at all gets.** Band `high`: the face, the outfit, the pose, the
- * full camera, four body sentences.
- *
- * It is spelled HERE rather than read from `NINA_IMAGE_PREFS_DEFAULTS.promptLength` on purpose.
- * `buildNinaImagePrompt` must be a pure function of its arguments with a render this file can
- * state, and a test that asserted "no prefs keeps the face" would otherwise be asserting phase 1's
- * choice of default number. Phase 1 is free to default the stored slider anywhere.
- */
-export const NINA_PROMPT_LENGTH_FALLBACK = 70
-
-/* ============================================================================
  * THE FOCUS EMPHASIS (R5)
  * ==========================================================================*/
 
@@ -394,52 +257,32 @@ export const NINA_PROMPT_LENGTH_FALLBACK = 70
  * **Emphasis, layered on an unconditional canon. Never inclusion.**
  *
  * The user listed six things to be able to "focus on": face, skin, big boobs, bubble butt, big
- * thighs, very long calves. Four of those six are already in the body canon at every rung, which
+ * thighs, very long calves. Four of those six are already in the body canon unconditionally, which
  * is the whole of R1 — so selecting `butt` cannot be what puts a butt in the prompt. It is what
  * tells the camera the butt is the point of THIS shoot. Deselecting all six leaves a prompt that
  * still names all four body facts; the index's Decisions table settles this and PLAN INVARIANT 4
  * is the test.
  *
  * `term` is the phrase for the emphasis lead, in the user's own words so the operator reads back
- * what he typed. `sentence` is the extra instruction spent at rungs `high` and `max`.
+ * what he typed.
  *
  * **The key spellings are phase 1's vocabulary, imported as `NINA_IMAGE_FOCUS_KEYS`.** This record
  * is keyed by that type, so a key phase 1 adds or renames is a compile error here rather than a
  * silently missing clause.
  */
-const NINA_FOCUS_EMPHASIS: Readonly<
-  Record<NinaImageFocusKey, { readonly term: string; readonly sentence: string }>
-> = Object.freeze({
-  face: Object.freeze({
-    term: 'her face',
-    sentence: `Her face is sharp and clearly visible, lit well enough to read her expression.`,
-  }),
-  skin: Object.freeze({
-    term: 'her skin',
-    sentence: `Her bare skin is what the photograph is about: fair, faintly sweat-sheened, with visible pores and fine texture rather than a retouched surface.`,
-  }),
-  boobs: Object.freeze({
-    term: 'her big boobs',
-    sentence: `Her big boobs are full and heavy and read clearly through whatever she is wearing, with real weight to them and a deep cleavage line.`,
-  }),
-  butt: Object.freeze({
-    term: 'her bubble butt',
-    sentence: `Her bubble butt is round, high and prominent, and the pose and the framing are chosen so that it is unmistakable.`,
-  }),
-  thighs: Object.freeze({
-    term: 'her big thighs',
-    sentence: `Her big thighs are thick and powerful, filling whatever she is wearing, with the muscle showing under soft skin.`,
-  }),
-  calves: Object.freeze({
-    /* The feet ride on the TERM and not on the sentence below, because `.sentence` is read only by
-     * `ninaFocusBlock`, which is avatar-only, and `calves` is not an avatar focus key — so the
-     * sentence never reaches a photograph. No internal "and" and no trailing preposition: the
-     * template appends "above everything else in this photograph." and `joinTerms` can put five
-     * other terms in front of this one. */
-    term: 'her very long calves down to full, in-proportion, uncropped feet',
-    sentence: `Her very long calves run most of the length of the frame, full and sharply defined all the way down to a narrow ankle.`,
-  }),
-})
+const NINA_FOCUS_EMPHASIS: Readonly<Record<NinaImageFocusKey, { readonly term: string }>> =
+  Object.freeze({
+    face: Object.freeze({ term: 'her face' }),
+    skin: Object.freeze({ term: 'her skin' }),
+    boobs: Object.freeze({ term: 'her big boobs' }),
+    butt: Object.freeze({ term: 'her bubble butt' }),
+    thighs: Object.freeze({ term: 'her big thighs' }),
+    calves: Object.freeze({
+      /* No internal "and" and no trailing preposition: the template appends "above everything
+       * else in this photograph." and `joinTerms` can put five other terms in front of this one. */
+      term: 'her very long calves down to full, in-proportion, uncropped feet',
+    }),
+  })
 
 /**
  * **Which focus keys survive the avatar crop, and why the other four do not.**
@@ -481,21 +324,15 @@ function joinTerms(terms: readonly string[]): string {
 }
 
 /** The `FOCUS:` block's body, or null when nothing the crop can honour was selected. */
-function ninaFocusBlock(
-  purpose: NinaImagePurpose,
-  prefs: NinaImagePrefs,
-  rung: NinaPromptRung,
-): string | null {
+function ninaFocusBlock(purpose: NinaImagePurpose, prefs: NinaImagePrefs): string | null {
   const keys = NINA_IMAGE_FOCUS_KEYS.filter(
     (key) => prefs.focus[key] && (purpose === 'selfie' || NINA_AVATAR_FOCUS_KEYS.includes(key)),
   )
   if (keys.length === 0) return null
 
-  const lead = `Emphasise ${joinTerms(
+  return `Emphasise ${joinTerms(
     keys.map((key) => NINA_FOCUS_EMPHASIS[key].term),
   )} above everything else in this photograph.`
-  if (rung.focus === 'list') return lead
-  return [lead, ...keys.map((key) => NINA_FOCUS_EMPHASIS[key].sentence)].join(' ')
 }
 
 /**
@@ -535,11 +372,10 @@ function ninaMoodBlock(mood: string | null | undefined): string {
  * uses — there is one home for each sentence.
  *
  * The body paragraph carries the first THREE canon sentences, verbatim — sentence 0's own
- * enumeration (`NINA_BODY_FACTS`), then sentences 1 and 2 — the mid-rung body, which is the
- * shipped default. The four facts are prose here, not a token: `{{bodyFacts}}` was dropped
- * because it could only ever expand to this one constant, which made it a decoration on
- * `{{focus}}`'s real job rather than a second control. The length dial no longer re-cuts THIS
- * text; the template is the prompt, and the dial drives the avatar path's built-in assembly.
+ * enumeration (`NINA_BODY_FACTS`), then sentences 1 and 2 — the shipped default. The four facts
+ * are prose here, not a token: `{{bodyFacts}}` was dropped because it could only ever expand to
+ * this one constant, which made it a decoration on `{{focus}}`'s real job rather than a second
+ * control.
  *
  * The face paragraph IS a token, unlike the body: `NINA_FACE_TEMPLATE_LINE` (`lib/nina/persona/appearance.ts`)
  * carries the same fixed prose `NINA_FACE` always did, with `{{hairstyle}}` standing in for the
@@ -590,9 +426,9 @@ export const NINA_PROMPT_TEMPLATE_DEFAULT = [
  * The avatar is a head-and-shoulders crop rendered inside a 28-44 px circle, and the selfie prose
  * would argue with that crop — full-body pose clauses and a wardrobe line under a face framing.
  * So `purpose === 'avatar'` keeps the built-in block assembly (this nine-token shell over the
- * block builders below, byte-identical to the pre-template render), and the length dial's rungs
- * stay live THERE. Making the avatar template editable is a deliberate later decision, not an
- * oversight; the camera choice and the reference still apply to both paths.
+ * block builders below, byte-identical to the pre-template render). Making the avatar template
+ * editable is a deliberate later decision, not an oversight; the camera choice and the reference
+ * still apply to both paths.
  */
 const NINA_AVATAR_PROMPT_TEMPLATE_DEFAULT = [
   '{{camera}}',
@@ -742,7 +578,7 @@ export function buildNinaImagePrompt(input: {
   angle?: string | null
   /** Her character. Only `steamy` and `flirty` reach a photograph. */
   tuning?: NinaTuning | null
-  /** The operator's image preferences. Absent renders `NINA_PROMPT_LENGTH_FALLBACK`'s rung. */
+  /** The operator's image preferences. Absent renders `NINA_IMAGE_PREFS_DEFAULTS`. */
   prefs?: NinaImagePrefs | null
   /**
    * **Whether THIS generation actually attaches a photo reference as `input_references`.** Not
@@ -754,11 +590,7 @@ export function buildNinaImagePrompt(input: {
   hasReference?: boolean
 }): string {
   const tuning = input.tuning ?? null
-  const prefs: NinaImagePrefs = input.prefs ?? {
-    ...NINA_IMAGE_PREFS_DEFAULTS,
-    promptLength: NINA_PROMPT_LENGTH_FALLBACK,
-  }
-  const rung = ninaPromptRung(prefs.promptLength)
+  const prefs: NinaImagePrefs = input.prefs ?? NINA_IMAGE_PREFS_DEFAULTS
   const isAvatar = input.purpose === 'avatar'
   /* Gated on BOTH: the operator's own opt-in (Face ticked) and the payload actually carrying a
    * photograph (`hasReference`). Neither alone is enough — see `NINA_FACE_LOCK_SENTENCE`'s header. */
@@ -768,27 +600,21 @@ export function buildNinaImagePrompt(input: {
   /*
    * TWO SHELLS, ONE RENDERER. The avatar keeps the built-in BLOCK assembly (see
    * `NINA_AVATAR_PROMPT_TEMPLATE_DEFAULT` for why the stored template does not reach it); the
-   * selfie goes through the operator's template — full prose with the value tokens of §6. The
-   * length dial's rungs stay live on the avatar path and are superseded by the template on the
-   * selfie path, which is the honest reading of "the template IS the prompt".
+   * selfie goes through the operator's template — full prose with the value tokens of §6.
    */
   if (isAvatar) {
-    const camera = rung.camera === 'full' ? NINA_AVATAR_STYLE : NINA_AVATAR_STYLE_SHORT
-
     const detail: NinaAppearanceDetail = {
-      /* One sentence on the avatar path at EVERY rung. More body prose under a head-and-shoulders
-       * crop is more contradiction, not more detail — see `NINA_BODY_AVATAR`. */
       body: NINA_BODY_AVATAR,
-      /* The avatar IS a face crop, so the face paragraph is never what the ladder saves on it. */
+      /* The avatar IS a face crop, so the face paragraph is always spent. */
       face: true,
-      outfit: rung.outfit,
+      outfit: true,
     }
 
-    const focusText = ninaFocusBlock('avatar', prefs, rung)
-    const presenceText = rung.presence ? ninaPhotoPresence('avatar', tuning) : null
+    const focusText = ninaFocusBlock('avatar', prefs)
+    const presenceText = ninaPhotoPresence('avatar', tuning)
 
     const avatarBlocks: Record<string, string> = {
-      camera,
+      camera: NINA_AVATAR_STYLE,
       subject: `SUBJECT:\n${ninaAppearance(prefs, detail)}`,
       focus: focusText != null ? `FOCUS: ${focusText}` : '',
       faceLock: faceLockValue,

@@ -602,8 +602,8 @@ function pick(bag: unknown, key: string): unknown {
  * `wardrobe` was a `nina_tuning` column, a `NinaTuning` member and a control on
  * `/admin/personality` until F41 R3: *"remove Wardrobe field in /admin/personality (this new
  * feature is more detailed version of it)"*. It lives on `nina_image_prefs.wardrobe` now, edited on
- * `/admin/image-generation` beside the venue, the time, the prompt length and the focus set that
- * dress the same photograph — because what she is wearing is a fact about a PHOTOGRAPH and not
+ * `/admin/image-generation` beside the venue, the time and the focus set that dress the same
+ * photograph — because what she is wearing is a fact about a PHOTOGRAPH and not
  * about who she is, and two surfaces both claiming to dress her is the one thing R3 cannot mean.
  * It never had a toggle and still does not; it simply is not this module's field any more. This
  * paragraph is here so the next reader does not re-add it: the sentence above about `notes` used to

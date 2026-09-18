@@ -4,8 +4,6 @@ import { ADMIN_AVATAR_CONTENT_TYPES, ADMIN_AVATAR_MAX_UPLOAD_BYTES } from '@/lib
 import {
   buildNinaImagePrompt,
   NINA_CAMERA_ANGLE_SENTENCES,
-  NINA_PROMPT_LENGTH_FALLBACK,
-  NINA_PROMPT_RUNGS,
   NINA_PROMPT_TEMPLATE_DEFAULT,
   sidecarText,
 } from '@/lib/nina/imagegen'
@@ -34,12 +32,7 @@ import {
   NINA_HAIRSTYLE_SENTENCES,
   ninaAppearance,
 } from '@/lib/nina/persona'
-import {
-  NINA_BAND_NAMES,
-  NINA_TUNING_DEFAULTS,
-  type NinaTrait,
-  type NinaTuning,
-} from '@/lib/nina/tuning'
+import { NINA_TUNING_DEFAULTS, type NinaTrait, type NinaTuning } from '@/lib/nina/tuning'
 import {
   buildImageReferenceDataUrl,
   buildImageRequestBody,
@@ -233,9 +226,6 @@ describe('the prompt', () => {
     return focus
   }
 
-  /** One score inside each of the five bands, lowest first. */
-  const BAND_FLOORS = [0, 20, 40, 60, 80] as const
-
   it('carries her appearance, the scene, and the photographic style', () => {
     const prompt = buildNinaImagePrompt({ purpose: 'selfie', scene: 'on the track' })
     expect(prompt).toContain('on the track')
@@ -271,36 +261,27 @@ describe('the prompt', () => {
      * the bottom edge — one near-field cause behind all three complaints. There is no
      * `negative_prompt` field on this provider's call, so these are inline "no X" clauses in the
      * positive prompt, the same mechanism the watermark/border run has always used. The selfie
-     * shell is one fixed string, so the assertion holds at every band floor.
+     * shell is one fixed string.
      */
-    for (const promptLength of BAND_FLOORS) {
-      const prompt = buildNinaImagePrompt({
-        purpose: 'selfie',
-        scene: 'on the track',
-        prefs: prefsWith({ promptLength }),
-      })
-      const where = `band floor ${promptLength}`
-      // (a) somebody else is holding the camera, and none of the three selfie tells is allowed.
-      expect(prompt, where).toContain('Taken by another person standing a few steps away')
-      expect(prompt, where).toContain('no raised arm reaching toward the camera')
-      expect(prompt, where).toContain('no phone and no hand held near the lens')
-      expect(prompt, where).toContain('no mirror and no mirror reflection')
-      // (b) the optics that decide head size, and (c) the framing that decides whether feet survive.
-      expect(prompt, where).toContain('shot on a 50 mm lens from about three metres back')
-      expect(prompt, where).toContain(
-        'her head is normal-sized and in natural proportion to her tall body',
-      )
-      expect(prompt, where).toContain('her long feet and long calves are never cropped')
-      /* The clauses that have nothing to do with the three problems were carried over character
-       * for character — the R3 rewrite is not allowed to quietly drop them. */
-      expect(prompt, where).toContain(
-        'Natural daylight, slightly imperfect framing, shallow depth of field, visible skin texture',
-      )
-      expect(prompt, where).toContain(
-        'no studio lighting, no retouching, no text, no watermark, no logo, no border',
-      )
-      expect(prompt, where).toContain('Realistic photograph, not an illustration and not a render')
-    }
+    const prompt = buildNinaImagePrompt({ purpose: 'selfie', scene: 'on the track' })
+    // (a) somebody else is holding the camera, and none of the three selfie tells is allowed.
+    expect(prompt).toContain('Taken by another person standing a few steps away')
+    expect(prompt).toContain('no raised arm reaching toward the camera')
+    expect(prompt).toContain('no phone and no hand held near the lens')
+    expect(prompt).toContain('no mirror and no mirror reflection')
+    // (b) the optics that decide head size, and (c) the framing that decides whether feet survive.
+    expect(prompt).toContain('shot on a 50 mm lens from about three metres back')
+    expect(prompt).toContain('her head is normal-sized and in natural proportion to her tall body')
+    expect(prompt).toContain('her long feet and long calves are never cropped')
+    /* The clauses that have nothing to do with the three problems were carried over character
+     * for character — the R3 rewrite is not allowed to quietly drop them. */
+    expect(prompt).toContain(
+      'Natural daylight, slightly imperfect framing, shallow depth of field, visible skin texture',
+    )
+    expect(prompt).toContain(
+      'no studio lighting, no retouching, no text, no watermark, no logo, no border',
+    )
+    expect(prompt).toContain('Realistic photograph, not an illustration and not a render')
   })
 
   it('angle (2026-09-18): a preset key replaces the WHOLE camera-position clause, prefix opening included', () => {
@@ -560,41 +541,37 @@ describe('the prompt', () => {
      * prompt"* — proved as a PROPERTY over the whole input space rather than as four examples,
      * because "always" is a claim about every setting and four examples cannot be that.
      *
-     * 2 purposes x 5 bands x all 64 focus subsets x {every free-text field empty, every one set}
-     * = 1280 prompts. The focus multi-select is EMPHASIS layered on an unconditional canon, so
+     * 2 purposes x all 64 focus subsets x {every free-text field empty, every one set}
+     * = 256 prompts. The focus multi-select is EMPHASIS layered on an unconditional canon, so
      * mask 0 (nothing selected) must name the body exactly as loudly as mask 63 does.
      */
     let checked = 0
     for (const purpose of ['selfie', 'avatar'] as const) {
-      for (const promptLength of BAND_FLOORS) {
-        for (let mask = 0; mask < 1 << NINA_IMAGE_FOCUS_KEYS.length; mask += 1) {
-          for (const text of ['', 'Kuta streets in Bali']) {
-            const prompt = buildNinaImagePrompt({
-              purpose,
-              scene: 'on the track',
-              mood: text,
-              tuning: text === '' ? null : NINA_TUNING_DEFAULTS,
-              prefs: prefsWith({
-                promptLength,
-                focus: focusMask(mask),
-                wardrobe: text,
-                venue: text,
-                time: text,
-                notes: text,
-              }),
-            })
-            for (const fact of BODY_FACTS) {
-              expect(
-                prompt,
-                `${purpose} / length ${promptLength} / focus ${mask} / text "${text}" lost "${fact}"`,
-              ).toContain(fact)
-            }
-            checked += 1
+      for (let mask = 0; mask < 1 << NINA_IMAGE_FOCUS_KEYS.length; mask += 1) {
+        for (const text of ['', 'Kuta streets in Bali']) {
+          const prompt = buildNinaImagePrompt({
+            purpose,
+            scene: 'on the track',
+            mood: text,
+            tuning: text === '' ? null : NINA_TUNING_DEFAULTS,
+            prefs: prefsWith({
+              focus: focusMask(mask),
+              wardrobe: text,
+              venue: text,
+              time: text,
+              notes: text,
+            }),
+          })
+          for (const fact of BODY_FACTS) {
+            expect(prompt, `${purpose} / focus ${mask} / text "${text}" lost "${fact}"`).toContain(
+              fact,
+            )
           }
+          checked += 1
         }
       }
     }
-    expect(checked).toBe(2 * BAND_FLOORS.length * 64 * 2)
+    expect(checked).toBe(2 * 64 * 2)
   })
 
   it('PLAN INVARIANT 4: and with no prefs at all, and at the stored defaults', () => {
@@ -608,39 +585,24 @@ describe('the prompt', () => {
     }
   })
 
-  it('keeps the face and the outfit at EVERY band, because the template carries them as prose', () => {
-    /* The template revision froze the face paragraph and the outfit line into the shell, so the
-     * rung can no longer suppress either — asserted at every band rather than at the default,
-     * because that is now true at all of them by the same mechanism. */
-    for (const promptLength of BAND_FLOORS) {
-      const text = buildNinaImagePrompt({
-        purpose: 'selfie',
-        scene: 'on the track',
-        prefs: prefsWith({ promptLength }),
-      })
-      expect(text, `band at ${promptLength}`).toContain('ponytail') // NINA_FACE survived
-      expect(text, `band at ${promptLength}`).toContain('heather-grey racerback tank') // the outfit slot's default value
-      for (const fact of BODY_FACTS) expect(text, `band at ${promptLength}`).toContain(fact) // R1, unconditionally
-    }
+  it('keeps the face and the outfit, because the template carries them as prose', () => {
+    /* The template revision froze the face paragraph and the outfit line into the shell, so
+     * nothing else in the prefs can suppress either. */
+    const text = buildNinaImagePrompt({ purpose: 'selfie', scene: 'on the track' })
+    expect(text).toContain('ponytail') // NINA_FACE survived
+    expect(text).toContain('heather-grey racerback tank') // the outfit slot's default value
+    for (const fact of BODY_FACTS) expect(text).toContain(fact) // R1, unconditionally
   })
 
   it("R1: the old subject paragraph's contradicting body clause is gone", () => {
     /* `NINA_FACE` used to carry "Lean, visibly muscular runner's build", a body clause in a face
      * constant and the opposite of what the user asked for. The repeal record lives in canon
      * sentence 4 ("never lean and never slight"); the template shell spends sentences 0-2, so the
-     * NEGATIONS are asserted on the render — gone at every band — and the positive record against
-     * the canon it lives in. The facts enumeration the SUBJECT line spells out is the canon's own. */
-    for (const promptLength of BAND_FLOORS) {
-      const atRung = buildNinaImagePrompt({
-        purpose: 'selfie',
-        scene: 'x',
-        prefs: prefsWith({ promptLength }),
-      })
-      expect(atRung, `band floor ${promptLength}`).not.toContain(
-        "Lean, visibly muscular runner's build",
-      )
-      expect(atRung, `band floor ${promptLength}`).not.toContain('narrow shoulders')
-    }
+     * NEGATIONS are asserted on the render, and the positive record against the canon it lives in.
+     * The facts enumeration the SUBJECT line spells out is the canon's own. */
+    const prompt = buildNinaImagePrompt({ purpose: 'selfie', scene: 'x' })
+    expect(prompt).not.toContain("Lean, visibly muscular runner's build")
+    expect(prompt).not.toContain('narrow shoulders')
     expect(NINA_BODY).toContain('never lean and never slight')
     expect(NINA_BODY_SENTENCES[0]).toContain(NINA_BODY_FACTS)
   })
@@ -686,7 +648,7 @@ describe('the prompt', () => {
       purpose: 'selfie',
       scene: 'on the track',
       tuning: NINA_TUNING_DEFAULTS,
-      prefs: { ...NINA_IMAGE_PREFS_DEFAULTS, promptLength: NINA_PROMPT_LENGTH_FALLBACK },
+      prefs: NINA_IMAGE_PREFS_DEFAULTS,
     })
     expect(defaulted).toBe(none)
 
@@ -700,115 +662,9 @@ describe('the prompt', () => {
         purpose: 'avatar',
         scene: 'x',
         tuning: NINA_TUNING_DEFAULTS,
-        prefs: { ...NINA_IMAGE_PREFS_DEFAULTS, promptLength: NINA_PROMPT_LENGTH_FALLBACK },
+        prefs: NINA_IMAGE_PREFS_DEFAULTS,
       }),
     ).toBe(noneAvatar)
-  })
-
-  /* ────────────────────────────────────────────────────────────────────────────────────────────
-   * R4 — THE PROMPT-LENGTH LADDER
-   * ──────────────────────────────────────────────────────────────────────────────────────────*/
-
-  it('R4: there is one rung per band, and the ladder is phase 1s vocabulary', () => {
-    // Not a private scale. `/admin` renders the band name beside every slider, so a rung table with
-    // a band the operator cannot see would be a slider he cannot predict.
-    for (const band of NINA_BAND_NAMES) {
-      expect(NINA_PROMPT_RUNGS[band].band).toBe(band)
-      expect(NINA_PROMPT_RUNGS[band].bodySentences).toBeGreaterThanOrEqual(1)
-    }
-  })
-
-  it('R4, after the template: the dial no longer re-cuts the selfie — the template IS the prompt', () => {
-    // The 2026-09-10 second revision: the length dial's rungs govern the AVATAR path's built-in
-    // assembly; the selfie goes through the operator's template, which is one fixed string. One
-    // render at every band, body named at all of them.
-    const at = (promptLength: number) =>
-      buildNinaImagePrompt({
-        purpose: 'selfie',
-        scene: 'on the track',
-        prefs: prefsWith({ promptLength }),
-      })
-    for (const promptLength of BAND_FLOORS) {
-      expect(at(promptLength)).toBe(at(50))
-      for (const fact of BODY_FACTS) expect(at(promptLength)).toContain(fact)
-    }
-  })
-
-  it('R4: on the avatar path the ladder still lives — the lowest rung is materially shorter', () => {
-    const at = (promptLength: number) =>
-      buildNinaImagePrompt({
-        purpose: 'avatar',
-        scene: 'on the track',
-        prefs: prefsWith({ promptLength }),
-      })
-
-    const shortest = at(0)
-    const longest = at(100)
-    expect(shortest.length).toBeLessThan(longest.length)
-    for (const fact of BODY_FACTS) {
-      expect(shortest).toContain(fact)
-      expect(longest).toContain(fact)
-    }
-    // And the saving comes out of CANON prose, never out of a body fact — the face is ALWAYS on
-    // the avatar, so the rung-suppressed canon here is the outfit paragraph.
-    expect(shortest).not.toContain('heather-grey racerback tank')
-    expect(longest).toContain('heather-grey racerback tank')
-  })
-
-  it('R4: on the avatar path all five rungs are distinct and strictly longer than the one below', () => {
-    // A slider with two settings that render the same string is a slider the operator cannot trust
-    // — and the avatar is where the slider still does anything.
-    const lengths = BAND_FLOORS.map(
-      (promptLength) =>
-        buildNinaImagePrompt({
-          purpose: 'avatar',
-          scene: 'on the track',
-          mood: 'smug',
-          tuning: withTrait('flirty', 100),
-          prefs: prefsWith({ promptLength, focus: focusOnly(...NINA_IMAGE_FOCUS_KEYS) }),
-        }).length,
-    )
-    /* The avatar body is ONE sentence at every rung, so the two top rungs — which differed only
-     * in body-sentence count on the old selfie ladder — coincide here. Strictly increasing
-     * through `high`, and flat after it, is the honest shape. */
-    for (let i = 1; i < lengths.length - 1; i += 1) {
-      expect(lengths[i]!, `band ${i} is not longer than band ${i - 1}`).toBeGreaterThan(
-        lengths[i - 1]!,
-      )
-    }
-    expect(lengths[4]).toBe(lengths[3])
-  })
-
-  it('R4: two scores in the same band render the same string — one vocabulary', () => {
-    const at = (promptLength: number) =>
-      buildNinaImagePrompt({ purpose: 'selfie', scene: 'x', prefs: prefsWith({ promptLength }) })
-    expect(at(80)).toBe(at(100))
-    expect(at(60)).toBe(at(79))
-    /* And since the template revision, CROSS-band too: the selfie shell is one fixed string, so
-     * the dial cannot produce a selfie the template did not write. The avatar path keeps the
-     * five-way distinction (asserted above). */
-    expect(at(60)).toBe(at(80))
-  })
-
-  it('R4, after the template: POSE AND PRESENCE is DIAL-driven, not rung-driven', () => {
-    // {{presence}} is what the steamy/flirty dials say, at every band; a quiet dial drops the
-    // whole line wherever the slider sits.
-    for (const promptLength of BAND_FLOORS) {
-      const loud = buildNinaImagePrompt({
-        purpose: 'selfie',
-        scene: 'x',
-        tuning: withTrait('flirty', 100),
-        prefs: prefsWith({ promptLength }),
-      })
-      const quiet = buildNinaImagePrompt({
-        purpose: 'selfie',
-        scene: 'x',
-        tuning: NINA_TUNING_DEFAULTS,
-        prefs: prefsWith({ promptLength }),
-      })
-      expect(loud, `band at ${promptLength}`).toContain('POSE AND PRESENCE:')
-      expect(quiet, `band at ${promptLength}`).not.toContain('POSE AND PRESENCE:')
-    }
   })
 
   /* ────────────────────────────────────────────────────────────────────────────────────────────
@@ -816,54 +672,40 @@ describe('the prompt', () => {
    * ──────────────────────────────────────────────────────────────────────────────────────────*/
 
   it('R5: FOCUS is emphasis layered on the canon, never inclusion', () => {
-    const noFocus = buildNinaImagePrompt({
-      purpose: 'selfie',
-      scene: 'x',
-      prefs: prefsWith({ promptLength: 100 }),
-    })
+    const noFocus = buildNinaImagePrompt({ purpose: 'selfie', scene: 'x' })
     expect(noFocus).not.toContain('FOCUS:')
     for (const fact of BODY_FACTS) expect(noFocus).toContain(fact)
 
     const oneFocus = buildNinaImagePrompt({
       purpose: 'selfie',
       scene: 'x',
-      prefs: prefsWith({ promptLength: 100, focus: focusOnly('thighs') }),
+      prefs: prefsWith({ focus: focusOnly('thighs') }),
     })
     expect(oneFocus).toContain('FOCUS: Emphasise her big thighs above everything else')
     expect(oneFocus).not.toContain('her bubble butt')
     expect(oneFocus.length).toBeGreaterThan(noFocus.length)
   })
 
-  it('R5, after the template: one emphasis line at every band — the rung sentences are gone from selfies', () => {
-    const at = (promptLength: number) =>
-      buildNinaImagePrompt({
-        purpose: 'selfie',
-        scene: 'x',
-        prefs: prefsWith({ promptLength, focus: focusOnly('boobs', 'calves') }),
-      })
-    for (const promptLength of [0, 50, 100]) {
-      expect(at(promptLength)).toContain(
-        'FOCUS: Emphasise her big boobs and her very long calves down to full, in-proportion, uncropped feet above everything else in this photograph.',
-      )
-      /* The per-key elaboration sentences were rung-spent canon; the template's one line is the
-       * whole emphasis now, and no rung brings the sentences back. */
-      expect(at(promptLength)).not.toContain('deep cleavage line')
-      expect(at(promptLength)).not.toContain('run most of the length of the frame')
-    }
-    /* The avatar path keeps the rung's sentence elaboration — the ladder lives there — for the
-     * two keys the crop can honour (face, skin). `skin`'s sentence is the probe. */
-    const avatarTerse = buildNinaImagePrompt({
+  it('R5, after the template: one emphasis line, and no per-key elaboration sentence on either camera', () => {
+    const selfie = buildNinaImagePrompt({
+      purpose: 'selfie',
+      scene: 'x',
+      prefs: prefsWith({ focus: focusOnly('boobs', 'calves') }),
+    })
+    expect(selfie).toContain(
+      'FOCUS: Emphasise her big boobs and her very long calves down to full, in-proportion, uncropped feet above everything else in this photograph.',
+    )
+    /* The per-key elaboration sentences are gone entirely — the one line is the whole emphasis. */
+    expect(selfie).not.toContain('deep cleavage line')
+    expect(selfie).not.toContain('run most of the length of the frame')
+
+    const avatar = buildNinaImagePrompt({
       purpose: 'avatar',
       scene: 'x',
-      prefs: prefsWith({ promptLength: 0, focus: focusOnly('skin') }),
+      prefs: prefsWith({ focus: focusOnly('skin') }),
     })
-    const avatarFull = buildNinaImagePrompt({
-      purpose: 'avatar',
-      scene: 'x',
-      prefs: prefsWith({ promptLength: 100, focus: focusOnly('skin') }),
-    })
-    expect(avatarTerse).not.toContain('visible pores')
-    expect(avatarFull).toContain('visible pores')
+    expect(avatar).toContain('FOCUS:')
+    expect(avatar).not.toContain('visible pores')
   })
 
   it('R3: the calves term asks for the feet too, and still reads as English when joined', () => {
@@ -1076,28 +918,24 @@ describe('the prompt', () => {
    * R7, R8, R9 — VENUE, TIME, NOTES
    * ──────────────────────────────────────────────────────────────────────────────────────────*/
 
-  it('R7 R8 R9: what the operator typed is honoured at EVERY rung and on BOTH cameras', () => {
-    // The ladder spends canon prose. It never discards a field somebody filled in — that would be a
-    // control that silently does nothing, which is the failure `nina_tuning`'s header argues about.
-    for (const promptLength of BAND_FLOORS) {
-      for (const purpose of ['selfie', 'avatar'] as const) {
-        const prompt = buildNinaImagePrompt({
-          purpose,
-          scene: 'on the track',
-          prefs: prefsWith({
-            promptLength,
-            venue: 'Kuta streets in Bali',
-            time: 'sunny day',
-            notes: 'nina is full of sweat',
-            wardrobe: 'long hugging leggings with a string bra',
-          }),
-        })
-        const where = `${purpose} at band floor ${promptLength}`
-        expect(prompt, where).toContain('VENUE: Kuta streets in Bali')
-        expect(prompt, where).toContain('TIME: sunny day')
-        expect(prompt, where).toContain('NOTES: nina is full of sweat')
-        expect(prompt, where).toContain('long hugging leggings with a string bra.')
-      }
+  it('R7 R8 R9: what the operator typed is honoured on BOTH cameras', () => {
+    // Never discards a field somebody filled in — that would be a control that silently does
+    // nothing, which is the failure `nina_tuning`'s header argues about.
+    for (const purpose of ['selfie', 'avatar'] as const) {
+      const prompt = buildNinaImagePrompt({
+        purpose,
+        scene: 'on the track',
+        prefs: prefsWith({
+          venue: 'Kuta streets in Bali',
+          time: 'sunny day',
+          notes: 'nina is full of sweat',
+          wardrobe: 'long hugging leggings with a string bra',
+        }),
+      })
+      expect(prompt, purpose).toContain('VENUE: Kuta streets in Bali')
+      expect(prompt, purpose).toContain('TIME: sunny day')
+      expect(prompt, purpose).toContain('NOTES: nina is full of sweat')
+      expect(prompt, purpose).toContain('long hugging leggings with a string bra.')
     }
   })
 
@@ -1132,7 +970,6 @@ describe('the prompt', () => {
       mood: 'smug, out of breath',
       tuning: withTrait('flirty', 100),
       prefs: prefsWith({
-        promptLength: 100,
         focus: focusOnly(...NINA_IMAGE_FOCUS_KEYS),
         venue: 'Kuta streets in Bali',
         time: 'rainy night',
@@ -1266,14 +1103,13 @@ describe('the prompt', () => {
     const prompt = buildNinaImagePrompt({
       purpose: 'avatar',
       scene: 'x',
-      prefs: prefsWith({ promptLength: 100, focus: focusOnly(...NINA_IMAGE_FOCUS_KEYS) }),
+      prefs: prefsWith({ focus: focusOnly(...NINA_IMAGE_FOCUS_KEYS) }),
     })
     expect(prompt).toContain('head and shoulders')
     for (const fact of BODY_FACTS) expect(prompt).toContain(fact)
     // The contradiction is resolved out loud instead of being left for the model.
     expect(prompt).toContain('even though this photograph is cropped to her head and shoulders')
-    // One sentence, not five, at EVERY rung: more body prose under a face crop is more
-    // contradiction, not more detail.
+    // One sentence: more body prose under a face crop is more contradiction, not more detail.
     expect(prompt).not.toContain('narrow ankle')
     expect(prompt).not.toContain('flattening into it')
   })
@@ -1283,7 +1119,6 @@ describe('the prompt', () => {
       purpose: 'avatar',
       scene: 'x',
       prefs: prefsWith({
-        promptLength: 100,
         focus: focusOnly('boobs', 'butt', 'thighs', 'calves'),
       }),
     })
@@ -1294,10 +1129,9 @@ describe('the prompt', () => {
     const cropSafe = buildNinaImagePrompt({
       purpose: 'avatar',
       scene: 'x',
-      prefs: prefsWith({ promptLength: 100, focus: focusOnly('face', 'skin') }),
+      prefs: prefsWith({ focus: focusOnly('face', 'skin') }),
     })
-    expect(cropSafe).toContain('FOCUS:')
-    expect(cropSafe).toContain('lit well enough to read her expression')
+    expect(cropSafe).toContain('FOCUS: Emphasise her face and her skin above everything else')
     expect(cropSafe).not.toContain('her bubble butt')
   })
 
@@ -1314,7 +1148,6 @@ describe('the prompt', () => {
           mood: 'smug',
           tuning: tuned({ traits: { ...NINA_TUNING_DEFAULTS.traits, steamy: 100, flirty: 100 } }),
           prefs: prefsWith({
-            promptLength: 100,
             focus: focusOnly(...NINA_IMAGE_FOCUS_KEYS),
             wardrobe: 'a red bikini',
             venue: 'Kuta streets in Bali',
@@ -1632,14 +1465,11 @@ describe('the editable prompt template — rendering (the 2026-09-10 ask)', () =
   }
 
   it('renders byte-identically through an explicitly saved default template', () => {
-    /* A call with NO prefs resolves the length ladder at `NINA_PROMPT_LENGTH_FALLBACK`, so the
-     * prefs side must pin the same rung — the comparison is about the shell, not the rung. */
     const plain = buildNinaImagePrompt({ purpose: 'selfie', scene: 'on the track' })
     const viaTemplate = buildNinaImagePrompt({
       purpose: 'selfie',
       scene: 'on the track',
       prefs: prefsWith({
-        promptLength: NINA_PROMPT_LENGTH_FALLBACK,
         promptTemplate: NINA_PROMPT_TEMPLATE_DEFAULT,
       }),
     })

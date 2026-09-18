@@ -4,10 +4,8 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 import {
-  clampNinaImageScore,
   coerceNinaImageFocus,
   coerceNinaImagePrefs,
-  coerceNinaImagePromptLength,
   coerceNinaImageReference,
   coerceNinaImageTemplate,
   coerceNinaImageText,
@@ -18,9 +16,6 @@ import {
   NINA_IMAGE_FOCUS_SPECS,
   NINA_IMAGE_NOTES_MAX,
   NINA_IMAGE_PREFS_DEFAULTS,
-  NINA_IMAGE_PROMPT_LENGTH_DEFAULT,
-  NINA_IMAGE_PROMPT_LENGTH_MAX,
-  NINA_IMAGE_PROMPT_LENGTH_MIN,
   NINA_IMAGE_REFERENCE_NONE,
   NINA_IMAGE_REFERENCE_SOURCES,
   NINA_IMAGE_TEMPLATE_KEYS,
@@ -32,39 +27,24 @@ import {
   NINA_IMAGE_VENUE_MAX,
   NINA_IMAGE_WARDROBE_MAX,
   NINA_PHOTO_REF_PAGE_SIZE,
-  NINA_PROMPT_LENGTH_RUNGS,
   NINA_PROMPT_TEMPLATE_MAX,
   ninaImageFocusKeysOn,
   ninaPhotoRefBounds,
   ninaPhotoRefPreloadUrls,
-  ninaPromptLengthRungFor,
   paginateNinaPhotoRefs,
   validateNinaImageTemplate,
   type NinaImagePrefs,
   type NinaPhotoRef,
 } from '@/lib/nina/imageprefs'
-import {
-  clampNinaScore,
-  NINA_BAND_NAMES,
-  NINA_BAND_WIDTH,
-  NINA_SCORE_MAX,
-  NINA_SCORE_MIN,
-  ninaBand,
-} from '@/lib/nina/tuning'
 
 /**
- * The image-preferences vocabulary, asserted against the words the user wrote and against the two
- * modules it must agree with but may not import.
+ * The image-preferences vocabulary, asserted against the words the user wrote.
  *
- * Three of these suites exist for reasons a reader should not have to guess at:
+ * Two of these suites exist for reasons a reader should not have to guess at:
  *
  *   · **"zero imports"** is the constraint that lets a `'use client'` panel, phase 4's Zod schema
  *     and phase 3's `--experimental-strip-types` worker all hold this module. It cannot be tested
  *     by importing, so it is tested by reading the source.
- *   · **"the bands agree"** is the RULING A6 mitigation. `imageprefs.ts` may not import `ninaBand`,
- *     so it restates neither the band names nor the band arithmetic — only two scale endpoints and a
- *     clamp — and this is where that duplication is checked rather than merely intended. A test may
- *     import both modules; the panel and the worker cannot.
  *   · **"the migration's literals are the defaults"** is the same shape applied to SQL. The data
  *     step transcribes `NINA_IMAGE_PREFS_DEFAULTS` into an `INSERT`, and a migration is history
  *     rather than a live copy — so the only hazard is its being wrong on the day it runs, which is
@@ -89,84 +69,6 @@ describe('the module stays importable from a client component and from the worke
     expect(code).not.toContain('server-only')
     expect(code).not.toContain('@/lib/db')
     expect(code).not.toContain('@/lib/nina/tuning')
-  })
-})
-
-describe('the prompt-length scale agrees with lib/nina/tuning.ts (RULING A6)', () => {
-  it('spells the same two endpoints', () => {
-    expect(NINA_IMAGE_PROMPT_LENGTH_MIN).toBe(NINA_SCORE_MIN)
-    expect(NINA_IMAGE_PROMPT_LENGTH_MAX).toBe(NINA_SCORE_MAX)
-  })
-
-  it('clamps identically to clampNinaScore, including on garbage', () => {
-    const inputs: unknown[] = [
-      -1,
-      0,
-      1,
-      19,
-      20,
-      50,
-      79,
-      80,
-      100,
-      100.9,
-      101,
-      1000,
-      -0.5,
-      null,
-      undefined,
-      '80',
-      Number.NaN,
-      Number.POSITIVE_INFINITY,
-      {},
-    ]
-    for (const value of inputs) {
-      expect(clampNinaImageScore(value, NINA_IMAGE_PROMPT_LENGTH_DEFAULT), String(value)).toBe(
-        clampNinaScore(value, NINA_IMAGE_PROMPT_LENGTH_DEFAULT),
-      )
-    }
-  })
-
-  it('has exactly one rung per band, indexed by band index and not by score', () => {
-    expect(NINA_PROMPT_LENGTH_RUNGS).toHaveLength(NINA_BAND_NAMES.length)
-    NINA_PROMPT_LENGTH_RUNGS.forEach((rung, i) => expect(rung.index).toBe(i))
-  })
-
-  it('selects the rung ninaBand picks, for one score in every band', () => {
-    /* The whole coupling, exercised: the caller writes
-     * `ninaPromptLengthRungFor(ninaBand(score).index)` and nothing here re-derives a band from a
-     * score. One score per band, plus the ceiling case `100` that `ninaBand` clamps. */
-    for (let i = 0; i < NINA_BAND_NAMES.length; i += 1) {
-      const score = i * NINA_BAND_WIDTH
-      expect(ninaPromptLengthRungFor(ninaBand(score).index).index, `score ${score}`).toBe(i)
-    }
-    expect(ninaPromptLengthRungFor(ninaBand(100).index).index).toBe(NINA_BAND_NAMES.length - 1)
-  })
-
-  it('makes R4 arithmetic: detail strictly increases with the rung', () => {
-    // "the longer the prompt, the more detailed the prompt would be" — the user's own words, as a
-    // monotonicity check rather than as a hope about phase 2's prose.
-    for (let i = 1; i < NINA_PROMPT_LENGTH_RUNGS.length; i += 1) {
-      expect(NINA_PROMPT_LENGTH_RUNGS[i]!.detailSentences).toBeGreaterThan(
-        NINA_PROMPT_LENGTH_RUNGS[i - 1]!.detailSentences,
-      )
-    }
-    expect(NINA_PROMPT_LENGTH_RUNGS[0]!.detailSentences).toBe(0)
-  })
-
-  it('never throws on a band index it cannot use, and lands mid', () => {
-    for (const bad of [null, undefined, Number.NaN, 'high', -3, 99, {}]) {
-      expect(() => ninaPromptLengthRungFor(bad)).not.toThrow()
-    }
-    expect(ninaPromptLengthRungFor(null).index).toBe(2)
-    expect(ninaPromptLengthRungFor(-3).index).toBe(0)
-    expect(ninaPromptLengthRungFor(99).index).toBe(NINA_PROMPT_LENGTH_RUNGS.length - 1)
-  })
-
-  it('defaults to the neutral rung', () => {
-    expect(ninaBand(NINA_IMAGE_PROMPT_LENGTH_DEFAULT).name).toBe('mid')
-    expect(coerceNinaImagePromptLength(undefined)).toBe(NINA_IMAGE_PROMPT_LENGTH_DEFAULT)
-    expect(coerceNinaImagePromptLength(0)).toBe(0)
   })
 })
 
@@ -486,9 +388,8 @@ describe('the picker page is provable without a database — merge, dedupe, pagi
 })
 
 describe('the defaults, and the coercion that never throws', () => {
-  it('are the shipping preferences: neutral rung, nothing selected, nothing typed, no reference', () => {
+  it('are the shipping preferences: nothing selected, nothing typed, no reference', () => {
     expect(NINA_IMAGE_PREFS_DEFAULTS).toEqual({
-      promptLength: NINA_IMAGE_PROMPT_LENGTH_DEFAULT,
       focus: { face: false, skin: false, boobs: false, butt: false, thighs: false, calves: false },
       wardrobe: '',
       venue: '',
@@ -523,19 +424,11 @@ describe('the defaults, and the coercion that never throws', () => {
     for (const bad of [
       undefined,
       {},
-      { promptLength: '80', focus: 'all', reference: 7 },
-      { promptLength: Number.NaN, wardrobe: 12, venue: null, time: [], notes: {} },
+      { focus: 'all', reference: 7 },
+      { wardrobe: 12, venue: null, time: [], notes: {} },
     ]) {
       expect(() => coerceNinaImagePrefs(bad as never)).not.toThrow()
     }
-  })
-
-  it('keep 0 as a real prompt length and not as "unreadable"', () => {
-    // The terse rung IS zero, so zero must not double as the fallback.
-    expect(coerceNinaImagePrefs({ promptLength: 0 }).promptLength).toBe(0)
-    expect(coerceNinaImagePrefs({ promptLength: '0' }).promptLength).toBe(
-      NINA_IMAGE_PROMPT_LENGTH_DEFAULT,
-    )
   })
 })
 
@@ -575,8 +468,12 @@ describe("the migration's data step transcribes the defaults correctly", () => {
     const sql = migrationSql()
     const values = sql.slice(sql.indexOf('SELECT "nina_tuning"."user_id"'))
     /* Whitespace-tolerant on purpose: the statement's alignment is the author's, and a test that
-     * pins indentation fails for a reason that is not a bug. What is pinned is the VALUES. */
-    expect(values).toMatch(new RegExp(`,\\s*${NINA_IMAGE_PROMPT_LENGTH_DEFAULT}\\s*,`))
+     * pins indentation fails for a reason that is not a bug. What is pinned is the VALUES.
+     *
+     * `50` is a LITERAL, not `NINA_IMAGE_PROMPT_LENGTH_DEFAULT` — that constant, and the column
+     * this statement fed, are both gone from the current schema (the prompt-length slider was
+     * removed), but this migration already ran and is history: it stays pinned to what it wrote. */
+    expect(values).toMatch(/,\s*50\s*,/)
     expect(values).toMatch(/(false\s*,\s*){5}false\s*,/)
     expect(NINA_IMAGE_FOCUS_KEYS).toHaveLength(6)
     expect(values).toMatch(new RegExp(`'${NINA_IMAGE_REFERENCE_NONE.source}'\\s*,\\s*''\\s*,`))

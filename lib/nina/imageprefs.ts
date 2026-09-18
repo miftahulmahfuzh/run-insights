@@ -15,22 +15,6 @@
  * `tests/nina.imageprefs.test.ts` reads this file's own source and fails on an `import` line, so
  * the property is checked rather than merely intended.
  *
- * ── WHY `prompt_length` DOES NOT RESTATE THE BANDS, AND WHAT IT SHARES INSTEAD ────────────────
- * The slider is a 0-100 integer read through the repo's existing FIVE bands (`ninaBand`,
- * `NINA_BAND_NAMES` in `lib/nina/tuning.ts:80-122`), and this file cannot import them. It does not
- * copy them either. `NINA_PROMPT_LENGTH_RUNGS` below is indexed by BAND INDEX — the numeric domain
- * `NinaBandIndex` already is, and the same one `ANGER_FLOOR_BY_BAND` in `lib/nina/persona.ts`
- * consumes — so the vocabulary crosses this boundary as a number 0..4 and nothing else. The caller
- * writes:
- *
- *     ninaPromptLengthRungFor(ninaBand(prefs.promptLength).index)
- *
- * one `ninaBand` call, in a module that already imports it. What IS duplicated is the two scale
- * endpoints and the clamp's semantics, and `tests/nina.imageprefs.test.ts` asserts both against
- * `NINA_SCORE_MIN` / `NINA_SCORE_MAX` / `clampNinaScore` directly. That is the RULING A6 mitigation
- * shape: `tests/nina.imagerecipe.test.ts` proves `ninaImagePathname` agrees with the one
- * `NINA_BLOB_PREFIX` for exactly this reason. A test may reach where the consumer cannot.
- *
  * ── "FOCUS ON" IS EMPHASIS, NEVER INCLUSION ──────────────────────────────────────────────────
  * The user's words are *"i dont care about her face, i care a lot about her voluptuous body: big
  * boobs, bubble butt, big thighs, very long calves. **always** explicitly instruct these in the
@@ -63,120 +47,6 @@
  * reference", and a half-selection (a source with no id, or an id with no source) is coerced into
  * it rather than stored.
  */
-
-/* ============================================================================
- * §1 The scale, and the five rungs of the length ladder (R4)
- * ==========================================================================*/
-
-/**
- * The slider's domain. **The same two integers as `NINA_SCORE_MIN` / `NINA_SCORE_MAX` in
- * `lib/nina/tuning.ts`, restated because this file may not import them**, and asserted equal in
- * `tests/nina.imageprefs.test.ts`. See the header for why the BANDS are not restated with them.
- */
-export const NINA_IMAGE_PROMPT_LENGTH_MIN = 0
-export const NINA_IMAGE_PROMPT_LENGTH_MAX = 100
-
-/**
- * The middle of the slider, which is the middle rung of the ladder.
- *
- * There is no byte-identical prompt to reproduce here and that is worth stating, because
- * `NINA_TUNING_DEFAULTS`'s whole discipline is the opposite: R1 changes every image prompt
- * unconditionally, so `tests/nina.imagerecipe.test.ts`'s byte-stability assertion is restated by
- * phase 2 by design (see the plan index, phase 2). What survives of that discipline is the weaker
- * and still useful claim: the default is the NEUTRAL rung, so an operator who never touches the
- * slider gets the prompt phase 2 wrote as its baseline.
- */
-export const NINA_IMAGE_PROMPT_LENGTH_DEFAULT = 50
-
-/**
- * One rung of the ladder. Five of them, indexed by BAND INDEX — see the header.
- *
- * `detailSentences` is the operator's whole instruction, made a number: *"the longer the prompt,
- * the more detailed the prompt would be"*. It is how many sentences of **generated** detail the
- * assembler may add — the focus-emphasis clauses and the canon's own elaboration.
- *
- * **It is NOT a budget over the operator's own free text.** `wardrobe`, `venue`, `time` and `notes`
- * reach the prompt at every rung, in full. A slider that could eat a field the operator typed into
- * would be a control that makes another control silently do nothing, which is the failure
- * `lib/db/schema.ts`'s `nina_tuning` header spends three paragraphs forbidding. Phase 2 owns what a
- * sentence of detail SAYS; this table owns how many of them there are, and that the count rises.
- */
-export interface NinaPromptLengthRung {
-  /** 0-4. The band index, which is also this rung's position in the array. */
-  readonly index: number
-  /** The panel's label, rendered beside the slider. Sentence case, like every other admin label. */
-  readonly label: string
-  /** What the rung is, in one line. Operator copy, not prompt text. */
-  readonly axis: string
-  /** Sentences of GENERATED detail the assembler may spend. Strictly increasing. */
-  readonly detailSentences: number
-}
-
-export const NINA_PROMPT_LENGTH_RUNGS: readonly NinaPromptLengthRung[] = Object.freeze([
-  Object.freeze({
-    index: 0,
-    label: 'Terse',
-    axis: 'The style block, the body, and the scene. Nothing else — the shortest prompt that still names all four body facts.',
-    detailSentences: 0,
-  }),
-  Object.freeze({
-    index: 1,
-    label: 'Short',
-    axis: 'One sentence of detail. The strongest emphasis and nothing more.',
-    detailSentences: 1,
-  }),
-  Object.freeze({
-    index: 2,
-    label: 'Standard',
-    axis: 'Two sentences of detail. The neutral rung, and the default.',
-    detailSentences: 2,
-  }),
-  Object.freeze({
-    index: 3,
-    label: 'Detailed',
-    axis: 'Four sentences of detail. Every selected emphasis gets its own clause.',
-    detailSentences: 4,
-  }),
-  Object.freeze({
-    index: 4,
-    label: 'Exhaustive',
-    axis: 'Six sentences of detail. Everything selected, elaborated, plus the texture and lighting the canon can spell out.',
-    detailSentences: 6,
-  }),
-])
-
-/**
- * A band index, made a rung. **Never throws and never returns undefined**, which is why it takes a
- * plain `number` rather than a band-index type: a type union restated here would be the second copy
- * of the band vocabulary the header refuses. A non-integer floors, out of range clamps, and
- * anything that is not a finite number falls to the middle rung — the same trust-boundary
- * discipline as `clampNinaScore`, for a caller that may be a hand-run script.
- */
-export function ninaPromptLengthRungFor(bandIndex: unknown): NinaPromptLengthRung {
-  const last = NINA_PROMPT_LENGTH_RUNGS.length - 1
-  if (typeof bandIndex !== 'number' || !Number.isFinite(bandIndex)) {
-    return NINA_PROMPT_LENGTH_RUNGS[Math.floor(last / 2)]!
-  }
-  const index = Math.min(last, Math.max(0, Math.floor(bandIndex)))
-  return NINA_PROMPT_LENGTH_RUNGS[index]!
-}
-
-/**
- * A prompt-length score, made safe. Floor before clamp, so `100.9` is 100 and not a band index of
- * 5 — `clampNinaScore`'s own ordering, and the reason it matters is the same.
- */
-export function clampNinaImageScore(value: unknown, fallback: number): number {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
-  return Math.min(
-    NINA_IMAGE_PROMPT_LENGTH_MAX,
-    Math.max(NINA_IMAGE_PROMPT_LENGTH_MIN, Math.floor(value)),
-  )
-}
-
-/** The slider's value, made safe. Unreadable falls to the neutral rung, never to zero. */
-export function coerceNinaImagePromptLength(value: unknown): number {
-  return clampNinaImageScore(value, NINA_IMAGE_PROMPT_LENGTH_DEFAULT)
-}
 
 /* ============================================================================
  * §2 "Focus on" — the six, in the order the user wrote them (R5)
@@ -1090,10 +960,9 @@ export function coerceNinaCameraAngle(value: unknown): NinaCameraAngleKey {
 /**
  * One property of something that may not be an object at all. Never throws.
  *
- * The same three lines as `lib/nina/tuning.ts`'s `pick`, and it is a second copy for the same
- * reason `clampNinaImageScore` is: this file may not import that one. It is three lines with no
- * vocabulary in it, so there is nothing here that can drift — which is the test the header's
- * duplication rule actually applies.
+ * The same three lines as `lib/nina/tuning.ts`'s `pick`, and it is a second copy because this file
+ * may not import that one. It is three lines with no vocabulary in it, so there is nothing here
+ * that can drift.
  */
 function pick(bag: unknown, key: string): unknown {
   if (typeof bag !== 'object' || bag === null) return undefined
@@ -1110,8 +979,6 @@ function pick(bag: unknown, key: string): unknown {
  * every subsequent generation in the same process. Frozen means the attempt throws instead.
  */
 export interface NinaImagePrefs {
-  /** 0-100, read through the five bands. See §1 and the header. */
-  readonly promptLength: number
   /** Emphasis, never inclusion. All false is the default and R1 still holds. */
   readonly focus: Readonly<Record<NinaImageFocusKey, boolean>>
   /** `''` = no override. */
@@ -1169,7 +1036,6 @@ export type NinaImagePrefsWrite = NinaImagePrefs
  * admits only the last of those pushes the trust boundary out to three call sites.
  */
 export interface NinaImagePrefsInput {
-  readonly promptLength?: unknown
   readonly focus?: unknown
   readonly wardrobe?: unknown
   readonly venue?: unknown
@@ -1191,7 +1057,6 @@ export interface NinaImagePrefsInput {
  * in `selfiegen.ts`, and no way for a first-run generation to get a prompt with holes in it.
  */
 export const NINA_IMAGE_PREFS_DEFAULTS: NinaImagePrefs = Object.freeze({
-  promptLength: NINA_IMAGE_PROMPT_LENGTH_DEFAULT,
   focus: NINA_IMAGE_FOCUS_DEFAULTS,
   wardrobe: '',
   venue: '',
@@ -1213,11 +1078,9 @@ export const NINA_IMAGE_PREFS_DEFAULTS: NinaImagePrefs = Object.freeze({
  *
  * Three behaviours worth stating because the tests pin them:
  *
- *   1. **An unreadable slider falls to the neutral rung, not to zero.** Zero is a real setting (the
- *      terse rung), so it must not double as "we could not read this".
- *   2. **An unreadable focus flag reads OFF.** The opposite of `coerceNinaEnabled`, and the header
+ *   1. **An unreadable focus flag reads OFF.** The opposite of `coerceNinaEnabled`, and the header
  *      says why.
- *   3. **The result is always a fresh, unfrozen object**, never `NINA_IMAGE_PREFS_DEFAULTS` itself,
+ *   2. **The result is always a fresh, unfrozen object**, never `NINA_IMAGE_PREFS_DEFAULTS` itself,
  *      so a caller may hold it, spread it and hand it to React state without touching the
  *      singleton.
  */
@@ -1225,7 +1088,6 @@ export function coerceNinaImagePrefs(
   input: NinaImagePrefsInput | null | undefined,
 ): NinaImagePrefs {
   return {
-    promptLength: coerceNinaImagePromptLength(input?.promptLength),
     focus: coerceNinaImageFocus(input?.focus),
     wardrobe: coerceNinaImageText('wardrobe', input?.wardrobe),
     venue: coerceNinaImageText('venue', input?.venue),

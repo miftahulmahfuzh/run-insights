@@ -45,9 +45,9 @@ Restated again 2026-09-16 for P1-NIN-A052 (nina-imagegen-proportion-fix): the se
 (`NINA_SELFIE_STYLE`), the `calves` focus TERM and the high-`steamy` presence clause were retuned
 together against arm's-length framing, head-to-body proportion and cropped feet — the recorded
 rules are that the tool description never reaches the image prompt, that there is no
-`negative_prompt` to put negatives in, that a focus key's `.sentence` is avatar-only, and that a
-non-empty stored `prompt_template` outranks the source default — see Images' *The photograph's
-aesthetic*. Restated a third time 2026-09-16 for P1-NIN-A053 (nina-natural-reminders, a one-phase
+`negative_prompt` to put negatives in, that a focus key's phrase must be spelled in its `.term`, and
+that a non-empty stored `prompt_template` outranks the source default — see Images' *The
+photograph's aesthetic*. Restated a third time 2026-09-16 for P1-NIN-A053 (nina-natural-reminders, a one-phase
 set): `reminders.ts` (pure) + `reminderstore.ts` (server-only) added — standing daily reminders the
 runner asks for in ordinary chat prose, carried on `SEND_TOOL`'s new optional `reminders` array,
 persisted as a `reminders` key in the existing `nina_memory_slots` jsonb (**no new table, no
@@ -60,7 +60,14 @@ patterns, proactive* and Gotchas. Restated 2026-09-17 for P1-NIN-A054
 `NINA_PROMPT_VERSION` 10 → 11 (a whole new tool, no system text, snapshot UNREGENERATED);
 `getLatestOriginalNinaSessionPhoto` added to `queries/images.ts`; `'chat-photo:'` now has a named
 export on the nina side (`NINA_CHAT_PHOTO_SOURCE_KEY_PREFIX`) and is still three spellings, not one
-import — see Images' *Adopting a photograph that already exists*.
+import — see Images' *Adopting a photograph that already exists*. Restated 2026-09-18: the
+**prompt-length dial is removed** end to end — the slider, the `promptLength` preference, the
+prompt-length ladder in `imagegen.ts`, `NINA_FOCUS_EMPHASIS[key].sentence`,
+`NINA_AVATAR_STYLE_SHORT` and the `nina_image_prefs.prompt_length` column
+(`drizzle/0031_greedy_jocasta.sql`, committed and deliberately unapplied until this code ships).
+The operator never moved it off its shipped default of `50`, so the avatar path now permanently
+renders what that value's `mid` band always resolved to — see Images' *The prompt-length dial is
+gone*.
 **Documentation Created**: 2026-09-05 (`NINA_CHARACTER_TUNING_PLAN.md` phase 2)
 
 ## Overview
@@ -563,17 +570,43 @@ head-to-body proportion and a whole-body frame with the floor under her feet.)
   held close"*, a direct contradiction of a camera block that says no phone and no hand near the
   lens (it holds the pose for the person photographing her now). Every new dial clause is a fresh
   chance to re-contradict it, and nothing mechanical catches that — only reading both.
-- **Anything that must reach a PHOTOGRAPH rides on `NINA_FOCUS_EMPHASIS[key].term`, never on
-  `.sentence`.** The selfie path builds `{{focus}}` from `joinTerms` over the ticked `.term`s alone;
-  `.sentence` is read only by `ninaFocusBlock`, whose single call site passes `'avatar'`, so for a
-  focus key that is not in `NINA_AVATAR_FOCUS_KEYS` — `calves` among them — the sentence is dead
-  text kept for the avatar shape's sake. That is why the calf-length and foot-proportion fix is
-  spelled inside the term. A term therefore carries **no internal "and" and no trailing
-  preposition**: `joinTerms` may put five other terms in front of it and the template appends
-  "above everything else in this photograph."
+- **`NINA_FOCUS_EMPHASIS[key].term` is the ONLY per-key text there is, and both paths render the
+  same single-line list.** The selfie path builds `{{focus}}` from `joinTerms` over the ticked
+  `.term`s; `ninaFocusBlock` does the same for the avatar after filtering to
+  `NINA_AVATAR_FOCUS_KEYS` (`face`, `skin`) and returns `null` when nothing the crop can honour was
+  ticked. That is why the calf-length and foot-proportion fix is spelled inside the term. A term
+  therefore carries **no internal "and" and no trailing preposition**: `joinTerms` may put five
+  other terms in front of it and the template appends "above everything else in this photograph."
+  (The record carried a second field, `.sentence`, an elaborated per-key prose form that only
+  `ninaFocusBlock` read and only at the prompt-length dial's top two bands; both the dial and the
+  field were removed 2026-09-18 — see *The prompt-length dial is gone*.)
 - **The avatar path is a separate shell and stays out of it** (`NINA_AVATAR_STYLE`,
   `NINA_AVATAR_PROMPT_TEMPLATE_DEFAULT`, untouched by A052) — a head-and-shoulders crop rendered in
   a 28-44 px circle has no use for whole-body framing, foot visibility or a three-metre standoff.
+
+**The prompt-length dial is gone (2026-09-18), and the avatar path is now permanently what its
+middle band rendered.** There was a `promptLength` 0-100 preference, read through the repo's five
+bands (`off`/`low`/`mid`/`high`/`max`), driving a "prompt-length ladder" in `imagegen.ts` that
+spent more or less canon prose: body-sentence count, whether the face / outfit / presence blocks
+appeared at all, whether the focus block got its elaborated per-key sentences, and which of two
+camera shells the avatar used. The operator never moved it off its shipped default of `50`, so
+every band but `mid` was dead code that only the tests ever reached. What the removal deleted:
+`NINA_IMAGE_PROMPT_LENGTH_MIN/MAX/DEFAULT`, `NinaPromptLengthRung`, `NINA_PROMPT_LENGTH_RUNGS`,
+`ninaPromptLengthRungFor`, `clampNinaImageScore` and `coerceNinaImagePromptLength` from
+`imageprefs.ts` (plus `promptLength` from `NinaImagePrefs`, `NinaImagePrefsInput`,
+`NINA_IMAGE_PREFS_DEFAULTS` and `coerceNinaImagePrefs`); `NinaPromptRung`, `NINA_PROMPT_RUNGS`,
+`ninaPromptRung` and `NINA_PROMPT_LENGTH_FALLBACK` from `imagegen.ts`; the `rung` parameter of
+`ninaFocusBlock`; `NINA_FOCUS_EMPHASIS[key].sentence`; and `NINA_AVATAR_STYLE_SHORT`, whose text
+IS now the one `NINA_AVATAR_STYLE` because the "full" avatar camera was unreachable in practice.
+Two rules survive it. **The five-band scale is `tuning.ts`'s and is not this feature's** — nothing
+here was the reason `ninaBand` exists, and removing this dial does not license touching it.
+**The column drop lands after the deploy**: `drizzle/0031_greedy_jocasta.sql` drops
+`nina_image_prefs.prompt_length` and is committed but deliberately unapplied until the code that
+stopped selecting it is in production — the repo's standing DROP COLUMN discipline, because
+Drizzle expands a bare select into explicit columns. The column name still appears in
+`tests/nina.imageprefs.test.ts`, which asserts the *historical* backfill migration's column list:
+an applied migration is a fact about what happened and is not reinterpreted to match today's
+schema, so that literal stays.
 - **The source constants are the DEFAULT, not automatically what goes on the wire.**
   `effectiveNinaImageTemplate` returns the stored `nina_image_prefs.prompt_template` whenever it is
   non-empty and valid, and falls back to `NINA_PROMPT_TEMPLATE_DEFAULT` only for `''` or a row that

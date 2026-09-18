@@ -267,8 +267,7 @@ in flat morning sun.
 about her face, i care a lot about her voluptuous body: big boobs, bubble butt, big thighs, very
 long calves. always explicitly instruct these in the prompt"* — and "always" is the whole
 requirement. No setting on `/admin/image-generation` can remove a body fact: the focus multi-select
-adds emphasis clauses on top of the canon, and the prompt-length slider spends more or fewer body
-sentences but never fewer than one, which names all four. `NINA_FACE` keeps every one of its
+adds emphasis clauses on top of a canon that always names all four. `NINA_FACE` keeps every one of its
 sentences and loses its primacy; the one body clause it used to carry — "Lean, visibly muscular
 runner's build, narrow shoulders" — moved into the body paragraph, and `Lean` and `narrow shoulders`
 were repealed there because they contradict it.

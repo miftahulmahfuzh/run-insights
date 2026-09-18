@@ -42,8 +42,8 @@ import { readNinaImagePrefs, readNinaTuning, resolveNinaPhotoReference } from '.
  *
  * The same argument now covers `nina_image_prefs`, and it is why `NinaSelfieRequest` gained no
  * `prefs` field: reading both rows here is what lets `imagetools.ts` and `promises.ts` get the
- * operator's wardrobe, venue, time, notes, focus set and prompt length without either file being
- * edited. Neither belongs to this phase, and neither was touched.
+ * operator's wardrobe, venue, time, notes and focus set without either file being edited. Neither
+ * belongs to this phase, and neither was touched.
  */
 export interface NinaSelfieRequest {
   userId: string

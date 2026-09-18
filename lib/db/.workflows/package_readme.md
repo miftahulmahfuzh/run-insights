@@ -143,7 +143,7 @@ R-13, R-22, R-28 — ten in all). Where a module and a feature plan disagree, th
 | `ninaAvatars` | `nina_avatars` | Nina's photo album: folder, crop transform, thumbnail, dedupe key, `description` + `search_keywords` / `negative_search_keywords` + the `description_embedding` vector, and `source_image_id` — non-null makes the row a pointer at a Media original rather than a photograph of its own | `nina_avatars_user_current_unq` (partial), `nina_avatars_user_created_idx`, `nina_avatars_user_folder_created_idx`, `nina_avatars_user_source_key_unq`, `nina_avatars_user_content_hash_idx` (partial), `nina_avatars_description_embedding_hnsw_idx` (HNSW, `vector_cosine_ops`), `nina_avatars_source_image_id_idx` |
 | `ninaFolders` | `nina_folders` | Asserts a folder exists even when empty | PK `(user_id, folder)` |
 | `ninaTuning` | `nina_tuning` | Nina's per-user character: twelve trait dials, the relationship, the four extra dials, seventeen enable flags and a notes field | PK `user_id` |
-| `ninaImagePrefs` | `nina_image_prefs` | How she is photographed: the prompt-length slider, six focus flags, four lines of free text, `prompt_template` + `model` (the image-gen controls), the chosen photo reference | PK `user_id` |
+| `ninaImagePrefs` | `nina_image_prefs` | How she is photographed: six focus flags, four lines of free text, `prompt_template` + `model` (the image-gen controls), the chosen photo reference | PK `user_id` |
 | `ninaErrorLogs` | `nina_error_logs` | Best-effort log of every FAILED Nina model call (written by `lib/nina/errorlogs.ts`, not `lib/nina/queries.ts`; `user_id` nullable — some failing seams hold no runner) | `nina_error_logs_category_created_idx` |
 | `appSettings` | `app_settings` | Operator decisions persisted without a redeploy — first key `text_model`, read by `lib/llm/textModel.ts` | PK `key` |
 | `pushSubscriptions` | `push_subscriptions` | Web Push subscription per browser endpoint | `push_subscriptions_endpoint_unq`, `push_subscriptions_user_idx` |
@@ -738,6 +738,25 @@ database. Its entries `0024_nina_avatar_search_keywords` and `0025_handy_santa_c
 two keyword columns) precede it. As always: this line is a dated claim, and
 `npm run ci:schema-drift-guard` is the answer to "is it true now?".
 
+**2026-09-18: the journal's tip is `0031_greedy_jocasta`, and it is deliberately NOT applied.**
+The file holds 32 entries, `0000`–`0031` (counted from `drizzle/meta/_journal.json` that day; the
+applied state of `0027`–`0030` was not measured here — run the guard). `0031` is a single
+statement, `ALTER TABLE "nina_image_prefs" DROP COLUMN "prompt_length"`, and it is generated and
+committed but left unapplied on purpose: **a destructive migration is applied only after the code
+that stopped referencing the column is deployed, never before.** The reason is mechanical, not
+stylistic. `readNinaImagePrefs` in `lib/nina/queries/imageprefs.ts` issues a bare
+`.select().from(ninaImagePrefs)`, and Drizzle expands a bare select into the schema object's
+explicit column list at query time — so a database missing a column the *deployed* schema still
+declares breaks every read of that table, not merely the reads that wanted the dropped field.
+Hence the two-step: deploy, then `db:migrate`. Additive migrations may lead a deploy; `DROP COLUMN`
+and `SET NOT NULL` must follow one.
+
+Note what this state is *not*: a journal entry ahead of the database this way is **pending**, not
+stranded. `0031`'s `when` is the newest in the file and therefore above the ledger watermark, so
+`db:migrate` will run it the moment it is invoked — which is exactly why the gap must be closed by
+running it deliberately after the deploy, and why the drift guard will report `0031` as pending
+(correctly) in the window between the two steps.
+
 **`0011_rare_blockbuster` was the one stranded entry, and on 2026-09-13 it was repaired by hand.**
 For six days it sat journalled-but-unapplied: its journal `when` (1788786634959) is older than the
 ledger watermark (1789176119493), and the migrator applies an entry only beyond that watermark, so
@@ -858,8 +877,8 @@ not re-derive this by hand either — the counts are what the guard prints on a 
   photograph yields `null` rather than an error, because there is no FK that could enforce it.
 - **`nina_image_prefs` has no schema-declared defaults, and that is the point.**
   `NINA_IMAGE_PREFS_DEFAULTS` in `lib/nina/imageprefs.ts` is the one definition of "unset"; a
-  `DEFAULT 50` here would be a second copy of it in a second language, drifting silently. No row
-  means the defaults. The two image-gen controls, `prompt_template` and `model`, are `.notNull()`
+  `DEFAULT false` on the six focus flags would be a second copy of it in a second language,
+  drifting silently. No row means the defaults. The two image-gen controls, `prompt_template` and `model`, are `.notNull()`
   with no schema default either — the `DEFAULT ''` / `DEFAULT 'qwen/qwen-image-3-pro'` clauses in
   `0020` are migration-time backstops for the one row that already existed, not part of the
   contract. `updated_at` is the one intentional exception, because a timestamp is not part of the
@@ -873,8 +892,10 @@ not re-derive this by hand either — the counts are what the guard prints on a 
 ### Deploy state of the journal
 
 Kept short because it is the fact most likely to have changed since this page was written (and
-five times has): see **Migrations → Deploy state** above — as of 2026-09-17 the journal holds 27
-entries (`0000`–`0026`) and `0026_media_album_unified_search` has been applied; the embedding
+six times has): see **Migrations → Deploy state** above — as of 2026-09-18 the journal holds 32
+entries (`0000`–`0031`), and its tip `0031_greedy_jocasta` (the `prompt_length` drop) is
+generated-but-unapplied by design, because destructive migrations follow their deploy rather than
+leading it; `0026_media_album_unified_search` was applied 2026-09-17; the embedding
 migration `0023_dry_kabuki` was verified applied on 2026-09-15 against
 `information_schema` / `pg_indexes` / `pg_extension` rather than against an exit code, and
 `0011_rare_blockbuster` was repaired by hand back on 2026-09-13. Do not read that paragraph for a
@@ -914,3 +935,4 @@ history, and the decisions worth keeping are folded into the sections above. The
 | 2026-09-15 | P2-DB-A001 (admin-album-semantic-search p1) | `nina_avatars` + nullable `description_embedding vector(1536)` and an HNSW `vector_cosine_ops` index; `NINA_EMBEDDING_DIMENSIONS` exported through the schema barrel; the drift guard taught to fold `vector(N)` (width pinned by the schema test instead); nothing writes the column in this phase | `0023_dry_kabuki` (applied; hand-written `CREATE EXTENSION IF NOT EXISTS vector` above the generated DDL — journal-measured 2026-09-17, this row previously named a tag that does not exist) |
 | 2026-09-15 | nina-album-search-relevance-tools R2 | `nina_avatars` + `search_keywords`, then + `negative_search_keywords` — both nullable `text`, no index: one is an input to the embedding, the other is read alone by the ranker | `0024_nina_avatar_search_keywords`, `0025_handy_santa_claus` (both applied) |
 | 2026-09-17 | P2-DB-A002 (media-album-unified-search p1 of 4) | `nina_message_images` + the album's three search columns and an HNSW `vector_cosine_ops` index; `nina_avatars` + `source_image_id` (FK → `nina_message_images.id`, the schema's first `ON DELETE RESTRICT`) and its plain btree; `NINA_EMBEDDING_DIMENSIONS` moved to the leaf module `schema/nina/embedding.ts` to break the `avatars` ⇄ `chat` cycle the new FK creates, barrel surface unchanged; nothing writes any of the four columns in this phase | `0026_media_album_unified_search` (applied; additive-only, generated, no hand-edits) |
+| 2026-09-18 | prompt-length removal | `nina_image_prefs` − `prompt_length` (19 → 18 columns) — the sliding-bar control the operator never used, gone from schema, admin panel and prompt assembly | `0031_greedy_jocasta` (generated, **not applied** — a `DROP COLUMN` waits for the code deploy; see Migrations → Deploy state) |

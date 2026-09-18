@@ -246,15 +246,6 @@ export const ninaImagePrefs = pgTable('nina_image_prefs', {
     .primaryKey()
     .references(() => users.id, { onDelete: 'cascade' }),
 
-  /**
-   * R4. *"prompt length (sliding bar): the longer the prompt, the more detailed the prompt would
-   * be"*. An integer percent 0-100, read through the repo's five bands; each band selects a rung of
-   * `NINA_PROMPT_LENGTH_RUNGS`. The domain is enforced by `clampNinaImageScore`, not by a CHECK —
-   * `nina_tuning`'s argument: a CHECK would make widening the scale a migration, and a value outside
-   * it is a bug in one writer rather than a state the reader cannot survive.
-   */
-  promptLength: integer('prompt_length').notNull(),
-
   /* R5's six, in the order the user wrote them: *"focus on (select multi options): face, skin, big
    * boobs, bubble butt, big thighs, very long calves"*. EMPHASIS, never inclusion — the body canon
    * is unconditional prompt text (plan invariant 4), so all six false is the default and a prompt

@@ -7,7 +7,7 @@ import {
   generateImageFieldValueAction,
   saveNinaImagePrefsAction,
 } from '@/lib/admin/imageGenActions'
-import { IMAGEGEN_DIAL_COMMIT_DEBOUNCE_MS, type ImageGenDraft } from '@/lib/admin/imageGenModel'
+import { type ImageGenDraft } from '@/lib/admin/imageGenModel'
 import {
   NINA_HAIRSTYLE_KEYS,
   NINA_IMAGE_FOCUS_KEYS,
@@ -20,9 +20,9 @@ import {
  * import boundary — each has its own suite from earlier in this session — with the picker reduced
  * to a button that fires its onChange contract and the test panel reduced to a dirty-flag lamp.
  * What is under test here is the PANEL: the commit-moment matrix it shares with CharacterPanel
- * (dial debounced, checkboxes/select/reference immediate, five text controls on blur), the ✕
- * buttons that clear without a second write path, the template reset that stores the default
- * itself, and whole-row payloads on every dispatch.
+ * (checkboxes/selects/reference immediate, five text controls on blur), the ✕ buttons that clear
+ * without a second write path, the template reset that stores the default itself, and whole-row
+ * payloads on every dispatch.
  */
 vi.mock('@/lib/admin/imageGenActions', () => ({
   saveNinaImagePrefsAction: vi.fn(),
@@ -57,7 +57,6 @@ const generateAction = vi.mocked(generateImageFieldValueAction)
 
 function prefs(overrides?: Partial<ImageGenDraft>): ImageGenDraft {
   return {
-    promptLength: 50,
     focus: {},
     wardrobe: '',
     venue: '',
@@ -72,12 +71,11 @@ function prefs(overrides?: Partial<ImageGenDraft>): ImageGenDraft {
   }
 }
 
-function panel(p: ImageGenDraft = prefs(), defaults: ImageGenDraft = prefs()) {
+function panel(p: ImageGenDraft = prefs()) {
   render(
     <ImageGenPanel
       userId="u1"
       prefs={p}
-      defaults={defaults}
       promptPreview="THE ASSEMBLED IMAGE PROMPT"
       defaultTemplate="SHELL {{scene}}"
       references={[]}
@@ -118,7 +116,7 @@ describe('ImageGenPanel — chrome', () => {
     panel()
     expect(document.getElementById('image-generation')).not.toBeNull()
     expect(screen.getByText('Saved')).toBeInTheDocument()
-    expect(screen.getByText(/prompt length 50 · 0 of 6 emphasised/)).toBeInTheDocument()
+    expect(screen.getByText(/0 of 6 emphasised/)).toBeInTheDocument()
   })
 
   it('carries a live reference into the header summary', () => {
@@ -172,24 +170,6 @@ describe('ImageGenPanel — chrome', () => {
 })
 
 describe('ImageGenPanel — the commit moments', () => {
-  it('the prompt-length dial commits DEBOUNCED with the whole row', async () => {
-    saveAction.mockResolvedValue({ ok: true, prefs: prefs({ promptLength: 70 }) })
-    panel()
-    const slider = screen.getByRole('slider')
-    expect(slider).toHaveAttribute('min', '0')
-    expect(slider).toHaveAttribute('max', '100')
-
-    fireEvent.change(slider, { target: { value: '70' } })
-    expect(screen.getByText('Saving…')).toBeInTheDocument()
-    await advance(IMAGEGEN_DIAL_COMMIT_DEBOUNCE_MS)
-
-    expect(saveAction).toHaveBeenCalledTimes(1)
-    expect(saveAction.mock.calls[0]![0]!.promptLength).toBe(70)
-    // The length dial has no toggle: the control count above already proves the checkbox absence.
-    await advance(0)
-    expect(screen.getByText('Saved')).toBeInTheDocument()
-  })
-
   it('a focus checkbox commits on CHANGE, immediately', async () => {
     // The action returns the row AS STORED — with the tick in it — so the merge adopts cleanly.
     const stored = prefs({ focus: { [NINA_IMAGE_FOCUS_KEYS[0]]: true } })
@@ -242,7 +222,7 @@ describe('ImageGenPanel — the commit moments', () => {
     panel()
     const box = wardrobeBox()
     fireEvent.change(box, { target: { value: 'oversized hoodie' } })
-    await advance(IMAGEGEN_DIAL_COMMIT_DEBOUNCE_MS * 2)
+    await advance(1000)
     expect(saveAction).not.toHaveBeenCalled()
     expect(screen.getByText('Unsaved edits')).toBeInTheDocument()
 
@@ -303,39 +283,16 @@ describe('ImageGenPanel — the commit moments', () => {
     expect(saveAction).not.toHaveBeenCalled()
   })
 
-  it('an immediate commit carries the dial still waiting and disarms the timer', async () => {
+  it('an immediate commit carries an unsent text edit along with it', async () => {
     saveAction.mockResolvedValue({ ok: true, prefs: prefs() })
     panel()
-    fireEvent.change(screen.getByRole('slider'), { target: { value: '80' } })
+    fireEvent.change(wardrobeBox(), { target: { value: 'oversized hoodie' } })
     fireEvent.click(screen.getAllByRole('checkbox')[1]!)
     await advance(0)
 
     expect(saveAction).toHaveBeenCalledTimes(1)
-    expect(saveAction.mock.calls[0]![0]!.promptLength).toBe(80) // subsumed
+    expect(saveAction.mock.calls[0]![0]!.wardrobe).toBe('oversized hoodie') // subsumed
     expect(saveAction.mock.calls[0]![0]!.focus[NINA_IMAGE_FOCUS_KEYS[1]]).toBe(true)
-    await advance(IMAGEGEN_DIAL_COMMIT_DEBOUNCE_MS * 2)
-    expect(saveAction).toHaveBeenCalledTimes(1) // and not double-sent
-  })
-
-  it('unmount inside the settle window fires no save', async () => {
-    const view = render(
-      <ImageGenPanel
-        userId="u1"
-        prefs={prefs()}
-        defaults={prefs()}
-        promptPreview="P"
-        defaultTemplate="SHELL {{scene}}"
-        references={[]}
-        photoTotal={0}
-        photoPage={1}
-        photoPageCount={1}
-        photoPreloadUrls={[]}
-      />,
-    )
-    fireEvent.change(screen.getByRole('slider'), { target: { value: '80' } })
-    view.unmount()
-    await advance(IMAGEGEN_DIAL_COMMIT_DEBOUNCE_MS * 2)
-    expect(saveAction).not.toHaveBeenCalled()
   })
 })
 
@@ -380,15 +337,14 @@ describe('ImageGenPanel — template and pipeline answers', () => {
     expect(screen.getByText('The template has an unknown placeholder.')).toBeInTheDocument()
     expect(screen.getByText('Unsaved edits')).toBeInTheDocument()
     expect(wardrobeBox()).not.toBeDisabled()
-    expect(screen.getByRole('slider')).not.toBeDisabled()
   })
 
   it('adopts the canonical row on success and returns to Saved', async () => {
-    const canonical = prefs({ promptLength: 70, wardrobe: 'Hoodie ' })
+    const canonical = prefs({ wardrobe: 'Hoodie' })
     saveAction.mockResolvedValue({ ok: true, prefs: canonical })
     panel()
-    fireEvent.change(screen.getByRole('slider'), { target: { value: '70' } })
-    await advance(IMAGEGEN_DIAL_COMMIT_DEBOUNCE_MS)
+    fireEvent.change(wardrobeBox(), { target: { value: '  Hoodie  ' } })
+    fireEvent.blur(wardrobeBox())
     await advance(0)
 
     expect(screen.getByText('Saved')).toBeInTheDocument()

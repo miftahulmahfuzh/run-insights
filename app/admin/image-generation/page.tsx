@@ -6,7 +6,7 @@ import {
 } from '@/lib/admin/imageGenModel'
 import { requireAdmin } from '@/lib/admin/requireAdmin'
 import { buildNinaImagePrompt, NINA_PROMPT_TEMPLATE_DEFAULT } from '@/lib/nina/imagegen'
-import { NINA_IMAGE_PREFS_DEFAULTS, NINA_PHOTO_REF_PAGE_SIZE } from '@/lib/nina/imageprefs'
+import { NINA_PHOTO_REF_PAGE_SIZE } from '@/lib/nina/imageprefs'
 import { listNinaPhotoReferences, readNinaImagePrefs, readNinaTuning } from '@/lib/nina/queries'
 
 /**
@@ -159,7 +159,6 @@ export default async function AdminImageGenerationPage(
       <ImageGenPanel
         userId={userId}
         prefs={toImageGenDraft(prefs)}
-        defaults={toImageGenDraft(NINA_IMAGE_PREFS_DEFAULTS)}
         promptPreview={buildNinaImagePrompt({
           purpose: 'selfie',
           scene: ADMIN_IMAGE_PREVIEW_SCENE,

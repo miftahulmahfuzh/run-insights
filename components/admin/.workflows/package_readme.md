@@ -88,7 +88,7 @@ see Test consumers under Reverse Dependencies.
   to her chat as a pointer in a new tab with the describe fired but never awaited.
 - `/admin/personality`: `CharacterPanel`'s whole-row auto-save tuning, and `TextModelSelect`
   for which GLM writes every text turn.
-- `/admin/image-generation`: her standing photo prefs — dial, camera select, six emphasis
+- `/admin/image-generation`: her standing photo prefs — camera select, six emphasis
   checkboxes, four text fields, the editable prompt template, the photo-reference picker, and
   the paid test-prompt button.
 - `/admin/memory`: one table over slots, pending promises and the fact ledger.
@@ -125,13 +125,13 @@ see Test consumers under Reverse Dependencies.
 | `AdminNav.tsx` | **no directive** | The nav shell: `<nav>`, desktop eyebrow/footer, breakpoint mechanics (`fixed bottom-0` + `pb-[calc(var(--safe-bottom)/2)]` below `lg`, `lg:sticky lg:top-8` above). The list is `AdminNavLinks`. |
 | `AdminNavLinks.tsx` | `'use client'` | The nav's LIST, both renditions from one markup: below `lg`, `grid h-14 max-w-[470px] grid-cols-6 px-[7px]` — six cells, each a 24 px inlined Lucide glyph named by its sr-only `short` (Overview · Photos · Persona · Images · Memory · Shortcut); at `lg`, the sticky text rail. `usePathname()` paints the active glyph `text-accent` + `aria-current="page"`; at `lg` the active cell fills the `bg-accent-soft` pill with explicit `lg:hover:` twins. `/admin/nina`'s label is **"Image collection"** (short "Photos") since the p4 rename. |
 | `ShortcutTable.tsx` | `'use client'` | `/admin/shortcuts` — `MemoryTable`'s mechanics with different columns; on/off checkbox leads the row; only the delete is optimistic. |
-| `ImageGenPanel.tsx` | `'use client'` | `/admin/image-generation` in full: the prompt-length `DialSlider`, the image-model select, six focus checkboxes, four text fields with ✕ clears, the photo-reference picker, and the editable prompt template with its placeholder legend. `CharacterPanel`'s auto-save pipeline over `lib/admin/imageGenModel` (debounce `IMAGEGEN_DIAL_COMMIT_DEBOUNCE_MS = 600`); one `useTransition`, one whole-row action. |
+| `ImageGenPanel.tsx` | `'use client'` | `/admin/image-generation` in full: the image-model select, six focus checkboxes, four text fields with ✕ clears, the photo-reference picker, and the editable prompt template with its placeholder legend. `CharacterPanel`'s auto-save pipeline over `lib/admin/imageGenModel`, minus the debounce — every control here commits on CHANGE or on BLUR, so there is no timer; one `useTransition`, one whole-row action. |
 | `ImageGenTestPanel.tsx` | `'use client'` | The paid test button and its verdict. Opens a job off the SAVED prefs, returns, then polls on an escalating schedule bounded by `NINA_IMAGE_TEST_GIVE_UP_MS = 480_000`, the terminal verdict, and unmount. Verdict lines live in `lib/admin/imageGenTestView.ts`, never here. Reads the quota itself; takes `dirty` to warn that the test reads saved settings. |
 | `PhotoReferencePicker.tsx` | `'use client'` | The reference grid: album + chat photographs as one caption-less, gapless, square-tile wall. `items` / `total` / `value` / `onChange`; single selection, reveal-by-`PHOTO_REFERENCE_REVEAL_STEP = 48`, `loading="lazy"`. |
 | `photoReferenceModel.ts` | **no directive** | The picker's view model: `PhotoReferenceItem` pinned at exactly three fields — which is what makes "no captions, no dates" structural. |
 | `UserPicker.tsx` | **no directive** | Whose rows are being edited. Plain links, `aria-current`, selection in the URL; `basePath` defaults to `/admin/memory`. |
 | `CharacterPanel.tsx` | `'use client'` | `/admin/personality`'s tuning — twelve trait sliders, the relationship selector, four extra dials, notes, the assembled prompt preview. Auto-saves through `saveNinaTuningAction` (dials debounced 600 ms, toggles/radios on change, notes on blur); no Save/Discard/Reset row. `id="character"` kept on the section root. |
-| `DialSlider.tsx` | `'use client'` | The range primitive `components/ui` does not have. Label, hint, value, unsaved dot, `defaultValue` chip (the only route back to a single default), optional per-dial on/off checkbox (`enabled` + `onEnabledChange`). Shared by `CharacterPanel` and `ImageGenPanel`. |
+| `DialSlider.tsx` | `'use client'` | The range primitive `components/ui` does not have. Label, hint, value, unsaved dot, `defaultValue` chip (the only route back to a single default), optional per-dial on/off checkbox (`enabled` + `onEnabledChange`). `CharacterPanel` is its only mount since the image-gen prompt-length dial was removed. |
 | `MemoryTable.tsx` | `'use client'` | `/admin/memory` in full (R1: *"just make all the memory to show as one simple table"*). ONE table, three `<tbody>` groups — Slots, Pending promises, Ledger — five columns (`What · Value · Origin · When · ✕`, Origin/When `hidden lg:table-cell`), blur-to-save cells whose drafts follow their props during render, optimistic DELETE only (a deleted slot reappears as its BLANK row), and the add row at the top of the ledger group. Replaced the deleted `MemoryLedger`/`MemorySlots` cards. |
 | `TextModelSelect.tsx` | `'use client'` | Which GLM writes every text turn — a single `select` beside `CharacterPanel` on `/admin/personality`, optimistic with revert-on-failure, saving through its own one-export action. Deliberately NOT a control on the panel: a different row, store and blast radius. |
 
@@ -797,13 +797,13 @@ save; the new camera is on the next generation with no invalidation step.
 
 **Auto-save, `CharacterPanel`'s pipeline control-kind by control-kind** — one action
 (`saveNinaImagePrefsAction`), the whole `ImageGenDraft` every time, safe for the same four
-reasons (one writer, one operator, sequential dispatch, idempotent upsert). Dial debounced
-`IMAGEGEN_DIAL_COMMIT_DEBOUNCE_MS = 600`; the six focus checkboxes, the reference pick and the
-model on CHANGE (each disarming the timer, so an immediate commit subsumes anything pending);
-the five text controls (four fields + template) on BLUR. The immediate path passes the value the
-control just produced, because a `setState` has not landed when its own `onChange` runs. The
-fire-time equality check reads the LIVE draft/saved through a ref mirror, so a subsumed timer
-dispatches nothing. `saved` is maintained only from the action's result;
+reasons (one writer, one operator, sequential dispatch, idempotent upsert). **There is no
+debounce on this panel** — it has no range input left, so every control has a real finished-edit
+moment: the six focus checkboxes, the three dropdowns and the reference pick on CHANGE; the five
+text controls (four fields + template) on BLUR. The immediate path passes the value the control
+just produced, because a `setState` has not landed when its own `onChange` runs. Each commit
+still carries the whole draft, so it subsumes anything else pending, and the equality check
+against `saved` makes a no-op commit free. `saved` is maintained only from the action's result;
 `mergeImageGenAfterSave` adopts canonical values per-field, the imagegen twin of the tuning
 merge. Nothing is disabled during flight. `tests/admin.imagegen.test.ts` asserts the
 client-import boundary.
@@ -1023,9 +1023,8 @@ counts stay MEMORY counts: still true of the account, just not of this page.
   their result types. A `'use server'` module.
 - `@/lib/admin/imageGenModel` — the panel's client-safe model: `ImageGenDraft`,
   `changedImageGenFields`/`imageGenDraftEquals`, `mergeImageGenAfterSave`,
-  `IMAGEGEN_DIAL_COMMIT_DEBOUNCE_MS`, `ADMIN_IMAGE_PREVIEW_SCENE`, the copy adapters
-  (`imageFocusCopy`, `promptLengthCopy`, `imageModelLabel`/`Hint`), `referenceKey`/
-  `parseReferenceKey`, `ImageReferenceOption`.
+  `ADMIN_IMAGE_PREVIEW_SCENE`, the copy adapters (`imageFocusCopy`,
+  `imageModelLabel`/`Hint`), `referenceKey`/`parseReferenceKey`, `ImageReferenceOption`.
 - `@/lib/admin/imageGenTestView` — the test panel's derived view: verdict records
   (`NINA_IMAGE_TEST_VERDICT_LINE`/`_WHY`), `imageTestVerdict`, `imageTestReason`,
   `imageTestPollDelayFor`, `NINA_IMAGE_TEST_GIVE_UP_MS`.
@@ -1101,9 +1100,10 @@ calling bundle. `lib/share/origin.ts` is the mirror: it opens with `import 'serv
   `TextModelSelect`**. Reads the tuning, assembles the prompt preview as a pure string,
   resolves the effective narrative model server-side.
 - `app/admin/image-generation/page.tsx` — `ImageGenPanel` (only mount site). Maps the saved row
-  to `ImageGenDraft` (`toImageGenDraft`), passes `NINA_IMAGE_PREFS_DEFAULTS` as `defaults`,
-  assembles `promptPreview` and `defaultTemplate` server-side, and pages the reference union
-  into `references`/`photoTotal`.
+  to `ImageGenDraft` (`toImageGenDraft`), assembles `promptPreview` and `defaultTemplate`
+  server-side, and pages the reference union into `references`/`photoTotal`. It passes no
+  `defaults`: that prop existed only to feed the prompt-length dial's `defaultValue`, and went
+  with the dial.
 - `app/admin/memory/page.tsx` — `MemoryTable` + `UserPicker`. Builds every row server-side
   (`buildMemoryRows` over `memoryStore` reads, promises lifted out of the
   `NINA_SLOT_PENDING_PROMISES` slot), passes `factTotal`/`hiddenCount`.
@@ -1129,7 +1129,8 @@ calling bundle. `lib/share/origin.ts` is the mirror: it opens with `import 'serv
   consumed only on the album arm. `CropStudio`/`CircleFrame` are drawn by BOTH arms — stored
   crop vs adoption draft, which is the point of the studio measuring its own frame.
 - `ImageGenPanel` is the only consumer of `PhotoReferencePicker` and `ImageGenTestPanel`;
-  `CharacterPanel` and `ImageGenPanel` share `DialSlider`.
+  `CharacterPanel` is the only consumer of `DialSlider` (it was shared with `ImageGenPanel`
+  until that panel's prompt-length dial was removed).
 - `app/admin/memory/page.tsx` and `app/admin/shortcuts/page.tsx` are `UserPicker`'s two call
   sites — the reason the `basePath` prop exists.
 
@@ -1240,7 +1241,7 @@ useFolderUpload.run()
    flush every NINA_ADMIN_BATCH_MAX: registerNinaAvatarsAction({ records })
    onFinished() → router.refresh()
 
-app/admin/image-generation/page.tsx ── prefs/defaults/promptPreview/defaultTemplate/
+app/admin/image-generation/page.tsx ── prefs/promptPreview/defaultTemplate/
   references/photoTotal as props ──► ImageGenPanel ──► saveNinaImagePrefsAction (whole draft)
                                         └── ImageGenTestPanel ──► runNinaImageTestAction
                                               (job opened) ⇢ readNinaImageTestAction poll
@@ -1383,7 +1384,6 @@ failure branch.
 <ImageGenPanel
   userId={userId}
   prefs={toImageGenDraft(row)}
-  defaults={toImageGenDraft(NINA_IMAGE_PREFS_DEFAULTS)}
   promptPreview={buildNinaImagePrompt({ /* saved row + preview scene */ })}
   defaultTemplate={NINA_PROMPT_TEMPLATE_DEFAULT}
   references={referencePage.rows.map(toImageReferenceOption)}
@@ -1395,9 +1395,11 @@ failure branch.
 <UserPicker users={users} selectedId={target.id} basePath="/admin/shortcuts" />
 ```
 
-The panels' `defaults`/`promptPreview`/`defaultTemplate` are server-assembled on purpose: a
-client that re-implemented the defaults or shipped the persona canon to preview a string would
-be a second definition that one day disagrees (or a canon leak into the bundle).
+`CharacterPanel`'s `defaults` and both panels' `promptPreview`/`defaultTemplate` are
+server-assembled on purpose: a client that re-implemented the defaults or shipped the persona
+canon to preview a string would be a second definition that one day disagrees (or a canon leak
+into the bundle). `ImageGenPanel` no longer takes `defaults` at all — its only consumer was the
+prompt-length dial's `defaultValue` chip.
 
 ## Gotchas
 
@@ -1539,9 +1541,12 @@ be a second definition that one day disagrees (or a canon leak into the bundle).
   "harmless" rollback breaks; the test forbids the substrings. Typing touches only the draft.
 - **Do not bolt the text-model select into `CharacterPanel`.** Different row, store and blast
   radius; its own one-export action is test-pinned.
-- **Do not re-grow the image-gen panel's staged-commit row, its focus-card hints, or a
-  "revision" anywhere.** All purged; the auto-save pipeline and the additive-checkboxes copy are
-  the current design.
+- **Do not re-grow the image-gen panel's staged-commit row, its focus-card hints, a "revision"
+  anywhere, or the prompt-length dial.** All purged; the auto-save pipeline and the
+  additive-checkboxes copy are the current design. The dial went because the operator never
+  moved it off its default — and with it went this panel's only range input, which is why it now
+  has no debounce, no timer and no `defaults` prop. Putting a slider back means putting the
+  whole settle-detector pipeline back with it.
 - **Do not put the template guard in the browser.** The server refuses a broken template with a
   sentence; a client-side validator would be a second rule that can disagree, and the failure
   the feature exists to prevent is a broken PROMPT, not a refused edit.
@@ -1680,3 +1685,16 @@ to her.
   belongs to phase 4); and there is no per-photo deep link into the Media pane, because that needs a
   `locateNinaMediaPhoto` in the query layer. Phases 1, 2 and 4 (the columns, the query/action layer,
   the backfill and tests) are `db/`, `lib/`, `app/`'s and are documented there.
+- **2026-09-18** — the prompt-length dial removed from `ImageGenPanel` (the operator never moved
+  it off its default). With it went the panel's `defaults` prop, the whole debounce pipeline
+  (`commitArmed`, the timer ref, the `latest` ref + mirroring effect, the unmount cleanup,
+  `disarmCommit`/`scheduleDialCommit`) and `lib/admin/imageGenModel`'s
+  `IMAGEGEN_DIAL_COMMIT_DEBOUNCE_MS` / `promptLengthCopy` exports; `saving` is now just
+  `pending`. Every surviving control commits on CHANGE (checkboxes, the three dropdowns, the
+  photo reference) or on BLUR (four text fields + the prompt template), so **this panel has no
+  settle detector at all** — the tuning panel's dial debounce (`CharacterPanel`,
+  `TUNING_DIAL_COMMIT_DEBOUNCE_MS`) is untouched and still the live model there. `DialSlider` is
+  now mounted by `CharacterPanel` only. `app/admin/page.tsx`'s hub card lost its "Prompt length
+  {band}" lead-in. Corrected above: the component table, the mount/consumer graph, the
+  `lib/admin/imageGenModel` import inventory, the image-generation auto-save paragraph, the
+  mounting sample and the dataflow line.

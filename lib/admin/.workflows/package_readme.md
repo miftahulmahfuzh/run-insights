@@ -122,7 +122,7 @@ exactly one definition — `schema.ts` imports every bound it enforces rather th
 | `shortcutModel.ts` | pure | The shortcuts row model, page ceiling, field tuple, formatters — and the one re-export of phase 1's three caps. |
 | `shortcutStore.ts` | `server-only` | The only `lib/admin` module that writes a shortcut. Owns the duplicate catch, the empty-trigger refusal, the read's ordering and ceiling. |
 | `shortcutActions.ts` | `'use server'` | The four shortcut actions: add, save one cell, toggle `enabled`, delete. |
-| `imageGenModel.ts` | pure | The image-generation draft: copy, reference-key round trip, draft diff, auto-save merge, dial debounce. |
+| `imageGenModel.ts` | pure | The image-generation draft: copy, reference-key round trip, draft diff, auto-save merge. |
 | `imageGenActions.ts` | `'use server'` | Three actions: the one whole-prefs save, the test dispatch, the test read. |
 | `imageGenTestView.ts` | pure | The test job's verdict vocabulary and poll schedule — a lookup over `nina_turns.error_code`, never a second classifier. |
 | `textModelActions.ts` | `'use server'` | One action: save the narrative text model (`app_settings`, not `nina_tuning`). |
@@ -1319,8 +1319,9 @@ The load-bearing facts (all still verified in source):
 Three actions, each opening with `await requireAdmin()`:
 
 - **`saveNinaImagePrefsAction`** — the ONE save. Every control commits at its own moment and
-  every commit carries the WHOLE draft (dial debounced 600 ms, focus checkboxes and reference on
-  change, text fields on blur). The template's verdict is surfaced BEFORE the generic parse so the
+  every commit carries the WHOLE draft (focus checkboxes, the dropdowns and the reference on
+  change, text fields on blur — the panel has no debounced control left since the prompt-length
+  dial was removed 2026-09-18). The template's verdict is surfaced BEFORE the generic parse so the
   operator learns WHICH placeholder is broken. The success result carries `prefs: ImageGenDraft`
   — the row AFTER `coerceNinaImagePrefs` — adopted via `mergeImageGenAfterSave` without a
   refetch. `revalidatePath` is for the preview; there is no cache on the image path.

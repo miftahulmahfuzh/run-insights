@@ -118,7 +118,6 @@ function failed(where: string, cause: unknown): AdminImageGenResult {
  */
 function toImagePrefsWrite(input: NinaImagePrefsWriteInput): NinaImagePrefsWrite {
   return {
-    promptLength: input.promptLength,
     focus: input.focus,
     wardrobe: input.wardrobe,
     venue: input.venue,
@@ -134,7 +133,7 @@ function toImagePrefsWrite(input: NinaImagePrefsWriteInput): NinaImagePrefsWrite
 
 /**
  * Save the whole prefs row. One action, one row — the only write the panel has, dispatched by every
- * control at its own commit moment (the dial debounced, the focus checkboxes and the reference on
+ * control at its own commit moment (the focus checkboxes, the dropdowns and the reference on
  * change, the four text fields on blur).
  *
  * The argument types are deliberately loose (`Record<string, boolean>`, `source: string`) and Zod
@@ -144,7 +143,6 @@ function toImagePrefsWrite(input: NinaImagePrefsWriteInput): NinaImagePrefsWrite
  */
 export async function saveNinaImagePrefsAction(input: {
   userId: string
-  promptLength: number
   focus: Record<string, boolean>
   wardrobe: string
   venue: string
