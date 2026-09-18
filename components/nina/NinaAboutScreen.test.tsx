@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import type { ReactNode } from 'react'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -46,8 +47,14 @@ vi.mock('@/components/ui/useSavePhoto', async (importOriginal) => ({
 // PhotoViewer is its own covered surface (swipe rules, wrap, keys). Here it is a probe: what this
 // screen owes it is the right LIST per section, the right index, and a close that lands.
 vi.mock('@/components/ui/PhotoViewer', () => ({
-  PhotoViewer: (props: { photos: unknown[]; index: number; onClose: () => void }) => (
+  PhotoViewer: (props: {
+    photos: { id?: string }[]
+    index: number
+    onClose: () => void
+    headerAction?: (photo: { id?: string }) => ReactNode
+  }) => (
     <div data-testid="viewer" data-count={props.photos.length} data-index={props.index}>
+      {props.headerAction?.(props.photos[props.index]!)}
       <button type="button" data-testid="viewer-close" onClick={props.onClose}>
         close
       </button>
@@ -365,6 +372,37 @@ describe('NinaAboutScreen — the viewer', () => {
     expect(window.location.search).toBe('')
     utils.rerender(<NinaAboutScreen {...props()} />)
     expect(viewer()).toBeNull()
+  })
+
+  it('the job-detail link fires no close callback — a push must not race a history.back()', () => {
+    // The pushed `?photo=` entry is live here exactly as it is after any grid tap (`openAt`), so
+    // this is the case that raced in production on the sidebar's search hits and wand
+    // (`NinaSearchField.tsx`, `NinaSidebar.tsx`): if this Link's `onClick` called `close()`, the
+    // resulting `history.back()` would pop this same entry the instant the link is tapped.
+    at('chat', 'c1')
+    renderScreen({
+      gallery: [{ ...galleryPhoto('c1', 'his'), turnId: 'job-1' }, galleryPhoto('c2', 'hers')],
+    })
+    expect(viewer()).not.toBeNull()
+
+    // happy-dom, unlike a real Next `<Link>` with router context, has no soft-navigation to
+    // intercept the click — it follows the anchor's `href` for real once the event finishes. A
+    // capture-phase `preventDefault` neutralises that so this test isolates what the `onClick`
+    // prop itself does, the same way `AppRouterContext`'s absence lets `Link`'s own `onClick` run
+    // without ever reaching `linkClicked` (`node_modules/next/dist/client/app-dir/link.js`).
+    const stopNativeNav = (event: Event) => event.preventDefault()
+    document.addEventListener('click', stopNativeNav, { capture: true })
+    try {
+      fireEvent.click(screen.getByRole('link', { name: 'Buka detail job foto ini' }))
+    } finally {
+      document.removeEventListener('click', stopNativeNav, { capture: true })
+    }
+
+    // If `close` were still wired, this default `returnTo: null` fixture would take its final
+    // branch and strip the parameter via `replaceState` — observable here with no rerender
+    // needed, since it is a direct write to the URL, not React state.
+    expect(window.location.search).toBe(`?${NINA_ABOUT_PHOTO_PARAM}=chat.c1`)
+    expect(viewer()).not.toBeNull()
   })
 })
 

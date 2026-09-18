@@ -653,6 +653,17 @@ export function NinaAboutScreen({
              * 'album'` is her avatar photos, which have no job to link to at all (no `turn_id` join
              * — `/pull-image-gen-job`'s own recorded gap). `photo.id` is the job id `galleryViewer`
              * set above; absent (an upload, or a photo predating this column) renders nothing.
+             *
+             * ── A PLAIN `<Link>`, AND IT DELIBERATELY DOES NOT CALL `close` ──────────────────────
+             * The exact bug `NinaSidebar.tsx`'s wand and `NinaSearchField.tsx`'s hits both carry a
+             * header about (measured in production, 2026-09-08): `close` calls `window.history.back()`
+             * when this session pushed the `?photo=` entry, which it always has here (any grid tap
+             * that opened the viewer went through `openAt`). Firing that in the SAME TICK as this
+             * Link's own push to `/nina/jobs/<id>` puts a back and a forward on one entry and races
+             * them — the tap looked like it did nothing because the back won.
+             *
+             * It does not need to. `/nina/jobs/<id>` is a DIFFERENT ROUTE, so the navigation itself
+             * already leaves the `?photo=` overlay behind — no separate close call required.
              */
             headerAction={
               open.section === 'album'
@@ -661,7 +672,6 @@ export function NinaAboutScreen({
                     photo.id == null ? null : (
                       <Link
                         href={ninaJobHref(photo.id)}
-                        onClick={close}
                         aria-label="Buka detail job foto ini"
                         title="Buka detail job foto ini"
                         className="grid size-11 place-items-center rounded-pill text-card"
