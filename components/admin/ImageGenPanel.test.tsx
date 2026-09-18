@@ -3,7 +3,10 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ImageGenPanel } from './ImageGenPanel'
-import { saveNinaImagePrefsAction } from '@/lib/admin/imageGenActions'
+import {
+  generateImageFieldValueAction,
+  saveNinaImagePrefsAction,
+} from '@/lib/admin/imageGenActions'
 import { IMAGEGEN_DIAL_COMMIT_DEBOUNCE_MS, type ImageGenDraft } from '@/lib/admin/imageGenModel'
 import {
   NINA_HAIRSTYLE_KEYS,
@@ -23,6 +26,10 @@ import {
  */
 vi.mock('@/lib/admin/imageGenActions', () => ({
   saveNinaImagePrefsAction: vi.fn(),
+  /* Never exercised by name in this suite — the generate icon has its own coverage — but every
+   * render mounts four of them, so a resolved default keeps a stray click from anyone's test
+   * (a Tab-through, a broad `getAllByRole('button')`) from surfacing an unhandled rejection. */
+  generateImageFieldValueAction: vi.fn().mockResolvedValue({ ok: false }),
 }))
 
 vi.mock('./PhotoReferencePicker', async () => {
@@ -46,6 +53,7 @@ vi.mock('@/components/admin/ImageGenTestPanel', async () => {
 })
 
 const saveAction = vi.mocked(saveNinaImagePrefsAction)
+const generateAction = vi.mocked(generateImageFieldValueAction)
 
 function prefs(overrides?: Partial<ImageGenDraft>): ImageGenDraft {
   return {
@@ -264,6 +272,34 @@ describe('ImageGenPanel — the commit moments', () => {
   it('the ✕ buttons only exist for non-empty fields', () => {
     panel()
     expect(screen.queryByRole('button', { name: 'Kosongkan wardrobe' })).not.toBeInTheDocument()
+  })
+
+  it('the generate icon fills the draft and rides the ordinary blur — no direct write', async () => {
+    generateAction.mockResolvedValueOnce({ ok: true, value: 'sequined bikini' })
+    panel()
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Buat wardrobe baru' }))
+    })
+    expect(generateAction).toHaveBeenCalledWith(expect.objectContaining({ field: 'wardrobe' }))
+    expect(wardrobeBox()).toHaveValue('sequined bikini')
+    expect(document.activeElement).toBe(wardrobeBox())
+    expect(saveAction).not.toHaveBeenCalled() // a suggestion is a draft, not a commit
+
+    fireEvent.blur(wardrobeBox())
+    await advance(0)
+    expect(saveAction).toHaveBeenCalledTimes(1)
+    expect(saveAction.mock.calls[0]![0]!.wardrobe).toBe('sequined bikini')
+  })
+
+  it('shows an inline error and leaves the field untouched when generation fails', async () => {
+    generateAction.mockResolvedValueOnce({ ok: false })
+    panel()
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Buat wardrobe baru' }))
+    })
+    expect(screen.getByText(/Gagal membuat nilai baru/)).toBeInTheDocument()
+    expect(wardrobeBox()).toHaveValue('')
+    expect(saveAction).not.toHaveBeenCalled()
   })
 
   it('an immediate commit carries the dial still waiting and disarms the timer', async () => {

@@ -19,7 +19,7 @@
 // finding out that a decision was taken, and nobody deletes the weight from a payload thinking
 // they are fixing a leak.
 //
-// ── RULE 2 STANDS, AND NOW COVERS NINE ENTRY POINTS. THIS TABLE IS COMPLETE ───────────────────
+// ── RULE 2 STANDS, AND NOW COVERS TEN ENTRY POINTS. THIS TABLE IS COMPLETE ────────────────────
 // A MODEL CALL IS NEVER AWAITED FROM A PAGE RENDER (plan §7.2, and F33 plan invariant 4).
 //
 // All nine entries ship from the phase that owns this file, and NO OTHER PHASE EDITS IT. The
@@ -69,6 +69,9 @@
 //     Actions are dispatched one at a time per client, so an action that awaited it would make an
 //     operator wait that long PER PHOTO, in series. The caption is cosmetic and the row already
 //     carries a true canned line, so the render never has anything to wait for.
+//   · `generateImageFieldValue` — the "generate a fresh value" icon beside Wardrobe/Venue/Time/
+//     Notes on /admin/image-generation (2026-09-18). It runs from a Server Action fired by the
+//     icon, never from the page render, which shows the saved row with no model call behind it.
 //
 // Fix the code, never silence the check.
 import { readdirSync, readFileSync, statSync } from 'node:fs'
@@ -232,6 +235,20 @@ const GUARDED_CALLS = [
       'after(). A render or an action that awaited it would make the operator wait 15-25 s per ' +
       'photo, in series, because Server Actions are dispatched one at a time per client. The pure ' +
       'rules are in lib/nina/prompts/caption.ts, which is client-safe — import from there.',
+  },
+  {
+    symbol: 'generateImageFieldValue',
+    sanctioned: [
+      // Its own module, because a guard that fails on the definition site is a guard that forces
+      // the definition to be renamed — the reason `runNinaTurn` sanctions `lib/nina/turn.ts`.
+      join('lib', 'nina', 'imagefieldgen.ts'),
+      join('lib', 'admin', 'imageGenActions.ts'),
+    ],
+    advice:
+      'The "generate a fresh value" icon on /admin/image-generation is a glm-5.3 call (2026-09-18). ' +
+      'It runs from generateImageFieldValueAction (lib/admin/imageGenActions.ts), a Server Action ' +
+      'fired by the icon button — never from app/admin/image-generation/page.tsx, which renders ' +
+      'the saved row and awaits no model.',
   },
 ]
 

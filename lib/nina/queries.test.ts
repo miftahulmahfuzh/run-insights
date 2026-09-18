@@ -55,6 +55,12 @@ import * as barrel from '@/lib/nina/queries'
  * album read `/nina/about`'s Foto profil tab now uses) and `listNinaMessageImages` removed (its
  * one caller, the same page's old Media read, moved to the already-paginated
  * `listNinaMediaPhotos`). Combined with the 96 → 104 line above, the count stays 104.
+ *
+ * The 2026-09-18 "generate a fresh value" icon (`/admin/image-generation`) takes it 104 → 106:
+ * `readRecentFieldValues` and `recordFieldValue`, the read and write halves of
+ * `nina_image_field_history`'s avoid-list. The cap constant that module also declares
+ * (`NINA_IMAGE_FIELD_HISTORY_CAP`) is deliberately NOT exported — this barrel admits functions
+ * only, per the second test below.
  */
 const BARREL_VALUE_EXPORTS = [
   'adoptNinaMessageImage',
@@ -165,6 +171,8 @@ const BARREL_VALUE_EXPORTS = [
   'promoteNinaImageMeasurements',
   'readNinaImagePrefs',
   'readNinaTuning',
+  'readRecentFieldValues',
+  'recordFieldValue',
   'removeNinaSession',
   'renameNinaAvatarFolder',
   'renameNinaFolderSubtree',

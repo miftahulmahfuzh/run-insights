@@ -56,6 +56,7 @@ import {
   NINA_IMAGE_NOTES_MAX,
   NINA_IMAGE_REFERENCE_ID_MAX,
   NINA_IMAGE_REFERENCE_SOURCES,
+  NINA_IMAGE_TEXT_KEYS,
   NINA_IMAGE_TIME_MAX,
   NINA_IMAGE_VENUE_MAX,
   NINA_IMAGE_WARDROBE_MAX,
@@ -838,3 +839,18 @@ export const ninaImagePrefsWriteSchema = z.object({
   hairstyle: z.enum(NINA_HAIRSTYLE_KEYS),
 })
 export type NinaImagePrefsWriteInput = z.infer<typeof ninaImagePrefsWriteSchema>
+
+/**
+ * The 2026-09-18 "generate a fresh value" icon. `field` names which of the four the click was on;
+ * the other three ride along as the CURRENT DRAFT (unsaved edits included) so the model can read
+ * what the other fields already say for this same photograph. Every bound is imported from
+ * `lib/nina/imageprefs.ts`, the same standing rule as the write schema above.
+ */
+export const generateImageFieldValueSchema = z.object({
+  field: z.enum(NINA_IMAGE_TEXT_KEYS),
+  wardrobe: z.string().max(NINA_IMAGE_WARDROBE_MAX),
+  venue: z.string().max(NINA_IMAGE_VENUE_MAX),
+  time: z.string().max(NINA_IMAGE_TIME_MAX),
+  notes: z.string().max(NINA_IMAGE_NOTES_MAX),
+})
+export type GenerateImageFieldValueInput = z.infer<typeof generateImageFieldValueSchema>

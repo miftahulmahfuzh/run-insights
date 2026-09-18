@@ -1,5 +1,5 @@
 import { relations } from 'drizzle-orm'
-import { boolean, integer, pgTable, text, timestamp } from 'drizzle-orm/pg-core'
+import { boolean, index, integer, pgTable, text, timestamp } from 'drizzle-orm/pg-core'
 import { users } from '../auth'
 /**
  * **Who Nina is, as data the operator can change without a commit (F35 R1/R2/R3).** Twelve trait
@@ -370,3 +370,63 @@ export type NewNinaTuningRow = typeof ninaTuning.$inferInsert
  */
 export type NinaImagePrefsRow = typeof ninaImagePrefs.$inferSelect
 export type NewNinaImagePrefsRow = typeof ninaImagePrefs.$inferInsert
+
+/**
+ * **The "generate a fresh value" button's memory — one row per suggestion the model has already
+ * made, for one field.** The 2026-09-18 ask: an icon beside Wardrobe/Venue/Time/Notes that asks the
+ * model for a new value, and must not repeat itself.
+ *
+ * ── ONE ROW PER SUGGESTION, NOT ONE `jsonb` ARRAY ON `nina_image_prefs` ─────────────────────────
+ * A `jsonb` array read-modify-writes under a race the moment two clicks land close together — the
+ * one operator this app has, clicking twice while impatient. A row per suggestion turns "record
+ * one, then trim to the newest N" into two ordinary statements — an `INSERT` and a
+ * `DELETE ... WHERE id NOT IN (SELECT ... ORDER BY created_at DESC LIMIT N)` — with no
+ * read-then-write gap to race.
+ *
+ * ── RECORDED THE MOMENT THE MODEL PROPOSES IT, NOT WHEN A FIELD IS SAVED ────────────────────────
+ * A suggestion the operator saw and discarded must not resurface on the next click either — the
+ * point of the feature is a fresh word every time — so the write happens in
+ * `lib/admin/imageGenActions.ts` before the value ever reaches the browser, independent of whether
+ * `nina_image_prefs` is ever updated with it.
+ *
+ * ── `field` IS PLAIN `text`, NOT AN ENUM COLUMN ─────────────────────────────────────────────────
+ * `nina_tuning.relationship`'s argument: the vocabulary is `NINA_IMAGE_TEXT_KEYS`
+ * (`lib/nina/imageprefs.ts`), which this table must not import, and a Postgres CHECK would make
+ * widening that vocabulary a migration. An unrecognised value here can only ever mean "the read for
+ * that field sees fewer avoid-values than intended", never a broken generation.
+ *
+ * ── NO FOREIGN-KEY-STYLE `updated_at`, AND `id` IS THE PRIMARY KEY, NOT `user_id` ────────────────
+ * Unlike `nina_tuning` and `nina_image_prefs`, this is not one row per user — it is a ledger, the
+ * `nina_memory_facts` shape, so its primary key is its own `newId()` and the per-user, per-field
+ * "newest 20" comes from the index below rather than from the key.
+ */
+export const ninaImageFieldHistory = pgTable(
+  'nina_image_field_history',
+  {
+    /** nanoid(12) — lib/id.ts newId(). */
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** One of `NINA_IMAGE_TEXT_KEYS` — `'wardrobe' | 'venue' | 'time' | 'notes'`. */
+    field: text('field').notNull(),
+    /** The value the model proposed, already coerced through `coerceNinaImageText`. */
+    value: text('value').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+  },
+  (t) => [
+    /** "the newest 20 for this user's field" — `readRecentFieldValues`'s one read, and the read the
+     * prune statement runs to decide what survives. */
+    index('nina_image_field_history_user_field_created_idx').on(
+      t.userId,
+      t.field,
+      t.createdAt.desc(),
+    ),
+  ],
+)
+export const ninaImageFieldHistoryRelations = relations(ninaImageFieldHistory, ({ one }) => ({
+  user: one(users, { fields: [ninaImageFieldHistory.userId], references: [users.id] }),
+}))
+
+export type NinaImageFieldHistoryRow = typeof ninaImageFieldHistory.$inferSelect
+export type NewNinaImageFieldHistoryRow = typeof ninaImageFieldHistory.$inferInsert

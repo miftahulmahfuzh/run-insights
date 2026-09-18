@@ -658,6 +658,9 @@ describe('one save, not eleven — plan invariant 7', () => {
       /* R11/R12 — the prompt test. */
       'runNinaImageTestAction',
       'readNinaImageTestAction',
+      /* The 2026-09-18 "generate a fresh value" icon. Not a write — it fills the draft, the field
+       * still commits on its own existing blur. */
+      'generateImageFieldValueAction',
     ]
     for (const name of exported) {
       expect(

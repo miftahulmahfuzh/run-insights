@@ -6,8 +6,13 @@ import { ADMIN_CHAT_PHOTOS_PATH } from '@/lib/admin/chatPhotos'
 import { toImageGenDraft, type ImageGenDraft } from '@/lib/admin/imageGenModel'
 import { imageTestVerdict, type NinaImageTestJobView } from '@/lib/admin/imageGenTestView'
 import { requireAdmin } from '@/lib/admin/requireAdmin'
-import { ninaImagePrefsWriteSchema, type NinaImagePrefsWriteInput } from '@/lib/admin/schema'
+import {
+  generateImageFieldValueSchema,
+  ninaImagePrefsWriteSchema,
+  type NinaImagePrefsWriteInput,
+} from '@/lib/admin/schema'
 import { isValidId } from '@/lib/id'
+import { generateImageFieldValue } from '@/lib/nina/imagefieldgen'
 import { getNinaImageJobDetail, ninaImageQuotaLeft } from '@/lib/nina/imagejobs'
 import { validateNinaImageTemplate, type NinaImagePrefsWrite } from '@/lib/nina/imageprefs'
 import { ninaImageDailyCap } from '@/lib/nina/imagerecipe'
@@ -15,6 +20,8 @@ import { assembleNinaImageTestPrompt, dispatchNinaImageTest } from '@/lib/nina/i
 import {
   readNinaImagePrefs,
   readNinaTuning,
+  readRecentFieldValues,
+  recordFieldValue,
   resolveNinaPhotoReference,
   writeNinaImagePrefs,
 } from '@/lib/nina/queries'
@@ -330,4 +337,56 @@ export async function readNinaImageTestAction(
   if (imageTestVerdict(job) === 'allowed') revalidatePath(ADMIN_CHAT_PHOTOS_PATH)
 
   return { ...base, job }
+}
+
+/* ── the 2026-09-18 "generate a fresh value" icon ────────────────────────────────────────────
+ *
+ * One action, one field, one call. It is deliberately NOT a write: it fills the panel's DRAFT
+ * (the same state a keystroke fills), and the field still commits on its own existing blur —
+ * `saveNinaImagePrefsAction` above remains the only writer of `nina_image_prefs`. So this action
+ * never calls `revalidatePath`: nothing on this page's saved row has changed.
+ *
+ * It DOES always write `nina_image_field_history` on a successful generation, unconditionally —
+ * the point of the feature is that a suggestion never repeats, including one the operator saw and
+ * discarded, so the record has to happen the moment the model proposes it rather than if and when
+ * the field is later saved.
+ */
+
+export type GenerateImageFieldValueResult = { ok: true; value: string } | { ok: false }
+
+/**
+ * Ask the model for one fresh value for one text field, reading the browser's current DRAFT of
+ * the other three for scene coherence and this field's own history for the avoid-list.
+ *
+ * `requireAdmin()` first, Zod second — `saveNinaImagePrefsAction`'s order, for the reason its own
+ * docstring gives: a Server Action is a POST endpoint whether or not a button exists.
+ */
+export async function generateImageFieldValueAction(
+  input: unknown,
+): Promise<GenerateImageFieldValueResult> {
+  const { userId } = await requireAdmin()
+
+  const parsed = generateImageFieldValueSchema.safeParse(input)
+  if (!parsed.success) return { ok: false }
+
+  try {
+    const recentValues = await readRecentFieldValues(userId, parsed.data.field)
+    const value = await generateImageFieldValue({
+      field: parsed.data.field,
+      currentText: {
+        wardrobe: parsed.data.wardrobe,
+        venue: parsed.data.venue,
+        time: parsed.data.time,
+        notes: parsed.data.notes,
+      },
+      recentValues,
+    })
+    if (value === null) return { ok: false }
+
+    await recordFieldValue(userId, parsed.data.field, value)
+    return { ok: true, value }
+  } catch (cause) {
+    console.error('[imgn] admin image field generate failed', cause)
+    return { ok: false }
+  }
 }

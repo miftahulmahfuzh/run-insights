@@ -7,7 +7,11 @@ import { ImageGenTestPanel } from '@/components/admin/ImageGenTestPanel'
 import { PhotoReferencePicker } from '@/components/admin/PhotoReferencePicker'
 import { TOUCH_TARGET } from '@/components/admin/touch'
 import { Button, CONTROL_CLASS } from '@/components/ui'
-import { saveNinaImagePrefsAction, type AdminImageGenResult } from '@/lib/admin/imageGenActions'
+import {
+  generateImageFieldValueAction,
+  saveNinaImagePrefsAction,
+  type AdminImageGenResult,
+} from '@/lib/admin/imageGenActions'
 import {
   ADMIN_IMAGE_PREVIEW_SCENE,
   changedImageGenFields,
@@ -235,6 +239,11 @@ export function ImageGenPanel({
    * line is `changedImageGenFields(draft, saved)` — never the prop. See the header. */
   const [saved, setSaved] = React.useState<ImageGenDraft>(prefs)
   const [result, setResult] = React.useState<AdminImageGenResult | null>(null)
+  /* The 2026-09-18 "generate a fresh value" icon, one status per field. Not `pending`/`saving` —
+   * generating never writes `nina_image_prefs`, so it has nothing to do with the save pipeline. */
+  const [fieldGen, setFieldGen] = React.useState<
+    Partial<Record<'wardrobe' | 'venue' | 'time' | 'notes', 'loading' | 'error'>>
+  >({})
   /* Whether the dial debounce is armed — render-visible, because the timer itself lives in a ref
    * and the status line has to show the pending window. */
   const [commitArmed, setCommitArmed] = React.useState(false)
@@ -447,6 +456,37 @@ export function ImageGenPanel({
   }
 
   /**
+   * The generate icon beside a field's label. Fills the DRAFT exactly like a keystroke would —
+   * it does NOT commit — and then focuses the field's own control, `clearTextField`'s pattern, so
+   * the field's existing `onBlur={commitText}` is what saves it. The model reads `draft` (not
+   * `saved`) for the other three fields, so an unsaved edit next door still shapes the suggestion.
+   */
+  async function generateField(
+    key: 'wardrobe' | 'venue' | 'time' | 'notes',
+    ref: React.RefObject<HTMLInputElement | HTMLTextAreaElement | null>,
+  ) {
+    setFieldGen((current) => ({ ...current, [key]: 'loading' }))
+    const outcome = await generateImageFieldValueAction({
+      field: key,
+      wardrobe: draft.wardrobe,
+      venue: draft.venue,
+      time: draft.time,
+      notes: draft.notes,
+    })
+    if (!outcome.ok) {
+      setFieldGen((current) => ({ ...current, [key]: 'error' }))
+      return
+    }
+    setFieldGen((current) => {
+      const next = { ...current }
+      delete next[key]
+      return next
+    })
+    setDraft((current) => ({ ...current, [key]: outcome.value }))
+    ref.current?.focus()
+  }
+
+  /**
    * The template's route back to the shipped shell — an immediate commit, like every discrete
    * control, because the click IS the finished edit. It stores the default TEMPLATE itself rather
    * than `''`; both render identically, and the stored text is what the operator will see in the
@@ -646,11 +686,23 @@ export function ImageGenPanel({
 
         <div className="mb-6 grid gap-5 xl:grid-cols-2">
           <label className="block">
-            <span className="mb-1.5 block text-[12px] font-semibold tracking-[0.02em] text-ink-2">
-              {NINA_IMAGE_TEXT_SPECS.wardrobe.label}
-              {pendingFields.has('wardrobe') && (
-                <span className="ml-2 font-semibold text-accent">unsaved</span>
-              )}
+            <span className="mb-1.5 flex items-center justify-between gap-2">
+              <span className="text-[12px] font-semibold tracking-[0.02em] text-ink-2">
+                {NINA_IMAGE_TEXT_SPECS.wardrobe.label}
+                {pendingFields.has('wardrobe') && (
+                  <span className="ml-2 font-semibold text-accent">unsaved</span>
+                )}
+              </span>
+              <button
+                type="button"
+                aria-label="Buat wardrobe baru"
+                onPointerDown={(event) => event.preventDefault()}
+                onClick={() => generateField('wardrobe', wardrobeInputRef)}
+                disabled={fieldGen.wardrobe === 'loading'}
+                className="grid h-7 w-7 shrink-0 place-items-center rounded-pill text-[15px] text-ink-3 active:opacity-70 disabled:opacity-40"
+              >
+                {fieldGen.wardrobe === 'loading' ? '⋯' : '↻'}
+              </button>
             </span>
             <div className="relative">
               <input
@@ -679,14 +731,31 @@ export function ImageGenPanel({
             <span className="mt-1.5 block max-w-[46ch] text-[11px] font-medium text-ink-3">
               What she is wearing. Leave it empty and she wears what the canon says.
             </span>
+            {fieldGen.wardrobe === 'error' && (
+              <span className="mt-1 block text-[11px] font-medium text-red-500">
+                Gagal membuat nilai baru — coba lagi.
+              </span>
+            )}
           </label>
 
           <label className="block">
-            <span className="mb-1.5 block text-[12px] font-semibold tracking-[0.02em] text-ink-2">
-              {NINA_IMAGE_TEXT_SPECS.venue.label}
-              {pendingFields.has('venue') && (
-                <span className="ml-2 font-semibold text-accent">unsaved</span>
-              )}
+            <span className="mb-1.5 flex items-center justify-between gap-2">
+              <span className="text-[12px] font-semibold tracking-[0.02em] text-ink-2">
+                {NINA_IMAGE_TEXT_SPECS.venue.label}
+                {pendingFields.has('venue') && (
+                  <span className="ml-2 font-semibold text-accent">unsaved</span>
+                )}
+              </span>
+              <button
+                type="button"
+                aria-label="Buat venue baru"
+                onPointerDown={(event) => event.preventDefault()}
+                onClick={() => generateField('venue', venueInputRef)}
+                disabled={fieldGen.venue === 'loading'}
+                className="grid h-7 w-7 shrink-0 place-items-center rounded-pill text-[15px] text-ink-3 active:opacity-70 disabled:opacity-40"
+              >
+                {fieldGen.venue === 'loading' ? '⋯' : '↻'}
+              </button>
             </span>
             <div className="relative">
               <input
@@ -716,14 +785,31 @@ export function ImageGenPanel({
               Where she is. This is a standing preference; the scene she picks per photograph still
               sits above it.
             </span>
+            {fieldGen.venue === 'error' && (
+              <span className="mt-1 block text-[11px] font-medium text-red-500">
+                Gagal membuat nilai baru — coba lagi.
+              </span>
+            )}
           </label>
 
           <label className="block">
-            <span className="mb-1.5 block text-[12px] font-semibold tracking-[0.02em] text-ink-2">
-              {NINA_IMAGE_TEXT_SPECS.time.label}
-              {pendingFields.has('time') && (
-                <span className="ml-2 font-semibold text-accent">unsaved</span>
-              )}
+            <span className="mb-1.5 flex items-center justify-between gap-2">
+              <span className="text-[12px] font-semibold tracking-[0.02em] text-ink-2">
+                {NINA_IMAGE_TEXT_SPECS.time.label}
+                {pendingFields.has('time') && (
+                  <span className="ml-2 font-semibold text-accent">unsaved</span>
+                )}
+              </span>
+              <button
+                type="button"
+                aria-label="Buat time baru"
+                onPointerDown={(event) => event.preventDefault()}
+                onClick={() => generateField('time', timeInputRef)}
+                disabled={fieldGen.time === 'loading'}
+                className="grid h-7 w-7 shrink-0 place-items-center rounded-pill text-[15px] text-ink-3 active:opacity-70 disabled:opacity-40"
+              >
+                {fieldGen.time === 'loading' ? '⋯' : '↻'}
+              </button>
             </span>
             <div className="relative">
               <input
@@ -752,14 +838,31 @@ export function ImageGenPanel({
             <span className="mt-1.5 block max-w-[46ch] text-[11px] font-medium text-ink-3">
               Time of day and weather, in your own words.
             </span>
+            {fieldGen.time === 'error' && (
+              <span className="mt-1 block text-[11px] font-medium text-red-500">
+                Gagal membuat nilai baru — coba lagi.
+              </span>
+            )}
           </label>
 
           <label className="block">
-            <span className="mb-1.5 block text-[12px] font-semibold tracking-[0.02em] text-ink-2">
-              {NINA_IMAGE_TEXT_SPECS.notes.label}
-              {pendingFields.has('notes') && (
-                <span className="ml-2 font-semibold text-accent">unsaved</span>
-              )}
+            <span className="mb-1.5 flex items-center justify-between gap-2">
+              <span className="text-[12px] font-semibold tracking-[0.02em] text-ink-2">
+                {NINA_IMAGE_TEXT_SPECS.notes.label}
+                {pendingFields.has('notes') && (
+                  <span className="ml-2 font-semibold text-accent">unsaved</span>
+                )}
+              </span>
+              <button
+                type="button"
+                aria-label="Buat notes baru"
+                onPointerDown={(event) => event.preventDefault()}
+                onClick={() => generateField('notes', notesInputRef)}
+                disabled={fieldGen.notes === 'loading'}
+                className="grid h-7 w-7 shrink-0 place-items-center rounded-pill text-[15px] text-ink-3 active:opacity-70 disabled:opacity-40"
+              >
+                {fieldGen.notes === 'loading' ? '⋯' : '↻'}
+              </button>
             </span>
             <div className="relative">
               <textarea
@@ -793,6 +896,11 @@ export function ImageGenPanel({
               Anything no other field can say. Handed to the camera verbatim — this is the image
               prompt, not her system prompt. It saves when you leave the field.
             </span>
+            {fieldGen.notes === 'error' && (
+              <span className="mt-1 block text-[11px] font-medium text-red-500">
+                Gagal membuat nilai baru — coba lagi.
+              </span>
+            )}
           </label>
         </div>
 

@@ -24,6 +24,7 @@
  *   queries/avatarsearch.ts     §9d    the MERGED semantic search over both tables (R1/R2/R3)
  *   queries/tuning.ts      §10              character tuning
  *   queries/imageprefs.ts  §10b             image-gen prefs + photo references
+ *   queries/imagefieldhistory.ts §10c       the "generate a fresh value" button's avoid-list
  *   queries/jobphotos.ts   §11 + §12        the job → photograph link
  *
  * ## The two invariants it inherits
@@ -75,4 +76,5 @@ export * from './queries/avatarPointer'
 export * from './queries/avatarsearch'
 export * from './queries/tuning'
 export * from './queries/imageprefs'
+export * from './queries/imagefieldhistory'
 export * from './queries/jobphotos'
