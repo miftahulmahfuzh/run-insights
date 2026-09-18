@@ -659,6 +659,16 @@ export function NinaSidebar({
         'fixed inset-0 z-50 flex flex-col bg-paper outline-none',
         'transition-transform duration-200 ease-out motion-reduce:transition-none',
         open ? 'translate-x-0' : '-translate-x-full',
+        /*
+         * Belt-and-braces alongside `inert`: a runner reported a tap on a chat photograph
+         * occasionally landing on this panel's `/nina/about` link instead — on one specific iOS
+         * device, not reproducible on desktop, and never confirmed against a live repro. `inert`
+         * should already remove this whole panel from hit-testing while closed; this is a second,
+         * redundant guard for the same outcome in case a WebKit build ever disagrees with its own
+         * `inert` implementation while `-translate-x-full` is mid-transition or settled off-screen.
+         * Costs nothing while `open`, where it is never applied.
+         */
+        !open && 'pointer-events-none',
       )}
       style={{
         /*
