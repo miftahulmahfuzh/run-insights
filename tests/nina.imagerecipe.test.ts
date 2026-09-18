@@ -6,7 +6,7 @@ import {
   NINA_BODY_BUTT_SENTENCES,
   NINA_CAMERA_ANGLE_REMINDER,
   NINA_CAMERA_ANGLE_SENTENCES,
-  NINA_OVERHEAD_EXPRESSION_SENTENCE,
+  NINA_OVERHEAD_ATTITUDE_SENTENCE,
   NINA_OVERHEAD_PRESENCE_SENTENCE,
   NINA_PROMPT_TEMPLATE_DEFAULT,
   sidecarText,
@@ -746,7 +746,7 @@ describe('the prompt', () => {
       prefs: prefsWith({ cameraAngle: 'overhead' }),
     })
     expect(prompt).toContain(
-      `${NINA_OVERHEAD_PRESENCE_SENTENCE} ${NINA_OVERHEAD_EXPRESSION_SENTENCE}`,
+      `${NINA_OVERHEAD_PRESENCE_SENTENCE} ${NINA_OVERHEAD_ATTITUDE_SENTENCE}`,
     )
     // The un-reworded idiom is angle-specific — it must not survive for overhead.
     expect(prompt).not.toContain('looking straight down the lens')
@@ -759,7 +759,7 @@ describe('the prompt', () => {
       prefs: prefsWith({ cameraAngle: 'overhead' }),
     })
     expect(prompt).toContain(NINA_OVERHEAD_PRESENCE_SENTENCE)
-    expect(prompt).not.toContain(NINA_OVERHEAD_EXPRESSION_SENTENCE)
+    expect(prompt).not.toContain(NINA_OVERHEAD_ATTITUDE_SENTENCE)
   })
 
   it("§7f: regression — job `JQSyIfgUb59C`'s exact shape now stays flat and face-up regardless of `pose`", () => {
@@ -1213,11 +1213,11 @@ describe('the prompt', () => {
    * THE BLOCK ORDER
    * ──────────────────────────────────────────────────────────────────────────────────────────*/
 
-  it('the block order is SUBJECT, FOCUS, POSE, VENUE, TIME, SCENE, EXPRESSION, NOTES', () => {
+  it('the block order is SUBJECT, FOCUS, POSE, VENUE, TIME, SCENE, ENERGY, NOTES', () => {
     /*
      * Every position is argued in `buildNinaImagePrompt`'s docblock. The two that were already
      * load-bearing are unchanged: POSE before SCENE because it is a standing property of the
-     * subject, EXPRESSION after SCENE because it refines this photograph (the
+     * subject, ENERGY after SCENE because it refines this photograph (the
      * `gen_badge_art.py --note` precedent). VENUE and TIME go before SCENE so the model reads
      * general-then-specific and a scene that names its own place wins. NOTES goes last, because it
      * must be able to amend everything above it.
@@ -1241,7 +1241,7 @@ describe('the prompt', () => {
       'VENUE:',
       'TIME:',
       'SCENE:',
-      'EXPRESSION AND ENERGY:',
+      'ENERGY:',
       'NOTES:',
     ]
     let cursor = -1
@@ -1266,7 +1266,7 @@ describe('the prompt', () => {
     })
     expect(prompt).toContain('POSE AND PRESENCE:')
     expect(prompt.indexOf('POSE AND PRESENCE:')).toBeLessThan(prompt.indexOf('SCENE:'))
-    expect(prompt.indexOf('SCENE:')).toBeLessThan(prompt.indexOf('EXPRESSION AND ENERGY:'))
+    expect(prompt.indexOf('SCENE:')).toBeLessThan(prompt.indexOf('ENERGY:'))
   })
 
   it('a high flirty dial reaches BOTH cameras; a high steamy dial reaches only the selfie', () => {
@@ -1788,7 +1788,7 @@ describe('the editable prompt template — rendering (the 2026-09-10 ask)', () =
     expect(prompt).not.toContain('VENUE:')
     expect(prompt).not.toContain('TIME:')
     expect(prompt).not.toContain('NOTES:')
-    expect(prompt).not.toContain('EXPRESSION AND ENERGY:')
+    expect(prompt).not.toContain('ENERGY:')
     expect(prompt).toContain('SCENE: on the track')
     expect(prompt).toContain('Her outfit for this photograph:')
   })

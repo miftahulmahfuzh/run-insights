@@ -598,7 +598,7 @@ function compareNinaPhotoRefs(a: NinaPhotoRef, b: NinaPhotoRef): number {
  *   {{presence}}   — the Pose-and-presence clauses the Personality dials add
  *   {{venue}} {{time}} {{notes}} — the three free-text fields, verbatim
  *   {{scene}}      — the per-photograph scene, the chat model's own argument
- *   {{mood}}       — the per-photograph EXPRESSION AND ENERGY note
+ *   {{mood}}       — the per-photograph ENERGY note (not her expression — see {{expression}})
  *   {{angle}}      — the camera's default eye-level framing sentence, or the chat model's own
  *                    per-photograph camera-position sentence in its place (2026-09-17) when a
  *                    scene genuinely needs a different one (a top-down shot taken from directly
@@ -709,7 +709,8 @@ export const NINA_IMAGE_TEMPLATE_SPECS: Readonly<
   }),
   mood: Object.freeze({
     key: 'mood',
-    description: 'EXPRESSION AND ENERGY — the per-photograph note the chat model may send.',
+    description:
+      'ENERGY — the per-photograph note the chat model may send. Not her facial expression; see {{expression}} for that.',
   }),
   notes: Object.freeze({
     key: 'notes',

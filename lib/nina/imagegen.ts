@@ -236,15 +236,18 @@ export const NINA_BODY_BUTT_SENTENCES: Readonly<Record<NinaCameraAngleKey, strin
 export const NINA_OVERHEAD_PRESENCE_SENTENCE = `She is lying flat on her back, her whole body stretched out on the surface directly beneath the lens — not sitting up, not arched up, not propped on an elbow, not turned to one side. Her face is tilted straight back so her eyes meet the camera hovering directly above her.`
 
 /**
- * `flirty`'s existing expression clause says "looking straight down the lens" — read literally
- * rather than as the eye-contact idiom it is meant to be, that is backwards for a camera that is
- * `overhead`: her eyes have to travel UP to meet a lens hovering above her, not down. `eye_level`
- * and `low_angle` both keep the original sentence unchanged (idiomatic for a level camera, and
- * literally correct for a low one — she looks down TOWARD it); only `overhead` gets the reworded
- * expression, joined after `NINA_OVERHEAD_PRESENCE_SENTENCE` the same way the original joined
+ * `flirty`'s attitude clause, for `overhead` only. It used to also rephrase "looking straight down
+ * the lens" — read literally rather than as the eye-contact idiom it is meant to be, that is
+ * backwards for a camera that is `overhead`: her eyes have to travel UP to meet a lens hovering
+ * above her, not down. That gaze-direction fact is no longer stated here at all (2026-09-18, job
+ * `RX2RdFptwdlL` — see this sentence's own header for why): `NINA_OVERHEAD_PRESENCE_SENTENCE`
+ * already says "her eyes meet the camera hovering directly above her", so restating it here would
+ * only risk drifting from it. `eye_level` and `low_angle` keep the base flirty clause unchanged
+ * (its own gaze sentence is correct for both); only `overhead` drops the gaze sentence and joins
+ * this attitude-only one after `NINA_OVERHEAD_PRESENCE_SENTENCE`, the same way the original joined
  * after `pose`.
  */
-export const NINA_OVERHEAD_EXPRESSION_SENTENCE = `Her expression is sensual and serious, lips just barely parted, like she knows exactly what she is doing. She is not smiling.`
+export const NINA_OVERHEAD_ATTITUDE_SENTENCE = `She is fully aware of the camera and commanding it, like she knows exactly what she is doing.`
 
 /**
  * **The calf-to-thigh ratio clause (2026-09-17), and why it lives in the SUFFIX and not the
@@ -334,7 +337,7 @@ function ninaPhotoPresence(
    */
   if (purpose === 'selfie' && angle === 'overhead') {
     return tuning != null && isDialHigh(tuning.traits.flirty)
-      ? `${NINA_OVERHEAD_PRESENCE_SENTENCE} ${NINA_OVERHEAD_EXPRESSION_SENTENCE}`
+      ? `${NINA_OVERHEAD_PRESENCE_SENTENCE} ${NINA_OVERHEAD_ATTITUDE_SENTENCE}`
       : NINA_OVERHEAD_PRESENCE_SENTENCE
   }
 
@@ -353,9 +356,19 @@ function ninaPhotoPresence(
   }
 
   if (isDialHigh(tuning.traits.flirty)) {
+    /*
+     * NO FACIAL EXPRESSION HERE (2026-09-18, job `RX2RdFptwdlL`). This clause used to also assert
+     * "a sensual, serious expression, her lips just barely parted... She is not smiling" — a
+     * flat contradiction of the operator's Facial expression field whenever it asked for anything
+     * else (the runner's own repro: `flirty` high + the "Cute kiss, eyes closed" preset produced
+     * neither a kiss nor closed eyes, because this sentence and `{{expression}}` were fighting in
+     * the same prompt). `flirty` is a STANDING trait about how she carries herself for the camera,
+     * not a per-photograph face; facial expression is `NINA_EXPRESSION_DEFAULT_TEXT`/the operator's
+     * field, full stop, so this keeps only the gaze-and-attitude half of the original sentence.
+     */
     clauses.push(
-      'She is looking straight down the lens with a sensual, serious expression, her lips just ' +
-        'barely parted, like she knows exactly what she is doing. She is not smiling.',
+      'She is looking straight down the lens, fully aware of the camera and commanding it, like ' +
+        'she knows exactly what she is doing.',
     )
   }
 
@@ -465,11 +478,15 @@ function ninaFreeTextBlock(label: string, value: string): string | null {
 /**
  * The chat model's per-photograph note, or the empty block when it sent none — `ninaFreeTextBlock`'s
  * rule for a value that arrives as `null` rather than as the row's own `''`.
+ *
+ * Labelled `ENERGY:`, not `EXPRESSION AND ENERGY:` (2026-09-18, job `RX2RdFptwdlL`) — `mood` no
+ * longer describes her facial expression (see `GENERATE_IMAGE_TOOL`'s own field, `prompts/tools.ts`),
+ * so a line still headed "EXPRESSION" would misdescribe what it can legally contain.
  */
 function ninaMoodBlock(mood: string | null | undefined): string {
   const text = mood?.trim()
   if (text == null || text.length === 0) return ''
-  return `EXPRESSION AND ENERGY: ${text}`
+  return `ENERGY: ${text}`
 }
 
 /* ============================================================================
@@ -508,7 +525,7 @@ function ninaMoodBlock(mood: string | null | undefined): string {
  *
  * Line semantics (the renderer below): a line containing a token that expanded to empty is
  * dropped ENTIRE, so the FOCUS line vanishes when nothing is ticked, POSE AND PRESENCE vanishes
- * when the dials are quiet, and VENUE / TIME / NOTES / EXPRESSION AND ENERGY vanish when their
+ * when the dials are quiet, and VENUE / TIME / NOTES / ENERGY vanish when their
  * fields are empty — the omit-when-empty rule the built-in assembly always had. The trailing
  * `{{angleReminder}}` line follows the same rule and is the newest example of it: empty for
  * `eye_level`, so it vanishes and the shell is unchanged for every operator who has never touched
@@ -537,7 +554,7 @@ export const NINA_PROMPT_TEMPLATE_DEFAULT = [
   '',
   'SCENE: {{scene}}',
   '',
-  'EXPRESSION AND ENERGY: {{mood}}',
+  'ENERGY: {{mood}}',
   '',
   'NOTES: {{notes}}',
   '',
@@ -641,7 +658,7 @@ function renderNinaImagePrompt(template: string, blocks: Record<string, string>)
  *     it would read as a correction of the scene, and the index's Scope keeps the scene hers per
  *     photograph.
  *  7. **`SCENE:`** — the model's own `generate_image` argument. What this photograph is of.
- *  8. **`EXPRESSION AND ENERGY:`** — after the scene, so it reads as a refinement of THIS
+ *  8. **`ENERGY:`** — after the scene, so it reads as a refinement of THIS
  *     photograph rather than an amendment to who she is. UNCHANGED, and it is exactly where
  *     `tools/gen_badge_art.py` puts `--note`, for the same reason.
  *  9. **`NOTES:`** — the operator's catch-all amendment to this photograph ("nina is full of

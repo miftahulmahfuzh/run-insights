@@ -101,7 +101,7 @@ export function assembleNinaImageTestPrompt(input: {
      */
     purpose: 'selfie',
     scene: NINA_IMAGE_TEST_SCENE,
-    /* No per-photograph mood. `EXPRESSION AND ENERGY` is the chat model's line, and an operator
+    /* No per-photograph mood. `ENERGY` is the chat model's line, and an operator
      * testing his standing settings has not been asked for one. `buildNinaImagePrompt` omits the
      * block entirely for null. */
     mood: null,

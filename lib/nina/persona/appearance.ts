@@ -158,9 +158,20 @@ const NINA_FACE_MID = 'Dark brown eyes, thick straight eyebrows, no makeup.'
  * `lib/nina/imagerecipe.ts`), so the only lever is a positive clause, and it lives HERE rather than
  * in the selfie-only suffix because the avatar's tight face crop is exactly as exposed to this
  * failure as the selfie is — this sentence reaches both paths the same way the rest of the face
- * paragraph already does. Deliberately never something a facial-expression preset can turn off.
+ * paragraph already does.
+ *
+ * **"Whether open or closed", not "wide open" (2026-09-18, job `RX2RdFptwdlL`).** The original
+ * fix asserted "Both eyes are wide open" unconditionally, which sat one sentence after {{expression}}
+ * and flatly contradicted the very first thing the facial-expression preset's own text can say —
+ * the "Cute kiss, eyes closed" preset (`NINA_EXPRESSION_PRESETS`, `../imageprefs`) asks for closed
+ * eyes in one sentence and this one said the opposite in the next. The runner's photo showed
+ * exactly that: eyes open, no kiss. The eye-symmetry claim survives — it does not depend on the
+ * eyes being open, only on the two of them agreeing with each other whatever state they are in —
+ * so this is the narrow fix: drop "wide open" and state the same anti-artifact protection
+ * eye-state-agnostically, so no facial-expression preset can ever be one sentence away from its
+ * own contradiction again.
  */
-const NINA_FACE_TAIL = `Usually a little sweaty. Both eyes are wide open, sharp and in focus, perfectly symmetric with each other in shape, size and colour, never obscured by hair, shadow or glare, and never warped, doubled or mismatched between the two.`
+const NINA_FACE_TAIL = `Usually a little sweaty. Whether her eyes are open or closed, they are sharp and in focus, perfectly symmetric with each other in shape, size and colour, never obscured by hair, shadow or glare, and never warped, doubled or mismatched between the two.`
 
 /**
  * **The hairstyle preset's vocabulary, in prose.** `ponytail` is transcribed from `nina.png`

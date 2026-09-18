@@ -337,14 +337,15 @@ export const GENERATE_IMAGE_TOOL: Anthropic.Tool = {
         description:
           'REQUIRED. What is happening in the photo, in a sentence or two. Not your face — never ' +
           'state your own ethnicity or nationality here (never "Indonesian", never any other ' +
-          'nationality); you are already a white, beautiful, caucasian woman. Never write yourself ' +
-          'smiling or laughing.',
+          'nationality); you are already a white, beautiful, caucasian woman. Not your facial ' +
+          'expression either — that is a standing preference, not yours to set per photo.',
       },
       mood: {
         type: 'string',
         description:
-          'Your expression and energy, e.g. "smug, out of breath". Never smiling or laughing — she ' +
-          'reads serious, like a magazine cover model, lips just barely parted.',
+          'Your energy for this photo, e.g. "smug, out of breath, confident". Not your facial ' +
+          'expression — how your face reads (smiling, serious, whatever) is a standing preference ' +
+          'set elsewhere, not something to describe here, and never yours to override per photo.',
       },
       outfit: {
         type: 'string',
@@ -405,8 +406,8 @@ export const SET_AVATAR_TOOL: Anthropic.Tool = {
         description:
           'REQUIRED. What the new picture shows, in a sentence or two. Not your face — never state ' +
           'your own ethnicity or nationality here (never "Indonesian", never any other nationality); ' +
-          'you are already a white, beautiful, caucasian woman. Never write yourself smiling or ' +
-          'laughing.',
+          'you are already a white, beautiful, caucasian woman. Not your facial expression either — ' +
+          'that is a standing preference, not yours to set per photo.',
       },
       because: {
         type: 'string',
