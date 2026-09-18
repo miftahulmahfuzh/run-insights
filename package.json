@@ -41,6 +41,7 @@
     "nina:backfill-hairstyle-template": "node --experimental-strip-types --no-warnings --env-file=.env.local scripts/backfill-hairstyle-template-token.mjs",
     "nina:search-analysis": "node --experimental-strip-types --no-warnings --env-file=.env.local scripts/search-analysis.mjs",
     "nina:pull-image-gen-job": "node --experimental-strip-types --no-warnings --env-file=.env.local scripts/pull-image-gen-job.mjs",
+    "nina:redo-image-gen-job": "node --experimental-strip-types --no-warnings --env-file=.env.local scripts/redo-image-gen-job.ts",
     "capture:seed": "node --env-file=.env.local scripts/capture/seed-demo.mjs",
     "capture:purge": "node --env-file=.env.local scripts/capture/seed-demo.mjs --purge",
     "capture:status": "node --env-file=.env.local scripts/capture/seed-demo.mjs --status",

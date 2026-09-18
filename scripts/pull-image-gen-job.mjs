@@ -51,6 +51,9 @@ const MAX_LISTED_MATCHES = 25
  * readable. The exact reply is found separately, by `turn_id`, regardless of this window. */
 const CONTEXT_BEFORE = 6
 const CONTEXT_AFTER = 16
+/* `NINA_IMAGE_MAX_ATTEMPTS` (2) × the anchored call ceiling (`NINA_IMAGE_ANCHORED_CALL_TIMEOUT_MS`,
+ * 235 s) is comfortably under this — see step 5b's own note for why the window exists at all. */
+const RAW_ERROR_WINDOW_MS = 30 * 60 * 1000
 
 function emit(payload, exitCode) {
   process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`)
@@ -203,11 +206,45 @@ if (typeof args.sourceMessageId === 'string') {
 const isDone = job.status === 'ok' || job.status === 'repaired'
 let image = null
 let imageNote = null
+let rawProviderErrors = []
+
+/* ── 5b. The raw provider rejection, for a failed job — `error_code` alone never says WHY ─────—
+ *
+ * `nina_turns.error_code = 'policy'` (rendered on `/nina/jobs` as "Ditolak filter konten provider")
+ * is `classifyImageFailure`'s four-value classification (`lib/nina/imagefail.ts`) — it is enough to
+ * know THAT the provider refused, never enough to know WHAT in the prompt it refused. The provider's
+ * own words are NOT lost, though: `recordImageCallFailure` (`lib/nina/imagerun.ts`) writes them,
+ * untouched, to `nina_error_logs.error_message`, prefixed with `[<kind>]`, on every failed model
+ * call — and `nina_error_logs.full_input` is `args.prompt` VERBATIM, the same value this job's row
+ * carries, so `full_input = job.prompt` is an exact join with no id in common between the two
+ * tables. Bounded to a window around `job.created_at` (attempts happen within
+ * `NINA_IMAGE_MAX_ATTEMPTS` × the call timeout of each other, comfortably under 30 minutes) so a
+ * later, unrelated job that happens to reuse an unedited prompt cannot be mistaken for this one's
+ * attempts. Not gated on `error_code === 'policy'` — the raw body is exactly as useful for a
+ * `transport` failure (which HTTP status, which vendor message) and costs nothing extra to fetch. */
+if (job.status === 'failed' && typeof args.prompt === 'string' && args.prompt.length > 0) {
+  const jobCreatedMs = new Date(job.created_at).getTime()
+  const windowStart = new Date(jobCreatedMs - RAW_ERROR_WINDOW_MS).toISOString()
+  const windowEnd = new Date(jobCreatedMs + RAW_ERROR_WINDOW_MS).toISOString()
+  const errorRows = await sql`
+    select error_message, timeout_ms, created_at
+    from nina_error_logs
+    where category = 'image_generation'
+      and full_input = ${args.prompt}
+      and created_at between ${windowStart} and ${windowEnd}
+    order by created_at asc
+  `
+  rawProviderErrors = errorRows.map((row) => ({
+    errorMessage: row.error_message,
+    timeoutMs: row.timeout_ms,
+    createdAt: row.created_at,
+  }))
+}
 
 if (!isDone) {
   imageNote =
     job.status === 'failed'
-      ? `job status is 'failed' (error_code=${job.error_code ?? 'null'}) — no photograph was generated`
+      ? `job status is 'failed' (error_code=${job.error_code ?? 'null'}) — no photograph was generated${rawProviderErrors.length > 0 ? ' — see rawProviderErrors for the provider’s own words' : ''}`
       : `job status is '${job.status}' — not finished yet, no photograph to pull`
 } else if (args.purpose === 'avatar') {
   imageNote =
@@ -287,6 +324,10 @@ emit(
     conversation,
     image,
     imageNote,
+    /* The provider's own rejection text for a failed job — see step 5b. Empty for a done job, for a
+     * failed job with no prompt to join on, and for a failed job whose attempt(s) predate this
+     * table or fell outside the join window. */
+    rawProviderErrors,
   },
   0,
 )

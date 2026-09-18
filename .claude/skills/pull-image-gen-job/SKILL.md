@@ -109,15 +109,30 @@ photograph — those are two more hops, each optional for a real reason:
   "image": { "messageId", "blobUrl", "width", "height", "createdAt", "sidecar" } | null,
   "imageNote": null | "job status is 'failed' (error_code=policy) — no photograph was generated"
                 | "... this is an avatar job: ... no exact join back to it from the job ..."
-                | "..."
+                | "...",
+  "rawProviderErrors": [                          // failed jobs only — see below
+    { "errorMessage": "[policy] HTTP 400 {\"error\":{\"message\":\"Seedream blocked this request through content moderation.\", ...}}", "timeoutMs": 234962, "createdAt": "..." }
+  ]
 }
 ```
+
+`rawProviderErrors` is the provider's OWN words, joined from `nina_error_logs` by
+`full_input = job.prompt` (an exact match, not a guess) — `job.errorCode` alone is only ever the
+four-value classification `timeout | policy | transport | stale`
+(`lib/nina/imagefail.ts`'s `classifyImageFailure`), and "Ditolak filter konten provider" on
+`/nina/jobs` is that classification rendered, not the reason. Empty for a done job, for a failed
+job whose prompt never matched a logged attempt (predates the table, or the worker ran it — see
+`redo-image-gen-job`'s own note on why THAT path logs nowhere this join can see), or for a job
+that failed for a reason other than the provider (`transport`/`timeout`/`stale`) where there may
+still be a useful raw HTTP body to read.
 
 Read them in this order:
 
 1. **`job.status` and `imageNote`** — this is "did it even produce a photo", answered before
-   anything else. A `failed` job's `errorCode` (e.g. `policy`) is usually the whole story on its
-   own; there is no photo to fetch and the diagnosis is about the refusal, not the framing.
+   anything else. There is no photo to fetch for a failed job; the diagnosis is about the refusal,
+   not the framing. For `errorCode: 'policy'`, read `rawProviderErrors` too — the classification is
+   not the reason, and the runner deserves better than "Ditolak filter konten provider" repeated
+   back at them.
 2. **`conversation`** — what the runner actually asked for, in their own words, and how Nina
    answered in chat. The row with `linkedToJob: true` is the caption bubble that carries the photo
    (selfie jobs only); everything else is context.
@@ -162,13 +177,24 @@ looked like:
    override that only appends instead of replacing), name the file and function, and **ask whether
    to implement it** before touching any code — this skill does not edit.
 
+   For a `policy` rejection specifically, this is where `redo-image-gen-job`'s own instructions on
+   diagnosing a content-filter refusal apply — correlating the rejected prompt against the runner's
+   own job history before proposing an edit, because the wording that LOOKS most responsible is
+   frequently not the wording that actually is (measured, 2026-09-18: see that skill's own notes).
+
 ## The one rule
 
 **This skill never writes.** No edit to `lib/`, no `UPDATE`, no `redoNinaImageJob` call, no prompt
 override saved to `/admin/image-generation`. It gathers exactly what a human would have to gather
 by hand — the job, the conversation, the photograph — and hands back a grounded diagnosis. Applying
-a fix (a code change to `lib/nina/imagegen.ts`, a different phrasing for next time, a redo of the
-job) is a separate ask, exactly as it was both times this skill's own worked examples came from.
+a fix is a separate, explicitly-asked-for step:
+
+- A **content-policy rejection** (`errorCode: 'policy'`) that the runner wants fixed and re-run is
+  the `redo-image-gen-job` skill's job, not this one's — it edits the prompt and runs the new job,
+  and it exists specifically so that pairing can happen without this skill's own invariant moving.
+- Anything else (a code change to `lib/nina/imagegen.ts`, a different phrasing for the runner to
+  type next time, a prompt override on `/admin/image-generation`) stays a separate ask, exactly as
+  it was both times this skill's own worked examples came from.
 
 ## Common mistakes
 
@@ -178,7 +204,8 @@ job) is a separate ask, exactly as it was both times this skill's own worked exa
 | Assuming every `ok` job has an `image` | Avatar-purpose jobs never do — check `imageNote` |
 | Skipping the `blobUrl` fetch and reasoning from `job.prompt` alone | The exact blind-diagnosis failure mode the fetch step exists to remove |
 | Reading only `job.scene`/`job.pose`/`job.angle` and not the full `job.prompt` | The bug usually lives in the FIXED prose those fields get spliced into, not in what the model wrote |
-| Treating a `failed` job's `errorCode` as something to route around by rewording the scene | `policy` is a provider refusal, not a framing bug — say so, don't propose a camera-angle fix for it |
+| Treating `job.errorCode` alone as the reason for a `policy` failure | It is a 4-value classification, not the provider's words — read `rawProviderErrors` |
+| Picking the most "obviously explicit" wording as the cause without checking the runner's own job history | Measured 2026-09-18: the obvious clause was removed, rerun, rejected again — see `redo-image-gen-job`'s notes |
 | Editing `lib/nina/imagegen.ts`, redoing the job, or saving a prompt override without being asked | See The one rule |
 | Running it without `--env-file=.env.local` | Exit 2: no `DATABASE_URL` |
 | Picking one job after exit 4 | The fragment was ambiguous. Ask |
