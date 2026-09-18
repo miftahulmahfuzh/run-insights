@@ -19,7 +19,14 @@ import {
   type NinaUploadKeeper,
 } from '../dedupe'
 import { NINA_MAX_CHAT_IMAGES } from '../images'
+import { hasNinaImageJobForMessage } from '../imagejobs'
 import { verifyNinaImageTicket, type NinaImageClaims } from '../imageTicket'
+import {
+  isNinaPhotoShortcut,
+  NINA_PHOTO_SHORTCUT_CAPPED_REPLY,
+  NINA_PHOTO_SHORTCUT_REPLY,
+  NINA_PHOTO_SHORTCUT_SCENE,
+} from '../photoShortcut'
 import { isPerceptualTwin, parseDhashHex, sig16FromBase64 } from '../perceptual'
 import { fetchAndSignImage, type NinaImageSignature } from '../perceptualSign'
 import { findGlobalDuplicatePhoto } from '@/lib/photos/globalDuplicate'
@@ -36,9 +43,11 @@ import {
   getNinaSession,
   insertNinaMessageImages,
   insertNinaMessages,
+  readNinaImagePrefs,
   type NinaImageInsert,
   type NinaMessageRow,
 } from '../queries'
+import { generateNinaSelfie } from '../selfiegen'
 import { resolveNinaWriteSession } from '../sessionResolve'
 import type { NinaImageKind } from '@/lib/db/schema'
 import { MAX_RUNNER_MESSAGE_CHARS } from '../schema'
@@ -656,6 +665,72 @@ export async function sendNinaMessage(input: {
   } catch (cause) {
     console.warn('[nina] could not persist the runner message', { error: String(cause) })
     return REFUSED
+  }
+
+  /*
+   * ── "foto lu" — THE NO-INTERPRETATION PHOTO SHORTCUT (see `../photoShortcut.ts`) ─────────────
+   * A short, content-free photo ask, gated on the operator having actually written something into
+   * Notes on `/admin/image-generation`. When both hold, the job fires straight off the five saved
+   * fields + the saved reference anchor — no model turn, no model-authored scene. This is checked
+   * BEFORE the image/attachment processing below, and only for a message that carries NOTHING
+   * else — a "foto lu" sent alongside an actual photo/run attachment falls through to the ordinary
+   * flow instead, so that attachment is never silently dropped by this early return. It RETURNS
+   * before the ordinary turn machinery runs, which is the whole point: nothing here calls `glm-5.3`.
+   */
+  if (
+    isNinaPhotoShortcut(text) &&
+    images.length === 0 &&
+    attached === null &&
+    dedupedPhotos.length === 0 &&
+    runId === null
+  ) {
+    const prefs = await readNinaImagePrefs(userId).catch((cause) => {
+      console.warn('[nina] could not read image prefs for the photo shortcut', {
+        error: String(cause),
+      })
+      return null
+    })
+    if (prefs !== null && prefs.notes.trim().length > 0) {
+      const alreadyRan = await hasNinaImageJobForMessage(userId, runnerMessageId).catch(
+        (cause) => {
+          console.warn('[nina] photo-shortcut duplicate guard failed; proceeding', {
+            error: String(cause),
+          })
+          return false
+        },
+      )
+
+      if (!alreadyRan) {
+        const result = await generateNinaSelfie({
+          userId,
+          scene: NINA_PHOTO_SHORTCUT_SCENE,
+          replyToId: runnerMessageId,
+        })
+
+        const replyBody = result.ok ? NINA_PHOTO_SHORTCUT_REPLY : NINA_PHOTO_SHORTCUT_CAPPED_REPLY
+        try {
+          await insertNinaMessages(
+            userId,
+            [
+              {
+                role: 'nina',
+                body: replyBody,
+                source: 'chat',
+                turnId: result.ok ? result.jobId : null,
+                replyToId: runnerMessageId,
+              },
+            ],
+            sessionId,
+          )
+        } catch (cause) {
+          console.warn('[nina] could not persist the photo-shortcut reply', {
+            error: String(cause),
+          })
+        }
+      }
+
+      return { ok: true, userMessageId: runnerMessageId, sessionId, cursor: runnerSeq, turnId: null }
+    }
   }
 
   /*
