@@ -1,0 +1,1 @@
+ALTER TABLE "nina_image_prefs" ADD COLUMN "expression" text;

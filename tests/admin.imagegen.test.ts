@@ -688,9 +688,9 @@ describe('the panel commits itself — no staged-commit row', () => {
     expect(code).not.toContain('resetNinaImagePrefsAction')
   })
 
-  it('commits the five text controls on blur, and never on a keystroke timer', () => {
+  it('commits the five text controls and the template box on blur, and never on a keystroke timer', () => {
     const code = codeOnly(PANEL)
-    expect((code.match(/onBlur=\{commitText\}/g) ?? []).length).toBe(5)
+    expect((code.match(/onBlur=\{commitText\}/g) ?? []).length).toBe(6)
     /* The blur path itself: typing touches only setDraft, so the commit reads the draft the
      * keystrokes already landed — no timer anywhere on this path. `commitText` is the LAST handler
      * before the JSX, so the slice is its body alone. */

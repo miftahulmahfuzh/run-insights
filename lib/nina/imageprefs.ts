@@ -169,8 +169,14 @@ export const NINA_IMAGE_TIME_MAX = 120
  */
 export const NINA_IMAGE_NOTES_MAX = 600
 
-/** The four, in the order the user wrote them, which is the order the panel renders them in. */
-export const NINA_IMAGE_TEXT_KEYS = ['wardrobe', 'venue', 'time', 'notes'] as const
+/**
+ * One sentence about her face. *"She is smiling warmly"* is twenty-two characters; 200 is the
+ * same generous cap `wardrobe`/`venue` already use for one free-text sentence.
+ */
+export const NINA_IMAGE_EXPRESSION_MAX = 200
+
+/** The five, in the order the user wrote them, which is the order the panel renders them in. */
+export const NINA_IMAGE_TEXT_KEYS = ['wardrobe', 'venue', 'time', 'notes', 'expression'] as const
 
 export type NinaImageTextKey = (typeof NINA_IMAGE_TEXT_KEYS)[number]
 
@@ -192,6 +198,66 @@ export interface NinaImageTextSpec {
   /** The cap. Enforced by `coerceNinaImageText`, by phase 4's `maxLength`, and by phase 4's Zod. */
   readonly max: number
 }
+
+/**
+ * **The 2026-09-18 ask's fifth field, and the one whose empty value is not silence.** Every other
+ * free-text field's `''` means "nothing said" and the template line simply vanishes (the
+ * omit-when-empty rule). This one is different: the face paragraph has never gone to print with no
+ * expression at all, so `''` here means "her measured default", not "no clause". `NINA_FACE_SUFFIX`
+ * (`lib/nina/persona/appearance.ts`) is built from this exact constant, so an admin who never opens
+ * this field gets precisely the sentence that shipped before it existed — the same continuity
+ * `NINA_HAIRSTYLE_DEFAULT`'s header promises for hairstyle.
+ */
+export const NINA_EXPRESSION_DEFAULT_TEXT =
+  "Her expression is serious, like a magazine cover model's: composed, never smiling or laughing, lips just barely parted."
+
+/**
+ * **The five the preset dropdown offers**, distilled per the operator's own list. `default` is not
+ * an invention — it is `NINA_EXPRESSION_DEFAULT_TEXT`, the sentence the face paragraph always
+ * carried, lifted into a selectable option the same way `ponytail` was for hairstyle. The other
+ * four are the operator's own four additions, translated to the same third-person, present-tense
+ * style every other preset sentence in this file uses.
+ *
+ * Unlike hairstyle, this is not a closed vocabulary enforced at the database boundary — picking one
+ * just fills the Facial Expression text box with its `text`, which the admin can then edit or
+ * discard like anything else typed there. `key` exists only so the panel has something to key the
+ * `<option>` elements on.
+ */
+export interface NinaExpressionPreset {
+  readonly key: string
+  /** The dropdown option's label. */
+  readonly label: string
+  /** What gets written into the Facial expression field when this option is chosen. */
+  readonly text: string
+}
+
+export const NINA_EXPRESSION_PRESETS: readonly NinaExpressionPreset[] = [
+  Object.freeze({
+    key: 'default',
+    label: 'Composed, serious (default)',
+    text: NINA_EXPRESSION_DEFAULT_TEXT,
+  }),
+  Object.freeze({
+    key: 'smiling',
+    label: 'Smiling',
+    text: 'She is smiling warmly, a natural and relaxed smile.',
+  }),
+  Object.freeze({
+    key: 'laughing',
+    label: 'Laughing',
+    text: 'She is laughing brightly, genuine open-mouth laughter with her eyes crinkled in joy.',
+  }),
+  Object.freeze({
+    key: 'tongue_out',
+    label: 'Cute tongue out',
+    text: 'She is smiling playfully with the tip of her tongue stuck out past her lips, in a cute, teasing way.',
+  }),
+  Object.freeze({
+    key: 'kiss_eyes_closed',
+    label: 'Cute kiss, eyes closed',
+    text: 'She is puckering her lips into a cute, gentle kiss, her eyes closed softly.',
+  }),
+]
 
 export const NINA_IMAGE_TEXT_SPECS: Readonly<Record<NinaImageTextKey, NinaImageTextSpec>> =
   Object.freeze({
@@ -222,6 +288,13 @@ export const NINA_IMAGE_TEXT_SPECS: Readonly<Record<NinaImageTextKey, NinaImageT
       userSaid: 'notes: e.g: nina is full of sweat',
       placeholder: 'nina is full of sweat',
       max: NINA_IMAGE_NOTES_MAX,
+    }),
+    expression: Object.freeze({
+      key: 'expression',
+      label: 'Facial expression',
+      userSaid: 'facial expression (free text): e.g. smiling warmly',
+      placeholder: NINA_EXPRESSION_DEFAULT_TEXT,
+      max: NINA_IMAGE_EXPRESSION_MAX,
     }),
   })
 
@@ -566,6 +639,7 @@ export const NINA_IMAGE_TEMPLATE_KEYS = [
   'notes',
   'angle',
   'hairstyle',
+  'expression',
   'buttClause',
   'angleReminder',
 ] as const
@@ -650,6 +724,11 @@ export const NINA_IMAGE_TEMPLATE_SPECS: Readonly<
     key: 'hairstyle',
     description:
       'The Hairstyle preset, as one sentence. Sits inside the face paragraph, not its own line, and is never empty — like `{{angle}}`, there is always a hairstyle selected.',
+  }),
+  expression: Object.freeze({
+    key: 'expression',
+    description:
+      'The Facial expression field, verbatim — or her measured default ("composed, serious, never smiling or laughing") when the field is empty. Sits inside the face paragraph, not its own line, and is never empty.',
   }),
   buttClause: Object.freeze({
     key: 'buttClause',
@@ -1006,6 +1085,8 @@ export interface NinaImagePrefs {
   readonly time: string
   /** `''` = nothing appended. */
   readonly notes: string
+  /** `''` = `NINA_EXPRESSION_DEFAULT_TEXT`, her measured default — see that constant's header. */
+  readonly expression: string
   /**
    * §7's editable template shell. `''` = `NINA_PROMPT_TEMPLATE_DEFAULT` — the one spelling of
    * "unmodified", and the only value an invalid template can coerce to (see
@@ -1058,6 +1139,7 @@ export interface NinaImagePrefsInput {
   readonly venue?: unknown
   readonly time?: unknown
   readonly notes?: unknown
+  readonly expression?: unknown
   readonly promptTemplate?: unknown
   readonly model?: unknown
   readonly reference?: unknown
@@ -1079,6 +1161,7 @@ export const NINA_IMAGE_PREFS_DEFAULTS: NinaImagePrefs = Object.freeze({
   venue: '',
   time: '',
   notes: '',
+  expression: '',
   promptTemplate: '',
   model: NINA_IMAGE_MODEL_DEFAULT,
   reference: NINA_IMAGE_REFERENCE_NONE,
@@ -1110,6 +1193,7 @@ export function coerceNinaImagePrefs(
     venue: coerceNinaImageText('venue', input?.venue),
     time: coerceNinaImageText('time', input?.time),
     notes: coerceNinaImageText('notes', input?.notes),
+    expression: coerceNinaImageText('expression', input?.expression),
     promptTemplate: coerceNinaImageTemplate(input?.promptTemplate),
     model: coerceNinaImageModel(input?.model),
     reference: coerceNinaImageReference(input?.reference),

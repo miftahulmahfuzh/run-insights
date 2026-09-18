@@ -28,10 +28,10 @@ import {
 vi.mock('@/lib/admin/imageGenActions', () => ({
   saveNinaImagePrefsAction: vi.fn(),
   /* Never exercised by name in this suite — the generate icon has its own coverage — but every
-   * render mounts four of them, so a resolved default keeps a stray click from anyone's test
+   * render mounts five of them, so a resolved default keeps a stray click from anyone's test
    * (a Tab-through, a broad `getAllByRole('button')`) from surfacing an unhandled rejection. */
   generateImageFieldValueAction: vi.fn().mockResolvedValue({ ok: false }),
-  /* The "regenerate all four" control, above the photo reference section — the batch action's
+  /* The "regenerate all five" control, above the photo reference section — the batch action's
    * own default, same reasoning. */
   generateAllImageFieldValuesAction: vi.fn().mockResolvedValue({ ok: false }),
 }))
@@ -67,6 +67,7 @@ function prefs(overrides?: Partial<ImageGenDraft>): ImageGenDraft {
     venue: '',
     time: '',
     notes: '',
+    expression: '',
     promptTemplate: 'SHELL {{scene}}',
     model: 'qwen/qwen-image-3',
     reference: { source: 'none', id: '' },
@@ -162,7 +163,7 @@ describe('ImageGenPanel — chrome', () => {
 
   it('names the template textarea — the one control whose heading is not a label', () => {
     panel()
-    // The four fields above it sit inside wrapping <label>s; the template's <h3> labels nothing.
+    // The five fields above it sit inside wrapping <label>s; the template's <h3> labels nothing.
     // Without an explicit accessible name it is the panel's one anonymous control.
     expect(screen.getByRole('textbox', { name: 'Prompt template' })).toBe(templateBox())
   })
@@ -306,19 +307,20 @@ describe('ImageGenPanel — the commit moments', () => {
     expect(saveAction).not.toHaveBeenCalled()
   })
 
-  it('the "regenerate all" icon fills and SAVES all four fields in one call — unlike the per-field icons', async () => {
+  it('the "regenerate all" icon fills and SAVES all five fields in one call — unlike the per-field icons', async () => {
     const batchValues = {
       wardrobe: 'silk robe',
       venue: 'rooftop bar',
       time: 'blue hour',
       notes: 'windy',
+      expression: 'She is smiling warmly.',
     }
     // The action returns the row AS STORED — with the batch values in it — so the merge adopts
     // cleanly, `a focus checkbox commits on CHANGE, immediately`'s own reasoning.
     saveAction.mockResolvedValue({ ok: true, prefs: prefs(batchValues) })
     generateAllAction.mockResolvedValueOnce({ ok: true, values: batchValues })
     panel()
-    fireEvent.click(screen.getByRole('button', { name: 'Regenerate all four' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Regenerate all five' }))
     await advance(0)
     await advance(0) // second flush: the save's own promise chain settles here
 
@@ -331,15 +333,16 @@ describe('ImageGenPanel — the commit moments', () => {
     expect(sent.venue).toBe('rooftop bar')
     expect(sent.time).toBe('blue hour')
     expect(sent.notes).toBe('windy')
+    expect(sent.expression).toBe('She is smiling warmly.')
   })
 
   it('shows an inline error and saves nothing when the batch call fails', async () => {
     generateAllAction.mockResolvedValueOnce({ ok: false })
     panel()
-    fireEvent.click(screen.getByRole('button', { name: 'Regenerate all four' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Regenerate all five' }))
     await advance(0)
 
-    expect(screen.getByText(/Gagal membuat nilai baru untuk keempat kolom/)).toBeInTheDocument()
+    expect(screen.getByText(/Gagal membuat nilai baru untuk kelima kolom/)).toBeInTheDocument()
     expect(wardrobeBox()).toHaveValue('')
     expect(saveAction).not.toHaveBeenCalled()
   })

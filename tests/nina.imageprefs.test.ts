@@ -11,6 +11,7 @@ import {
   coerceNinaImageText,
   dedupeNinaPhotoRefs,
   mergeNinaPhotoRefs,
+  NINA_EXPRESSION_DEFAULT_TEXT,
   NINA_IMAGE_FOCUS_DEFAULTS,
   NINA_IMAGE_FOCUS_KEYS,
   NINA_IMAGE_FOCUS_SPECS,
@@ -141,13 +142,14 @@ describe('the six focus options are the six the user named (R5)', () => {
   })
 })
 
-describe('the four free-text fields (R6-R9)', () => {
-  it('are the four the user listed, in his order, each with his own example', () => {
-    expect(NINA_IMAGE_TEXT_KEYS).toEqual(['wardrobe', 'venue', 'time', 'notes'])
+describe('the five free-text fields (R6-R9, plus the 2026-09-18 facial-expression field)', () => {
+  it('are the four the user listed, in his order, plus expression, each with its own example', () => {
+    expect(NINA_IMAGE_TEXT_KEYS).toEqual(['wardrobe', 'venue', 'time', 'notes', 'expression'])
     expect(NINA_IMAGE_TEXT_SPECS.wardrobe.placeholder).toBe('long hugging leggings with string bra')
     expect(NINA_IMAGE_TEXT_SPECS.venue.placeholder).toBe('Kuta streets in Bali')
     expect(NINA_IMAGE_TEXT_SPECS.time.placeholder).toBe('sunny day, rainy night, cold afternoon')
     expect(NINA_IMAGE_TEXT_SPECS.notes.placeholder).toBe('nina is full of sweat')
+    expect(NINA_IMAGE_TEXT_SPECS.expression.placeholder).toBe(NINA_EXPRESSION_DEFAULT_TEXT)
   })
 
   it('publishes each bound once, and the spec reads it rather than restating it', () => {
@@ -395,6 +397,8 @@ describe('the defaults, and the coercion that never throws', () => {
       venue: '',
       time: '',
       notes: '',
+      /* `''` = `NINA_EXPRESSION_DEFAULT_TEXT` at render — see that constant's own header. */
+      expression: '',
       promptTemplate: '',
       /* The measured camera (2026-09-11 A/B: 107 s anchored against the Pro's 257 s — past every
        * in-platform ceiling). Pinned as a literal so a default flip is always a witnessed one. */
@@ -551,11 +555,12 @@ describe('the editable prompt template (the 2026-09-10 ask, second revision)', (
 
   const VALID_MINIMAL = '{{scene}}'
 
-  it('the vocabulary is the thirteen value slots, and the required one is scene', () => {
+  it('the vocabulary is the fourteen value slots, and the required one is scene', () => {
     expect([...NINA_IMAGE_TEMPLATE_KEYS].sort()).toEqual([
       'angle',
       'angleReminder',
       'buttClause',
+      'expression',
       'faceLock',
       'focus',
       'hairstyle',

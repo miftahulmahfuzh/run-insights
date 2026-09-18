@@ -749,7 +749,7 @@ describe('nina_image_prefs — how she is photographed (R5-R10)', () => {
     expect(fkFor(schema.ninaImagePrefs, 'user_id')?.onDelete).toBe('cascade')
   })
 
-  it('spells exactly the eighteen columns phases 2, 3, 4, 5 and the 2026-09-18 hairstyle and camera-angle presets were written against', () => {
+  it('spells exactly the nineteen columns phases 2, 3, 4, 5, the 2026-09-18 hairstyle and camera-angle presets, and the facial-expression field were written against', () => {
     expect(names(schema.ninaImagePrefs)).toEqual(
       [
         'user_id',
@@ -776,6 +776,9 @@ describe('nina_image_prefs — how she is photographed (R5-R10)', () => {
         'hairstyle',
         // The 2026-09-18 camera-angle preset. Same nullable reasoning as `hairstyle`.
         'camera_angle',
+        // The 2026-09-18 facial-expression field. Nullable, same reasoning — but unlike hairstyle,
+        // `''`/NULL means "her measured default text", not "the measured default key".
+        'expression',
         'updated_at',
       ].sort(),
     )
@@ -805,12 +808,14 @@ describe('nina_image_prefs — how she is photographed (R5-R10)', () => {
     expect(columns(schema.ninaTuning).get('flirty_enabled')?.notNull).toBe(false)
   })
 
-  it('gives every free-text field a NOT NULL text column, with "" as the empty value', () => {
+  it('gives every free-text field a NOT NULL text column, with "" as the empty value — except expression, which is nullable', () => {
     for (const key of NINA_IMAGE_TEXT_KEYS) {
       // The one spelling difference in this table: the model key is `time`, the column is
       // `time_of_day`, because a bare `time` column is a Postgres type name.
       const column = key === 'time' ? 'time_of_day' : key
       expect(sqlType(schema.ninaImagePrefs, column), key).toBe('text')
+      // `expression` is the one exception — see the nullable test below for why.
+      if (key === 'expression') continue
       expect(columns(schema.ninaImagePrefs).get(column)?.notNull, key).toBe(true)
     }
   })
@@ -855,6 +860,17 @@ describe('nina_image_prefs — how she is photographed (R5-R10)', () => {
     expect(column?.notNull).toBe(false)
     expect(column?.hasDefault).toBe(false)
     expect(sqlType(schema.ninaImagePrefs, 'camera_angle')).toBe('text')
+  })
+
+  it("makes expression NULLABLE with no SQL default — hairstyle's own precedent, for a free-text field", () => {
+    /* Added to a table that already had rows, so NULL means "written before this field existed" —
+     * but unlike hairstyle/camera_angle, `coerceNinaImageText('expression', null)` already reads
+     * NULL as `''`, and `''` is what `NINA_EXPRESSION_DEFAULT_TEXT` means for this one field. No
+     * backfill, no SQL DEFAULT, no rewrite of a live table. */
+    const column = columns(schema.ninaImagePrefs).get('expression')
+    expect(column?.notNull).toBe(false)
+    expect(column?.hasDefault).toBe(false)
+    expect(sqlType(schema.ninaImagePrefs, 'expression')).toBe('text')
   })
 
   it('has NO foreign key on the reference pair, because it has two possible parents', () => {

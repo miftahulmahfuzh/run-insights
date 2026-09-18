@@ -69,6 +69,7 @@ const STORED_PREFS = {
   venue: '',
   time: 'golden hour',
   notes: '',
+  expression: '',
   promptTemplate: '',
   model: 'qwen/qwen-image-3' as const,
   reference: { source: 'chat' as const, id: 'photo123XYZ_-' },
@@ -85,6 +86,7 @@ function prefsInput(overrides: Partial<PrefsInput> = {}): PrefsInput {
     venue: '',
     time: 'golden hour',
     notes: '',
+    expression: '',
     promptTemplate: '',
     model: 'qwen/qwen-image-3',
     reference: { source: 'chat', id: 'photo123XYZ_-' },
@@ -127,7 +129,7 @@ describe('saveNinaImagePrefsAction', () => {
     expect(result.prefs?.wardrobe).toBe('one-piece')
     expect(result.note).toContain('Saved.')
     expect(revalidatePath).toHaveBeenCalledWith('/admin/image-generation')
-    // The adaptation seam: exactly the ten fields, picked explicitly — `userId` cannot ride.
+    // The adaptation seam: exactly the eleven fields, picked explicitly — `userId` cannot ride.
     expect(writeNinaImagePrefs).toHaveBeenCalledTimes(1)
     const [writeUser, write] = writeNinaImagePrefs.mock.calls[0] as [
       string,
@@ -136,6 +138,7 @@ describe('saveNinaImagePrefsAction', () => {
     expect(writeUser).toBe(USER)
     expect(Object.keys(write).sort()).toEqual([
       'cameraAngle',
+      'expression',
       'focus',
       'hairstyle',
       'model',

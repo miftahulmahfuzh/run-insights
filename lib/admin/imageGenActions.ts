@@ -127,6 +127,7 @@ function toImagePrefsWrite(input: NinaImagePrefsWriteInput): NinaImagePrefsWrite
     venue: input.venue,
     time: input.time,
     notes: input.notes,
+    expression: input.expression,
     promptTemplate: input.promptTemplate,
     model: input.model,
     reference: { source: input.reference.source, id: input.reference.id },
@@ -138,7 +139,7 @@ function toImagePrefsWrite(input: NinaImagePrefsWriteInput): NinaImagePrefsWrite
 /**
  * Save the whole prefs row. One action, one row — the only write the panel has, dispatched by every
  * control at its own commit moment (the focus checkboxes, the dropdowns and the reference on
- * change, the four text fields on blur).
+ * change, the five text fields on blur).
  *
  * The argument types are deliberately loose (`Record<string, boolean>`, `source: string`) and Zod
  * does the narrowing, which is `saveNinaTuningAction`'s convention: a Server Action's declared
@@ -152,6 +153,7 @@ export async function saveNinaImagePrefsAction(input: {
   venue: string
   time: string
   notes: string
+  expression: string
   promptTemplate: string
   model: string
   reference: { source: string; id: string }
@@ -382,6 +384,7 @@ export async function generateImageFieldValueAction(
         venue: parsed.data.venue,
         time: parsed.data.time,
         notes: parsed.data.notes,
+        expression: parsed.data.expression,
       },
       recentValues,
     })
@@ -395,15 +398,15 @@ export async function generateImageFieldValueAction(
   }
 }
 
-/* ── the 2026-09-18 "regenerate all four" control ────────────────────────────────────────────
+/* ── the 2026-09-18 "regenerate all five" control ────────────────────────────────────────────
  *
- * One action, one call, all four fields — the batch sibling of the action above, for an operator
- * who wants a fresh coherent scene instead of four separate clicks. No client input: unlike the
- * single-field action, there is no "current draft" context to read, because all four fields are
- * being proposed together in the one call rather than one at a time around three fixed neighbours.
+ * One action, one call, all five fields — the batch sibling of the action above, for an operator
+ * who wants a fresh coherent scene instead of five separate clicks. No client input: unlike the
+ * single-field action, there is no "current draft" context to read, because all five fields are
+ * being proposed together in the one call rather than one at a time around four fixed neighbours.
  *
  * Unlike the single-field action, this ONE calls `commitImmediate` from the panel rather than
- * filling the draft and waiting on a blur — there is no single control to blur after a four-field
+ * filling the draft and waiting on a blur — there is no single control to blur after a five-field
  * fill — so a success here is a save. It still never calls `revalidatePath` itself: the save that
  * follows is `saveNinaImagePrefsAction`'s own call, same as any other panel edit.
  */
@@ -412,7 +415,7 @@ export type GenerateAllImageFieldValuesResult =
   { ok: true; values: Record<(typeof NINA_IMAGE_TEXT_KEYS)[number], string> } | { ok: false }
 
 /**
- * Ask the model for fresh values for all four text fields at once, reading each field's own
+ * Ask the model for fresh values for all five text fields at once, reading each field's own
  * history for its avoid-list. `requireAdmin()` first, same order as every action in this file.
  */
 export async function generateAllImageFieldValuesAction(): Promise<GenerateAllImageFieldValuesResult> {

@@ -50,6 +50,7 @@ import {
 import {
   NINA_CAMERA_ANGLE_KEYS,
   NINA_HAIRSTYLE_KEYS,
+  NINA_IMAGE_EXPRESSION_MAX,
   NINA_IMAGE_FOCUS_KEYS,
   NINA_IMAGE_MODEL_IDS,
   NINA_IMAGE_NOTES_MAX,
@@ -799,6 +800,12 @@ export const ninaImagePrefsWriteSchema = z.object({
   /** R9. Empty is valid. Free text, handed to the camera verbatim. */
   notes: z.string().trim().max(NINA_IMAGE_NOTES_MAX),
   /**
+   * The 2026-09-18 facial-expression field. Empty is valid and means "her measured default" —
+   * `NINA_EXPRESSION_DEFAULT_TEXT`, not "no clause" — the one free-text field where empty is not
+   * silence; see that constant's header in `lib/nina/imageprefs.ts`.
+   */
+  expression: z.string().trim().max(NINA_IMAGE_EXPRESSION_MAX),
+  /**
    * The editable template shell (the 2026-09-10 ask). Empty is valid and means "the shipping
    * default". Everything else goes through `validateNinaImageTemplate` — the SAME function
    * `buildNinaImagePrompt` re-checks at render — so a template this schema admits is a template
@@ -838,8 +845,8 @@ export const ninaImagePrefsWriteSchema = z.object({
 export type NinaImagePrefsWriteInput = z.infer<typeof ninaImagePrefsWriteSchema>
 
 /**
- * The 2026-09-18 "generate a fresh value" icon. `field` names which of the four the click was on;
- * the other three ride along as the CURRENT DRAFT (unsaved edits included) so the model can read
+ * The 2026-09-18 "generate a fresh value" icon. `field` names which of the five the click was on;
+ * the other four ride along as the CURRENT DRAFT (unsaved edits included) so the model can read
  * what the other fields already say for this same photograph. Every bound is imported from
  * `lib/nina/imageprefs.ts`, the same standing rule as the write schema above.
  */
@@ -849,5 +856,6 @@ export const generateImageFieldValueSchema = z.object({
   venue: z.string().max(NINA_IMAGE_VENUE_MAX),
   time: z.string().max(NINA_IMAGE_TIME_MAX),
   notes: z.string().max(NINA_IMAGE_NOTES_MAX),
+  expression: z.string().max(NINA_IMAGE_EXPRESSION_MAX),
 })
 export type GenerateImageFieldValueInput = z.infer<typeof generateImageFieldValueSchema>

@@ -41,7 +41,7 @@ import { generatedChatPhotoScope } from './images'
 
 /**
  * **The one place `nina_image_prefs`'s flat row and the nested model meet.** `lib/db/schema.ts`
- * spells sixteen snake_case columns; `lib/nina/imageprefs.ts` spells `focus.boobs` and
+ * spells seventeen snake_case columns; `lib/nina/imageprefs.ts` spells `focus.boobs` and
  * `reference.source`. The same three-layer boundary `tuningFromRow` describes one table over: two
  * spellings, ONE translation point, reviewable in one diff.
  *
@@ -64,6 +64,10 @@ function imagePrefsFromRow(row: NinaImagePrefsRow): NinaImagePrefs {
      * column is a Postgres type name, and `photo_eagerness` is the precedent. */
     time: row.timeOfDay,
     notes: row.notes,
+    /* `row.expression` is nullable — see the column's own header — and `coerceNinaImageText`
+     * already reads NULL as `''`, which is exactly what "her measured default" means for this
+     * field. No special-casing needed here, unlike `hairstyle`/`cameraAngle`. */
+    expression: row.expression,
     promptTemplate: row.promptTemplate,
     model: row.model,
     reference: { source: row.referenceSource, id: row.referenceId },
@@ -98,6 +102,7 @@ function imagePrefsToColumns(prefs: NinaImagePrefsWrite) {
     venue: prefs.venue,
     timeOfDay: prefs.time,
     notes: prefs.notes,
+    expression: prefs.expression,
     promptTemplate: prefs.promptTemplate,
     model: prefs.model,
     referenceSource: prefs.reference.source,
@@ -120,8 +125,8 @@ function imagePrefsToColumns(prefs: NinaImagePrefsWrite) {
  * thirty seconds ago is in the next photograph.
  *
  * `SELECT *` rather than a column list, and this is the second place in the file where that is
- * right: the table is one row of sixteen columns and every one of them is wanted, so a list would
- * be sixteen lines that can only ever be wrong.
+ * right: the table is one row of seventeen columns and every one of them is wanted, so a list would
+ * be seventeen lines that can only ever be wrong.
  */
 export async function readNinaImagePrefs(userId: string): Promise<NinaImagePrefs> {
   const rows = await db

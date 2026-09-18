@@ -345,6 +345,18 @@ export const ninaImagePrefs = pgTable('nina_image_prefs', {
    */
   cameraAngle: text('camera_angle'),
 
+  /**
+   * The 2026-09-18 facial-expression field (`NINA_IMAGE_EXPRESSION_MAX` = 200 in
+   * `lib/nina/imageprefs.ts`): one free-text sentence about her face, editable directly or filled
+   * from `NINA_EXPRESSION_PRESETS`. Same nullable precedent as `hairstyle`/`cameraAngle` above —
+   * added to a populated table — but unlike either of those, `''`/NULL here does not mean "no
+   * preference recorded, use the measured default key"; it means "use `NINA_EXPRESSION_DEFAULT_TEXT`",
+   * the sentence the face paragraph has always carried. `coerceNinaImageText('expression', null)`
+   * already reads NULL as `''`, so no backfill is needed and every existing row keeps generating the
+   * exact sentence it always did.
+   */
+  expression: text('expression'),
+
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
     .notNull()
     .defaultNow()
@@ -408,7 +420,7 @@ export const ninaImageFieldHistory = pgTable(
     userId: text('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    /** One of `NINA_IMAGE_TEXT_KEYS` — `'wardrobe' | 'venue' | 'time' | 'notes'`. */
+    /** One of `NINA_IMAGE_TEXT_KEYS` — `'wardrobe' | 'venue' | 'time' | 'notes' | 'expression'`. */
     field: text('field').notNull(),
     /** The value the model proposed, already coerced through `coerceNinaImageText`. */
     value: text('value').notNull(),

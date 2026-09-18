@@ -32,7 +32,9 @@ import {
 import { cn } from '@/lib/cn'
 import {
   NINA_CAMERA_ANGLE_KEYS,
+  NINA_EXPRESSION_PRESETS,
   NINA_HAIRSTYLE_KEYS,
+  NINA_IMAGE_EXPRESSION_MAX,
   NINA_IMAGE_FOCUS_KEYS,
   NINA_IMAGE_MODEL_IDS,
   NINA_IMAGE_NOTES_MAX,
@@ -220,19 +222,20 @@ export function ImageGenPanel({
   /* The 2026-09-18 "generate a fresh value" icon, one status per field. Not `pending`/`saving` —
    * generating never writes `nina_image_prefs`, so it has nothing to do with the save pipeline. */
   const [fieldGen, setFieldGen] = React.useState<
-    Partial<Record<'wardrobe' | 'venue' | 'time' | 'notes', 'loading' | 'error'>>
+    Partial<Record<'wardrobe' | 'venue' | 'time' | 'notes' | 'expression', 'loading' | 'error'>>
   >({})
-  /* The 2026-09-18 "regenerate all four" control, above the photo reference section —
+  /* The 2026-09-18 "regenerate all five" control, above the photo reference section —
    * `fieldGen`'s own shape but with nothing to key on since it touches every field at once. */
   const [allFieldGen, setAllFieldGen] = React.useState<'loading' | 'error' | null>(null)
   const [pending, startTransition] = React.useTransition()
 
-  /* Refs for the four text controls' own ✕ — `SessionRow.tsx`'s pattern: the click handler
+  /* Refs for the five text controls' own ✕ — `SessionRow.tsx`'s pattern: the click handler
    * refocuses the control itself so the on-screen keyboard never drops. */
   const wardrobeInputRef = React.useRef<HTMLInputElement | null>(null)
   const venueInputRef = React.useRef<HTMLInputElement | null>(null)
   const timeInputRef = React.useRef<HTMLInputElement | null>(null)
   const notesInputRef = React.useRef<HTMLTextAreaElement | null>(null)
+  const expressionInputRef = React.useRef<HTMLInputElement | null>(null)
 
   /*
    * One `<label>` per field, wrapping ONLY the field-name text — never the generate button, the
@@ -248,6 +251,11 @@ export function ImageGenPanel({
   const venueFieldId = React.useId()
   const timeFieldId = React.useId()
   const notesFieldId = React.useId()
+  const expressionFieldId = React.useId()
+  /** The 2026-09-18 preset dropdown beside Facial expression — a stateless quick-fill, so its own
+   * `<select>` always resets to the placeholder rather than tracking which preset (if any) the
+   * current text happens to match. */
+  const expressionPresetId = React.useId()
 
   const pendingFields = React.useMemo(
     () => new Set(changedImageGenFields(draft, saved)),
@@ -285,6 +293,7 @@ export function ImageGenPanel({
         venue: sent.venue,
         time: sent.time,
         notes: sent.notes,
+        expression: sent.expression,
         promptTemplate: sent.promptTemplate,
         model: sent.model,
         reference: sent.reference,
@@ -374,13 +383,13 @@ export function ImageGenPanel({
   }
 
   /**
-   * The four text fields' ✕ — clears the draft and puts focus straight back on the control, the
+   * The five text fields' ✕ — clears the draft and puts focus straight back on the control, the
    * same shape as `SessionRow.tsx`'s rename ✕. It does NOT call `commitText` itself: clearing is
    * an edit like any keystroke, so it rides the normal blur commit above rather than a second,
    * redundant write path.
    */
   function clearTextField(
-    key: 'wardrobe' | 'venue' | 'time' | 'notes',
+    key: 'wardrobe' | 'venue' | 'time' | 'notes' | 'expression',
     ref: React.RefObject<HTMLInputElement | HTMLTextAreaElement | null>,
   ) {
     setDraft((current) => ({ ...current, [key]: '' }))
@@ -388,13 +397,27 @@ export function ImageGenPanel({
   }
 
   /**
+   * The Facial expression preset dropdown — fills the DRAFT with the chosen preset's canned
+   * sentence, `generateField`'s own pattern: it does NOT commit, and it focuses the field
+   * afterwards so the existing `onBlur={commitText}` is what saves it. The admin can edit or
+   * discard the filled text like anything else typed there; unlike a closed dropdown, this
+   * `<select>` always resets to its placeholder rather than tracking a "current preset".
+   */
+  function applyExpressionPreset(key: string) {
+    const preset = NINA_EXPRESSION_PRESETS.find((candidate) => candidate.key === key)
+    if (preset === undefined) return
+    setDraft((current) => ({ ...current, expression: preset.text }))
+    expressionInputRef.current?.focus()
+  }
+
+  /**
    * The generate icon beside a field's label. Fills the DRAFT exactly like a keystroke would —
    * it does NOT commit — and then focuses the field's own control, `clearTextField`'s pattern, so
    * the field's existing `onBlur={commitText}` is what saves it. The model reads `draft` (not
-   * `saved`) for the other three fields, so an unsaved edit next door still shapes the suggestion.
+   * `saved`) for the other four fields, so an unsaved edit next door still shapes the suggestion.
    */
   async function generateField(
-    key: 'wardrobe' | 'venue' | 'time' | 'notes',
+    key: 'wardrobe' | 'venue' | 'time' | 'notes' | 'expression',
     ref: React.RefObject<HTMLInputElement | HTMLTextAreaElement | null>,
   ) {
     setFieldGen((current) => ({ ...current, [key]: 'loading' }))
@@ -404,6 +427,7 @@ export function ImageGenPanel({
       venue: draft.venue,
       time: draft.time,
       notes: draft.notes,
+      expression: draft.expression,
     })
     if (!outcome.ok) {
       setFieldGen((current) => ({ ...current, [key]: 'error' }))
@@ -419,8 +443,8 @@ export function ImageGenPanel({
   }
 
   /**
-   * The "regenerate all four" control, above the photo reference section. One call proposes all
-   * four fields as one coherent scene; unlike `generateField` there is no single control to focus
+   * The "regenerate all five" control, above the photo reference section. One call proposes all
+   * five fields as one coherent scene; unlike `generateField` there is no single control to focus
    * and blur afterwards, so a success here goes straight through `commitImmediate` — the same
    * "the click IS the finished edit" path the camera/hairstyle/angle dropdowns already use.
    */
@@ -876,19 +900,104 @@ export function ImageGenPanel({
               </span>
             )}
           </div>
+
+          {/*
+           * The 2026-09-18 facial-expression field — the fifth free-text field, `Notes`'s own
+           * shape: label, generate icon, input, ✕. The one addition is the preset `<select>` right
+           * below it, since this field is HYBRID (the operator's own ask): free text an admin can
+           * type or regenerate via the icon, AND a five-option quick-fill for the distilled
+           * default plus the four named expressions. Picking a preset behaves exactly like
+           * `generateField`'s icon — it fills the draft and focuses the input rather than
+           * committing on its own — so the admin can still hand-edit before it saves on blur.
+           */}
+          <div className="block">
+            <span className="mb-1.5 flex items-center justify-between gap-2">
+              <label
+                htmlFor={expressionFieldId}
+                className="text-[12px] font-semibold tracking-[0.02em] text-ink-2"
+              >
+                {NINA_IMAGE_TEXT_SPECS.expression.label}
+                {pendingFields.has('expression') && (
+                  <span className="ml-2 font-semibold text-accent">unsaved</span>
+                )}
+              </label>
+              <button
+                type="button"
+                aria-label="Buat facial expression baru"
+                onPointerDown={(event) => event.preventDefault()}
+                onClick={() => generateField('expression', expressionInputRef)}
+                disabled={fieldGen.expression === 'loading' || allFieldGen === 'loading'}
+                className="grid h-7 w-7 shrink-0 place-items-center rounded-pill text-[15px] text-ink-3 active:opacity-70 disabled:opacity-40"
+              >
+                {fieldGen.expression === 'loading' ? '⋯' : '↻'}
+              </button>
+            </span>
+            <div className="relative">
+              <input
+                id={expressionFieldId}
+                ref={expressionInputRef}
+                className={cn(CONTROL_CLASS, draft.expression !== '' && 'pr-11')}
+                value={draft.expression}
+                maxLength={NINA_IMAGE_EXPRESSION_MAX}
+                placeholder={NINA_IMAGE_TEXT_SPECS.expression.placeholder}
+                onChange={(event) =>
+                  setDraft((current) => ({ ...current, expression: event.target.value }))
+                }
+                onBlur={commitText}
+              />
+              {draft.expression !== '' && (
+                <button
+                  type="button"
+                  aria-label="Kosongkan facial expression"
+                  onPointerDown={(event) => event.preventDefault()}
+                  onClick={() => clearTextField('expression', expressionInputRef)}
+                  className="absolute inset-y-0 right-0 grid w-11 place-items-center rounded-pill text-[19px] font-semibold text-ink-3 active:opacity-70"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+            <label htmlFor={expressionPresetId} className="sr-only">
+              Facial expression preset
+            </label>
+            <select
+              id={expressionPresetId}
+              className={cn(CONTROL_CLASS, 'mt-2')}
+              value=""
+              onChange={(event) => {
+                if (event.target.value === '') return
+                applyExpressionPreset(event.target.value)
+              }}
+            >
+              <option value="">Quick fill a preset…</option>
+              {NINA_EXPRESSION_PRESETS.map((preset) => (
+                <option key={preset.key} value={preset.key}>
+                  {preset.label}
+                </option>
+              ))}
+            </select>
+            <span className="mt-1.5 block max-w-[46ch] text-[11px] font-medium text-ink-3">
+              How her face reads. Leave it empty and she keeps her composed, serious default.
+            </span>
+            {fieldGen.expression === 'error' && (
+              <span className="mt-1 block text-[11px] font-medium text-red-500">
+                Gagal membuat nilai baru — coba lagi.
+              </span>
+            )}
+          </div>
         </div>
 
         {/*
-         * The 2026-09-18 "regenerate all four" control — one glm-5.3 call that proposes wardrobe,
-         * venue, time and notes together as one coherent scene, instead of four separate clicks
-         * through the per-field icons above. Those stay: this is an addition for an operator who
-         * wants everything refreshed at once, not a replacement for changing one field alone.
-         * `SparklesIcon` (`components/admin/photoIcons.tsx`) rather than a raw glyph — this
-         * button carries a visible label, so it goes through the `Button` component, which draws
-         * its own busy state (`LoadingDots`) instead of a second hand-rolled loading glyph.
-         * A success here commits immediately (`generateAllFields`'s own docstring) rather than
-         * filling the draft, so the per-field icons are disabled while it runs — a click on one
-         * mid-batch would race the same draft this is about to overwrite.
+         * The 2026-09-18 "regenerate all five" control — one glm-5.3 call that proposes wardrobe,
+         * venue, time, notes and facial expression together as one coherent scene, instead of five
+         * separate clicks through the per-field icons above. Those stay: this is an addition for
+         * an operator who wants everything refreshed at once, not a replacement for changing one
+         * field alone. `SparklesIcon` (`components/admin/photoIcons.tsx`) rather than a raw
+         * glyph — this button carries a visible label, so it goes through the `Button` component,
+         * which draws its own busy state (`LoadingDots`) instead of a second hand-rolled loading
+         * glyph. A success here commits immediately (`generateAllFields`'s own docstring) rather
+         * than filling the draft, so the per-field icons are disabled while it runs — a click on
+         * one mid-batch would race the same draft this is about to overwrite.
          */}
         <div className="mb-3 flex justify-end">
           <Button
@@ -900,12 +1009,12 @@ export function ImageGenPanel({
             disabled={Object.values(fieldGen).some((status) => status === 'loading')}
             onClick={() => generateAllFields()}
           >
-            Regenerate all four
+            Regenerate all five
           </Button>
         </div>
         {allFieldGen === 'error' && (
           <p className="-mt-2 mb-3 text-right text-[11px] font-medium text-red-500">
-            Gagal membuat nilai baru untuk keempat kolom — coba lagi.
+            Gagal membuat nilai baru untuk kelima kolom — coba lagi.
           </p>
         )}
 

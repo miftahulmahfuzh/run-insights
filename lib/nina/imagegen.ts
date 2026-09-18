@@ -12,6 +12,7 @@ import {
 } from '@/lib/nina/persona'
 import {
   NINA_CAMERA_ANGLE_KEYS,
+  NINA_EXPRESSION_DEFAULT_TEXT,
   NINA_IMAGE_FOCUS_KEYS,
   NINA_IMAGE_PREFS_DEFAULTS,
   NINA_IMAGE_TEMPLATE_TOKEN_RE,
@@ -495,9 +496,10 @@ function ninaMoodBlock(mood: string | null | undefined): string {
  * `persona/appearance.ts` for why hands needed the same explicit treatment the calf/thigh ratio got.
  *
  * The face paragraph IS a token, unlike the body: `NINA_FACE_TEMPLATE_LINE` (`lib/nina/persona/appearance.ts`)
- * carries the same fixed prose `NINA_FACE` always did, with `{{hairstyle}}` standing in for the
- * one sentence that varies (the 2026-09-18 hairstyle preset) — the `{{angle}}` treatment, not the
- * `{{focus}}` one, because a hairstyle is always exactly one thing and never a droppable list.
+ * carries the same fixed prose `NINA_FACE` always did, with `{{hairstyle}}` and `{{expression}}`
+ * standing in for the two sentences that vary (the 2026-09-18 hairstyle preset, the same-dated
+ * facial-expression preset) — the `{{angle}}` treatment, not the `{{focus}}` one, because both are
+ * always exactly one thing and never a droppable list.
  *
  * The outfit line no longer appends the canon's watch-and-track sentence — that was fixed prose
  * ("a red 400 m athletics track", "flat morning sun") competing with the operator's own
@@ -808,6 +810,7 @@ export function buildNinaImagePrompt(input: {
     angle: angleValue,
     buttClause: NINA_BODY_BUTT_SENTENCES[angleKey],
     hairstyle: NINA_HAIRSTYLE_SENTENCES[prefs.hairstyle],
+    expression: prefs.expression.trim() || NINA_EXPRESSION_DEFAULT_TEXT,
     notes: prefs.notes.trim(),
     angleReminder: NINA_CAMERA_ANGLE_REMINDER[angleKey],
   }

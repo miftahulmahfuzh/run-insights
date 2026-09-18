@@ -68,6 +68,11 @@ export interface ImageGenDraft {
   /** R9. */
   notes: string
   /**
+   * The 2026-09-18 facial-expression field. `''` = `NINA_EXPRESSION_DEFAULT_TEXT`, not "no
+   * clause" — see that constant's header in `lib/nina/imageprefs.ts`.
+   */
+  expression: string
+  /**
    * The editable template shell (the 2026-09-10 ask). `''` = the shipping default, exactly as
    * `NinaImagePrefs.promptTemplate` spells it — the panel edits the shell it was handed, and the
    * validator (`validateNinaImageTemplate`) is what both the save and the render agree on.
@@ -244,6 +249,7 @@ export function toImageGenDraft(prefs: NinaImagePrefs): ImageGenDraft {
     venue: prefs.venue,
     time: prefs.time,
     notes: prefs.notes,
+    expression: prefs.expression,
     promptTemplate: prefs.promptTemplate,
     model: prefs.model,
     reference: { source: prefs.reference.source, id: prefs.reference.id },
@@ -361,8 +367,8 @@ export function imageFocusCopy(key: string): string {
 }
 
 /**
- * Which fields differ, as stable dotted paths (`wardrobe`, `venue`, `time`, `notes`, `reference`,
- * `focus.boobs`).
+ * Which fields differ, as stable dotted paths (`wardrobe`, `venue`, `time`, `notes`, `expression`,
+ * `reference`, `focus.boobs`).
  *
  * One function serves three jobs, which is why it returns names instead of a boolean: the header
  * counts them, each control asks whether its own path is in the set, and `imageGenDraftEquals` is
@@ -383,6 +389,7 @@ export function changedImageGenFields(next: ImageGenDraft, saved: ImageGenDraft)
   if (next.venue !== saved.venue) changed.push('venue')
   if (next.time !== saved.time) changed.push('time')
   if (next.notes !== saved.notes) changed.push('notes')
+  if (next.expression !== saved.expression) changed.push('expression')
   if (next.promptTemplate !== saved.promptTemplate) changed.push('promptTemplate')
   if (next.model !== saved.model) changed.push('model')
   if (next.hairstyle !== saved.hairstyle) changed.push('hairstyle')
@@ -460,6 +467,7 @@ export function mergeImageGenAfterSave(
     venue: current.venue === sent.venue ? canonical.venue : current.venue,
     time: current.time === sent.time ? canonical.time : current.time,
     notes: current.notes === sent.notes ? canonical.notes : current.notes,
+    expression: current.expression === sent.expression ? canonical.expression : current.expression,
     promptTemplate:
       current.promptTemplate === sent.promptTemplate
         ? canonical.promptTemplate

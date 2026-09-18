@@ -49,7 +49,7 @@ export interface ImageFieldGenClientLike {
 
 export interface ImageFieldGenRequest {
   field: NinaImageTextKey
-  /** The browser's current DRAFT of all four fields — including unsaved edits — so a Wardrobe
+  /** The browser's current DRAFT of all five fields — including unsaved edits — so a Wardrobe
    * suggestion can read what Venue and Time already say, for one coherent scene. Never the saved
    * row: an admin mid-edit has not committed yet, and the generation must see what they typed. */
   currentText: Readonly<Record<NinaImageTextKey, string>>
@@ -194,26 +194,26 @@ export async function generateImageFieldValue(
 
 /**
  * ════════════════════════════════════════════════════════════════════════════════════════════
- *  ONE CALL THAT PROPOSES ALL FOUR FIELDS AT ONCE — the 2026-09-18 icon's sibling.
+ *  ONE CALL THAT PROPOSES ALL FIVE FIELDS AT ONCE — the 2026-09-18 icon's sibling.
  *
- *  The single-field pass above is one click, one field, one call — an operator who wants all four
- *  refreshed pays for four separate round-trips. This is the batch version: one `glm-5.3` call,
- *  one tool with all four properties required, so the model proposes a coherent scene in a single
- *  response instead of four independent ones that happen to agree.
+ *  The single-field pass above is one click, one field, one call — an operator who wants all five
+ *  refreshed pays for five separate round-trips. This is the batch version: one `glm-5.3` call,
+ *  one tool with all five properties required, so the model proposes a coherent scene in a single
+ *  response instead of five independent ones that happen to agree.
  *
  *  Same never-throws contract as the single-field pass, but with the one difference the user asked
  *  for: a malformed or partially-invalid response gets ONE repair round-trip (`narrate.ts`'s
  *  primary → Zod → one repair → silence shape) before giving up, because discarding a whole
- *  four-field batch over one field's stray quote mark is a worse trade here than it is for a
+ *  five-field batch over one field's stray quote mark is a worse trade here than it is for a
  *  single field the operator can just re-click.
  * ════════════════════════════════════════════════════════════════════════════════════════════
  */
 
-/** Four short lines instead of one — `imagefieldgen`'s single-field number, roughly ×3 for the
+/** Five short lines instead of one — `imagefieldgen`'s single-field number, roughly ×3 for the
  * extra fields plus headroom for a `thinking` block. */
 const IMAGE_FIELD_GEN_ALL_MAX_TOKENS = 900
 /** The single-field timeout's own number: short answers sit at the bottom of the measured
- * 6.2–16.4 s range for this endpoint, and four short answers in one call are still one call. */
+ * 6.2–16.4 s range for this endpoint, and five short answers in one call are still one call. */
 const IMAGE_FIELD_GEN_ALL_TIMEOUT_MS = 16_000
 /** The repair call's own, separate budget — `narrate.ts`'s `BUDGET.session.repair` shape, sized
  * down for this much smaller payload. */
@@ -221,7 +221,7 @@ const IMAGE_FIELD_GEN_ALL_REPAIR_TIMEOUT_MS = 12_000
 
 export interface ImageFieldGenAllRequest {
   /** Every field's own past suggestions, in any order — one avoid-list per field, the single-field
-   * pass's `recentValues` but for all four at once. */
+   * pass's `recentValues` but for all five at once. */
   recentValues: Readonly<Record<NinaImageTextKey, readonly string[]>>
 }
 
@@ -230,13 +230,14 @@ const ImageFieldGenAllSchema = z.object({
   venue: z.string().trim().min(1).max(NINA_IMAGE_TEXT_SPECS.venue.max),
   time: z.string().trim().min(1).max(NINA_IMAGE_TEXT_SPECS.time.max),
   notes: z.string().trim().min(1).max(NINA_IMAGE_TEXT_SPECS.notes.max),
+  expression: z.string().trim().min(1).max(NINA_IMAGE_TEXT_SPECS.expression.max),
 })
 
 export type ImageFieldGenAllValues = z.infer<typeof ImageFieldGenAllSchema>
 
 const IMAGE_FIELD_GEN_ALL_TOOL: Anthropic.Tool = {
   name: 'field_values',
-  description: 'Propose fresh values for all four fields of this photograph — one coherent scene.',
+  description: 'Propose fresh values for all five fields of this photograph — one coherent scene.',
   input_schema: {
     type: 'object',
     additionalProperties: false,
@@ -256,11 +257,11 @@ const IMAGE_FIELD_GEN_ALL_TOOL: Anthropic.Tool = {
   },
 }
 
-const IMAGE_FIELD_GEN_ALL_SYSTEM_PROMPT = `You propose values for all four fields of a photograph's setup form, in one pass. You are a copywriter, not a participant: you never address anyone, you never explain a choice, and you never describe a person.
+const IMAGE_FIELD_GEN_ALL_SYSTEM_PROMPT = `You propose values for all five fields of a photograph's setup form, in one pass. You are a copywriter, not a participant: you never address anyone, you never explain a choice, and you never describe a person.
 
-Return all four values through the "field_values" tool. Nothing else — no labels, no quotes, no markdown, no trailing period unless a field's style example has one.
+Return all five values through the "field_values" tool. Nothing else — no labels, no quotes, no markdown, no trailing period unless a field's style example has one.
 
-Stay inside each field's own character limit. Match the style and level of detail of each field's example. The four values describe ONE photograph, so they must plausibly belong in the same scene together — do not contradict each other. Never repeat, or closely paraphrase, a value listed as already used for that field.`
+Stay inside each field's own character limit. Match the style and level of detail of each field's example. The five values describe ONE photograph, so they must plausibly belong in the same scene together — do not contradict each other. Never repeat, or closely paraphrase, a value listed as already used for that field.`
 
 function buildImageFieldGenAllRequest(request: ImageFieldGenAllRequest): string {
   const lines: string[] = []
@@ -280,7 +281,7 @@ function buildImageFieldGenAllRequest(request: ImageFieldGenAllRequest): string 
     lines.push('')
   }
   lines.push(
-    'Propose one fresh, coherent value for each of the four fields through the field_values tool.',
+    'Propose one fresh, coherent value for each of the five fields through the field_values tool.',
   )
   return lines.join('\n')
 }
@@ -310,7 +311,13 @@ function findImageFieldGenAllBlock(message: Anthropic.Message): Anthropic.ToolUs
 function coerceImageFieldGenAllValues(
   parsed: ImageFieldGenAllValues,
 ): ImageFieldGenAllValues | null {
-  const out: Record<NinaImageTextKey, string> = { wardrobe: '', venue: '', time: '', notes: '' }
+  const out: Record<NinaImageTextKey, string> = {
+    wardrobe: '',
+    venue: '',
+    time: '',
+    notes: '',
+    expression: '',
+  }
   for (const key of NINA_IMAGE_TEXT_KEYS) {
     const value = coerceNinaImageText(key, parsed[key])
     if (value === '') return null
@@ -358,7 +365,7 @@ async function attemptImageFieldGenAllRepair(
         'That did not fit the field_values tool:\n' +
         issues +
         '\n\nReuse exactly what you already had except where it was flagged, and call ' +
-        'field_values again with all four fields corrected.',
+        'field_values again with all five fields corrected.',
     },
   ]
 
