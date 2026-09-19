@@ -66,6 +66,26 @@ describe('adminAvatarPathname / isAdminAvatarRequestPathname', () => {
     expect(isAdminAvatarRequestPathname(`nina/${USER}/avatar-${ID}x.jpg`, USER)).toBe(false)
   })
 
+  it('also accepts the STORED shape Blob actually returns, suffix and all', () => {
+    // `addRandomSuffix: true` rewrites the requested pathname before `replaceNinaAvatarAction`
+    // re-validates it — this is the "one predicate, two windows" fix, mirroring
+    // `isAdminChatPhotoPathname` in `lib/admin/chatPhotos.ts`. Before this widened, every
+    // legitimate replace was refused with "That file did not land in her photo folder."
+    const suffix = 'b'.repeat(30)
+    expect(isAdminAvatarRequestPathname(`nina/${USER}/avatar-${ID}-${suffix}.jpg`, USER)).toBe(
+      true,
+    )
+    expect(
+      isAdminAvatarRequestPathname(`nina/${USER}/avatar-${ID}-${'b'.repeat(16)}.png`, USER),
+    ).toBe(true)
+    expect(
+      isAdminAvatarRequestPathname(`nina/${USER}/avatar-${ID}-${'b'.repeat(15)}.jpg`, USER),
+    ).toBe(false)
+    expect(
+      isAdminAvatarRequestPathname(`nina/${USER}/avatar-${ID}-${'b'.repeat(65)}.jpg`, USER),
+    ).toBe(false)
+  })
+
   it('refuses a user id that is not id-shaped, rather than interpolating it into a regex', () => {
     expect(isAdminAvatarRequestPathname('nina/./avatar.jpg', '.')).toBe(false)
     expect(isAdminAvatarRequestPathname(`nina/a.*/avatar-${ID}.jpg`, 'a.*')).toBe(false)

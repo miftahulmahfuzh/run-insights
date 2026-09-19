@@ -24,11 +24,14 @@ import { NINA_BLOB_PREFIX } from '@/lib/nina/images'
  * same `avatar-` segment, same id length — so `scripts/blob-reap.mjs` will one day be taught one
  * pattern and not two. It knows about neither today; ruling D4 files that as one card.
  *
- * ── WHY THE REQUEST REGEX AND THE STORED PATH ARE DIFFERENT SHAPES ──────────────────────────
- * `addRandomSuffix: true` means Blob rewrites the pathname it was asked for. The regex here
- * validates what the CLIENT may ASK for; the stored pathname carries Blob's suffix and is
- * whatever `put` returned. This is the `SHOT_REQUEST_PATHNAME_RE` / `SHOT_STORED_PATHNAME_RE`
- * split in `lib/extract/constants.ts`, and only the request half is enforceable.
+ * ── WHY THE REQUEST REGEX ALSO ADMITS THE STORED PATH ───────────────────────────────────────
+ * `addRandomSuffix: true` means Blob rewrites the pathname it was asked for. `isAdminAvatarRequestPathname`
+ * validates what the CLIENT may ASK for AND what Blob actually stored — the suffix is an optional
+ * group, not a second predicate — because `replaceNinaAvatarAction` re-validates the stored form and
+ * a request-only regex refused every real replace (see that function's docstring). This is the
+ * `isAdminChatPhotoPathname` "one predicate, two windows" shape in `lib/admin/chatPhotos.ts`, not the
+ * `SHOT_REQUEST_PATHNAME_RE` / `SHOT_STORED_PATHNAME_RE` split in `lib/extract/constants.ts` — that
+ * split exists because nothing there re-validates a stored pathname; this module does.
  */
 
 export const ADMIN_AVATAR_EXTS = ['jpg', 'png', 'webp'] as const
@@ -100,11 +103,23 @@ export function contentTypeForAvatarExt(ext: AdminAvatarExt): AdminAvatarContent
  * The path-traversal defence and the "do not write beside anything else in the store" defence, in
  * one predicate. The user id is INTERPOLATED FROM THE SESSION by the route, never taken from the
  * request, so a client cannot write into another user's folder even though there is one user.
+ *
+ * ── ONE PREDICATE, TWO WINDOWS ──────────────────────────────────────────────────────────────
+ * `addRandomSuffix: true` (`app/api/admin/nina/upload/route.ts`) means Blob REWRITES the pathname
+ * it was asked for, so this is called against two different shapes: REQUESTED —
+ * `avatar-<12>.<ext>`, at the token mint — and STORED — `avatar-<12>-<suffix>.<ext>`, when
+ * `replaceNinaAvatarAction` (`lib/admin/ninaAlbumAvatarActions.ts`) re-validates what `put`
+ * actually returned. The suffix group is optional rather than a second predicate, matching
+ * `lib/admin/chatPhotos.ts`'s `isAdminChatPhotoPathname` — read that module's header for why the
+ * id's own `{12}` is a FIXED quantifier rather than a split on `-` (a `newId()` may itself contain
+ * and end with `-`). Before this widened, every replace failed with "That file did not land in her
+ * photo folder": the object had already reached the store, and only the row update pointing at it
+ * was refused.
  */
 export function isAdminAvatarRequestPathname(pathname: string, userId: string): boolean {
   if (!/^[A-Za-z0-9_-]{1,64}$/.test(userId)) return false
   const pattern = new RegExp(
-    `^${NINA_BLOB_PREFIX}${userId}/avatar-[A-Za-z0-9_-]{12}\\.(${ADMIN_AVATAR_EXTS.join('|')})$`,
+    `^${NINA_BLOB_PREFIX}${userId}/avatar-[A-Za-z0-9_-]{12}(?:-[A-Za-z0-9_-]{16,64})?\\.(${ADMIN_AVATAR_EXTS.join('|')})$`,
   )
   return pattern.test(pathname)
 }
