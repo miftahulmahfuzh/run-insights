@@ -39,9 +39,9 @@ export function PhotoshopDetail({
   sourceId: string
   sourceUrl: string
 }) {
-  const [mode, setMode] = React.useState<NinaPhotoshopMode>('anchor')
-  const [model, setModel] = React.useState<string>(photoshopModelIdsFor('anchor')[0] ?? '')
-  const [instruction, setInstruction] = React.useState('')
+  const [mode, setMode] = React.useState<NinaPhotoshopMode>('edit')
+  const [model, setModel] = React.useState<string>('bytedance-seed/seedream-4.5')
+  const [instruction, setInstruction] = React.useState(photoshopPresetText('bigger_boobs') ?? '')
   const [presetSelect, setPresetSelect] = React.useState('')
   const [jobId, setJobId] = React.useState<string | null>(null)
   const [job, setJob] = React.useState<PhotoshopJobView | null>(null)
