@@ -180,6 +180,11 @@ export const NINA_PHOTOSHOP_PRESETS: readonly NinaPhotoshopPreset[] = [
     label: 'Hip curves',
     text: 'Same woman, same angle — but the curves of her hips show a little more',
   }),
+  Object.freeze({
+    key: 'hip_curves',
+    label: 'Hip curves',
+    text: 'Same woman, same angle — but now her arms are slightly more thick',
+  }),
 ]
 
 export function photoshopPresetText(key: string): string | null {
