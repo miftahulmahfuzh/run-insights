@@ -143,27 +143,27 @@ export const NINA_PHOTOSHOP_PRESETS: readonly NinaPhotoshopPreset[] = [
   Object.freeze({
     key: 'eyes_fix',
     label: 'Eyes fix',
-    text: 'Same woman, same photo, same everything — fix her eyes so they look natural, correctly shaped and properly focused.',
+    text: 'Same woman, same photo, same everything — fix her eyes so they look natural, correctly shaped and properly focused',
   }),
   Object.freeze({
     key: 'add_sunglasses',
     label: 'Add sunglasses',
-    text: 'Same woman, same photo, same everything — she is now wearing stylish sunglasses.',
+    text: 'Same woman, same photo, same everything — she is now wearing stylish sunglasses',
   }),
   Object.freeze({
     key: 'eyes_closed',
     label: 'Eyes closed',
-    text: 'Same woman, same photo, same everything — her eyes are gently closed.',
+    text: 'Same woman, same photo, same everything — her eyes are gently closed',
   }),
   Object.freeze({
     key: 'bigger_boobs',
     label: 'Bigger boobs',
-    text: 'Same woman, same outfit, same angle — but with a little bit larger, perky breasts.',
+    text: 'Same woman, same outfit, same angle — but with slightly larger, perky breasts',
   }),
   Object.freeze({
     key: 'bigger_butt',
     label: 'Bubble butt',
-    text: 'Same woman, same angle, but she now has noticeably more prominent, bubble butt',
+    text: 'Same woman, same angle, but she now has slightly more prominent, round butt',
   }),
   Object.freeze({
     key: 'longer_calves',
@@ -173,7 +173,7 @@ export const NINA_PHOTOSHOP_PRESETS: readonly NinaPhotoshopPreset[] = [
   Object.freeze({
     key: 'bigger_thighs',
     label: 'Thicker thighs',
-    text: 'Same woman, but she now has noticeably thicker thighs',
+    text: 'Same woman, but she now has slightly thicker and sexier thighs',
   }),
   Object.freeze({
     key: 'hip_curves',
@@ -184,6 +184,11 @@ export const NINA_PHOTOSHOP_PRESETS: readonly NinaPhotoshopPreset[] = [
     key: 'thicker_arms',
     label: 'Thicker arms',
     text: 'Same woman, same angle — but now her arms are slightly more thick',
+  }),
+  Object.freeze({
+    key: 'slimmer_waist',
+    label: 'Slimmer waist',
+    text: 'Same woman, same angle, but she now has slightly slimmer waist',
   }),
 ]
 
