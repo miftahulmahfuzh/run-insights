@@ -795,8 +795,12 @@ function focusShape<K extends string>(keys: readonly K[]): Record<K, typeof focu
  * would admit a second empty value the row cannot store. The pairing this schema exists to enforce
  * is not weakened by either removal: the `refine` below is what rejects a half-selection, in both
  * directions.
+ *
+ * **Exported (2026-09-19)** for `setNinaImageReferenceAction`'s reason: the Image Collection
+ * explorer's quick-set icon writes only this one field, not the whole prefs row, and needs the
+ * same validation without re-declaring it.
  */
-const ninaImageReferenceSchema = z
+export const ninaImageReferenceSchema = z
   .object({
     source: z.enum(NINA_IMAGE_REFERENCE_SOURCES),
     id: z.string().trim().max(NINA_IMAGE_REFERENCE_ID_MAX),

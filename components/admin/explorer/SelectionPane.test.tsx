@@ -74,6 +74,13 @@ vi.mock('@/lib/admin/ninaAlbumActions', () => ({
 const { uploadAvatarPhoto } = vi.hoisted(() => ({ uploadAvatarPhoto: vi.fn() }))
 vi.mock('./avatarUpload', () => ({ uploadAvatarPhoto }))
 
+// `imageReferenceActions` opens with `requireAdmin()` -> the same auth chain -> `next/server` the
+// comment below rules out for `MediaPane` — mocked at its own boundary for the same reason.
+const { setNinaImageReferenceAction } = vi.hoisted(() => ({
+  setNinaImageReferenceAction: vi.fn(),
+}))
+vi.mock('@/lib/admin/imageReferenceActions', () => ({ setNinaImageReferenceAction }))
+
 // The media dispatch arm renders `MediaPane`, whose own suite exercises it in full — mocked here
 // the way `ChatScreen.test.tsx` mocks a sibling component that is already covered elsewhere.
 // `isMediaRow` is reimplemented rather than re-imported from the real module: the real
@@ -172,6 +179,7 @@ describe('AlbumSelectionPane (via SelectionPane)', () => {
     replaceNinaAvatarAction.mockReset().mockResolvedValue({ ok: true })
     saveNinaAvatarCropAction.mockReset().mockResolvedValue({ ok: true })
     setCurrentNinaAvatarAction.mockReset().mockResolvedValue({ ok: true })
+    setNinaImageReferenceAction.mockReset().mockResolvedValue({ ok: true })
     uploadAvatarPhoto.mockReset().mockResolvedValue({
       blobUrl: 'https://blob.example/avatar-new.jpg',
       pathname: 'nina/u1/avatar-new.jpg',
@@ -275,6 +283,19 @@ describe('AlbumSelectionPane (via SelectionPane)', () => {
   it('disables the profile-picture control when the photo is already current', () => {
     render(<SelectionPane {...baseProps()} photo={albumPhoto({ isCurrent: true })} />)
     expect(screen.getByRole('button', { name: 'Her profile picture' })).toBeDisabled()
+  })
+
+  it('sets the image-generation anchor and shows a confirmation note', async () => {
+    const user = userEvent.setup()
+    render(<SelectionPane {...baseProps()} photo={albumPhoto({ id: 'anchor-me' })} />)
+    await user.click(screen.getByRole('button', { name: 'Set as image-generation anchor' }))
+    await waitFor(() =>
+      expect(setNinaImageReferenceAction).toHaveBeenCalledWith({
+        source: 'album',
+        id: 'anchor-me',
+      }),
+    )
+    expect(await screen.findByText('Set as the image-generation anchor.')).toBeVisible()
   })
 
   it('removes the photo and calls onRemoved(null) on success', async () => {

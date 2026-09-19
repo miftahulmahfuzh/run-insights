@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, useTransition } from 'react'
 import { CircleFrame } from '@/components/admin/CircleFrame'
 import { CropStudio } from '@/components/admin/CropStudio'
 import {
+  AnchorIcon,
   BrushIcon,
   DownloadIcon,
   PersonFrameIcon,
@@ -21,6 +22,7 @@ import {
   editNinaMessageImageNegativeSearchKeywordsAction,
   editNinaMessageImageSearchKeywordsAction,
 } from '@/lib/admin/chatPhotoKeywordActions'
+import { setNinaImageReferenceAction } from '@/lib/admin/imageReferenceActions'
 import { setChatPhotoAsAvatarAction } from '@/lib/admin/ninaAlbumActions'
 import { cn } from '@/lib/cn'
 import { resolveCrop, type NinaCrop } from '@/lib/nina/crop'
@@ -33,9 +35,11 @@ import type { ExplorerPhoto, MediaExplorerPhoto } from './model'
  * **One row of the Media folder, in full** — the purged `/admin/photos` rail (`ChatPhotoDetail` +
  * `ChatPhotoProfilePicture`), re-hosted as the explorer's media selection pane. Every verb the old
  * rail had is here, for BOTH kinds of row: the brush (the generation prompt — see R2 below), the
- * person (adopt as her profile picture, draft framing), download, replace, remove — and the
- * describe story lives in the `PhotoDescription` section below the icon row (R3's unified panel;
- * the old eye toggle retired with the seam it fed).
+ * person (adopt as her profile picture, draft framing), the anchor (set as the image-generation
+ * reference — 2026-09-19, unconditional on `kind` since a runner's upload is as valid a reference
+ * as one of her generations, see `referenceEligibleChatPhotoScope`), download, replace, remove —
+ * and the describe story lives in the `PhotoDescription` section below the icon row (R3's unified
+ * panel; the old eye toggle retired with the seam it fed).
  *
  * ── THE FRAMING HALF IS ADOPTION, AND THE DRAFT HAS NOWHERE TO PERSIST ──────────────────────
  * A media row has no crop columns (`nina_message_images` has none — and
@@ -124,6 +128,9 @@ export function MediaPane({
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
 
+  /** "Set as image-generation anchor" — its own note, `AlbumSelectionPane`'s convention. */
+  const [anchorNote, setAnchorNote] = useState<string | null>(null)
+
   /** The download, on `useSavePhoto`'s shared ladder — the album rail's same hook, not a third. */
   const saver = useSavePhoto(photo.url, 'nina')
 
@@ -159,6 +166,19 @@ export function MediaPane({
       }
       setWorn(true)
       setDraft(null)
+    })
+  }
+
+  const onSetAnchor = () => {
+    if (pending) return
+    setError(null)
+    startTransition(async () => {
+      const result = await setNinaImageReferenceAction({ source: 'chat', id: photo.id })
+      if (!result.ok) {
+        setError(result.error ?? 'That did not work.')
+        return
+      }
+      setAnchorNote('Set as the image-generation anchor.')
     })
   }
 
@@ -224,7 +244,8 @@ export function MediaPane({
        * THE ONE ICON ROW — the old rail's grammar, in the pane's idiom. Left of the hairline: what
        * the photograph IS to her (the brush ONLY while a prompt exists — R2; the describe story
        * lives in the panel section below). Right of it: what the operator can DO — make it hers,
-       * download a copy, open it in Photoshop, replace its bytes, remove it, destructive last. The
+       * anchor image generation to it, download a copy, open it in Photoshop, replace its bytes,
+       * remove it, destructive last. The
        * Photoshop button is a plain `ButtonLink` to `/admin/photoshop/message_image/[id]`, the same
        * route `PhotoshopPickerGrid` links to — pure navigation, nothing to await. Every control
        * names itself with `aria-label`/`title`; MediaControls's fragment drops Replace and Remove
@@ -267,6 +288,19 @@ export function MediaPane({
           size="md"
           variant="secondary"
           className={RAIL_BUTTON}
+          loading={pending}
+          disabled={pending}
+          aria-label="Set as image-generation anchor"
+          title="Set as image-generation anchor"
+          onClick={onSetAnchor}
+        >
+          <AnchorIcon className="size-4" />
+        </Button>
+
+        <Button
+          size="md"
+          variant="secondary"
+          className={RAIL_BUTTON}
           loading={saver.busy}
           aria-label="Download this photo"
           title="Download this photo"
@@ -293,6 +327,11 @@ export function MediaPane({
         {saver.notice !== null && (
           <p role="status" className="basis-full text-[12px] font-medium text-ink-3">
             {SAVE_NOTICE_TEXT[saver.notice]}
+          </p>
+        )}
+        {anchorNote !== null && (
+          <p role="status" className="basis-full text-[12px] font-medium text-ink-3">
+            {anchorNote}
           </p>
         )}
         {error !== null && (

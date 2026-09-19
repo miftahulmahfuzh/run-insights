@@ -21,7 +21,7 @@ import {
   type NinaPhotoRef,
   type NinaPhotoRefPage,
 } from '@/lib/nina/imageprefs'
-import { generatedChatPhotoScope } from './images'
+import { referenceEligibleChatPhotoScope } from './images'
 
 /**
  * Split from `lib/nina/queries.ts` on 2026-09-12: this file carries that barrel's §10b
@@ -31,7 +31,7 @@ import { generatedChatPhotoScope } from './images'
  *
  * The flat name `lib/nina/imageprefs.ts` is the MODEL layer — zero imports, client-safe.
  * This is its persistence module; the mirror naming is deliberate. Its only cross-module
- * imports are `countNinaChatPhotos` + `generatedChatPhotoScope` from `./images` and
+ * imports are `countNinaChatPhotos` + `referenceEligibleChatPhotoScope` from `./images` and
  * `countNinaAvatars` from `./avatars`.
  */
 /* ============================================================================
@@ -208,13 +208,16 @@ export async function writeNinaImagePrefs(
  * ── WHICH ROWS, AND WHICH INDEX ──────────────────────────────────────────────────────────────
  * The album side is EVERY folder — *"all photos in Nina's album"* — so there is no `folder`
  * predicate and it reads `nina_avatars_user_created_idx on (user_id, created_at desc)`, which is
- * exactly this shape. The chat side is `generatedChatPhotoScope` (`queries/images.ts`), i.e. `kind = 'generated'`
- * only: HIS uploads share that table and are not photographs of her. `kind` stays a residual
- * predicate over `nina_message_images_user_created_idx` for the reason that function's docstring
- * gives, and **no index is added** — nothing has measured a need for one.
+ * exactly this shape. The chat side is `referenceEligibleChatPhotoScope` (`queries/images.ts`),
+ * i.e. `kind IN ('generated', 'upload')` — not `generatedChatPhotoScope`'s narrower
+ * `kind = 'generated'`: a photograph he sent through the composer is not necessarily of him (he
+ * also sends her reference photographs of other people), so it is as valid a reference as one she
+ * generated (2026-09-19). `kind` stays a residual predicate over
+ * `nina_message_images_user_created_idx` for the reason that function's docstring gives, and **no
+ * index is added** — nothing has measured a need for one.
  *
  * ── AND NOT A REFERENCE ROW. THIS IS PLAN INVARIANT 13 AND IT IS WHY THIS FUNCTION CALLS
- *    `generatedChatPhotoScope` INSTEAD OF SPELLING `eq(kind, 'generated')` ITSELF ───────────────
+ *    `referenceEligibleChatPhotoScope` INSTEAD OF SPELLING `inArray(kind, [...])` ITSELF ─────────
  * A row in `nina_message_images` is a **reference** when `source_avatar_id` OR `source_image_id` is
  * non-null (`lib/db/schema.ts:1081-1112`): it is a real photograph in a real bubble whose bytes are
  * already in the collection under another id, written by `resolveAttachment`'s re-attach path
@@ -228,17 +231,18 @@ export async function writeNinaImagePrefs(
  * which the user complained about in as many words. R10's grid would re-create the defect on a new
  * screen.
  *
- * It does not, and the reason is structural rather than lucky: `generatedChatPhotoScope`
- * (`queries/images.ts`) is `and(eq(userId), eq(kind, 'generated'), isOriginalPhoto())`,
- * and `isOriginalPhoto()` (`queries/images.ts`) is
+ * It does not, and the reason is structural rather than lucky: `referenceEligibleChatPhotoScope`
+ * (`queries/images.ts`) is `and(eq(userId), inArray(kind, ['generated', 'upload']),
+ * isOriginalPhoto())`, and `isOriginalPhoto()` (`queries/images.ts`) is
  * `and(isNull(sourceAvatarId), isNull(sourceImageId))`.
  *
- * **DO NOT INLINE THE PREDICATE.** Replacing `generatedChatPhotoScope(userId)` with a hand-written
- * `and(eq(ninaMessageImages.userId, userId), eq(ninaMessageImages.kind, 'generated'))` — the
- * "obvious" simplification, since this function needs a different projection anyway — silently
- * re-admits every reference row and re-creates the duplicate. `tests/nina.imageprefs.test.ts`
- * asserts the source of this function contains `generatedChatPhotoScope` and does **not** contain a
- * literal `kind` comparison, so the shortcut fails a test rather than shipping.
+ * **DO NOT INLINE THE PREDICATE.** Replacing `referenceEligibleChatPhotoScope(userId)` with a
+ * hand-written `and(eq(ninaMessageImages.userId, userId), inArray(ninaMessageImages.kind,
+ * ['generated', 'upload']))` — the "obvious" simplification, since this function needs a different
+ * projection anyway — silently re-admits every reference row and re-creates the duplicate.
+ * `tests/nina.imageprefs.test.ts` asserts the source of this function contains
+ * `referenceEligibleChatPhotoScope` and does **not** contain a literal `kind` comparison, so the
+ * shortcut fails a test rather than shipping.
  *
  * The album side needs no such filter and gains nothing from one: `nina_avatars` is the ORIGIN side
  * and has no provenance columns at all (`lib/db/schema.ts:1497-1571`). An album row is never a
@@ -294,7 +298,7 @@ export async function listNinaPhotoReferences(
         contentHash: ninaMessageImages.contentHash,
       })
       .from(ninaMessageImages)
-      .where(generatedChatPhotoScope(userId))
+      .where(referenceEligibleChatPhotoScope(userId))
       .orderBy(desc(ninaMessageImages.createdAt), desc(ninaMessageImages.id)),
   ])
 
@@ -374,7 +378,7 @@ export async function resolveNinaPhotoReference(
       contentHash: ninaMessageImages.contentHash,
     })
     .from(ninaMessageImages)
-    .where(and(generatedChatPhotoScope(userId), eq(ninaMessageImages.id, reference.id)))
+    .where(and(referenceEligibleChatPhotoScope(userId), eq(ninaMessageImages.id, reference.id)))
     .limit(1)
   const row = rows[0]
   return row ? { source: 'chat' as const, thumbUrl: null, ...row } : null

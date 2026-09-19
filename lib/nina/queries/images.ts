@@ -620,6 +620,37 @@ export function generatedChatPhotoScope(userId: string) {
   )
 }
 
+/**
+ * The predicate for "chat photographs eligible as the image-generation reference" —
+ * `generatedChatPhotoScope`'s own arm, widened from `kind = 'generated'` to `kind IN ('generated',
+ * 'upload')`. His uploads are not necessarily photographs of him — the runner also sends her
+ * reference photographs of other people through the composer — so a photo he sent is as valid an
+ * `input_references` seed as one she generated. `generatedChatPhotoScope` itself is left alone: it
+ * still defines the narrower "her chat photographs" set that `/admin/photos` and the chat-photo
+ * count read, and this function's callers (`listNinaPhotoReferences`, `resolveNinaPhotoReference`
+ * in `queries/imageprefs.ts`) are the only two that should see uploads join the set.
+ *
+ * The adoption dedup below is copied rather than shared because `generatedChatPhotoScope`'s
+ * `alreadyAdoptedIntoAlbum` subquery is a local `const`, not an export — the `source_key =
+ * 'chat-photo:' || id` join has no `kind` predicate of its own, so it excludes an adopted upload
+ * exactly as it excludes an adopted generation.
+ */
+export function referenceEligibleChatPhotoScope(userId: string) {
+  const alreadyAdoptedIntoAlbum = sql`(
+    select 1
+      from ${ninaAvatars}
+     where ${ninaAvatars.userId} = ${userId}
+       and ${ninaAvatars.sourceKey} = 'chat-photo:' || ${ninaMessageImages.id}
+  )`
+
+  return and(
+    eq(ninaMessageImages.userId, userId),
+    inArray(ninaMessageImages.kind, ['generated', 'upload']),
+    isOriginalPhoto(),
+    notExists(alreadyAdoptedIntoAlbum),
+  )
+}
+
 /* ============================================================================
  * §5a-2 The Media view — every ORIGINAL photograph, both kinds (R1)
  *

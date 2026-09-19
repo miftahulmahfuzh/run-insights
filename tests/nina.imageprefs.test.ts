@@ -510,16 +510,19 @@ describe("the migration's data step transcribes the defaults correctly", () => {
 })
 
 describe("the picker's union cannot contain the same photograph twice (plan invariant 13)", () => {
-  it('reaches the chat set through generatedChatPhotoScope, never a hand-written kind filter', () => {
-    /* PLAN INVARIANT 13. `generatedChatPhotoScope` carries `isOriginalPhoto()`, which is the only
-     * thing keeping an album face out of this grid twice — once as the `nina_avatars` row and
-     * again as the chat row that points at it. Inlining `eq(kind, 'generated')` here would be the
-     * obvious simplification (this read needs its own projection anyway) and would silently
-     * re-create the duplicate the F37 set just removed. So the shortcut is a failing test. */
+  it('reaches the chat set through referenceEligibleChatPhotoScope, never a hand-written kind filter', () => {
+    /* PLAN INVARIANT 13. `referenceEligibleChatPhotoScope` carries `isOriginalPhoto()`, which is
+     * the only thing keeping an album face out of this grid twice — once as the `nina_avatars` row
+     * and again as the chat row that points at it. Inlining `inArray(kind, [...])` here would be
+     * the obvious simplification (this read needs its own projection anyway) and would silently
+     * re-create the duplicate the F37 set just removed. So the shortcut is a failing test.
+     * 2026-09-19: repointed from `generatedChatPhotoScope` to its sibling — see that function's
+     * own test below, unchanged, since `generatedChatPhotoScope` itself still exists for its other
+     * callers (the `/admin/photos` folder, the chat-photo count). */
     const source = readSource('lib/nina/queries/imageprefs.ts')
     const fn = source.slice(source.indexOf('export async function listNinaPhotoReferences'))
     const body = fn.slice(0, fn.indexOf('\nexport '))
-    expect(body).toContain('generatedChatPhotoScope(userId)')
+    expect(body).toContain('referenceEligibleChatPhotoScope(userId)')
     expect(body).not.toMatch(/ninaMessageImages\.kind/)
   })
 
@@ -530,12 +533,11 @@ describe("the picker's union cannot contain the same photograph twice (plan inva
      * chat row's provenance NULL, so the photograph came back as two tiles — which is what the
      * user reported on 2026-09-12 ("the first 2 are duplicates").
      *
-     * The fix is one more arm on `generatedChatPhotoScope`, and it must STAY there: both the rows
-     * and the `total` `listNinaPhotoReferences` returns are now read through this one scope (the
-     * total is the deduped count of the SAME read, not a second statement any more), so a copy of
-     * this arm inside `listNinaPhotoReferences` would let the two disagree. Asserted as source text
-     * like the case above, because this file has no database harness — the generated-SQL proof is
-     * `tests/nina.photoRefs.test.ts`'s `ADOPTED_SKIPPED`. */
+     * The fix is one more arm on `generatedChatPhotoScope`, and it must STAY there: `/admin/photos`
+     * and the chat-photo count are both still read through this one scope, so a copy of this arm
+     * elsewhere would let them disagree. Asserted as source text like the case above, because this
+     * file has no database harness — the generated-SQL proof is `tests/nina.photoRefs.test.ts`'s
+     * `ADOPTED_SKIPPED`. */
     const source = readSource('lib/nina/queries/images.ts')
     const fn = source.slice(
       source.indexOf('\nexport function generatedChatPhotoScope(userId: string) {'),
@@ -546,6 +548,22 @@ describe("the picker's union cannot contain the same photograph twice (plan inva
     expect(body).toContain("'chat-photo:'")
     /* And the F37 arm is still there — the new one is an ADDITION, not a swap. */
     expect(body).toContain('isOriginalPhoto()')
+  })
+
+  it('and its reference-eligible sibling carries the same dedup arm, widened to both kinds', () => {
+    /* 2026-09-19: the reference picker now includes his uploads (not just her generations), via
+     * `referenceEligibleChatPhotoScope` — `generatedChatPhotoScope`'s sibling, not a replacement.
+     * Same dedup arm, same `isOriginalPhoto()`, `kind IN (...)` instead of `kind = 'generated'`. */
+    const source = readSource('lib/nina/queries/images.ts')
+    const fn = source.slice(
+      source.indexOf('\nexport function referenceEligibleChatPhotoScope(userId: string) {'),
+    )
+    const body = fn.slice(0, fn.indexOf('\n}\n'))
+    expect(body).toContain('notExists(')
+    expect(body).toContain('ninaAvatars.sourceKey')
+    expect(body).toContain("'chat-photo:'")
+    expect(body).toContain('isOriginalPhoto()')
+    expect(body).toContain("inArray(ninaMessageImages.kind, ['generated', 'upload'])")
   })
 })
 

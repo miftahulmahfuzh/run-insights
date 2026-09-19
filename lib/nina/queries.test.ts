@@ -71,6 +71,13 @@ import * as barrel from '@/lib/nina/queries'
  * one name out — because `removeChatPhotoAction` was its one caller and no longer refuses on this
  * count; it cascades instead. The R3 paragraph above still names it, as the historical record of
  * when and why it was added.
+ *
+ * The 2026-09-19 "quick-set reference from the Image Collection" follow-up takes it 108 → 109:
+ * adds `referenceEligibleChatPhotoScope`, `generatedChatPhotoScope`'s sibling for the
+ * image-generation reference picker — widened to `kind IN ('generated', 'upload')` rather than
+ * `kind = 'generated'` alone. `generatedChatPhotoScope` itself is unchanged and keeps its own
+ * callers; `listNinaPhotoReferences` and `resolveNinaPhotoReference` (`queries/imageprefs.ts`)
+ * repoint to the new scope.
  */
 const BARREL_VALUE_EXPORTS = [
   'adoptNinaMessageImage',
@@ -193,6 +200,9 @@ const BARREL_VALUE_EXPORTS = [
   'readNinaTuning',
   'readRecentFieldValues',
   'recordFieldValue',
+  // 2026-09-19 "quick-set reference from the Image Collection": `generatedChatPhotoScope`'s
+  // sibling, widened to `kind IN ('generated', 'upload')` for the reference picker only.
+  'referenceEligibleChatPhotoScope',
   'removeNinaSession',
   'renameNinaAvatarFolder',
   'renameNinaFolderSubtree',

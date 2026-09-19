@@ -54,6 +54,13 @@ vi.mock('@/lib/admin/chatPhotoKeywordActions', () => ({
 const { setChatPhotoAsAvatarAction } = vi.hoisted(() => ({ setChatPhotoAsAvatarAction: vi.fn() }))
 vi.mock('@/lib/admin/ninaAlbumActions', () => ({ setChatPhotoAsAvatarAction }))
 
+// `imageReferenceActions` opens with `requireAdmin()` -> the auth chain -> `next/server`, the same
+// reason `chatPhotoActions` is mocked above rather than imported live.
+const { setNinaImageReferenceAction } = vi.hoisted(() => ({
+  setNinaImageReferenceAction: vi.fn(),
+}))
+vi.mock('@/lib/admin/imageReferenceActions', () => ({ setNinaImageReferenceAction }))
+
 // `MediaControls`' own upload/replace/remove flow is exercised in full by `MediaControls.test.tsx`
 // — mocked here the way `ChatScreen.test.tsx` mocks a sibling component covered elsewhere.
 vi.mock('./MediaControls', () => ({
@@ -103,6 +110,7 @@ describe('MediaPane', () => {
     editNinaMessageImageSearchKeywordsAction.mockReset().mockResolvedValue({ ok: true })
     editNinaMessageImageNegativeSearchKeywordsAction.mockReset().mockResolvedValue({ ok: true })
     setChatPhotoAsAvatarAction.mockReset().mockResolvedValue({ ok: true })
+    setNinaImageReferenceAction.mockReset().mockResolvedValue({ ok: true })
     saver.busy = false
     saver.notice = null
   })
@@ -179,8 +187,24 @@ describe('MediaPane', () => {
     render(<MediaPane {...baseProps()} photo={mediaPhoto()} />)
     await user.click(screen.getByRole('button', { name: 'Set as her profile picture' }))
 
-    expect(screen.getByText('already exists')).toBeInTheDocument()
+    expect(await screen.findByText('already exists')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Set as her profile picture' })).toBeEnabled()
+  })
+
+  it('sets the image-generation anchor for a generated photo, and shows a confirmation note', async () => {
+    const user = userEvent.setup()
+    render(
+      <MediaPane {...baseProps()} photo={mediaPhoto({ id: 'anchor-me', kind: 'generated' })} />,
+    )
+    await user.click(screen.getByRole('button', { name: 'Set as image-generation anchor' }))
+
+    expect(setNinaImageReferenceAction).toHaveBeenCalledWith({ source: 'chat', id: 'anchor-me' })
+    expect(await screen.findByText('Set as the image-generation anchor.')).toBeVisible()
+  })
+
+  it('also offers the anchor button on his uploads, not just her generations', () => {
+    render(<MediaPane {...baseProps()} photo={mediaPhoto({ kind: 'upload' })} />)
+    expect(screen.getByRole('button', { name: 'Set as image-generation anchor' })).toBeEnabled()
   })
 
   it('renders MediaControls with this photo id, and forwards onRemoved through it', () => {

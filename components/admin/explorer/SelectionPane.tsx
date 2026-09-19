@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, useTransition } from 'react'
 import { CircleFrame } from '@/components/admin/CircleFrame'
 import { CropStudio } from '@/components/admin/CropStudio'
 import {
+  AnchorIcon,
   CheckIcon,
   DownloadIcon,
   PersonFrameIcon,
@@ -17,6 +18,7 @@ import { ShareToNinaItem } from '@/components/admin/ShareToNinaItem'
 import { TOUCH_ICON } from '@/components/admin/touch'
 import { Button, ButtonLink } from '@/components/ui'
 import { useSavePhoto, type SaveNotice } from '@/components/ui/useSavePhoto'
+import { setNinaImageReferenceAction } from '@/lib/admin/imageReferenceActions'
 import {
   deleteNinaAvatarAction,
   describeNinaAvatarAction,
@@ -178,6 +180,9 @@ function AlbumSelectionPane({
   const [replacing, setReplacing] = useState(false)
   const [replaceNote, setReplaceNote] = useState<string | null>(null)
   const replaceFileRef = useRef<HTMLInputElement>(null)
+
+  /** "Set as image-generation anchor" — its own note, `replaceNote`'s convention. */
+  const [anchorNote, setAnchorNote] = useState<string | null>(null)
 
   async function onReplacePick(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
@@ -390,6 +395,24 @@ function AlbumSelectionPane({
           <PersonFrameIcon className="size-4" />
         </Button>
 
+        <Button
+          size="md"
+          variant="secondary"
+          className={RAIL_BUTTON}
+          loading={pending}
+          disabled={pending}
+          aria-label="Set as image-generation anchor"
+          title="Set as image-generation anchor"
+          onClick={() =>
+            run(
+              () => setNinaImageReferenceAction({ source: 'album', id: photo.id }),
+              () => setAnchorNote('Set as the image-generation anchor.'),
+            )
+          }
+        >
+          <AnchorIcon className="size-4" />
+        </Button>
+
         <ShareToNinaItem
           photoId={photo.id}
           described={photo.description != null}
@@ -465,6 +488,11 @@ function AlbumSelectionPane({
         {replaceNote !== null && (
           <p role="status" className="basis-full text-[12px] font-medium text-ink-3">
             {replaceNote}
+          </p>
+        )}
+        {anchorNote !== null && (
+          <p role="status" className="basis-full text-[12px] font-medium text-ink-3">
+            {anchorNote}
           </p>
         )}
         {error && (
