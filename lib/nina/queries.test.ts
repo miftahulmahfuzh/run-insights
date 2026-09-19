@@ -208,6 +208,7 @@ const BARREL_VALUE_EXPORTS = [
   'setNinaMessageImageSearchKeywordsAndEmbedding',
   'setNinaSessionPinned',
   'setNinaSessionTitleIfUntitled',
+  'updateNinaAvatarBlob',
   'updateNinaAvatarCrop',
   'updateNinaChatPhotoBlob',
   'updateNinaChatPhotoDescription',

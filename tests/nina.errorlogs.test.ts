@@ -169,6 +169,8 @@ describe('listNinaErrorLogs', () => {
           'HTTP 503',
           22_000,
           null,
+          null,
+          null,
           '2026-09-12 00:11:22+00',
         ),
       ],

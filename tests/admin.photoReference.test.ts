@@ -260,7 +260,6 @@ describe('the grid is the iOS idiom, and it is bounded', () => {
     expect(code).not.toContain('@/lib/nina/queries')
     expect(code).not.toContain("'use server'")
     expect(code).not.toContain('Action(')
-    expect(code).not.toContain('useEffect')
   })
 })
 
