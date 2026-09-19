@@ -8,6 +8,89 @@ Feature codes (`F01`–`F33`) refer to the plan files in [`docs/plans/archive/`]
 (`R-nn`) refer to `RECONCILIATION_v0.1.0.md`, the v0.1.0 arbitration record — removed from the
 tree in September 2026, readable in git history.
 
+## [v1.4.0] - 2026-09-19
+
+Photoshop jobs can now crop their source image to an exact aspect ratio before the edit runs —
+a new studio step (`lib/nina/photoshopCrop.ts`, four nullable `nina_photoshop_jobs` columns)
+landed as a 5-phase plan set. A job's prompt can be edited before a retry instead of only
+resubmitted as-is (`setNinaImageJobPrompt`, `updateNinaImageJobPrompt`, a redo that can also swap
+the reference photo), and failed jobs now surface the provider's raw rejection text plus a
+headless redo-with-edited-prompt tool for Nina herself to call. The bulk of the cycle went into
+tightening how her selfies and avatar generations obey pose, camera angle, and facial expression:
+a hybrid free-text + preset Facial expression field and a Hairstyle preset joined Image
+Generation, the chat model can now override the fixed camera angle per photo, and a long run of
+prompt fixes closed contradictions between the angle preset, gaze, and eye-symmetry clauses. The
+Photoshop screen and admin Image Collection converged on one Replace icon used from every entry
+point (Album, Media, Photoshop detail, image-collection row), and four new CLI skills
+(`/photoshop`, `/pull-photoshop-job`, `/pull-image-gen-job`, `/redo-image-gen-job`) give a runner
+a scriptable path to the same operations outside the browser.
+
+97 commits, 178 files changed (+56,111/-2,044 lines), 6,608 unit tests across 371 files — up from
+6,384 tests at v1.3.0. Live at **[runins.site](https://runins.site)**.
+
+### Added
+
+- **Aspect-ratio crop step for Photoshop** (`photoshop-aspect-ratio-crop`, 5 phases).
+  `NINA_IMAGE_ASPECT_RATIOS` moved from module-private to exported in `lib/nina/imagerecipe.ts`;
+  a new `lib/nina/photoshopCrop.ts` (resolve/clamp/pan/zoom/nudge, pixel-box extraction) crops
+  source bytes to an exact ratio server-side; `nina_photoshop_jobs` gained four nullable columns
+  (`crop_ratio_label`, `crop_scale`, `crop_x`, `crop_y` — all-null means no crop, unchanged
+  behavior); `runPhotoshopJobAction` validates the new params; the Photoshop screen gained an
+  optional crop step in its UI.
+- **Edit a job's prompt before retrying it** (`nina-job-prompt-edit`, 2 phases). A new
+  `setNinaImageJobPrompt` DB write and `updateNinaImageJobPrompt` server action back an
+  edit-prompt control and a retry control on the job detail page; `redoNinaImageJob` now returns
+  the new job's id, and a redo can pick a different reference photo, not just resubmit the same
+  prompt.
+- **Facial expression field for Image Generation**, hybrid free-text + preset, alongside a new
+  Hairstyle preset (backfilled into pre-existing saved templates) and a from-behind camera-angle
+  preset focused on her butt.
+- **Per-photo camera-angle override** — the chat model can now override Nina's fixed camera
+  framing for one photo instead of it being a session-wide dial.
+- Failed image-generation jobs now surface the provider's raw rejection text, and a headless
+  redo-with-edited-prompt tool lets Nina retry a job herself mid-chat.
+- A "foto lu" no-interpretation photo shortcut, and a one-call "regenerate all four" icon for the
+  image-generation text fields (plus a per-field generate icon on each of the four).
+- A Photoshop tab for editing an existing Nina photo, with its own error-log tab; a manual Replace
+  button on the Photoshop detail screen and a matching Replace icon on the Album and
+  image-collection icon rows; a quick "set as image-generation anchor" icon on Image Collection.
+- Four new CLI skills: `/photoshop`, `/pull-photoshop-job`, `/pull-image-gen-job`, and
+  `/redo-image-gen-job`, covering photoshop runs, diagnosing a failed photoshop or image-gen job,
+  and editing-then-rerunning a job's prompt from outside the browser.
+- `/pull-image-gen-job` shows the job id in the sidecar; the image-generation daily cap fallback
+  rose from 30 to 100.
+
+### Changed
+
+- A long run of selfie/avatar prompt tuning: the camera-angle preset system closed its
+  contradiction with free-text scene/notes, the tool schema no longer conflates gaze with camera
+  angle, the overhead selfie stance became ironclad instead of a dial (with its butt clause
+  relaxed for that angle), the flirty-gaze clause stopped fighting a closed-eye expression, hands
+  got an explicit shape (long fingers, neat nails), the calf-to-thigh ratio was baked into the
+  default selfie prompt, and the unused prompt-length dial was removed end to end.
+- Media now sorts by most recent replace, not just creation; Seedream 4.5's 1K-resolution 400
+  error was resolved; the Photoshop tab defaults to edit/Seedream 4.5/"bigger boobs"; the
+  "Bigger thighs" preset had its wording fixed and its calves pinned; the admin nav moved
+  Personality below Photoshop; the photo grids widened from 10×3 to 30×3, then to 33×3; a
+  Photoshop run now redirects to image selection after replace/add.
+- `/nina/about` now folds its page size into cookies and always picks up a fresh server render;
+  its photo-reference grid scrolls into view on Previous/Next and resolves out-of-window deep
+  links; the job-detail link no longer races its own close.
+
+### Fixed
+
+- Deleting a Media photo now syncs the linked Album row instead of refusing the delete.
+- The admin Media "+" upload control actually adds a photo again.
+- The closed sidebar panel is inert to pointer events; the image-gen ✕ no longer wakes the
+  generate button.
+- A job's reference photo opens in the same full-screen viewer as its output, as an icon-only
+  button; chat-adopted avatars now link instead of copying, redirecting image bytes too.
+- The vision witness transcribes ordinary prose, not just fitness screens, and its
+  highlighted-passage quote is more reliable than full-page OCR; a leaked clock reading no longer
+  becomes a claim about time.
+- Four tests left stale by earlier feature commits were updated; `lib/nina/actions/send.ts` picked
+  up a missed prettier pass.
+
 ## [v1.3.0] - 2026-09-17
 
 The admin album's semantic search stopped being an Album-only feature: Media (Nina's chat
@@ -660,6 +743,7 @@ phone.
   excluded unless `VITEST_INTEGRATION=1` / `LLM_LIVE_TEST=1` are set, so a green `npm test` is not a
   statement about Postgres or about the model.
 
+[v1.4.0]: https://github.com/miftahulmahfuzh/run-insights/releases/tag/v1.4.0
 [v1.3.0]: https://github.com/miftahulmahfuzh/run-insights/releases/tag/v1.3.0
 [v1.2.0]: https://github.com/miftahulmahfuzh/run-insights/releases/tag/v1.2.0
 [v1.1.0]: https://github.com/miftahulmahfuzh/run-insights/releases/tag/v1.1.0
