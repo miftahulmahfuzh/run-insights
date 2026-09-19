@@ -6,19 +6,19 @@
   "phases": [
     {
       "card": null,
-      "commit": null,
+      "commit": "6e9cdb2",
       "depends_on": [],
       "difficulty": "HARD",
       "n": 1,
-      "note": "Baseline note (coordinator, before spawn): npm test on origin/main @ b88d5bc already has 4 failing test files unrelated to this plan (components/admin/AdminNavLinks.test.tsx grid-class assertions stale vs current markup; lib/nina/queries.test.ts barrel-contract missing updateNinaAvatarBlob). Confirmed present on main itself, not introduced by this worktree. Invariant 1's 'passes npm test' is satisfied when a phase introduces no NEW failures beyond this known baseline -- do not spend phase time chasing these 4.",
+      "note": "Pure crop-math module landed. Fixed a plan-code contradiction: clampPhotoshopCrop's code block folded +Infinity to 0 via finiteOr before clamping, contradicting its own docstring and test case (only NaN should fold to 0, +Infinity should clamp to bound). Implementation fixed, not the test -- rung: a failing verification is never settled by relaxing the check. Full verification green (npm test: same 5 pre-existing baseline failures, zero new; typecheck/lint/format/guards all pass).",
       "package": "lib/nina",
       "plan": ".workflows/plan/photoshop-aspect-ratio-crop/phase-1.md",
-      "reported_at": "2026-09-19T07:20:20+00:00",
+      "reported_at": "2026-09-19T07:39:19+00:00",
       "satisfies": [
         "R1"
       ],
-      "status": "pending",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-NIN-A055",
       "title": "Pure crop-math module + exported ratio enum"
     },
     {
@@ -54,7 +54,7 @@
       "satisfies": [
         "R1"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": null,
       "title": "Server-side crop execution"
     },
@@ -74,7 +74,7 @@
       "satisfies": [
         "R1"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": null,
       "title": "Server Action + page wiring"
     },
@@ -102,7 +102,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/photoshop-aspect-ratio-crop/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "photoshop-aspect-ratio-crop",
-  "updated": "2026-09-19T07:36:36+00:00",
+  "updated": "2026-09-19T07:39:27+00:00",
   "verified_at": "2026-09-19T07:36:36+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/photoshop-aspect-ratio-crop"
 }
