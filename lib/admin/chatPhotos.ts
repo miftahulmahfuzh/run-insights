@@ -366,9 +366,10 @@ export interface ChatPhotoActionResult {
   description?: string
   /**
    * A true thing about the outcome that is NOT a failure — `AdminActionResult.note`'s stated
-   * purpose. Today it has one use: saying that the Blob object was kept because another row still
-   * points at it (D5). `ok` is still `true`; the photograph is out of the collection, which is what
-   * was asked.
+   * purpose. Two uses: saying that the Blob object was kept because another row still points at it
+   * (D5), and saying that removing this photo took her current profile picture with it and the
+   * album's next photo is now current (the album-sync-on-delete follow-up to R3). `ok` is still
+   * `true` either way; the photograph is out of the collection, which is what was asked.
    */
   note?: string
 }

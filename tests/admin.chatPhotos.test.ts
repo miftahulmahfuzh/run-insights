@@ -398,7 +398,6 @@ const { FakeVisionTokenFloorError } = vi.hoisted(() => ({
 }))
 
 const requireAdmin = vi.fn()
-const countNinaAvatarsLinkedToImage = vi.fn()
 const getNinaMessageImage = vi.fn()
 const findNinaImageByContentHash = vi.fn()
 const insertNinaMessages = vi.fn()
@@ -448,17 +447,20 @@ vi.mock('@/lib/nina/caption', () => ({
   captionNinaPhoto: (...args: unknown[]) => captionNinaPhoto(...args),
 }))
 vi.mock('@/lib/nina/queries', () => ({
-  countNinaAvatarsLinkedToImage: (...args: unknown[]) => countNinaAvatarsLinkedToImage(...args),
+  deleteNinaAvatarsLinkedToImage: vi.fn(),
   deleteNinaMessage: vi.fn(),
   deleteNinaMessageImage: vi.fn(),
   findNinaImageByContentHash: (...args: unknown[]) => findNinaImageByContentHash(...args),
+  getFirstNinaAvatarExcluding: vi.fn(),
   getNinaMessageImage: (...args: unknown[]) => getNinaMessageImage(...args),
   getNinaMessageImagesForMessages: vi.fn(),
   getNinaMessagesByIds: vi.fn(),
   insertNinaMessageImages: (...args: unknown[]) => insertNinaMessageImages(...args),
   insertNinaMessages: (...args: unknown[]) => insertNinaMessages(...args),
   isBlobPathnameReferenced: vi.fn(),
+  listNinaAvatarsLinkedToImage: vi.fn(),
   readNinaTuning: (...args: unknown[]) => readNinaTuning(...args),
+  setCurrentNinaAvatar: vi.fn(),
   setNinaMessageImageDescription: (...args: unknown[]) => setNinaMessageImageDescription(...args),
   setNinaMessageImageDescriptionAndEmbedding: (...args: unknown[]) =>
     setNinaMessageImageDescriptionAndEmbedding(...args),
@@ -1426,6 +1428,10 @@ const deleteNinaMessage = handle('deleteNinaMessage')
 const deleteNinaMessageImage = handle('deleteNinaMessageImage')
 const getNinaMessagesByIds = handle('getNinaMessagesByIds')
 const getNinaMessageImagesForMessages = handle('getNinaMessageImagesForMessages')
+const listNinaAvatarsLinkedToImage = handle('listNinaAvatarsLinkedToImage')
+const getFirstNinaAvatarExcluding = handle('getFirstNinaAvatarExcluding')
+const deleteNinaAvatarsLinkedToImage = handle('deleteNinaAvatarsLinkedToImage')
+const setCurrentNinaAvatar = handle('setCurrentNinaAvatar')
 
 const HASH = 'a'.repeat(64)
 const SOURCE_HASH = 'b'.repeat(64)
@@ -1434,9 +1440,12 @@ beforeEach(() => {
   // The caption suite's shared beforeEach leaves `setNinaMessageImageDescription` resolving
   // `undefined` (its callback never reads the answer); these actions DO, so they need the row.
   setNinaMessageImageDescription.mockResolvedValue({ id: IMAGE_ID })
-  // media-album-unified-search phase 2 (R3): 0 is "no album entry points at this photograph" —
-  // what every pre-existing removeChatPhotoAction case here assumes.
-  countNinaAvatarsLinkedToImage.mockResolvedValue(0)
+  // media-album-unified-search R3 follow-up (2026-09-19): `[]` is "no album entry points at this
+  // photograph" — what every pre-existing removeChatPhotoAction case here assumes.
+  listNinaAvatarsLinkedToImage.mockResolvedValue([])
+  getFirstNinaAvatarExcluding.mockResolvedValue(null)
+  deleteNinaAvatarsLinkedToImage.mockResolvedValue([])
+  setCurrentNinaAvatar.mockResolvedValue(true)
   releaseBlobIfUnreferenced.mockResolvedValue('deleted')
   promoteNinaImageDependents.mockResolvedValue({ found: 0, fetched: 0, promoted: 0 })
   deleteNinaMessage.mockResolvedValue({ id: MESSAGE_ID })
@@ -1584,55 +1593,70 @@ describe('removeChatPhotoAction — the one destructive action on this surface',
   })
 
   /*
-   * `media-album-unified-search` R3. Since the promotion became a LINK, a `nina_avatars` row can
-   * name this row through `source_image_id` and show its object without owning a byte. The FK is
-   * `ON DELETE RESTRICT`, so Postgres refuses the delete either way; the check the action makes
-   * turns that into the sentence shape the operator already knows from `deleteNinaAvatarAction`'s
-   * "That is her current photo — make another one current first."
-   *
-   * These four cases exist because phase 2 shipped the guard and its exit criterion without a test
-   * for either — `tests/admin.chatPhotos.test.ts` appears in none of its test steps.
+   * `media-album-unified-search` R3 gave a `nina_avatars` row `source_image_id`, a LINK that shows
+   * this row's object without owning a byte, guarded by `ON DELETE RESTRICT`. Phase 2 turned that
+   * into a refusal; the 2026-09-19 follow-up replaces the refusal with a cascade — this action
+   * deletes the pointer rows itself, promoting a successor current avatar first when one of them
+   * held that title, so the album stays in sync instead of blocking the operator.
    */
-  it('refuses when an album entry still points at the photograph, and measures nothing first', async () => {
-    countNinaAvatarsLinkedToImage.mockResolvedValue(1)
-
-    const result = await actions.removeChatPhotoAction({ id: IMAGE_ID })
-
-    expect(result).toEqual({
-      ok: false,
-      error: 'An album entry shows this photo — remove it from the album first.',
-    })
-    /* Nothing may be measured, promoted or deleted on behalf of a remove that is not going to
-     * happen — `isChatPhotoReference`'s stated rule, one refusal over. */
-    expect(promoteNinaImageDependents).not.toHaveBeenCalled()
-    expect(deleteNinaMessage).not.toHaveBeenCalled()
-    expect(deleteNinaMessageImage).not.toHaveBeenCalled()
-    expect(releaseBlobIfUnreferenced).not.toHaveBeenCalled()
-  })
-
-  it('pluralises the refusal, and names the count, when several album entries point at it', async () => {
-    countNinaAvatarsLinkedToImage.mockResolvedValue(3)
-
-    const result = await actions.removeChatPhotoAction({ id: IMAGE_ID })
-
-    expect(result).toEqual({
-      ok: false,
-      error: '3 album entries show this photo — remove them from the album first.',
-    })
-    expect(deleteNinaMessageImage).not.toHaveBeenCalled()
-  })
-
-  it('a zero count is NOT a refusal — the ordinary remove still runs to completion', async () => {
-    countNinaAvatarsLinkedToImage.mockResolvedValue(0)
+  it('no linked album row — the ordinary remove still runs to completion, untouched', async () => {
+    listNinaAvatarsLinkedToImage.mockResolvedValue([])
 
     const result = await actions.removeChatPhotoAction({ id: IMAGE_ID })
 
     expect(result).toMatchObject({ ok: true, id: IMAGE_ID })
-    expect(countNinaAvatarsLinkedToImage).toHaveBeenCalledWith(USER, IMAGE_ID)
+    expect(listNinaAvatarsLinkedToImage).toHaveBeenCalledWith(USER, IMAGE_ID)
+    expect(deleteNinaAvatarsLinkedToImage).not.toHaveBeenCalled()
+    expect(setCurrentNinaAvatar).not.toHaveBeenCalled()
     expect(releaseBlobIfUnreferenced).toHaveBeenCalledTimes(1)
   })
 
-  it('a REFERENCE row never reaches the pointer count — the cheaper refusal is first', async () => {
+  it('deletes the linked pointer rows itself, above its own delete, instead of refusing', async () => {
+    listNinaAvatarsLinkedToImage.mockResolvedValue([{ id: 'avaLinked1', isCurrent: false }])
+
+    const result = await actions.removeChatPhotoAction({ id: IMAGE_ID })
+
+    expect(result).toMatchObject({ ok: true, id: IMAGE_ID })
+    expect(deleteNinaAvatarsLinkedToImage).toHaveBeenCalledWith(USER, IMAGE_ID)
+    expect(setCurrentNinaAvatar).not.toHaveBeenCalled() // none of the linked rows was current
+    const cascadeAt = deleteNinaAvatarsLinkedToImage.mock.invocationCallOrder[0] ?? Infinity
+    const deleteAt = deleteNinaMessage.mock.invocationCallOrder[0] ?? -Infinity
+    expect(cascadeAt).toBeLessThan(deleteAt)
+  })
+
+  it("promotes the album's next-newest entry BEFORE the cascade removes her current photo", async () => {
+    listNinaAvatarsLinkedToImage.mockResolvedValue([
+      { id: 'avaLinked1', isCurrent: false },
+      { id: 'avaLinked2', isCurrent: true },
+    ])
+    getFirstNinaAvatarExcluding.mockResolvedValue({ id: 'avaNext123' })
+
+    const result = await actions.removeChatPhotoAction({ id: IMAGE_ID })
+
+    expect(getFirstNinaAvatarExcluding).toHaveBeenCalledWith(USER, ['avaLinked1', 'avaLinked2'])
+    expect(setCurrentNinaAvatar).toHaveBeenCalledWith(USER, 'avaNext123')
+    const promoteAt = setCurrentNinaAvatar.mock.invocationCallOrder[0] ?? Infinity
+    const cascadeAt = deleteNinaAvatarsLinkedToImage.mock.invocationCallOrder[0] ?? -Infinity
+    expect(promoteAt).toBeLessThan(cascadeAt)
+    expect(result).toMatchObject({
+      ok: true,
+      note: "That was her current profile picture — the album's next photo is now current.",
+    })
+  })
+
+  it('no successor to promote — the delete still proceeds, and she is left with no current photo', async () => {
+    listNinaAvatarsLinkedToImage.mockResolvedValue([{ id: 'avaLinked1', isCurrent: true }])
+    getFirstNinaAvatarExcluding.mockResolvedValue(null)
+
+    const result = await actions.removeChatPhotoAction({ id: IMAGE_ID })
+
+    expect(setCurrentNinaAvatar).not.toHaveBeenCalled()
+    expect(deleteNinaAvatarsLinkedToImage).toHaveBeenCalledWith(USER, IMAGE_ID)
+    expect(result).toMatchObject({ ok: true, id: IMAGE_ID })
+    expect(result.note).toBeUndefined()
+  })
+
+  it('a REFERENCE row never reaches the pointer read — the cheaper refusal is first', async () => {
     getNinaMessageImage.mockResolvedValue({
       ...imageRow,
       messageId: null,
@@ -1645,7 +1669,7 @@ describe('removeChatPhotoAction — the one destructive action on this surface',
       ok: false,
       error: 'That one re-shows a photo that lives elsewhere. Remove the original instead.',
     })
-    expect(countNinaAvatarsLinkedToImage).not.toHaveBeenCalled()
+    expect(listNinaAvatarsLinkedToImage).not.toHaveBeenCalled()
   })
 
   it('a row that vanished between the read and the delete is the miss sentence, not a crash', async () => {

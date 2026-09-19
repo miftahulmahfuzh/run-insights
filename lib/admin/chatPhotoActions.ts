@@ -27,16 +27,19 @@ import { releaseBlobIfUnreferenced } from '@/lib/nina/blobRelease'
 import { promoteNinaImageDependents } from '@/lib/nina/provenancePromotion'
 import { ninaImageCaption } from '@/lib/nina/imagefail'
 import {
-  countNinaAvatarsLinkedToImage,
+  deleteNinaAvatarsLinkedToImage,
   deleteNinaMessage,
   deleteNinaMessageImage,
   findNinaImageByContentHash,
+  getFirstNinaAvatarExcluding,
   getNinaMessageImage,
   getNinaMessageImagesForMessages,
   getNinaMessagesByIds,
   insertNinaMessageImages,
   insertNinaMessages,
+  listNinaAvatarsLinkedToImage,
   readNinaTuning,
+  setCurrentNinaAvatar,
   setNinaMessageImageDescription,
   setNinaMessageImageDescriptionAndEmbedding,
   updateNinaChatPhotoBlob,
@@ -626,22 +629,28 @@ export async function findChatPhotoDuplicateAction(
  * otherwise take the `{ message: null, siblings: [] }` short-circuit straight into
  * `deleteNinaMessageImage`, which is exactly the delete this paragraph forbids.
  *
- * ── AND A PHOTOGRAPH AN ALBUM ENTRY POINTS AT CANNOT LEAVE ─────────────────────────────────
- * `media-album-unified-search` R3. Since the promotion became a LINK, a `nina_avatars` row can
- * name this row through `source_image_id` and show its object without owning a byte. The FK is
- * `ON DELETE RESTRICT` — the plan index's Decision argues why, against `SET NULL` (a pointer with
- * no bytes, unrecoverable) and `CASCADE` (silently losing the "current profile picture"
- * designation) — so Postgres refuses this delete either way.
+ * ── AN ALBUM ENTRY NO LONGER BLOCKS THIS — THE DELETE SYNCS THE ALBUM INSTEAD ───────────────
+ * `media-album-unified-search` R3 gave a `nina_avatars` row `source_image_id`, a LINK that shows
+ * this row's object without owning a byte, guarded by `ON DELETE RESTRICT` so Postgres refused
+ * this delete outright. That refusal used to reach the operator as *"An album entry shows this
+ * photo — remove it from the album first."* — a second screen, for a pointer row the operator
+ * never created by hand and has no reason to manage separately from the photo it shows.
  *
- * The check below turns that refusal into the shape the operator already knows from
- * `deleteNinaAvatarAction`'s *"That is her current photo — make another one current first."*: one
- * sentence naming the fix, instead of a constraint violation surfaced as a framework error page.
- * The constraint stays the backstop for the race this read cannot close, exactly as
- * `nina_avatars_user_source_key_unq` is for re-adoption's.
+ * This action now deletes those pointer rows itself, ABOVE this row's own delete, so the
+ * constraint never fires: `listNinaAvatarsLinkedToImage` reads them, and
+ * `deleteNinaAvatarsLinkedToImage` removes them. When one of them was her current photo,
+ * `getFirstNinaAvatarExcluding` picks the album's next-newest entry and `setCurrentNinaAvatar`
+ * promotes it FIRST — the same successor an operator would have picked from `/admin/nina` — so
+ * deleting the Media original never leaves a "current" row pointing at a photograph that is gone;
+ * it becomes "her photo changed", named here rather than left to whichever row the partial unique
+ * index happens to tolerate. An album with nothing else left is the one case with no successor:
+ * the delete still proceeds, and she is left with no current photo, exactly as after the very
+ * first upload.
  *
  * It sits ABOVE `loadPhotoCarrier` and above `promoteNinaImageDependents` for
- * `isChatPhotoReference`'s stated reason, one refusal over: nothing may be measured, promoted or
- * deleted on behalf of a remove that is not going to happen.
+ * `isChatPhotoReference`'s stated reason, one refusal over: nothing may be measured or promoted on
+ * behalf of a remove that is not going to happen — but this cascade DOES run here, because unlike
+ * that refusal, this remove IS going to happen.
  */
 export async function removeChatPhotoAction(input: unknown): Promise<ChatPhotoActionResult> {
   const { userId } = await requireAdmin()
@@ -659,15 +668,18 @@ export async function removeChatPhotoAction(input: unknown): Promise<ChatPhotoAc
     }
   }
 
-  const linked = await countNinaAvatarsLinkedToImage(userId, id)
-  if (linked > 0) {
-    return {
-      ok: false,
-      error:
-        linked === 1
-          ? 'An album entry shows this photo — remove it from the album first.'
-          : `${linked} album entries show this photo — remove them from the album first.`,
+  const linkedAvatars = await listNinaAvatarsLinkedToImage(userId, id)
+  let reassignedCurrentAvatar = false
+  if (linkedAvatars.length > 0) {
+    const linkedIds = linkedAvatars.map((avatar) => avatar.id)
+    if (linkedAvatars.some((avatar) => avatar.isCurrent)) {
+      const successor = await getFirstNinaAvatarExcluding(userId, linkedIds)
+      if (successor != null) {
+        await setCurrentNinaAvatar(userId, successor.id)
+        reassignedCurrentAvatar = true
+      }
     }
+    await deleteNinaAvatarsLinkedToImage(userId, id)
   }
 
   const carrier = await loadPhotoCarrier(userId, row.messageId)
@@ -694,13 +706,20 @@ export async function removeChatPhotoAction(input: unknown): Promise<ChatPhotoAc
 
   const outcome = await releaseBlobIfUnreferenced(userId, row)
 
+  const notes = [
+    ...(reassignedCurrentAvatar
+      ? ["That was her current profile picture — the album's next photo is now current."]
+      : []),
+    ...(outcome === 'shared'
+      ? ['The file is still used elsewhere, so it was kept in the store.']
+      : []),
+  ]
+
   revalidatePath(ADMIN_CHAT_PHOTOS_PATH)
   return {
     ok: true,
     id,
-    ...(outcome === 'shared'
-      ? { note: 'The file is still used elsewhere, so it was kept in the store.' }
-      : {}),
+    ...(notes.length > 0 ? { note: notes.join(' ') } : {}),
   }
 }
 

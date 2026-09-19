@@ -61,6 +61,16 @@ import * as barrel from '@/lib/nina/queries'
  * `nina_image_field_history`'s avoid-list. The cap constant that module also declares
  * (`NINA_IMAGE_FIELD_HISTORY_CAP`) is deliberately NOT exported — this barrel admits functions
  * only, per the second test below.
+ *
+ * The 2026-09-19 "Media delete syncs the album instead of refusing" follow-up to
+ * `media-album-unified-search` R3 takes it 106 → 108: adds `listNinaAvatarsLinkedToImage` (id +
+ * `is_current` only, read before the cascade decides whether a successor needs promoting),
+ * `getFirstNinaAvatarExcluding` (the successor read), and `deleteNinaAvatarsLinkedToImage` (the
+ * cascade's own delete, deliberately not guarded by `is_current` the way `deleteNinaAvatars` is —
+ * see that function's header) — three names in — and REMOVES `countNinaAvatarsLinkedToImage` —
+ * one name out — because `removeChatPhotoAction` was its one caller and no longer refuses on this
+ * count; it cascades instead. The R3 paragraph above still names it, as the historical record of
+ * when and why it was added.
  */
 const BARREL_VALUE_EXPORTS = [
   'adoptNinaMessageImage',
@@ -70,9 +80,6 @@ const BARREL_VALUE_EXPORTS = [
   // See `lib/nina/queries/avatarEmbeddings.ts`'s header for why they are a module of their own.
   'countNinaAvatarDescribeBacklog',
   'countNinaAvatars',
-  // media-album-unified-search phase 2 (R3): the pointer-row deletion pre-check — "is an album
-  // entry still pointing at this photograph?" `lib/nina/queries/images.ts`'s own header argues it.
-  'countNinaAvatarsLinkedToImage',
   'countNinaMediaPhotos',
   // media-album-unified-search phase 2 (R1/R2): the MEDIA twin of `countNinaAvatarDescribeBacklog`
   // — `lib/nina/queries/imageEmbeddings.ts`'s header.
@@ -84,6 +91,10 @@ const BARREL_VALUE_EXPORTS = [
   'deleteNinaAvatar',
   'deleteNinaAvatars',
   'deleteNinaAvatarsInFolderTree',
+  // media-album-unified-search R3 follow-up (2026-09-19): the cascade's own delete — every pointer
+  // naming a Media original that is about to go, NOT guarded by `is_current` the way
+  // `deleteNinaAvatars` is. `lib/nina/queries/avatars.ts`'s header argues why not.
+  'deleteNinaAvatarsLinkedToImage',
   'deleteNinaFolderSubtree',
   'deleteNinaMemoryFact',
   'deleteNinaMemorySlot',
@@ -101,6 +112,10 @@ const BARREL_VALUE_EXPORTS = [
   // surfacing through the barrel's `export *` — the set's only documented growth (83 → 85).
   'generatedChatPhotoScope',
   'getCurrentNinaAvatar',
+  // media-album-unified-search R3 follow-up (2026-09-19): the successor read — the album's
+  // next-newest entry, excluding the rows the cascade is about to delete. Promoted to current
+  // BEFORE the cascade removes a pointer that held that title. `lib/nina/queries/avatars.ts`.
+  'getFirstNinaAvatarExcluding',
   // nina-avatar-existing-photo phase 1, R2: the session-scoped fallback read for "which photo did
   // he mean" — surfaces through the barrel's `export *` like every other `./queries/images` export.
   'getLatestOriginalNinaSessionPhoto',
@@ -138,6 +153,11 @@ const BARREL_VALUE_EXPORTS = [
   'listNinaAvatarManifest',
   'listNinaAvatars',
   'listNinaAvatarsInFolder',
+  // media-album-unified-search R3 follow-up (2026-09-19): id + `is_current` only, for
+  // `removeChatPhotoAction`'s cascade to decide whether a successor needs promoting before it
+  // deletes these rows. `lib/nina/queries/avatars.ts`'s header argues why it lives beside the
+  // delete it feeds rather than in `queries/images.ts` beside the count it replaced.
+  'listNinaAvatarsLinkedToImage',
   // nina-about-pagination (2026-09-17): the whole-album paged read `/nina/about`'s Foto profil tab
   // needs now that it no longer reads `listNinaAvatars` unbounded — documented growth, paired with
   // the SAME commit's removal of `listNinaMessageImages` (its one caller moved to the

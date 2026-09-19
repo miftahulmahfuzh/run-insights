@@ -210,12 +210,14 @@ describe.skipIf(!enabled)(
       })
     })
 
-    it('the FK refuses to let the original leave while the pointer names it', async () => {
+    it('the FK still refuses a bare delete that skips the cascade', async () => {
       /*
-       * ON DELETE RESTRICT, as the database's own answer rather than the action's sentence.
-       * `removeChatPhotoAction`'s friendly refusal is tested in `tests/admin.chatPhotos.test.ts`; this
-       * is the backstop underneath it, which is what makes that check a courtesy rather than the only
-       * thing standing between the operator and a pointer with no bytes.
+       * ON DELETE RESTRICT, as the database's own answer rather than the app's. Since 2026-09-19,
+       * `removeChatPhotoAction` no longer asks Postgres this question — it deletes the pointer rows
+       * itself first, so the constraint never fires from that path (see `tests/admin.chatPhotos.test.ts`
+       * for that cascade). This proves the constraint is still there underneath: a delete that skips
+       * the cascade — a hand-run statement, a future writer that forgets it — is still refused rather
+       * than silently orphaning or losing a current-photo designation.
        */
       await expect(
         db
@@ -223,8 +225,10 @@ describe.skipIf(!enabled)(
           .where(and(eq(s.ninaMessageImages.userId, USER), eq(s.ninaMessageImages.id, IMAGE_ID))),
       ).rejects.toThrow()
 
-      /* And the count the action reads agrees with the constraint. */
-      await expect(q.countNinaAvatarsLinkedToImage(USER, IMAGE_ID)).resolves.toBe(1)
+      /* And the read the cascade uses to decide agrees with the constraint. */
+      await expect(q.listNinaAvatarsLinkedToImage(USER, IMAGE_ID)).resolves.toEqual([
+        { id: POINTER_ID, isCurrent: false },
+      ])
     })
   },
 )

@@ -244,6 +244,15 @@ export type NinaAvatarSource = 'seed' | 'generated' | 'operator' | 'admin'
  * excluded from collection listings and from search, and this column extends that convention to
  * the album arm (see the plan index's dedup Decision).
  *
+ * ── THE REFUSAL ABOVE IS STILL THE CONSTRAINT'S JOB, NOT THE APP'S ANYMORE (2026-09-19) ─────
+ * `removeChatPhotoAction` (`lib/admin/chatPhotoActions.ts`) no longer surfaces this as a refusal:
+ * it deletes the pointer rows itself first — promoting a successor current avatar when one of them
+ * held that title — so the constraint above never actually fires from that path. `ON DELETE
+ * RESTRICT` stays exactly as argued: it is still the backstop for any OTHER writer that deletes a
+ * `nina_message_images` row without doing that cascade first, and "silently" is what the app-level
+ * successor promotion now specifically avoids that a bare `CASCADE` here still would not.
+ *
+
  * ── THE INDEX IS NOT UNIQUE, AND THAT IS A DECISION ──────────────────────────────────────────
  * `nina_avatars_source_image_id_idx` is a plain btree. No stated invariant forbids two album rows
  * naming one media original — in practice the promotion action reuses the existing pointer, so

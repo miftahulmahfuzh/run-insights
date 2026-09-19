@@ -406,6 +406,68 @@ export async function setCurrentNinaAvatar(userId: string, id: string): Promise<
 }
 
 /**
+ * The album rows that point at a Media photograph, id and current-flag only.
+ * `removeChatPhotoAction`'s cascade reads this before it deletes them, to know whether a
+ * successor has to be promoted first — `media-album-unified-search` R3's `source_image_id`
+ * pointer, the sync-instead-of-refuse follow-up.
+ */
+export async function listNinaAvatarsLinkedToImage(
+  userId: string,
+  imageId: string,
+): Promise<{ id: string; isCurrent: boolean }[]> {
+  return db
+    .select({ id: ninaAvatars.id, isCurrent: ninaAvatars.isCurrent })
+    .from(ninaAvatars)
+    .where(and(eq(ninaAvatars.userId, userId), eq(ninaAvatars.sourceImageId, imageId)))
+}
+
+/**
+ * The album's own successor to her current photo — newest first, same order as `listNinaAvatars`
+ * — excluding the rows a cascade is about to delete. `removeChatPhotoAction` calls this only when
+ * one of those rows IS her current photo, then hands the id straight to `setCurrentNinaAvatar`.
+ *
+ * `null` means the album holds nothing else: every remaining row is one of `excludeIds`, or the
+ * album was never bigger than the entry that just left. The caller proceeds anyway — the delete
+ * this exists for is the point, not a reason to keep the photo around — and the album is left with
+ * no current photo, exactly as it is right after the very first upload.
+ */
+export async function getFirstNinaAvatarExcluding(
+  userId: string,
+  excludeIds: readonly string[],
+): Promise<{ id: string } | null> {
+  const rows = await db
+    .select({ id: ninaAvatars.id })
+    .from(ninaAvatars)
+    .where(
+      and(
+        eq(ninaAvatars.userId, userId),
+        excludeIds.length > 0 ? notInArray(ninaAvatars.id, [...excludeIds]) : undefined,
+      ),
+    )
+    .orderBy(desc(ninaAvatars.createdAt), desc(ninaAvatars.id))
+    .limit(1)
+  return rows[0] ?? null
+}
+
+/**
+ * Delete every album entry that points at a Media photograph — the cascade Media's own delete now
+ * performs instead of asking Postgres's `ON DELETE RESTRICT` to refuse. Unlike `deleteNinaAvatar`/
+ * `deleteNinaAvatars`, `is_current` is NOT a guard here: the caller has already decided the photo
+ * is going, and — via `listNinaAvatarsLinkedToImage` and `getFirstNinaAvatarExcluding` — has
+ * already promoted a successor (or found there was none) before this runs. A guard here would
+ * silently leave a "current" row pointing at a photograph the caller is about to delete anyway.
+ */
+export async function deleteNinaAvatarsLinkedToImage(
+  userId: string,
+  imageId: string,
+): Promise<{ id: string }[]> {
+  return db
+    .delete(ninaAvatars)
+    .where(and(eq(ninaAvatars.userId, userId), eq(ninaAvatars.sourceImageId, imageId)))
+    .returning({ id: ninaAvatars.id })
+}
+
+/**
  * Remove a photo from the album, and hand its blob back so the caller can delete the object.
  *
  * ── THE CURRENT PHOTO CANNOT BE DELETED, AND THAT IS THE WHOLE GUARD ────────────────────────
