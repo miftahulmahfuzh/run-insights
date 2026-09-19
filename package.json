@@ -33,6 +33,7 @@
     "blob:reap": "node --env-file=.env.local scripts/blob-reap.mjs",
     "probe:f04": "node --env-file=.env.local scripts/f04-e2e-probe.mjs",
     "nina:dedupe-media": "node --env-file=.env.local scripts/nina-dedupe-media.mjs",
+    "nina:chat-photo-audit": "node --env-file=.env.local scripts/nina-chat-photo-audit.mjs",
     "nina:dedupe-avatars": "node --env-file=.env.local scripts/nina-dedupe-avatars.mjs",
     "nina:memory-reap": "node --env-file=.env.local scripts/nina-memory-reap.mjs",
     "nina:shortcuts-import": "node --experimental-strip-types --no-warnings --env-file=.env.local scripts/nina-shortcuts-import.mjs",

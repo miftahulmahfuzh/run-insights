@@ -2,7 +2,7 @@
 
 **Package Path**: `.`
 **Package Code**: RI
-**Last Updated**: 2026-09-16
+**Last Updated**: 2026-09-19
 **Total Active Tasks**: 0
 
 ## Quick Stats
@@ -12,7 +12,7 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 44
+- Completed: 45
 - Archived: 41
 
 ---
@@ -34,6 +34,21 @@
 ---
 
 ## Completed Tasks
+
+- [x] **P1-RI-A030** Provenance-based re-audit of the Chat photos collection
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Read-only diagnostic reused from the cancelled phase 3 of `chat-photo-orphans-and-uniqueness` (ruling C9 struck its `is_reference`-based backfill; this TaskID was minted then and never spent). New standalone `scripts/nina-chat-photo-audit.mjs`: pure classifiers (`isOriginalPhotoRow`, `chatPhotoAdoptedIds`, `matchesGeneratedChatPhotoScope`, `matchesMediaCollectionScope`, `auditChatPhotoRows`) plus a `main()` that loads `nina_message_images` and `nina_avatars` via raw SQL and prints, per user: reference rows, pathname-duplicate groups, orphans (`message_id IS NULL`), dangling `source_image_id`s, and a three-way count (raw table vs. `generatedChatPhotoScope` vs. the `listNinaMediaPhotos`/`countNinaMediaPhotos` predicate) answering whether the collection is genuinely empty or a read is over-filtering. No `--apply`, no write path at all — the card's own first line is "Read-only audit; deletes nothing" and names no mutation for one to gate.
+  - **Status**: completed
+  - **Plan Set**: none — standalone card (GitHub issue #143)
+  - **Satisfies**: the card's four report categories plus the empty-vs-filtered diagnostic
+  - **Depends on**: none
+  - **Plan**: `.workflows/plan/P1-RI-A030.md`
+  - **Completed**: 2026-09-19
+  - **Method**: /task (GitHub issue #143, worktree + PR + land)
+  - **Files**: scripts/nina-chat-photo-audit.mjs, tests/nina.chatPhotoAudit.test.ts, package.json
+  - **Drift**: The card (filed 2026-09-07) cited `isOriginalPhoto()`/`listNinaMessageImages`/`generatedChatPhotoScope` in the pre-split `lib/nina/queries.ts` at specific line numbers. Since then: the file was split into `lib/nina/queries/*.ts` (2026-09-12); `listNinaMessageImages` was removed (2026-09-17), its caller replaced by `listNinaMediaPhotos`/`countNinaMediaPhotos` reading a different, wider predicate (`mediaCollectionScope`: `isOriginalPhoto()` alone, no `kind` arm); and `/admin/photos` was purged as a route, folded into `/admin/nina?view=media`. The script computes counts against both the narrower `generatedChatPhotoScope` the card named and the current `listNinaMediaPhotos` equivalent, and the report says so explicitly. The card's premise (the table measured 0 rows on 2026-09-08) no longer holds either — the live run found 282 rows, 150 of them orphans, none with a dangling `source_image_id`.
+  - **Verification**: `npm run typecheck` clean; `npx vitest run tests/nina.chatPhotoAudit.test.ts` 19/19; full `npm test` 6627/6627 across 372 files; `npm run lint` / `npm run format:check` clean; all 8 CI guards (`ci:openrouter-guard`, `badges:check`, `ci:data-layer-guard`, `ci:schema-drift-guard`, `ci:client-secret-guard`, `ci:f08-guard`, `ci:llm-payload-guard`, `ci:f11-guard`) pass; `npm run build` clean; a live read-only run against production (`node --env-file=.env.local scripts/nina-chat-photo-audit.mjs`) completed without error and produced the report quoted on the card.
 
 - [x] **P1-RI-A043** Phase 2: Deep-link every chat push to its session and bubble
   - **Difficulty**: NORMAL
