@@ -158,7 +158,7 @@ export const NINA_PHOTOSHOP_PRESETS: readonly NinaPhotoshopPreset[] = [
   Object.freeze({
     key: 'bigger_boobs',
     label: 'Bigger boobs',
-    text: 'Same woman, same photo, same angle — but with much, much bigger breasts.',
+    text: 'Same woman, same photo, same angle — but with large, perky breasts.',
   }),
   Object.freeze({
     key: 'bigger_butt',
