@@ -4,7 +4,9 @@
 **Last Updated**: 2026-09-17 (`P2-DB-A002` — `nina_message_images` gains the album's three search
 columns, `nina_avatars` gains the `source_image_id` pointer at a Media original, and
 `NINA_EMBEDDING_DIMENSIONS` moves to its own leaf module; migration `0026`. See Notes for the
-documentation history)
+documentation history). Amended 2026-09-19 (`P1-DB-A008` — `nina_photoshop_jobs` gains the four
+nullable crop columns, all-four-null meaning "no crop"; migration `0035_first_loa`, generated and
+**not applied**)
 
 ## Overview
 
@@ -142,6 +144,7 @@ R-13, R-22, R-28 — ten in all). Where a module and a feature plan disagree, th
 | `ninaNags` | `nina_nags` | Escalation-ladder state per nag code | PK `(user_id, code)` |
 | `ninaAvatars` | `nina_avatars` | Nina's photo album: folder, crop transform, thumbnail, dedupe key, `description` + `search_keywords` / `negative_search_keywords` + the `description_embedding` vector, and `source_image_id` — non-null makes the row a pointer at a Media original rather than a photograph of its own | `nina_avatars_user_current_unq` (partial), `nina_avatars_user_created_idx`, `nina_avatars_user_folder_created_idx`, `nina_avatars_user_source_key_unq`, `nina_avatars_user_content_hash_idx` (partial), `nina_avatars_description_embedding_hnsw_idx` (HNSW, `vector_cosine_ops`), `nina_avatars_source_image_id_idx` |
 | `ninaFolders` | `nina_folders` | Asserts a folder exists even when empty | PK `(user_id, folder)` |
+| `ninaPhotoshopJobs` | `nina_photoshop_jobs` | One photoshop attempt on one existing photo, held unresolved until the admin picks Replace / Add / Cancel (`schema/nina/photoshop.ts`). Carries the optional crop quad `crop_ratio_label` / `crop_scale` / `crop_x` / `crop_y` — all four nullable, all four null = no crop | `nina_photoshop_jobs_user_created_idx` |
 | `ninaTuning` | `nina_tuning` | Nina's per-user character: twelve trait dials, the relationship, the four extra dials, seventeen enable flags and a notes field | PK `user_id` |
 | `ninaImagePrefs` | `nina_image_prefs` | How she is photographed: six focus flags, four lines of free text, `prompt_template` + `model` (the image-gen controls), the chosen photo reference | PK `user_id` |
 | `ninaErrorLogs` | `nina_error_logs` | Best-effort log of every FAILED Nina model call (written by `lib/nina/errorlogs.ts`, not `lib/nina/queries.ts`; `user_id` nullable — some failing seams hold no runner) | `nina_error_logs_category_created_idx` |
@@ -152,10 +155,17 @@ R-13, R-22, R-28 — ten in all). Where a module and a feature plan disagree, th
 
 **Integers in the smallest sensible unit** (roadmap D5). Distance is metres, duration and pace are
 seconds, money is millionths of a dollar (`nina_turns.cost_micro_usd`), confidence is an integer
-percent, crop offsets are per-mille of frame width. Floats summed over a month drift visibly;
-integers do not. Two declared exceptions: `profiles.weight_kg` is `numeric(4,1)`, the single
-non-integer *measured* value, and `nina_avatars.crop_scale` is `numeric(5,3)` because a zoom factor
-is a display transform rather than a measurement.
+percent, crop offsets are per-mille of the frame. Floats summed over a month drift visibly;
+integers do not. Three declared exceptions: `profiles.weight_kg` is `numeric(4,1)`, the single
+non-integer *measured* value, and `nina_avatars.crop_scale` and `nina_photoshop_jobs.crop_scale`
+are both `numeric(5,3)` because a zoom factor is a display transform rather than a measurement.
+
+**"Per-mille of the frame" is not one unit — read the owning column's comment.**
+`nina_avatars.crop_x/crop_y` are *both* thousandths of the frame's **width**, which is only legal
+because that frame is a square. `nina_photoshop_jobs.crop_x/crop_y` (2026-09-19) are **per-axis**:
+`crop_x` is per-mille of the frame's width, `crop_y` per-mille of its **height**, because that
+frame is a rectangle at one of the provider's `aspect_ratio` values. Applying the square convention
+to the photoshop columns crops the wrong region on the y axis for every non-square ratio.
 
 **`runs.reviewed_at IS NOT NULL` gates every aggregate** (roadmap D16 / R-13). The column is
 declared here; the filter is enforced in `queries.ts` and asserted by
@@ -757,6 +767,19 @@ stranded. `0031`'s `when` is the newest in the file and therefore above the ledg
 running it deliberately after the deploy, and why the drift guard will report `0031` as pending
 (correctly) in the window between the two steps.
 
+**2026-09-19 (`P1-DB-A008`): the journal's tip is `0035_first_loa` — 36 entries, `0000`–`0035` —
+and it is generated but NOT yet applied.** Applying it is a manual pre-deploy step
+(`npm run db:migrate`); the applied state of `0027`–`0034` was not measured here, so run the guard
+rather than reading a count off this line. The file is four statements, all
+`ALTER TABLE "nina_photoshop_jobs" ADD COLUMN` of a nullable column
+(`crop_ratio_label text`, `crop_scale numeric(5,3)`, `crop_x integer`, `crop_y integer`), with no
+`DROP`, no `SET NOT NULL`, no index and no backfill — so it rewrites no table and is replay-safe on
+a fresh database. Being purely additive it is one of the migrations that **may** lead its deploy,
+unlike `0031`: code that predates the columns never names them, and every row written before it
+reads back NULL, which is the correct value (those jobs had no crop). Nothing in the tree acts on
+the four columns yet — they are written and read back by `lib/nina/photoshopJobs.ts` and otherwise
+inert.
+
 **`0011_rare_blockbuster` was the one stranded entry, and on 2026-09-13 it was repaired by hand.**
 For six days it sat journalled-but-unapplied: its journal `when` (1788786634959) is older than the
 ledger watermark (1789176119493), and the migrator applies an entry only beyond that watermark, so
@@ -793,6 +816,10 @@ not re-derive this by hand either — the counts are what the guard prints on a 
   new one, in one batch.
 - **Never check-then-insert against a unique index.** Catch `23505` via `isUniqueViolation`; two
   tabs will race through any check.
+- **The two crop quads do not share a unit.** `nina_avatars` measures both offsets against the
+  frame's width (square frame); `nina_photoshop_jobs` measures `crop_x` against width and `crop_y`
+  against height (rectangular frame). Both are all-or-nothing: treat "any one of the columns is
+  null" as no crop rather than filling in the missing member.
 - **Do not add a second unscoped read.** `getRunByShareToken` is the only one, and it is unscoped
   because the token is the credential.
 - **Do not add an aggregate without the reviewed filter.** The failure is silent and looks like a
@@ -892,8 +919,11 @@ not re-derive this by hand either — the counts are what the guard prints on a 
 ### Deploy state of the journal
 
 Kept short because it is the fact most likely to have changed since this page was written (and
-six times has): see **Migrations → Deploy state** above — as of 2026-09-18 the journal holds 32
-entries (`0000`–`0031`), and its tip `0031_greedy_jocasta` (the `prompt_length` drop) is
+six times has): see **Migrations → Deploy state** above — as of 2026-09-19 the journal holds 36
+entries (`0000`–`0035`), and its tip `0035_first_loa` (the four nullable `nina_photoshop_jobs` crop
+columns) is generated-but-unapplied pending a manual `npm run db:migrate`; it is additive, so
+unlike a drop it may lead its deploy. Earlier: as of 2026-09-18 the journal held 32
+entries (`0000`–`0031`), and `0031_greedy_jocasta` (the `prompt_length` drop) is
 generated-but-unapplied by design, because destructive migrations follow their deploy rather than
 leading it; `0026_media_album_unified_search` was applied 2026-09-17; the embedding
 migration `0023_dry_kabuki` was verified applied on 2026-09-15 against
@@ -935,4 +965,5 @@ history, and the decisions worth keeping are folded into the sections above. The
 | 2026-09-15 | P2-DB-A001 (admin-album-semantic-search p1) | `nina_avatars` + nullable `description_embedding vector(1536)` and an HNSW `vector_cosine_ops` index; `NINA_EMBEDDING_DIMENSIONS` exported through the schema barrel; the drift guard taught to fold `vector(N)` (width pinned by the schema test instead); nothing writes the column in this phase | `0023_dry_kabuki` (applied; hand-written `CREATE EXTENSION IF NOT EXISTS vector` above the generated DDL — journal-measured 2026-09-17, this row previously named a tag that does not exist) |
 | 2026-09-15 | nina-album-search-relevance-tools R2 | `nina_avatars` + `search_keywords`, then + `negative_search_keywords` — both nullable `text`, no index: one is an input to the embedding, the other is read alone by the ranker | `0024_nina_avatar_search_keywords`, `0025_handy_santa_claus` (both applied) |
 | 2026-09-17 | P2-DB-A002 (media-album-unified-search p1 of 4) | `nina_message_images` + the album's three search columns and an HNSW `vector_cosine_ops` index; `nina_avatars` + `source_image_id` (FK → `nina_message_images.id`, the schema's first `ON DELETE RESTRICT`) and its plain btree; `NINA_EMBEDDING_DIMENSIONS` moved to the leaf module `schema/nina/embedding.ts` to break the `avatars` ⇄ `chat` cycle the new FK creates, barrel surface unchanged; nothing writes any of the four columns in this phase | `0026_media_album_unified_search` (applied; additive-only, generated, no hand-edits) |
+| 2026-09-19 | P1-DB-A008 (photoshop-aspect-ratio-crop p2) | `nina_photoshop_jobs` + the four nullable crop columns (`crop_ratio_label`, `crop_scale numeric(5,3)`, `crop_x`, `crop_y`), all-four-null = no crop, no index, no backfill; `NinaPhotoshopJobArgs` in `lib/nina/photoshopJobs.ts` gained the four optional fields, `openNinaPhotoshopJob` writes them (`?? null`) and `claimNinaPhotoshopJob` reads them back; `scripts/photoshop.ts`'s raw INSERT kept column-list parity with explicit NULLs. Nothing acts on the columns yet | `0035_first_loa` (generated, **not applied** — additive, so it may lead its deploy; see Migrations → Deploy state) |
 | 2026-09-18 | prompt-length removal | `nina_image_prefs` − `prompt_length` (19 → 18 columns) — the sliding-bar control the operator never used, gone from schema, admin panel and prompt assembly | `0031_greedy_jocasta` (generated, **not applied** — a `DROP COLUMN` waits for the code deploy; see Migrations → Deploy state) |

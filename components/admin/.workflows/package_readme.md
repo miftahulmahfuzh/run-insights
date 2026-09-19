@@ -1,7 +1,14 @@
 # Package: components/admin
 
 **Location**: `components/admin`
-**Last Updated**: 2026-09-17 (`media-album-unified-search` phase 3/4, `P2-CA-A006`: the UI half of
+**Last Updated**: 2026-09-19 (`photoshop-aspect-ratio-crop` phase 5/5, `P1-CA-A007`: the optional,
+collapsible **Aspect ratio crop** step on `/admin/photoshop/[source]/[id]`, offered identically in
+Anchor and Edit mode. New `PhotoshopCropStudio.tsx` — the rectangle, ratio-aware sibling of
+`CropStudio` — plus `PhotoshopDetail.tsx`'s crop state, toggle and four new payload fields, and two
+new suites (`PhotoshopCropStudio.test.tsx` 22 cases, `PhotoshopDetail.test.tsx` 6). Skipping the
+step leaves the job payload byte-identical to before, which the detail suite asserts.)
+
+**Previously**: 2026-09-17 (`media-album-unified-search` phase 3/4, `P2-CA-A006`: the UI half of
 unified Album+Media search — the Media arm's keyword boxes, a ranked sheet that mixes both
 collections and labels a media hit `in Media`, and the pointer-row sentence in
 `AlbumSelectionPane`. Touched `explorer/model.ts`, `MediaPane.tsx`, `SelectionPane.tsx`,
@@ -24,7 +31,7 @@ log at the foot.)
 `components/admin` is the view layer of `/admin/**`: the Image collection — `/admin/nina`'s file
 manager, her album as a folder tree and grid with the Media view (every photograph of the
 conversation) behind the same chrome, and a semantic search row above both — plus the framing
-studio, `/admin/personality`'s two
+studio, the photoshop screen and its aspect-ratio crop studio, `/admin/personality`'s two
 controls, `/admin/image-generation`, `/admin/memory`'s one table, and `/admin/shortcuts`.
 There is no data access, no validation and no vendor call in this directory. Reads arrive as
 props from a Server Component; writes leave through a Server Action in `lib/admin`.
@@ -86,6 +93,11 @@ see Test consumers under Reverse Dependencies.
   thumbnail in the browser, and run a bounded, resumable, chunk-registering upload queue.
 - Own the framing studio and the sanity circles at the sizes chat actually draws; hand a photo
   to her chat as a pointer in a new tab with the describe fired but never awaited.
+- `/admin/photoshop/[source]/[id]`: mode, model, the improvement field, the OPTIONAL aspect-ratio
+  crop step (since 2026-09-19), the execute button and the before/after resolution row. The crop
+  step picks one of the catalogued OpenRouter `aspect_ratio` labels and pans/zooms the source
+  inside a rectangle at that ratio; leaving it closed sends four `null`s and the job runs exactly
+  as it did before the feature existed.
 - `/admin/personality`: `CharacterPanel`'s whole-row auto-save tuning, and `TextModelSelect`
   for which GLM writes every text turn.
 - `/admin/image-generation`: her standing photo prefs — camera select, six emphasis
@@ -121,6 +133,8 @@ see Test consumers under Reverse Dependencies.
 | `ShareToNinaItem.tsx` | `'use client'` | "Share link to Nina". Fires the describe, opens the tab inside the click's activation, awaits neither. |
 | `CropStudio.tsx` | `'use client'` | Drag / pinch / wheel / slider / arrows. Every pointer tracked by `pointerId` in a Map: one pans, two pinch. Contains one subtraction and one `Math.hypot`. |
 | `CircleFrame.tsx` | **no directive** | A stored crop as a circle at any size. `ninaCropStyle` + a square box; percentages, never `translate()`. |
+| `PhotoshopCropStudio.tsx` | `'use client'` | `CropStudio`'s RECTANGLE sibling, and a sibling by copy of the interaction pattern rather than by shared code. A ratio `<select>` over `NINA_IMAGE_ASPECT_RATIOS` above a frame shaped `aspect-ratio: a / b` from the LABEL (`'5:4'` → `'5 / 4'` — exact where the float would be a rounding), drag / pinch / wheel / slider / arrows inside it. Controlled, and the ratio is PART of the value (`PhotoshopCropSelection = { ratioLabel, crop }`): changing the ratio changes the frame's shape, which invalidates the offsets, so the two can never be set apart. Every bound, clamp, delta conversion and CSS mapping is `lib/nina/photoshopCrop.ts`, whose functions all take **source, target ratio, crop** in that order; this file holds two pointer positions, a subtraction, one `Math.hypot` and a label→ratio lookup. `zoomFactorForWheel` is imported from `lib/nina/crop` directly. |
+| `PhotoshopDetail.tsx` | `'use client'` | `/admin/photoshop/[source]/[id]` in full: mode, model, the improvement field (free text + a non-sticky preset `<select>` that fills it), the optional crop step, execute, and — once a job lands — the before/after with Replace / Add as new / Cancel. Polls with a sequential `setTimeout` (`POLL_INTERVAL_MS = 3_000`), `ImageGenTestPanel`'s shape, so a slow response cannot stack a second poll. Owns `cropOpen` + `cropSelection` and the only mount of `PhotoshopCropStudio`. |
 | `photoIcons.tsx` | **no directive** | The shared inline-SVG glyph set — one home so one trash cannot grow two silhouettes. 10 glyphs (`EyeIcon`, `ChevronLeftIcon`, `ChevronRightIcon` deleted 2026-09-12: rendered nowhere, imported only by this file's own test). |
 | `AdminNav.tsx` | **no directive** | The nav shell: `<nav>`, desktop eyebrow/footer, breakpoint mechanics (`fixed bottom-0` + `pb-[calc(var(--safe-bottom)/2)]` below `lg`, `lg:sticky lg:top-8` above). The list is `AdminNavLinks`. |
 | `AdminNavLinks.tsx` | `'use client'` | The nav's LIST, both renditions from one markup: below `lg`, `grid h-14 max-w-[470px] grid-cols-6 px-[7px]` — six cells, each a 24 px inlined Lucide glyph named by its sr-only `short` (Overview · Photos · Persona · Images · Memory · Shortcut); at `lg`, the sticky text rail. `usePathname()` paints the active glyph `text-accent` + `aria-current="page"`; at `lg` the active cell fills the `bg-accent-soft` pill with explicit `lg:hover:` twins. `/admin/nina`'s label is **"Image collection"** (short "Photos") since the p4 rename. |
@@ -671,6 +685,75 @@ resolves against width, so a non-square box silently stretches the y offset — 
 renders as centred cover (`resolveCrop(null)` is the identity, and a partial triple or `NaN`
 folds into it). `alt=""` always — the frame is decorative.
 
+## The aspect-ratio crop step
+
+`/admin/photoshop/[source]/[id]` carries an **optional, collapsible** crop step between the
+improvement field and the execute button, offered **identically in Anchor and Edit mode** —
+nothing in `PhotoshopDetail` reads `mode` to decide whether to render it, because
+`buildImageRequestBody` sends `aspect_ratio` and `input_references` the same way either way. The
+only mode-specific behaviour left is the NO-crop fallback, which is the server's.
+
+**Skipping it is byte-identical to the feature not existing.** `cropOpen` starts `false` and
+`cropSelection` starts `null`, so `execute()` sends `cropRatioLabel` / `cropScale` / `cropX` /
+`cropY` as four explicit `null`s and the job behaves exactly as it did before. Closing the step
+again lands on that same payload: the selection is kept so re-opening does not lose the framing,
+but `const selection = cropOpen ? cropSelection : null` means it is not SENT — *"the admin closed
+the step"* and *"the admin never opened it"* have to produce the same job, or the skip contract
+would be decided by history rather than by what is on screen. The spread is `??` and never `||`:
+`cropX` of `0` is a legitimate centred crop. `PhotoshopDetail.test.tsx` asserts the whole ladder
+(offered in both modes, hidden without dimensions, skip → four nulls, open → the auto-pick,
+adjust → the adjusted quadruple, re-close → four nulls again).
+
+**The first open seeds the server's own answer.** `toggleCrop` fills the selection with
+`nearestNinaImageAspectRatio(sourceWidth, sourceHeight)` and `NINA_PHOTOSHOP_CROP_IDENTITY`, so
+opening the step and running with no further adjustment sends the SAME `aspect_ratio` the server
+would have chosen by itself — it differs only in that the pixels genuinely have that shape instead
+of being stretched into it. The closed-state hint quotes that ratio by name, so the trade-off is
+stated rather than implied.
+
+**The step hides entirely when the source's dimensions are unknown.** `getPhotoshopSourcePhoto`
+returns `width`/`height` as `number | null` (a row predating dimension tracking has neither), and
+`cropAvailable` demands both present and positive. Without them there is no source aspect to fit a
+frame to, no honest preview to draw and nothing for the server to compute a pixel box from; a
+control that could only lie is worse than no control, so the job runs as it does today.
+
+**The disclosure is a `<button aria-expanded>`, not `<details>`** — the one place this package
+departs from its two existing disclosures (`ImageGenPanel`, `CharacterPanel`), and for a reason
+that is structural: here the open state IS the payload, and a `<details>`'s openness lives in the
+DOM rather than in React state, so it would have to be mirrored back with an `onToggle` handler
+and could drift from the thing it decides. The whole block sits inside the existing
+`{!showResult && …}` fragment, so it disappears alongside mode/model/instruction once a result is
+on screen — a finished job's inputs are no longer editable.
+
+### Why the studio is a sibling of `CropStudio` and not a generalisation of it
+
+`CropStudio` frames a FACE in a CIRCLE, and its square frame is load-bearing: it is the only
+reason ONE offset unit — thousandths of the frame's **width** — can position both axes, and three
+shipped surfaces (the avatar preview, the chat header avatar, the typing-row avatar) read crops
+written under that assumption. Widening it would put all three at risk for a feature that needs a
+different capability altogether: REAL cropped bytes, not a CSS transform. So `PhotoshopCropStudio`
+copies the interaction pattern — the `pointerId` Map, the hand-registered `{ passive: false }`
+wheel listener, the refs mirrored in a dependency-array-less effect, the factor-emitting zoom
+slider, `touch-none` + `select-none` + `[-webkit-touch-callout:none]` — and shares exactly one
+import with it, `zoomFactorForWheel`, which is ratio-agnostic by construction.
+
+Three things are genuinely different, and all three follow from the frame no longer being square:
+
+- **`x` is in thousandths of the frame's width, `y` in thousandths of its HEIGHT.** Per-axis,
+  because the one place the square-frame convention cannot survive generalisation is the axis a
+  stored offset is measured against.
+- **One measured number, not two.** The frame IS the target ratio, so the component measures its
+  width through a `ResizeObserver` and `panPhotoshopCrop` derives the height as `framePx / ratio`.
+  A second measurement would be a second source of truth for the same fact, and the two would
+  disagree by a sub-pixel the first time the browser rounded a layout.
+- **A ratio change re-clamps in the same emission.** `onChange({ ratioLabel, crop:
+  clampPhotoshopCrop(natural, ratioFor(label), crop) })` — an offset that was legal at 2:1 can be
+  illegal at 3:4, and an unclamped pair would render a sliver of background inside the frame,
+  which is precisely what a crop box must never contain. `ratioFor` asks
+  `ninaImageAspectRatioValue`, the same lookup the Server Action's closed-set check uses, so the
+  picker and the boundary cannot disagree about which labels exist; an unknown label falls back to
+  `1` rather than `NaN`, so a stale stored label renders a square frame instead of a blank one.
+
 ## The character panel
 
 `CharacterPanel` is the whole of `/admin/personality` (the album is the whole of
@@ -1015,6 +1098,26 @@ counts stay MEMORY counts: still true of the account, just not of this page.
 - `@/lib/admin/schema` — `AvatarBatchRecord`, **type-only**.
 - `@/lib/nina/crop` — the whole crop model: `NinaCrop`, `resolveCrop`, `isIdentityCrop`,
   `ninaCropStyle`, `panCrop`, `zoomCrop`, `nudgeCrop`, `zoomFactorForWheel`, the scale bounds.
+  `zoomFactorForWheel` is the ONE name `PhotoshopCropStudio` borrows from here — it maps `deltaY`
+  to a factor and is ratio-agnostic, and `photoshopCrop.ts` deliberately does not re-export it
+  (that module has zero imports by design, so it loads under `--experimental-strip-types`).
+- `@/lib/nina/photoshopCrop` — the rectangle crop's whole arithmetic, and the reason
+  `PhotoshopCropStudio` decides nothing: `clampPhotoshopCrop`, `panPhotoshopCrop`,
+  `zoomPhotoshopCrop`, `nudgePhotoshopCrop`, `ninaPhotoshopCropStyle`, the `NinaPhotoshopCrop` /
+  `NinaPhotoshopSourceSize` types, `NINA_PHOTOSHOP_CROP_IDENTITY` (`PhotoshopDetail`'s seed) and
+  the `MIN_SCALE` / `MAX_SCALE` / `KEY_STEP` bounds. **Every function takes source, target ratio,
+  crop — the ratio SECOND.** Zero-import, which is why a client file may name it.
+- `@/lib/nina/imagerecipe` — `NINA_IMAGE_ASPECT_RATIOS` (the `<select>`'s options ARE the table,
+  so the picker cannot offer a label the model would refuse), `ninaImageAspectRatioValue` (the
+  label→ratio lookup, shared with the Server Action's closed-set check) and
+  `nearestNinaImageAspectRatio` (`PhotoshopDetail`'s auto-pick and the closed-state hint's number).
+- `@/lib/admin/photoshopActions` — the photoshop screen's three writes,
+  `runPhotoshopJobAction` / `readPhotoshopJobAction` / `resolvePhotoshopJobAction`, plus
+  `PhotoshopJobView`. A `'use server'` module. Since 2026-09-19 the run input carries four
+  nullable crop fields; the validation and the pixel crop behind them are `lib/`'s.
+- `@/lib/nina/photoshopPresets` — the screen's copy and bounds: `NINA_PHOTOSHOP_PRESETS`,
+  `photoshopPresetText`, `photoshopModelIdsFor`, `photoshopModelSpecFor`,
+  `NINA_PHOTOSHOP_INSTRUCTION_MAX`.
 - `@/lib/nina/album` — `NINA_ADMIN_BATCH_MAX`, `NINA_CHAT_PHOTO_PAGE_SIZE`.
 - `@/lib/photos/resizeTarget` — `longEdgeTargetFor`.
 - `@/lib/id` — `newId()`, minting the id both album blobs share.
@@ -1052,8 +1155,9 @@ counts stay MEMORY counts: still true of the account, just not of this page.
   `formatFired`, the `ShortcutField`/`ShortcutRow` types. **The only module `ShortcutTable.tsx`
   takes its bounds from**, so that file names no `@/lib/nina/` specifier (test asserted).
 - `@/lib/admin/users` — `AdminUserRow`, **type-only** (`UserPicker`).
-- `@/lib/db/schema` — `NinaImageKind`, **type-only** (`explorer/model.ts`), so no drizzle table
-  module reaches the bundle.
+- `@/lib/db/schema` — `NinaImageKind` (`explorer/model.ts`) and `NinaPhotoshopMode` /
+  `NinaPhotoshopSourceKind` (`PhotoshopDetail`), all **type-only**, so no drizzle table module
+  reaches the bundle.
 - `@/components/ui` — `Button`, `ButtonLink`, `EmptyState`, `Card`, `Field`, `CONTROL_CLASS`,
   `buttonClasses` (exported precisely so a non-`<button>` — or a `<button>` that must keep
   `onClick` on itself — can borrow the look), and `useSavePhoto`/`SaveNotice`
@@ -1109,6 +1213,12 @@ calling bundle. `lib/share/origin.ts` is the mirror: it opens with `import 'serv
   `NINA_SLOT_PENDING_PROMISES` slot), passes `factTotal`/`hiddenCount`.
 - `app/admin/shortcuts/page.tsx` — `ShortcutTable` (only mount site) + `UserPicker` with
   `basePath="/admin/shortcuts"`. `force-dynamic`, rows built server-side by `buildShortcutRows`.
+- `app/admin/photoshop/[source]/[id]/page.tsx` — `PhotoshopDetail` (only mount site).
+  `requireAdmin()`, the `source` segment narrowed to `'avatar' | 'message_image'` and the id
+  through `isValidId` before `getPhotoshopSourcePhoto`, `notFound()` on either miss. It hands down
+  `sourceUrl` plus **`sourceWidth` / `sourceHeight`** — both `number | null`, straight off the
+  resolved photo, which is what makes the crop step's own hide-when-unknown rule possible. The
+  segment carries `maxDuration = 300` because `firePhotoshopJob`'s `after()` inherits it.
 
 ### Secondary consumers
 
@@ -1128,6 +1238,8 @@ calling bundle. `lib/share/origin.ts` is the mirror: it opens with `import 'serv
   `explorer/chatPhotoUpload.ts`. `shareOrigin` is a pure pass-through in `FileExplorer`,
   consumed only on the album arm. `CropStudio`/`CircleFrame` are drawn by BOTH arms — stored
   crop vs adoption draft, which is the point of the studio measuring its own frame.
+- `PhotoshopDetail` is the only consumer of `PhotoshopCropStudio`, and the crop studio is mounted
+  nowhere else — the explorer's two arms keep `CropStudio`'s square frame, untouched by this set.
 - `ImageGenPanel` is the only consumer of `PhotoReferencePicker` and `ImageGenTestPanel`;
   `CharacterPanel` is the only consumer of `DialSlider` (it was shared with `ImageGenPanel`
   until that panel's prompt-length dial was removed).
@@ -1138,8 +1250,9 @@ calling bundle. `lib/share/origin.ts` is the mirror: it opens with `import 'serv
 
 Three layers, none of them an accident:
 
-1. **Colocated component suites** — 32 `*.test.tsx` files beside the components (counted
-   2026-09-17; the count moves with the module map, the rule does not), each opening
+1. **Colocated component suites** — 34 `*.test.tsx` files beside the components (counted
+   2026-09-19, +2 for `PhotoshopCropStudio.test.tsx` and `PhotoshopDetail.test.tsx`; the count
+   moves with the module map, the rule does not), each opening
    with `// @vitest-environment happy-dom` (the repo default is `environment: 'node'`;
    `components/**/*.test.tsx` is in vitest's include). Every component in the module map has
    one; they drive real DOM interactions (dispatches, optimistic tables, the upload state
@@ -1698,3 +1811,19 @@ to her.
   {band}" lead-in. Corrected above: the component table, the mount/consumer graph, the
   `lib/admin/imageGenModel` import inventory, the image-generation auto-save paragraph, the
   mounting sample and the dataflow line.
+- **2026-09-19** — `photoshop-aspect-ratio-crop` phase 5/5 (`P1-CA-A007`), the UI layer and the
+  last phase of the set. New `PhotoshopCropStudio.tsx` (rectangle pan/zoom at a chosen catalogued
+  ratio, a `<select>` whose options ARE `NINA_IMAGE_ASPECT_RATIOS`, every bound in
+  `lib/nina/photoshopCrop.ts`) and `PhotoshopDetail.tsx`'s wiring: `cropOpen` + `cropSelection`,
+  `toggleCrop` seeding `nearestNinaImageAspectRatio` + `NINA_PHOTOSHOP_CROP_IDENTITY`, the four
+  crop fields on `runPhotoshopJobAction`'s payload, and the collapsible step in the JSX. Two new
+  suites (22 + 6 cases), colocated count restamped 32 → 34. The studio is a SIBLING of
+  `CropStudio`, not a generalisation of it — `lib/nina/crop.ts` and `CropStudio.tsx` are untouched
+  by the whole plan set, and the one name borrowed across is `zoomFactorForWheel`. Phases 1–4 (the
+  crop-math module and the exported ratio enum, the nullable columns, the server-side pixel crop,
+  and `runPhotoshopJobAction`'s validation + the page's two new props) are `lib/nina/`, `db/`,
+  `lib/admin/` and `app/`'s and are documented there. **This entry also closes a standing gap**:
+  the photoshop screen shipped before this file's 2026-09-17 pass and had never been documented
+  here at all, so `PhotoshopDetail.tsx`'s module-map row, its consumer page, and the
+  `photoshopActions` / `photoshopPresets` / `imagerecipe` imports are recorded for the first time
+  alongside the crop step itself.

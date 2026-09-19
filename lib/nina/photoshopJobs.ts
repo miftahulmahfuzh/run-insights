@@ -32,6 +32,19 @@ export interface NinaPhotoshopJobArgs {
   model: string
   presetKey: string | null
   promptText: string
+  /**
+   * **The admin's optional aspect-ratio crop — all four together, or none.** Optional on the way IN
+   * (a caller that knows nothing about cropping, i.e. everything that exists today, simply omits
+   * them) and always populated on the way BACK OUT of `claimNinaPhotoshopJob` as `null` when the
+   * row stored no crop. A consumer must treat "any one of the four is null or undefined" as NO
+   * CROP — a partial crop is not a crop, and guessing the missing member would crop the wrong
+   * region of a real photograph. See `lib/db/schema/nina/photoshop.ts`'s column comments for the
+   * units, and `lib/nina/photoshopCrop.ts` for the math that interprets them.
+   */
+  cropRatioLabel?: string | null
+  cropScale?: number | null
+  cropX?: number | null
+  cropY?: number | null
 }
 
 export async function openNinaPhotoshopJob(
@@ -49,6 +62,14 @@ export async function openNinaPhotoshopJob(
     model: args.model,
     presetKey: args.presetKey,
     promptText: args.promptText,
+    // Bound explicitly rather than omitted: an omitted key becomes the literal `default` keyword in
+    // the generated INSERT, so the statement's shape would differ between a cropped and an
+    // uncropped job for no gain. `?? null` also collapses `undefined` (a caller that predates the
+    // crop feature) and `null` (a caller that ran without one) to the single stored meaning.
+    cropRatioLabel: args.cropRatioLabel ?? null,
+    cropScale: args.cropScale ?? null,
+    cropX: args.cropX ?? null,
+    cropY: args.cropY ?? null,
     status: 'pending',
     errorCode: 'queued',
     attempts: 0,
@@ -96,6 +117,12 @@ export async function claimNinaPhotoshopJob(
       model: row.model,
       presetKey: row.presetKey,
       promptText: row.promptText,
+      // Always present on the way out, `null` when the row stored no crop — so a consumer's
+      // all-four-non-null check is the only question it ever has to ask.
+      cropRatioLabel: row.cropRatioLabel,
+      cropScale: row.cropScale,
+      cropX: row.cropX,
+      cropY: row.cropY,
     },
   }
 }

@@ -1,5 +1,5 @@
 import { relations } from 'drizzle-orm'
-import { index, integer, pgTable, text, timestamp } from 'drizzle-orm/pg-core'
+import { index, integer, numeric, pgTable, text, timestamp } from 'drizzle-orm/pg-core'
 
 import { users } from '../auth'
 
@@ -47,6 +47,42 @@ export const ninaPhotoshopJobs = pgTable(
     /** Which preset (if any) seeded the instruction text — audit only; the text is what was sent. */
     presetKey: text('preset_key'),
     promptText: text('prompt_text').notNull(),
+    /**
+     * **The admin's optional aspect-ratio crop of the SOURCE photo** — four columns, all nullable,
+     * and **all four null means "no crop; behave exactly as this table did before they existed."**
+     * That is the same all-or-nothing convention `nina_avatars.crop_scale/crop_x/crop_y`
+     * (`lib/db/schema/nina/avatars.ts`) already uses, widened by one column because this crop's
+     * frame is NOT square: it is a rectangle at one exact OpenRouter `aspect_ratio` enum value, and
+     * the numbers below mean nothing without knowing which one.
+     *
+     * They live here, on the row, rather than in React state, because a photoshop job is claimed
+     * and run in the background by `after()` — arbitrarily later than the click that opened it, and
+     * possibly a second time on retry. `lib/nina/photoshopJobs.ts` is the only writer and the only
+     * reader; `lib/nina/photoshopRun.ts` turns them into real pixels.
+     *
+     * **No backfill, ever.** Every row written before this column existed reads back NULL, which is
+     * exactly right: those jobs had no crop.
+     */
+    /** Which `NINA_IMAGE_ASPECT_RATIOS` label the admin cropped to, e.g. `'5:4'`. NULL = no crop.
+     * Deliberately opaque `text` at this layer: the closed-set check against the real enum belongs
+     * at the untrusted boundary (`lib/admin/photoshopActions.ts`), not in the column type. */
+    cropRatioLabel: text('crop_ratio_label'),
+    /** Multiple of the cover fit for the crop rectangle; NULL = no crop. See `lib/nina/photoshopCrop.ts`. */
+    cropScale: numeric('crop_scale', { precision: 5, scale: 3, mode: 'number' }),
+    /**
+     * Per-mille of the crop frame's **WIDTH**, positive = image moves right. NULL = no crop.
+     *
+     * **The unit is PER-AXIS here, unlike `nina_avatars`.** That table stores both offsets in
+     * thousandths of the frame's width, which is only legal because its frame is a SQUARE. This
+     * frame is a rectangle at one of the provider's `aspect_ratio` values, so each axis carries its
+     * own unit — `lib/nina/photoshopCrop.ts`'s header states the rule and every function there is
+     * written around it. Reading these two columns with `crop.ts`'s square convention crops the
+     * wrong region on the y axis for every non-square ratio.
+     */
+    cropX: integer('crop_x'),
+    /** Per-mille of the crop frame's **HEIGHT**, positive = image moves down. NULL = no crop.
+     * Height, not width — see `crop_x`'s comment. */
+    cropY: integer('crop_y'),
     status: text('status').$type<NinaPhotoshopStatus>().notNull().default('pending'),
     /** Job phase (`'queued' | 'running'`) while pending; failure kind once failed. Null on success —
      * the same overloaded-by-status convention `nina_turns.error_code` uses. */

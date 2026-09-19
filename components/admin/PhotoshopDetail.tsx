@@ -4,6 +4,10 @@ import * as React from 'react'
 
 import { useRouter } from 'next/navigation'
 
+import {
+  PhotoshopCropStudio,
+  type PhotoshopCropSelection,
+} from '@/components/admin/PhotoshopCropStudio'
 import { Button } from '@/components/ui'
 import {
   readPhotoshopJobAction,
@@ -12,6 +16,7 @@ import {
   type PhotoshopJobView,
 } from '@/lib/admin/photoshopActions'
 import type { NinaPhotoshopMode, NinaPhotoshopSourceKind } from '@/lib/db/schema'
+import { nearestNinaImageAspectRatio } from '@/lib/nina/imagerecipe'
 import {
   NINA_PHOTOSHOP_INSTRUCTION_MAX,
   NINA_PHOTOSHOP_PRESETS,
@@ -19,25 +24,52 @@ import {
   photoshopModelSpecFor,
   photoshopPresetText,
 } from '@/lib/nina/photoshopPresets'
+import { NINA_PHOTOSHOP_CROP_IDENTITY } from '@/lib/nina/photoshopCrop'
 
 const POLL_INTERVAL_MS = 3_000
 
 /**
  * The photoshop tab's one screen: mode, model, the improvement field (the Facial Expression
- * pattern — free text plus a non-sticky preset `<select>` that fills it), the execute button, and
- * — once a job lands — the before/after with Replace / Add as new / Cancel.
+ * pattern — free text plus a non-sticky preset `<select>` that fills it), the OPTIONAL aspect-ratio
+ * crop step, the execute button, and — once a job lands — the before/after with Replace / Add as
+ * new / Cancel.
  *
  * A sequential `setTimeout` poll, not `setInterval` — `ImageGenTestPanel`'s own shape, so a slow
  * response cannot stack a second poll on top of the first.
+ *
+ * ── THE CROP STEP IS OPTIONAL, AND THE DEFAULT IS STILL "OFF" ───────────────────────────────
+ * `cropOpen` starts false and `cropSelection` starts null, so a run that never touches the step
+ * sends four explicit `null`s and the job behaves exactly as it does without this feature — the
+ * whole "skipping it leaves today's behaviour unchanged" contract, held in one boolean. Closing the
+ * step again after opening it returns to that payload too: the selection is kept (so re-opening
+ * does not lose the framing) but it is not SENT unless the step is open.
+ *
+ * ── IT IS OFFERED IDENTICALLY IN BOTH MODES, ON PURPOSE ─────────────────────────────────────
+ * Nothing below reads `mode` to decide whether to render the crop step. `buildImageRequestBody`
+ * sends `aspect_ratio` and `input_references` identically regardless of mode, so once a crop box
+ * exists there is nothing mode-specific left to differ about; the only mode-specific behaviour is
+ * the NO-crop fallback, which lives on the server and is untouched here.
+ *
+ * ── WHY IT HIDES WHEN THE SOURCE'S DIMENSIONS ARE UNKNOWN ───────────────────────────────────
+ * `getPhotoshopSourcePhoto` returns `width`/`height` as `number | null` — a row predating dimension
+ * tracking has neither. Without them there is no source aspect to fit the frame to, no honest
+ * preview to draw, and nothing for the server to compute a pixel box from. Offering a control that
+ * could only lie is worse than not offering it, so the step is absent and the job runs exactly as
+ * it does today.
  */
 export function PhotoshopDetail({
   sourceKind,
   sourceId,
   sourceUrl,
+  sourceWidth,
+  sourceHeight,
 }: {
   sourceKind: NinaPhotoshopSourceKind
   sourceId: string
   sourceUrl: string
+  /** The source photo's natural pixel size, straight off `getPhotoshopSourcePhoto`. */
+  sourceWidth: number | null
+  sourceHeight: number | null
 }) {
   const [mode, setMode] = React.useState<NinaPhotoshopMode>('edit')
   const [model, setModel] = React.useState<string>('bytedance-seed/seedream-4.5')
@@ -48,6 +80,14 @@ export function PhotoshopDetail({
   const [error, setError] = React.useState<string | null>(null)
   const [running, setRunning] = React.useState(false)
   const [resolving, setResolving] = React.useState<'replace' | 'add' | 'discard' | null>(null)
+  const [cropOpen, setCropOpen] = React.useState(false)
+  const [cropSelection, setCropSelection] = React.useState<PhotoshopCropSelection | null>(null)
+
+  const cropAvailable =
+    sourceWidth != null && sourceHeight != null && sourceWidth > 0 && sourceHeight > 0
+  /** What the server would pick on its own if no crop is supplied — the step's default, and the
+   *  number the "off" hint quotes so the trade-off is stated rather than implied. */
+  const autoRatio = cropAvailable ? nearestNinaImageAspectRatio(sourceWidth, sourceHeight) : null
 
   const router = useRouter()
   const aliveRef = React.useRef(true)
@@ -57,6 +97,27 @@ export function PhotoshopDetail({
     },
     [],
   )
+
+  /**
+   * Open or close the crop step. The first open seeds the selection with the auto-picked ratio and
+   * an identity crop — so opening the step and running with no further adjustment sends the SAME
+   * `aspect_ratio` the server would have chosen by itself, and differs only in that the pixels now
+   * genuinely have that shape instead of being stretched into it.
+   */
+  function toggleCrop() {
+    if (sourceWidth == null || sourceHeight == null) return
+    if (cropOpen) {
+      setCropOpen(false)
+      return
+    }
+    if (cropSelection == null) {
+      setCropSelection({
+        ratioLabel: nearestNinaImageAspectRatio(sourceWidth, sourceHeight),
+        crop: { ...NINA_PHOTOSHOP_CROP_IDENTITY },
+      })
+    }
+    setCropOpen(true)
+  }
 
   function changeMode(next: NinaPhotoshopMode) {
     setMode(next)
@@ -85,6 +146,13 @@ export function PhotoshopDetail({
     setJobId(null)
     setRunning(true)
     try {
+      /*
+       * `null` unless the step is OPEN. A selection kept from an earlier open-then-close is
+       * deliberately not sent: "the admin closed the crop step" and "the admin never opened it"
+       * have to produce the same job, or the skip contract is decided by history rather than by
+       * what is on screen.
+       */
+      const selection = cropOpen ? cropSelection : null
       const result = await runPhotoshopJobAction({
         sourceKind,
         sourceId,
@@ -92,6 +160,10 @@ export function PhotoshopDetail({
         model,
         presetKey: presetSelect === '' ? null : presetSelect,
         instruction,
+        cropRatioLabel: selection?.ratioLabel ?? null,
+        cropScale: selection?.crop.scale ?? null,
+        cropX: selection?.crop.x ?? null,
+        cropY: selection?.crop.y ?? null,
       })
       if (!result.ok) {
         setError(result.message)
@@ -314,6 +386,47 @@ export function PhotoshopDetail({
               ))}
             </select>
           </div>
+
+          {cropAvailable && (
+            <div>
+              {/*
+                A button with `aria-expanded`, not `<details>`. The two disclosures already in
+                `components/admin/` (`ImageGenPanel.tsx:1106`, `CharacterPanel.tsx:594`) are
+                `<details>` because nothing outside them cares whether they are open. Here the open
+                state IS the payload — `execute()` sends a crop only while the step is open — and a
+                `<details>`'s openness lives in the DOM, not in React state, so it would have to be
+                mirrored back with an `onToggle` handler and could drift from the thing it decides.
+              */}
+              <button
+                type="button"
+                onClick={toggleCrop}
+                aria-expanded={cropOpen}
+                aria-controls="photoshop-crop-step"
+                className="flex min-h-11 w-full items-center justify-between gap-3 rounded-field bg-paper-2 px-3 py-2 text-left text-[13px] font-semibold text-ink"
+              >
+                <span>Aspect ratio crop</span>
+                <span className="text-[12px] font-medium text-ink-3">
+                  {cropOpen ? 'Skip it' : 'Optional'}
+                </span>
+              </button>
+              <p className="mt-1.5 max-w-[70ch] text-[12px] font-medium text-ink-3">
+                {cropOpen
+                  ? 'The model is sent exactly these pixels, at exactly this ratio — nothing is stretched to fit.'
+                  : `Off: the whole photo goes to the model on its nearest catalogued canvas (${autoRatio}), which can read a little wide or narrow.`}
+              </p>
+              {cropOpen && cropSelection != null && (
+                <div id="photoshop-crop-step" className="mt-3">
+                  <PhotoshopCropStudio
+                    src={sourceUrl}
+                    natural={{ width: sourceWidth, height: sourceHeight }}
+                    value={cropSelection}
+                    onChange={setCropSelection}
+                    disabled={running || job?.status === 'pending'}
+                  />
+                </div>
+              )}
+            </div>
+          )}
 
           {error != null && <p className="text-[13px] font-semibold text-red">{error}</p>}
 

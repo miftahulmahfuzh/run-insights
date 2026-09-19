@@ -23,5 +23,13 @@ export default async function PhotoshopDetailPage({
   const photo = await getPhotoshopSourcePhoto(userId, source, id)
   if (photo == null) notFound()
 
-  return <PhotoshopDetail sourceKind={source} sourceId={id} sourceUrl={photo.blobUrl} />
+  return (
+    <PhotoshopDetail
+      sourceKind={source}
+      sourceId={id}
+      sourceUrl={photo.blobUrl}
+      sourceWidth={photo.width}
+      sourceHeight={photo.height}
+    />
+  )
 }

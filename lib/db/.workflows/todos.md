@@ -2,7 +2,7 @@
 
 **Package Path**: `lib/db`
 **Package Code**: DB
-**Last Updated**: 2026-09-17
+**Last Updated**: 2026-09-19
 **Total Active Tasks**: 0
 
 ## Quick Stats
@@ -12,7 +12,7 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 10
+- Completed: 11
 - Archived: 7
 
 ---
@@ -38,6 +38,24 @@
 (all seven completed tasks were archived on 2026-09-12 — see Archive; full
 per-task detail — Context, Drift, Decided, Files — survives in git history and
 in `.workflows/package_readme.md`)
+
+- [x] **P1-DB-A008** Phase 2: Schema + job-args plumbing
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns `lib/db/schema/nina/photoshop.ts` (four new NULLABLE columns on `ninaPhotoshopJobs` — `cropScale`, `cropX`, `cropY`, `cropRatioLabel`, per-axis-per-mille of the frame's width/height, all-four-null = "no crop, behave as today"), a new Drizzle migration (generated and reviewed by this phase but NOT applied to production by this phase or any automated step — `npm run db:migrate` is a step the user runs deliberately, and MUST be applied and confirmed BEFORE this branch's code is deployed, since Drizzle names every declared column in every statement and an unmigrated database fails every photoshop job, cropped or not), `lib/nina/photoshopJobs.ts` (`NinaPhotoshopJobArgs` gains the four optional fields; `openNinaPhotoshopJob` writes them; `claimNinaPhotoshopJob` reads them back), and `scripts/photoshop.ts` (its raw `INSERT` column list gains the four columns as explicit `NULL` literals). Adds round-trip test coverage for the new fields. Does not touch `imagecall.ts`, `photoshopRun.ts`'s crop-box computation, or any Server Action/UI. Exit criteria: migration file generated and reviewed (not applied), committed with its `drizzle/meta/` snapshot and journal entry; schema/args/CLI insert all agree on the four new nullable columns; a no-crop `openNinaPhotoshopJob`→`claimNinaPhotoshopJob` round-trip is regression-checked unchanged from `main`; the hand-off names `npm run db:migrate` as a required pre-deploy step; `npx tsc --noEmit`, `npm run lint`, `npm test` all pass.
+  - **Status**: completed
+  - **Plan Set**: `photoshop-aspect-ratio-crop_PLAN.md` (phase 2 of 5)
+  - **Satisfies**: R1 — Add an optional "aspect ratio crop" step to `/admin/photoshop/[source]/[id]`, for BOTH anchor and edit mode.
+  - **Depends on**: none
+  - **Plan**: `.workflows/plan/P1-DB-A008.md`
+  - **Completed**: 2026-09-19
+  - **Method**: /implement (plan set phase 2 of 5; phase 1 running concurrently in the same worktree via a peer swarm session)
+  - **Files**: lib/db/schema/nina/photoshop.ts, lib/nina/photoshopJobs.ts, scripts/photoshop.ts, tests/nina.photoshopJobs.test.ts, drizzle/0035_first_loa.sql, drizzle/meta/0035_snapshot.json, drizzle/meta/_journal.json
+  - **Drift**:
+    - `scripts/photoshop.ts`'s plan-quoted comment text contained literal backticks around `` `nearestNinaImageAspectRatio` `` inside a JS tagged template literal (the `sql\`...\`` insert), which prematurely closed the template and broke the parse (TS1005). Fixed by removing the backticks from that inline SQL comment; no semantic change.
+  - **Decided**:
+    - `npm test` has 5 pre-existing failures (`tests/admin.photoReference.test.ts`, `tests/nina.errorlogs.test.ts`, `components/admin/AdminNavLinks.test.tsx` x2, `lib/nina/queries.test.ts`) → treated as out-of-scope, not a phase-2 regression, and not fixed. Rung: narrower blast radius / no scope-widening. Verified via a disposable detached worktree at the branch's base commit `b88d5bc` (before this plan set's worktree was even cut) reproducing the identical 5 failures with identical assertion diffs — confirmed pre-existing on main, unrelated to this phase's changes, and outside Phase 2's Owns (schema + job-args plumbing).
+    - Phase 3 (`P1-NIN-A056`) and Phase 4 (`P1-ADM-N8QW`) both depend on this phase AND on Phase 1 (`P1-NIN-A055`, in progress in a concurrent peer session at completion time) — left `blocked` in their own packages' todos.md, not touched by this dispatch.
 
 - [x] **P2-DB-A002** Phase 1: Schema: media keyword/embedding columns + Album pointer FK
   - **Difficulty**: NORMAL

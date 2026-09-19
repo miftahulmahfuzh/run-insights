@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import sharp from 'sharp'
 
 import { callNinaImageModel } from '../lib/nina/imagecall.ts'
 import {
@@ -40,6 +41,29 @@ function blobPng(bytes = 4) {
     status: 200,
     headers: { 'content-type': 'image/png', 'content-length': String(bytes) },
   })
+}
+
+/**
+ * A REAL PNG of a known size. The crop cases decode what went on the wire and read its dimensions
+ * back with `sharp`, so the fixture has to be an image a decoder will accept — `Buffer.alloc` (what
+ * `blobPng` serves, and all the pre-crop cases need) is not.
+ */
+async function pngOf(width: number, height: number): Promise<Buffer<ArrayBuffer>> {
+  return await sharp({
+    create: { width, height, channels: 3, background: { r: 12, g: 34, b: 56 } },
+  })
+    .png()
+    .toBuffer()
+}
+
+/** The one `input_references` entry's `data:` URL, off the POST this call made. Null when the call
+ * went out unanchored. */
+function referenceDataUrl(fn: ReturnType<typeof stubTwoHostFetch>): string | null {
+  const init = fn.mock.calls[1]?.[1] as RequestInit
+  const body = JSON.parse(String(init.body)) as {
+    input_references?: Array<{ image_url: { url: string } }>
+  }
+  return body.input_references?.[0]?.image_url.url ?? null
 }
 
 /**
@@ -261,5 +285,120 @@ describe('callNinaImageModel', () => {
     const degraded = await cold('x', 1, 'https://blob.test/nina/a.png')
     expect(degraded.ok).toBe(false)
     if (!degraded.ok) expect(degraded.timeoutMs).toBeLessThanOrEqual(NINA_IMAGE_CALL_TIMEOUT_MS)
+  })
+
+  it('R1: a crop box crops the reference bytes before they are encoded', async () => {
+    process.env.OPENROUTER_API_KEY = 'sk-or-unit-test-never-sent'
+    const source = await pngOf(120, 90)
+    const fn = stubTwoHostFetch(
+      new Response(source, {
+        status: 200,
+        headers: { 'content-type': 'image/png', 'content-length': String(source.byteLength) },
+      }),
+      okImage(),
+    )
+
+    const result = await callNinaImageModel(
+      'a photograph',
+      42,
+      'https://blob.test/nina/a.png',
+      undefined,
+      undefined,
+      '3:2',
+      { left: 10, top: 20, width: 60, height: 40 },
+    )
+
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.anchored).toBe(true)
+
+    const url = referenceDataUrl(fn)
+    expect(url?.startsWith('data:image/png;base64,')).toBe(true)
+
+    /* The bytes that actually went on the wire, decoded. Not "a crop was requested" — the picture
+     * the model received is 60x40, which is the whole claim this feature makes. */
+    const sent = Buffer.from(String(url).slice('data:image/png;base64,'.length), 'base64')
+    const meta = await sharp(sent).metadata()
+    expect(meta.width).toBe(60)
+    expect(meta.height).toBe(40)
+
+    /* The label rides the body untouched — cropping the bytes and naming the ratio are two
+     * separate jobs and this call does both. */
+    const init = fn.mock.calls[1]?.[1] as RequestInit
+    const body = JSON.parse(String(init.body)) as Record<string, unknown>
+    expect(body.aspect_ratio).toBe('3:2')
+  })
+
+  it('R1 regression: NO crop box leaves the reference byte-identical to the fetched object', async () => {
+    process.env.OPENROUTER_API_KEY = 'sk-or-unit-test-never-sent'
+    const source = await pngOf(120, 90)
+    const fn = stubTwoHostFetch(
+      new Response(source, {
+        status: 200,
+        headers: { 'content-type': 'image/png', 'content-length': String(source.byteLength) },
+      }),
+      okImage(),
+    )
+
+    /* Six positional arguments — the call `lib/nina/photoshopRun.ts` made before this phase, and
+     * the call it still makes for a job whose admin skipped the crop step. */
+    const result = await callNinaImageModel(
+      'a photograph',
+      42,
+      'https://blob.test/nina/a.png',
+      undefined,
+      undefined,
+      '4:3',
+    )
+
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.anchored).toBe(true)
+    expect(referenceDataUrl(fn)).toBe(`data:image/png;base64,${source.toString('base64')}`)
+  })
+
+  it('R1: a crop box that does not fit the fetched bytes drops the anchor — never the wrong pixels', async () => {
+    process.env.OPENROUTER_API_KEY = 'sk-or-unit-test-never-sent'
+    const source = await pngOf(120, 90)
+    const fn = stubTwoHostFetch(
+      new Response(source, {
+        status: 200,
+        headers: { 'content-type': 'image/png', 'content-length': String(source.byteLength) },
+      }),
+      okImage(),
+    )
+
+    /* 100 + 60 overhangs a 120px-wide source. Clamping it would silently change the crop's aspect
+     * ratio while `aspect_ratio: '3:2'` still promised otherwise — the exact stretch this feature
+     * exists to remove. Dropping the anchor is the loud answer. */
+    const result = await callNinaImageModel(
+      'a photograph',
+      42,
+      'https://blob.test/nina/a.png',
+      undefined,
+      undefined,
+      '3:2',
+      { left: 100, top: 20, width: 60, height: 40 },
+    )
+
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.anchored).toBe(false)
+    expect(referenceDataUrl(fn)).toBeNull()
+  })
+
+  it('R1: a crop box on an UNANCHORED call is inert — no reference, no fetch, no throw', async () => {
+    process.env.OPENROUTER_API_KEY = 'sk-or-unit-test-never-sent'
+    const fn = stubTwoHostFetch(blobPng(), okImage())
+
+    const result = await callNinaImageModel('a photograph', 42, null, undefined, undefined, '1:1', {
+      left: 0,
+      top: 0,
+      width: 10,
+      height: 10,
+    })
+
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.anchored).toBe(false)
+    /* One fetch: the generation. A box with nothing to crop must not invent a reference. */
+    expect(fn.mock.calls.length).toBe(1)
+    expect(String(fn.mock.calls[0]?.[0])).toBe(OPENROUTER_IMAGE_URL)
   })
 })
