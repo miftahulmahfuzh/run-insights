@@ -195,6 +195,52 @@ export async function updateNinaAvatarCrop(
 }
 
 /**
+ * Photoshop's "replace the existing photo": swap this row's bytes in place, keep its id. Mirrors
+ * `updateNinaChatPhotoBlob`'s shape for the reason that function states — a row must not point
+ * at new bytes while still claiming old prose about them, so description/keywords/embedding are
+ * cleared alongside the blob fields. Guarded by `sourceImageId IS NULL`: a row with that column
+ * set is a POINTER at a Media original and owns no bytes of its own to replace — replacing it
+ * in place would silently detach it from the row it borrows from. Returns `null` for that case
+ * exactly as for "not found" or "not yours"; the caller cannot and need not tell them apart.
+ */
+export async function updateNinaAvatarBlob(
+  userId: string,
+  id: string,
+  patch: {
+    blobUrl: string
+    pathname: string
+    width: number
+    height: number
+    bytes: number
+    contentHash: string | null
+  },
+): Promise<NinaAvatarRow | null> {
+  const updated = await db
+    .update(ninaAvatars)
+    .set({
+      blobUrl: patch.blobUrl,
+      pathname: patch.pathname,
+      width: patch.width,
+      height: patch.height,
+      bytes: patch.bytes,
+      contentHash: patch.contentHash ?? null,
+      description: null,
+      searchKeywords: null,
+      negativeSearchKeywords: null,
+      descriptionEmbedding: null,
+    })
+    .where(
+      and(
+        eq(ninaAvatars.userId, userId),
+        eq(ninaAvatars.id, id),
+        isNull(ninaAvatars.sourceImageId),
+      ),
+    )
+    .returning(avatarColumns)
+  return updated[0] ?? null
+}
+
+/**
  * R25. What the picture DEPICTS, so "itu lagi dimana?" has an answer. Three writers, three
  * origins: phase 12 writes from its own generation prompt, phase 14 and phase 15 write what
  * phase 6's `glm-4.6v` describe pre-pass came back with. Separate from

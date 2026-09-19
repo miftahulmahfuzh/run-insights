@@ -95,6 +95,13 @@ const LINKS = [
     short: 'Images',
     icon: WandSparklesIcon,
   },
+  /*
+   * The admin's "edit an existing photo" tab — distinct from Image Generation (a fresh photo
+   * from a prompt) and from Image collection (the library the edited result lands in). Placed right
+   * after Image Generation for the same reason that tab sits after Personality: the two photograph
+   * tabs — make one from scratch, or fix one that already exists — stay neighbours.
+   */
+  { href: '/admin/photoshop', label: 'Photoshop', short: 'Edit', icon: SquarePenIcon },
   { href: '/admin/memory', label: 'Memory', short: 'Memory', icon: BrainIcon },
   /*
    * `nina-emoji-shortcuts` R1's route, and it sits directly after Memory because Memory is the one
@@ -164,7 +171,7 @@ export function AdminNavLinks() {
      * `grid-cols-7` is inert at `lg`, where `lg:block` takes the list out of grid layout
      * entirely — the same way `grid-cols-4` was before it.
      */
-    <ul className="mx-auto grid h-14 w-full max-w-[470px] grid-cols-7 px-[7px] lg:mx-0 lg:block lg:h-auto lg:max-w-none lg:space-y-1 lg:px-0">
+    <ul className="mx-auto grid h-14 w-full max-w-[470px] grid-cols-8 px-[7px] lg:mx-0 lg:block lg:h-auto lg:max-w-none lg:space-y-1 lg:px-0">
       {LINKS.map((link) => {
         const Icon = link.icon
         /* `/admin` exact: a prefix match there would light every cell. See the file header. */
@@ -317,6 +324,26 @@ function WandSparklesIcon({ className }: { className: string }) {
       <path d="M7 8H3" />
       <path d="M21 16h-4" />
       <path d="M11 3H9" />
+    </svg>
+  )
+}
+
+/** Photoshop: editing an existing photograph — Lucide `square-pen`, fetched 2026-09-19 from
+ * unpkg.com/lucide-static, the collection's own sourcing convention (see the file header). */
+function SquarePenIcon({ className }: { className: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+      <path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z" />
     </svg>
   )
 }

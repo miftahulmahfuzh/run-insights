@@ -114,6 +114,7 @@ describe('the admin nav', () => {
       '/admin/nina',
       '/admin/personality',
       '/admin/image-generation',
+      '/admin/photoshop',
       '/admin/memory',
       '/admin/shortcuts',
       '/admin/error-logs',
@@ -141,7 +142,7 @@ describe('the admin nav', () => {
      * cannot see that.
      */
     const shorts = [...adminNavLinks.matchAll(/short: '([^']*)'/g)].map((m) => m[1]!)
-    expect(shorts).toHaveLength(7)
+    expect(shorts).toHaveLength(8)
     for (const short of shorts) {
       expect(short.length, `"${short}" is an empty accessible name`).toBeGreaterThan(0)
     }
@@ -179,7 +180,7 @@ describe('the admin nav', () => {
      * second cell template somewhere, zero means the bar lost its names.
      */
     const svgTags = [...adminNavLinks.matchAll(/<svg\b[\s\S]*?>/g)].map((m) => m[0]!)
-    expect(svgTags, 'the bar no longer inlines one glyph per cell').toHaveLength(7)
+    expect(svgTags, 'the bar no longer inlines one glyph per cell').toHaveLength(8)
     for (const tag of svgTags) {
       expect(tag, 'a glyph is not aria-hidden decor').toContain('aria-hidden="true"')
     }
@@ -198,7 +199,7 @@ describe('the admin nav', () => {
      * the line, because a copy-pasted glyph body would pass the count above and fail here.
      */
     const glyphs = [...adminNavLinks.matchAll(/<svg\b[\s\S]*?<\/svg>/g)].map((m) => m[0]!)
-    expect(new Set(glyphs).size, 'two cells render the same glyph').toBe(7)
+    expect(new Set(glyphs).size, 'two cells render the same glyph').toBe(8)
   })
 
   it('pins itself to the bottom of the phone viewport and pads HALF the home indicator', () => {
