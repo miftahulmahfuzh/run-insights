@@ -1098,6 +1098,26 @@ counts stay MEMORY counts: still true of the account, just not of this page.
 - `@/lib/admin/schema` — `AvatarBatchRecord`, **type-only**.
 - `@/lib/nina/crop` — the whole crop model: `NinaCrop`, `resolveCrop`, `isIdentityCrop`,
   `ninaCropStyle`, `panCrop`, `zoomCrop`, `nudgeCrop`, `zoomFactorForWheel`, the scale bounds.
+  `zoomFactorForWheel` is the ONE name `PhotoshopCropStudio` borrows from here — it maps `deltaY`
+  to a factor and is ratio-agnostic, and `photoshopCrop.ts` deliberately does not re-export it
+  (that module has zero imports by design, so it loads under `--experimental-strip-types`).
+- `@/lib/nina/photoshopCrop` — the rectangle crop's whole arithmetic, and the reason
+  `PhotoshopCropStudio` decides nothing: `clampPhotoshopCrop`, `panPhotoshopCrop`,
+  `zoomPhotoshopCrop`, `nudgePhotoshopCrop`, `ninaPhotoshopCropStyle`, the `NinaPhotoshopCrop` /
+  `NinaPhotoshopSourceSize` types, `NINA_PHOTOSHOP_CROP_IDENTITY` (`PhotoshopDetail`'s seed) and
+  the `MIN_SCALE` / `MAX_SCALE` / `KEY_STEP` bounds. **Every function takes source, target ratio,
+  crop — the ratio SECOND.** Zero-import, which is why a client file may name it.
+- `@/lib/nina/imagerecipe` — `NINA_IMAGE_ASPECT_RATIOS` (the `<select>`'s options ARE the table,
+  so the picker cannot offer a label the model would refuse), `ninaImageAspectRatioValue` (the
+  label→ratio lookup, shared with the Server Action's closed-set check) and
+  `nearestNinaImageAspectRatio` (`PhotoshopDetail`'s auto-pick and the closed-state hint's number).
+- `@/lib/admin/photoshopActions` — the photoshop screen's three writes,
+  `runPhotoshopJobAction` / `readPhotoshopJobAction` / `resolvePhotoshopJobAction`, plus
+  `PhotoshopJobView`. A `'use server'` module. Since 2026-09-19 the run input carries four
+  nullable crop fields; the validation and the pixel crop behind them are `lib/`'s.
+- `@/lib/nina/photoshopPresets` — the screen's copy and bounds: `NINA_PHOTOSHOP_PRESETS`,
+  `photoshopPresetText`, `photoshopModelIdsFor`, `photoshopModelSpecFor`,
+  `NINA_PHOTOSHOP_INSTRUCTION_MAX`.
 - `@/lib/nina/album` — `NINA_ADMIN_BATCH_MAX`, `NINA_CHAT_PHOTO_PAGE_SIZE`.
 - `@/lib/photos/resizeTarget` — `longEdgeTargetFor`.
 - `@/lib/id` — `newId()`, minting the id both album blobs share.
@@ -1135,8 +1155,9 @@ counts stay MEMORY counts: still true of the account, just not of this page.
   `formatFired`, the `ShortcutField`/`ShortcutRow` types. **The only module `ShortcutTable.tsx`
   takes its bounds from**, so that file names no `@/lib/nina/` specifier (test asserted).
 - `@/lib/admin/users` — `AdminUserRow`, **type-only** (`UserPicker`).
-- `@/lib/db/schema` — `NinaImageKind`, **type-only** (`explorer/model.ts`), so no drizzle table
-  module reaches the bundle.
+- `@/lib/db/schema` — `NinaImageKind` (`explorer/model.ts`) and `NinaPhotoshopMode` /
+  `NinaPhotoshopSourceKind` (`PhotoshopDetail`), all **type-only**, so no drizzle table module
+  reaches the bundle.
 - `@/components/ui` — `Button`, `ButtonLink`, `EmptyState`, `Card`, `Field`, `CONTROL_CLASS`,
   `buttonClasses` (exported precisely so a non-`<button>` — or a `<button>` that must keep
   `onClick` on itself — can borrow the look), and `useSavePhoto`/`SaveNotice`
@@ -1192,6 +1213,12 @@ calling bundle. `lib/share/origin.ts` is the mirror: it opens with `import 'serv
   `NINA_SLOT_PENDING_PROMISES` slot), passes `factTotal`/`hiddenCount`.
 - `app/admin/shortcuts/page.tsx` — `ShortcutTable` (only mount site) + `UserPicker` with
   `basePath="/admin/shortcuts"`. `force-dynamic`, rows built server-side by `buildShortcutRows`.
+- `app/admin/photoshop/[source]/[id]/page.tsx` — `PhotoshopDetail` (only mount site).
+  `requireAdmin()`, the `source` segment narrowed to `'avatar' | 'message_image'` and the id
+  through `isValidId` before `getPhotoshopSourcePhoto`, `notFound()` on either miss. It hands down
+  `sourceUrl` plus **`sourceWidth` / `sourceHeight`** — both `number | null`, straight off the
+  resolved photo, which is what makes the crop step's own hide-when-unknown rule possible. The
+  segment carries `maxDuration = 300` because `firePhotoshopJob`'s `after()` inherits it.
 
 ### Secondary consumers
 
@@ -1211,6 +1238,8 @@ calling bundle. `lib/share/origin.ts` is the mirror: it opens with `import 'serv
   `explorer/chatPhotoUpload.ts`. `shareOrigin` is a pure pass-through in `FileExplorer`,
   consumed only on the album arm. `CropStudio`/`CircleFrame` are drawn by BOTH arms — stored
   crop vs adoption draft, which is the point of the studio measuring its own frame.
+- `PhotoshopDetail` is the only consumer of `PhotoshopCropStudio`, and the crop studio is mounted
+  nowhere else — the explorer's two arms keep `CropStudio`'s square frame, untouched by this set.
 - `ImageGenPanel` is the only consumer of `PhotoReferencePicker` and `ImageGenTestPanel`;
   `CharacterPanel` is the only consumer of `DialSlider` (it was shared with `ImageGenPanel`
   until that panel's prompt-length dial was removed).
@@ -1221,8 +1250,9 @@ calling bundle. `lib/share/origin.ts` is the mirror: it opens with `import 'serv
 
 Three layers, none of them an accident:
 
-1. **Colocated component suites** — 32 `*.test.tsx` files beside the components (counted
-   2026-09-17; the count moves with the module map, the rule does not), each opening
+1. **Colocated component suites** — 34 `*.test.tsx` files beside the components (counted
+   2026-09-19, +2 for `PhotoshopCropStudio.test.tsx` and `PhotoshopDetail.test.tsx`; the count
+   moves with the module map, the rule does not), each opening
    with `// @vitest-environment happy-dom` (the repo default is `environment: 'node'`;
    `components/**/*.test.tsx` is in vitest's include). Every component in the module map has
    one; they drive real DOM interactions (dispatches, optimistic tables, the upload state
@@ -1781,3 +1811,19 @@ to her.
   {band}" lead-in. Corrected above: the component table, the mount/consumer graph, the
   `lib/admin/imageGenModel` import inventory, the image-generation auto-save paragraph, the
   mounting sample and the dataflow line.
+- **2026-09-19** — `photoshop-aspect-ratio-crop` phase 5/5 (`P1-CA-A007`), the UI layer and the
+  last phase of the set. New `PhotoshopCropStudio.tsx` (rectangle pan/zoom at a chosen catalogued
+  ratio, a `<select>` whose options ARE `NINA_IMAGE_ASPECT_RATIOS`, every bound in
+  `lib/nina/photoshopCrop.ts`) and `PhotoshopDetail.tsx`'s wiring: `cropOpen` + `cropSelection`,
+  `toggleCrop` seeding `nearestNinaImageAspectRatio` + `NINA_PHOTOSHOP_CROP_IDENTITY`, the four
+  crop fields on `runPhotoshopJobAction`'s payload, and the collapsible step in the JSX. Two new
+  suites (22 + 6 cases), colocated count restamped 32 → 34. The studio is a SIBLING of
+  `CropStudio`, not a generalisation of it — `lib/nina/crop.ts` and `CropStudio.tsx` are untouched
+  by the whole plan set, and the one name borrowed across is `zoomFactorForWheel`. Phases 1–4 (the
+  crop-math module and the exported ratio enum, the nullable columns, the server-side pixel crop,
+  and `runPhotoshopJobAction`'s validation + the page's two new props) are `lib/nina/`, `db/`,
+  `lib/admin/` and `app/`'s and are documented there. **This entry also closes a standing gap**:
+  the photoshop screen shipped before this file's 2026-09-17 pass and had never been documented
+  here at all, so `PhotoshopDetail.tsx`'s module-map row, its consumer page, and the
+  `photoshopActions` / `photoshopPresets` / `imagerecipe` imports are recorded for the first time
+  alongside the crop step itself.
