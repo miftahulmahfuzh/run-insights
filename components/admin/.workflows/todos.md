@@ -2,7 +2,7 @@
 
 **Package Path**: `components/admin`
 **Package Code**: CA
-**Last Updated**: 2026-09-17
+**Last Updated**: 2026-09-19
 **Total Active Tasks**: 0
 
 ## Quick Stats
@@ -12,7 +12,7 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 8
+- Completed: 9
 - Archived: 6
 
 ---
@@ -38,6 +38,24 @@
 (all six completed tasks were archived on 2026-09-12 — see Archive; full
 per-task detail — Context, Drift, Decided, Files — survives in git history and
 in `.workflows/package_readme.md`)
+
+- [x] **P1-CA-A007** Phase 5: Crop UI + PhotoshopDetail wiring
+  - **Difficulty**: HARD
+  - **Type**: Feature
+  - **Context**: Owns new `components/admin/PhotoshopCropStudio.tsx` (rectangle pan/zoom crop UI built on `CropStudio.tsx`'s interaction pattern, rendering at the chosen target ratio, calling Phase 1's pure crop-math module and importing `zoomFactorForWheel` directly from `lib/nina/crop`; a ratio `<select>` sourced from `NINA_IMAGE_ASPECT_RATIOS`, defaulting to `nearestNinaImageAspectRatio`'s auto-pick), `components/admin/PhotoshopDetail.tsx` (every line except Phase 4's two prop-type members — destructures/reads `sourceWidth`/`sourceHeight`, hides the step when either is `null`, adds the optional collapsible crop step identically in both modes, `execute()` includes the four crop fields only when the step was used and omits/nulls them otherwise), and new `components/admin/PhotoshopCropStudio.test.tsx` + `components/admin/PhotoshopDetail.test.tsx`. Does not touch the DB schema, the Server Action's validation logic, `page.tsx`, `imagecall.ts`/`photoshopRun.ts`, `lib/nina/crop.ts`, or `CropStudio.tsx`. Exit criteria: the crop step renders identically in Anchor and Edit mode; skipping it leaves `execute()`'s payload unchanged from `main` today (regression-asserted); using it produces a well-formed four-field payload that Phase 4's validation accepts; `npx tsc --noEmit`, `npm run lint`, `npm test` all pass.
+  - **Status**: completed
+  - **Plan Set**: `photoshop-aspect-ratio-crop_PLAN.md` (phase 5 of 5 — final phase)
+  - **Satisfies**: R1 — Add an optional "aspect ratio crop" step to `/admin/photoshop/[source]/[id]`, for BOTH anchor and edit mode.
+  - **Depends on**: `P1-NIN-A055` (done), `P1-ADM-N8QW` (done)
+  - **Plan**: `.workflows/plan/P1-CA-A007.md`
+  - **Completed**: 2026-09-19 14:58
+  - **Method**: /do (plan set phase 5 of 5, run as a swarm session in a worktree shared with concurrent peer phases)
+  - **Files**: components/admin/PhotoshopCropStudio.tsx (new), components/admin/PhotoshopCropStudio.test.tsx (new, 22 cases), components/admin/PhotoshopDetail.tsx (modified: imports, props destructuring, crop state/toggle, execute() payload, collapsible crop step JSX), components/admin/PhotoshopDetail.test.tsx (new, 6 cases)
+  - **Drift**: None against the plan file `components/admin/.workflows/plan/P1-CA-A007.md` — every code block applied verbatim. `lib/nina/photoshopCrop.ts`, `lib/nina/imagerecipe.ts`, `lib/nina/crop.ts` (`zoomFactorForWheel`), and `PhotoshopDetail.tsx` as Phase 4 left it all matched the plan's Interface Contract exactly, so no reconciliation was needed at apply time.
+  - **Drift**: `npm run format:check` flags one pre-existing, out-of-scope issue in `lib/nina/actions/send.ts` (documented by Phase 1 and Phase 3's completion reports as pre-existing on the base tree, confirmed unrelated to this phase's Owns list) — left untouched.
+  - **Drift**: `npm test` shows the same 5 pre-existing failures across 4 files as the coordinator's recorded baseline (`components/admin/AdminNavLinks.test.tsx` x2, `lib/nina/queries.test.ts` x1, `tests/admin.photoReference.test.ts` x1, `tests/nina.errorlogs.test.ts` x1) — none touch files this phase owns, confirmed pre-existing per Phase 1/3's own completion notes.
+  - **Verified**: Run with Node 24 (`/home/miftah/tools/node-v24.18.0-linux-x64/bin` prepended to `PATH`; this worktree's default `node` is v20.11.1, below the `package.json` engines floor and unable to boot Vitest 4). `npx vitest run components/admin/PhotoshopCropStudio.test.tsx components/admin/PhotoshopDetail.test.tsx` — 30/30 passed. `npm run typecheck` (next typegen && tsc --noEmit) clean. `npm run lint` clean. `npm run format:check` clean except the one pre-existing unrelated file above. Full `npm test` — 6596/6601 passed, same 5 pre-existing baseline failures, zero new. `npm run build` succeeds. `npm run ci:client-secret-guard` OK. `npm run knip` — no new unused-export/unused-file findings attributable to this phase (`PhotoshopCropStudio` and `PhotoshopCropSelection` both have real importers).
+  - **Commit note**: committed by explicit path list, never `git add -A` — this worktree is shared with concurrent peer swarm sessions whose in-flight edits must not be swept into this phase's commit.
 
 - [x] **P2-CA-A006** Phase 3: UI: Media keyword box, merged search results, pointer-row messaging
   - **Difficulty**: NORMAL

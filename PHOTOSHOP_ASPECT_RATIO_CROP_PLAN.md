@@ -6,8 +6,10 @@
 **Worktree:** `/home/miftah/.worktrees/run-insights/photoshop-aspect-ratio-crop`
 **Branch:** `feature/photoshop-aspect-ratio-crop` (base: `origin/main` @ `b88d5bc`)
 **Phases:** 5
-**Status:** phases 1, 2, 3, 4 of 5 complete (swarm in flight; phases land out of order — the
-authoritative per-phase state is `.workflows/orchestration/photoshop-aspect-ratio-crop/ledger.json`)
+**Status:** complete — all 5 of 5 phases landed on `feature/photoshop-aspect-ratio-crop`
+(the authoritative per-phase state remains
+`.workflows/orchestration/photoshop-aspect-ratio-crop/ledger.json`; merging the branch to `main`
+is the swarm coordinator's step, not any phase session's)
 
 ---
 
@@ -112,11 +114,11 @@ Rules every phase must hold:
 
 | # | Title | Satisfies | Package | Files | Depends on | Difficulty | Plan | TaskID | Card |
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
-| 1 | Pure crop-math module + exported ratio enum | R1 | `lib/nina` | 3 | — | HARD | `.workflows/plan/photoshop-aspect-ratio-crop/phase-1.md` | — | — |
-| 2 | Schema + job-args plumbing | R1 | `lib/db/schema/nina`, `drizzle`, `lib/nina`, `scripts` | 5 | — | NORMAL | `.workflows/plan/photoshop-aspect-ratio-crop/phase-2.md` | — | — |
+| 1 | ✅ Pure crop-math module + exported ratio enum | R1 | `lib/nina` | 3 | — | HARD | `.workflows/plan/photoshop-aspect-ratio-crop/phase-1.md` | `P1-NIN-A055` | — |
+| 2 | ✅ Schema + job-args plumbing | R1 | `lib/db/schema/nina`, `drizzle`, `lib/nina`, `scripts` | 5 | — | NORMAL | `.workflows/plan/photoshop-aspect-ratio-crop/phase-2.md` | `P1-DB-A008` | — |
 | 3 | ✅ Server-side crop execution | R1 | `lib/nina` | 4 | 1, 2 | HARD | `.workflows/plan/photoshop-aspect-ratio-crop/phase-3.md` | `P1-NIN-A056` | — |
 | 4 | ✅ Server Action + page wiring | R1 | `lib/admin`, `app/admin`, `components/admin` (2 type-only lines) | 4 | 1, 2 | NORMAL | `.workflows/plan/photoshop-aspect-ratio-crop/phase-4.md` | `P1-ADM-N8QW` | — |
-| 5 | Crop UI + PhotoshopDetail wiring | R1 | `components/admin` | 4 | 1, 4 | HARD | `.workflows/plan/photoshop-aspect-ratio-crop/phase-5.md` | — | — |
+| 5 | ✅ Crop UI + PhotoshopDetail wiring | R1 | `components/admin` | 4 | 1, 4 | HARD | `.workflows/plan/photoshop-aspect-ratio-crop/phase-5.md` | `P1-CA-A007` | — |
 
 Phases 1 and 2 have no dependency on each other and may be built/reviewed in either order.
 Phases 3 and 4 both depend only on 1 and 2 (not on each other) and may likewise be built in
