@@ -167,6 +167,7 @@ export {
 
 export {
   deleteNinaAvatarAction,
+  replaceNinaAvatarAction,
   saveNinaAvatarCropAction,
   setChatPhotoAsAvatarAction,
   setCurrentNinaAvatarAction,

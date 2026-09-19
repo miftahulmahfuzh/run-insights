@@ -25,6 +25,7 @@ export default async function PhotoshopDetailPage({
 
   return (
     <PhotoshopDetail
+      userId={userId}
       sourceKind={source}
       sourceId={id}
       sourceUrl={photo.blobUrl}

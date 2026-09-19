@@ -50,6 +50,7 @@ const BARREL_ACTIONS = [
   'registerNinaAvatarsAction',
   'removeNinaAvatarsAction',
   'renameNinaAlbumFolderAction',
+  'replaceNinaAvatarAction',
   'saveNinaAvatarCropAction',
   'searchNinaAvatarsAction',
   'setChatPhotoAsAvatarAction',
@@ -72,10 +73,11 @@ it('the describe module exports exactly its five describe actions', async () => 
   ])
 })
 
-it('the avatar module exports exactly its four face actions', async () => {
+it('the avatar module exports exactly its five face actions', async () => {
   const mod = await import('@/lib/admin/ninaAlbumAvatarActions')
   expect(Object.keys(mod).sort()).toEqual([
     'deleteNinaAvatarAction',
+    'replaceNinaAvatarAction',
     'saveNinaAvatarCropAction',
     'setChatPhotoAsAvatarAction',
     'setCurrentNinaAvatarAction',

@@ -4,11 +4,12 @@ import { revalidatePath } from 'next/cache'
 
 import { ADMIN_CHAT_PHOTOS_PATH } from '@/lib/admin/chatPhotos'
 import { chatPhotoSetAvatarSchema } from '@/lib/admin/chatPhotoSchema'
+import { isAdminAvatarRequestPathname } from '@/lib/admin/avatars'
 import type { AdminActionResult } from '@/lib/admin/ninaAlbumActions'
 import { scheduleDescribe } from '@/lib/admin/ninaAlbumDeferredDescribe'
 import { scheduleMediaDescribe } from '@/lib/admin/ninaMediaDeferredDescribe'
 import { requireAdmin } from '@/lib/admin/requireAdmin'
-import { avatarIdSchema, cropWriteSchema } from '@/lib/admin/schema'
+import { avatarIdSchema, avatarReplaceSchema, cropWriteSchema } from '@/lib/admin/schema'
 import { clampCrop, cropForWrite, isIdentityCrop, resolveCrop } from '@/lib/nina/crop'
 import {
   deleteNinaAvatar,
@@ -17,12 +18,14 @@ import {
   getNinaMessageImage,
   insertNinaAvatars,
   setCurrentNinaAvatar,
+  updateNinaAvatarBlob,
   updateNinaAvatarCrop,
   type NinaAvatarRow,
   type NinaImageRow,
 } from '@/lib/nina/queries'
 import { releaseBlobIfUnreferenced } from '@/lib/nina/blobRelease'
 import { promoteNinaAvatarDependents } from '@/lib/nina/provenancePromotion'
+import { isValidContentHash } from '@/lib/photos/contentHash'
 
 /**
  * The face itself: make a photograph hers, keep her in it, reframe it, and take it away.
@@ -257,6 +260,64 @@ export async function saveNinaAvatarCropAction(input: unknown): Promise<AdminAct
   if (!saved) return { ok: false, error: 'That photo is not in the album.' }
   revalidatePath('/admin/nina')
   return { ok: true }
+}
+
+/**
+ * Swap the bytes behind an existing album row, keeping its id, its folder and its place in the
+ * album — the manual file-pick counterpart to `resolvePhotoshopReplace`'s "accept the job's own
+ * result", called from the Photoshop detail screen's own Replace button rather than from a
+ * finished job. `replaceChatPhotoAction`'s exact shape (`lib/admin/chatPhotoActions.ts`), the
+ * Media folder's Replace, mirrored onto this table.
+ *
+ * A pointer row (`sourceImageId` set) owns no bytes of its own to replace — it shows the Media
+ * row's object — so it is refused before any write is attempted, the same refusal
+ * `updateNinaAvatarBlob`'s own `sourceImageId IS NULL` guard would otherwise report as a bare
+ * "not in the album".
+ */
+export async function replaceNinaAvatarAction(input: unknown): Promise<AdminActionResult> {
+  const { userId } = await requireAdmin()
+
+  const parsed = avatarReplaceSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'That upload did not describe a photo.' }
+  const { id, blobUrl, pathname, width, height, bytes, contentHash } = parsed.data
+
+  if (!isAdminAvatarRequestPathname(pathname, userId)) {
+    return { ok: false, error: 'That file did not land in her photo folder.' }
+  }
+
+  const existing = await getNinaAvatar(userId, id)
+  if (existing == null) return { ok: false, error: 'That photo is not in the album.' }
+  if (existing.sourceImageId != null) {
+    return {
+      ok: false,
+      error: 'That one points at a Media photo. Replace the original there instead.',
+    }
+  }
+
+  const claimedHash = isValidContentHash(contentHash) ? contentHash : null
+
+  const updated = await updateNinaAvatarBlob(userId, id, {
+    blobUrl,
+    pathname,
+    width,
+    height,
+    bytes,
+    contentHash: claimedHash,
+  })
+  if (updated == null) return { ok: false, error: 'That photo is not in the album.' }
+
+  let note: string | undefined
+  if (existing.pathname !== pathname) {
+    const outcome = await releaseBlobIfUnreferenced(userId, existing)
+    if (outcome === 'shared') note = 'The old file is still used elsewhere, so it was kept.'
+  }
+
+  /* The write nulled description/keywords/embedding — re-earn the prose for the NEW bytes, same
+   * reason `replaceChatPhotoAction` re-captions. */
+  scheduleDescribe(userId, id)
+
+  revalidatePath('/admin/nina')
+  return { ok: true, id, ...(note === undefined ? {} : { note }) }
 }
 
 /**

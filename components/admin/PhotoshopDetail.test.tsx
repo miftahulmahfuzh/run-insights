@@ -23,6 +23,14 @@ vi.mock('@/lib/admin/photoshopActions', () => ({
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }))
 
+/* The manual Replace button's writes — not under test here (MediaControls' own suite owns the
+ * file-pick/upload/action wiring); mocked so this file never pulls `requireAdmin` → next-auth
+ * into a happy-dom run. */
+vi.mock('@/lib/admin/chatPhotoActions', () => ({ replaceChatPhotoAction: vi.fn() }))
+vi.mock('@/lib/admin/ninaAlbumActions', () => ({ replaceNinaAvatarAction: vi.fn() }))
+vi.mock('@/components/admin/explorer/chatPhotoUpload', () => ({ uploadChatPhoto: vi.fn() }))
+vi.mock('@/components/admin/explorer/avatarUpload', () => ({ uploadAvatarPhoto: vi.fn() }))
+
 vi.mock('@/components/admin/PhotoshopCropStudio', async () => {
   const React = await import('react')
   return {
@@ -51,6 +59,7 @@ const runAction = vi.mocked(runPhotoshopJobAction)
 function panel(sourceWidth: number | null = 832, sourceHeight: number | null = 732) {
   return render(
     <PhotoshopDetail
+      userId="user0000001"
       sourceKind="avatar"
       sourceId="abcdefghijkl"
       sourceUrl="https://blob.example/source.png"

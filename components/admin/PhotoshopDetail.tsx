@@ -8,7 +8,12 @@ import {
   PhotoshopCropStudio,
   type PhotoshopCropSelection,
 } from '@/components/admin/PhotoshopCropStudio'
+import { uploadAvatarPhoto } from '@/components/admin/explorer/avatarUpload'
+import { uploadChatPhoto } from '@/components/admin/explorer/chatPhotoUpload'
+import { SwapIcon } from '@/components/admin/photoIcons'
 import { Button } from '@/components/ui'
+import { replaceChatPhotoAction } from '@/lib/admin/chatPhotoActions'
+import { replaceNinaAvatarAction } from '@/lib/admin/ninaAlbumActions'
 import {
   readPhotoshopJobAction,
   resolvePhotoshopJobAction,
@@ -58,12 +63,15 @@ const POLL_INTERVAL_MS = 3_000
  * it does today.
  */
 export function PhotoshopDetail({
+  userId,
   sourceKind,
   sourceId,
   sourceUrl,
   sourceWidth,
   sourceHeight,
 }: {
+  /** The signed-in admin's id, from the server prop chain — Replace's uploads land under it. */
+  userId: string
   sourceKind: NinaPhotoshopSourceKind
   sourceId: string
   sourceUrl: string
@@ -83,11 +91,25 @@ export function PhotoshopDetail({
   const [cropOpen, setCropOpen] = React.useState(false)
   const [cropSelection, setCropSelection] = React.useState<PhotoshopCropSelection | null>(null)
 
+  /*
+   * The MANUALLY replaced photo's bytes, kept locally rather than re-read from the server: this
+   * route (`/admin/photoshop/[source]/[id]`) is not the path `replaceChatPhotoAction` /
+   * `replaceNinaAvatarAction` revalidate (`/admin/nina`), so nothing re-renders this page's props
+   * on a successful swap — the operator would otherwise see the OLD bytes until a manual reload.
+   */
+  const [displayUrl, setDisplayUrl] = React.useState(sourceUrl)
+  const [displayWidth, setDisplayWidth] = React.useState(sourceWidth)
+  const [displayHeight, setDisplayHeight] = React.useState(sourceHeight)
+  const [replacing, setReplacing] = React.useState(false)
+  const [replaceError, setReplaceError] = React.useState<string | null>(null)
+  const [replaceNote, setReplaceNote] = React.useState<string | null>(null)
+  const replaceFileRef = React.useRef<HTMLInputElement>(null)
+
   const cropAvailable =
-    sourceWidth != null && sourceHeight != null && sourceWidth > 0 && sourceHeight > 0
+    displayWidth != null && displayHeight != null && displayWidth > 0 && displayHeight > 0
   /** What the server would pick on its own if no crop is supplied — the step's default, and the
    *  number the "off" hint quotes so the trade-off is stated rather than implied. */
-  const autoRatio = cropAvailable ? nearestNinaImageAspectRatio(sourceWidth, sourceHeight) : null
+  const autoRatio = cropAvailable ? nearestNinaImageAspectRatio(displayWidth, displayHeight) : null
 
   const router = useRouter()
   const aliveRef = React.useRef(true)
@@ -105,18 +127,67 @@ export function PhotoshopDetail({
    * genuinely have that shape instead of being stretched into it.
    */
   function toggleCrop() {
-    if (sourceWidth == null || sourceHeight == null) return
+    if (displayWidth == null || displayHeight == null) return
     if (cropOpen) {
       setCropOpen(false)
       return
     }
     if (cropSelection == null) {
       setCropSelection({
-        ratioLabel: nearestNinaImageAspectRatio(sourceWidth, sourceHeight),
+        ratioLabel: nearestNinaImageAspectRatio(displayWidth, displayHeight),
         crop: { ...NINA_PHOTOSHOP_CROP_IDENTITY },
       })
     }
     setCropOpen(true)
+  }
+
+  /**
+   * The manual file-pick Replace, mirroring `MediaControls`' `onPick`
+   * (`components/admin/explorer/MediaControls.tsx`) onto whichever table this source photo lives
+   * in. Distinct from `resolve('replace')` below: that one accepts a FINISHED JOB's own result,
+   * this one swaps in a file picked from the operator's computer before any job has run.
+   */
+  async function onReplacePick(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    // Clearing the input is what makes picking the SAME file twice fire `change` again.
+    event.target.value = ''
+    if (file == null || replacing) return
+
+    setReplacing(true)
+    setReplaceError(null)
+    setReplaceNote(null)
+    try {
+      if (sourceKind === 'message_image') {
+        const uploaded = await uploadChatPhoto(userId, file)
+        const result = await replaceChatPhotoAction({ id: sourceId, ...uploaded })
+        if (!result.ok) {
+          setReplaceError(result.error ?? 'That replacement did not stick.')
+          return
+        }
+        if (result.note != null) setReplaceNote(result.note)
+        setDisplayUrl(uploaded.blobUrl)
+        setDisplayWidth(uploaded.width)
+        setDisplayHeight(uploaded.height)
+      } else {
+        const uploaded = await uploadAvatarPhoto(userId, file)
+        const result = await replaceNinaAvatarAction({ id: sourceId, ...uploaded })
+        if (!result.ok) {
+          setReplaceError(result.error ?? 'That replacement did not stick.')
+          return
+        }
+        if (result.note != null) setReplaceNote(result.note)
+        setDisplayUrl(uploaded.blobUrl)
+        setDisplayWidth(uploaded.width)
+        setDisplayHeight(uploaded.height)
+      }
+      // The old bytes' aspect ratio no longer describes the new picture.
+      setCropOpen(false)
+      setCropSelection(null)
+    } catch (cause) {
+      setReplaceError(cause instanceof Error ? cause.message : 'That upload failed.')
+    } finally {
+      setReplacing(false)
+    }
   }
 
   function changeMode(next: NinaPhotoshopMode) {
@@ -221,15 +292,47 @@ export function PhotoshopDetail({
         <div>
           <div className="overflow-hidden rounded-field bg-ink-3/20">
             {/* eslint-disable-next-line @next/next/no-img-element -- Blob-hosted, un-transformed. */}
-            <img src={sourceUrl} alt="" className="max-h-[420px] w-full object-contain" />
+            <img src={displayUrl} alt="" className="max-h-[420px] w-full object-contain" />
           </div>
-          {/* The id the `/photoshop` and `/pull-photoshop-job` skills take as their first
-              argument — the runner's own ask: "print the image id below it, so i can paste it
-              here to run the skill." Plain selectable text, not a copy button: a 12-character
-              nanoid is one tap-and-hold away on a phone and a triple-click away on a desktop. */}
-          <p className="mt-1.5 text-[12px] font-semibold text-ink-3">
-            Image ID: <span className="font-mono text-ink-2 select-all">{sourceId}</span>
-          </p>
+          <div className="mt-1.5 flex items-center justify-between gap-3">
+            {/* The id the `/photoshop` and `/pull-photoshop-job` skills take as their first
+                argument — the runner's own ask: "print the image id below it, so i can paste it
+                here to run the skill." Plain selectable text, not a copy button: a 12-character
+                nanoid is one tap-and-hold away on a phone and a triple-click away on a desktop. */}
+            <p className="text-[12px] font-semibold text-ink-3">
+              Image ID: <span className="font-mono text-ink-2 select-all">{sourceId}</span>
+            </p>
+            <Button
+              type="button"
+              size="md"
+              variant="secondary"
+              aria-label="Replace this photo"
+              title="Replace this photo"
+              className="w-11 shrink-0 px-0"
+              loading={replacing}
+              disabled={replacing || running || job?.status === 'pending'}
+              onClick={() => replaceFileRef.current?.click()}
+            >
+              <SwapIcon className="size-4" />
+            </Button>
+          </div>
+          <input
+            ref={replaceFileRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(event) => void onReplacePick(event)}
+          />
+          {replaceError != null && (
+            <p role="alert" className="mt-1.5 text-[12px] font-medium text-red">
+              {replaceError}
+            </p>
+          )}
+          {replaceNote != null && (
+            <p role="status" className="mt-1.5 text-[12px] font-medium text-ink-3">
+              {replaceNote}
+            </p>
+          )}
         </div>
       )}
 
@@ -240,7 +343,7 @@ export function PhotoshopDetail({
               <p className="mb-1 text-[12px] font-semibold text-ink-3">Before</p>
               <div className="overflow-hidden rounded-field bg-ink-3/20">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={sourceUrl} alt="" className="max-h-[420px] w-full object-contain" />
+                <img src={displayUrl} alt="" className="max-h-[420px] w-full object-contain" />
               </div>
             </div>
             <div>
@@ -417,8 +520,8 @@ export function PhotoshopDetail({
               {cropOpen && cropSelection != null && (
                 <div id="photoshop-crop-step" className="mt-3">
                   <PhotoshopCropStudio
-                    src={sourceUrl}
-                    natural={{ width: sourceWidth, height: sourceHeight }}
+                    src={displayUrl}
+                    natural={{ width: displayWidth, height: displayHeight }}
                     value={cropSelection}
                     onChange={setCropSelection}
                     disabled={running || job?.status === 'pending'}

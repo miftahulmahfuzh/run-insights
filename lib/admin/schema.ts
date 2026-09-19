@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import { chatPhotoDescriptionField } from '@/lib/admin/chatPhotoSchema'
+import { blobUrlMatchesPathname } from '@/lib/admin/chatPhotos'
 import {
   NINA_FILENAME_MAX_CHARS,
   NINA_FOLDER_FORBIDDEN_RE,
@@ -190,6 +191,29 @@ export const avatarRegisterSchema = z.object({
   /** Make it hers immediately, or just park it in the album. The checkbox on the picker. */
   makeCurrent: z.boolean(),
 })
+
+/**
+ * "Swap the bytes behind this album row." The album's twin of `chatPhotoReplaceSchema`
+ * (`lib/admin/chatPhotoSchema.ts`) — same shape and the same cross-field tie between `blobUrl` and
+ * `pathname` — for a manual file-pick replace from the Photoshop detail screen, distinct from
+ * `resolvePhotoshopReplace`'s "accept the job's own result" path. No forced content type: an
+ * avatar keeps its own container (`avatarRegisterSchema`'s rule), so `contentHash` is the only
+ * claim beyond the four `chatPhotoReplaceSchema` also takes.
+ */
+export const avatarReplaceSchema = z
+  .object({
+    id: avatarIdSchema,
+    blobUrl: z.url().refine((value) => value.startsWith('https://'), 'Blob URLs are https'),
+    pathname: z.string().min(1).max(512),
+    width: z.number().int().min(ADMIN_AVATAR_MIN_EDGE_PX).max(ADMIN_AVATAR_MAX_EDGE_PX),
+    height: z.number().int().min(ADMIN_AVATAR_MIN_EDGE_PX).max(ADMIN_AVATAR_MAX_EDGE_PX),
+    bytes: z.number().int().positive().max(ADMIN_AVATAR_MAX_UPLOAD_BYTES),
+    contentHash: z.string().min(1).max(128).optional(),
+  })
+  .refine((value) => blobUrlMatchesPathname(value.blobUrl, value.pathname), {
+    message: 'blobUrl and pathname describe different objects',
+    path: ['blobUrl'],
+  })
 
 /* ============================================================================
  * Phase 16 — /admin/memory. Reshaped by admin-memory-and-chat-photos phase 1
