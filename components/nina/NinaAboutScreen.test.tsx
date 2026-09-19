@@ -65,6 +65,7 @@ vi.mock('@/components/ui/PhotoViewer', () => ({
 // Real everything else: the codec, `aboutViewerLists`, the grids, the avatar.
 import { NinaAboutScreen } from './NinaAboutScreen'
 import {
+  NINA_ABOUT_PAGE_SIZE,
   NINA_ABOUT_PHOTO_PARAM,
   NINA_ATTACH_MAX_CHARS,
   type NinaAlbumPhoto,
@@ -212,14 +213,14 @@ describe('NinaAboutScreen — pagination', () => {
   })
 
   it('a multi-page collection shows the page line and the two controls', () => {
-    renderScreen({ albumTotal: 45 })
+    renderScreen({ albumTotal: NINA_ABOUT_PAGE_SIZE + 15 })
     expect(screen.getByText(/Halaman 1 dari 2/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Sebelumnya' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Berikutnya' })).toBeEnabled()
   })
 
   it('the controls are icon-only — the accessible name carries the word, not visible text', () => {
-    renderScreen({ albumTotal: 45 })
+    renderScreen({ albumTotal: NINA_ABOUT_PAGE_SIZE + 15 })
     const prev = screen.getByRole('button', { name: 'Sebelumnya' })
     const next = screen.getByRole('button', { name: 'Berikutnya' })
     expect(prev.textContent?.trim()).toBe('')
@@ -229,7 +230,7 @@ describe('NinaAboutScreen — pagination', () => {
   })
 
   it('the pager row is centered, not pinned to one edge', () => {
-    renderScreen({ albumTotal: 45 })
+    renderScreen({ albumTotal: NINA_ABOUT_PAGE_SIZE + 15 })
     const row = screen.getByRole('button', { name: 'Sebelumnya' }).parentElement as HTMLElement
     expect(row.className).toContain('justify-center')
     expect(row.className).not.toContain('justify-between')
@@ -238,10 +239,10 @@ describe('NinaAboutScreen — pagination', () => {
   it('Berikutnya fetches the next page from the server and renders it — no navigation', async () => {
     fetchNinaAlbumPage.mockResolvedValue({
       items: [albumPhoto('a3'), albumPhoto('a4')],
-      total: 45,
+      total: NINA_ABOUT_PAGE_SIZE + 15,
       page: 2,
     })
-    renderScreen({ albumTotal: 45 })
+    renderScreen({ albumTotal: NINA_ABOUT_PAGE_SIZE + 15 })
 
     fireEvent.click(screen.getByRole('button', { name: 'Berikutnya' }))
     expect(fetchNinaAlbumPage).toHaveBeenCalledWith(2)
@@ -254,8 +255,12 @@ describe('NinaAboutScreen — pagination', () => {
   })
 
   it('a page already fetched this mount is served from cache — no second server call', async () => {
-    fetchNinaAlbumPage.mockResolvedValue({ items: [albumPhoto('a3')], total: 45, page: 2 })
-    renderScreen({ albumTotal: 45 })
+    fetchNinaAlbumPage.mockResolvedValue({
+      items: [albumPhoto('a3')],
+      total: NINA_ABOUT_PAGE_SIZE + 15,
+      page: 2,
+    })
+    renderScreen({ albumTotal: NINA_ABOUT_PAGE_SIZE + 15 })
 
     fireEvent.click(screen.getByRole('button', { name: 'Berikutnya' }))
     await waitFor(() => expect(fetchNinaAlbumPage).toHaveBeenCalledTimes(1))
@@ -269,10 +274,10 @@ describe('NinaAboutScreen — pagination', () => {
   it('the Media tab pages independently through fetchNinaMediaPage', async () => {
     fetchNinaMediaPage.mockResolvedValue({
       items: [galleryPhoto('c9', 'his')],
-      total: 60,
+      total: NINA_ABOUT_PAGE_SIZE * 2,
       page: 2,
     })
-    renderScreen({ galleryTotal: 60 })
+    renderScreen({ galleryTotal: NINA_ABOUT_PAGE_SIZE * 2 })
     fireEvent.click(screen.getByRole('tab', { name: 'Media' }))
 
     fireEvent.click(screen.getByRole('button', { name: 'Berikutnya' }))

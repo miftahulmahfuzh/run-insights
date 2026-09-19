@@ -250,9 +250,14 @@ describe('PhotoReferencePicker', () => {
     // read identically to source text but would fail here.
     picker()
     const grid = screen.getByRole('button', { name: 'Nina photo 1' }).closest('ul')
-    expect(grid).toHaveClass('gap-[3px]', 'overflow-hidden', 'rounded-field')
+    expect(grid).toHaveClass('gap-[3px]')
     expect(grid?.className).toContain(`minmax(${PHOTO_REFERENCE_MIN_TILE_PX}px,1fr)`)
     expect(grid).not.toHaveClass('border')
+
+    // The rounded, clipped frame — and the desktop-only horizontal scroll for the fixed-width
+    // 30-column track — live one level up, on the wrapper whose edges are now the visible sheet.
+    const wrapper = grid?.parentElement
+    expect(wrapper).toHaveClass('overflow-hidden', 'rounded-field', 'lg:overflow-x-auto')
 
     const cell = screen.getByRole('button', { name: 'Nina photo 1' }).closest('li')
     expect(cell).toHaveClass('aspect-square')

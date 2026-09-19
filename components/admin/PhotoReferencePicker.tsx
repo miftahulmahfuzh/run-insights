@@ -60,10 +60,22 @@ import type { PhotoReferenceItem } from './photoReferenceModel'
  * `PHOTO_REFERENCE_MIN_TILE_PX` is the `minmax()` floor for the fluid tablet range (`sm` to `lg`):
  * `auto-fill` drops a column before it lets a tile go under 92 px — 2.1x `docs/design-brief.md`'s
  * 44 pt minimum. Below `sm` (phones) the grid is a fixed 3 columns, comfortably clear of the floor
- * even on a narrow screen; at `lg` and up (desktop) it is a fixed 10 columns. `NINA_PHOTO_REF_PAGE_SIZE`
- * is 30 — divisible by both 3 and 10 — so a full page tiles as a clean sheet with no trailing gap
- * on either breakpoint: 10x3 on desktop, 3x10 on phones. Only the collection's last (partial) page
+ * even on a narrow screen; at `lg` and up (desktop) it is a fixed 30 columns. `NINA_PHOTO_REF_PAGE_SIZE`
+ * is 90 — divisible by both 3 and 30 — so a full page tiles as a clean sheet with no trailing gap
+ * on either breakpoint: 30x3 on desktop, 3x30 on phones. Only the collection's last (partial) page
  * can ever leave a row short.
+ *
+ * ── WHY THE DESKTOP TIER SCROLLS SIDEWAYS ───────────────────────────────────────────────────────
+ * 30 columns of `1fr` (Tailwind's plain `grid-cols-30`, if it existed) would divide whatever width
+ * the admin panel happens to have and let each tile shrink below the 92 px floor on anything but an
+ * extra-wide monitor — the same floor the tablet tier enforces with `auto-fill`, silently abandoned
+ * at `lg` if columns are allowed to compress. So the `lg` track is `minmax(92px,1fr)` per column,
+ * same floor, and the wrapping `<div>` carries `lg:overflow-x-auto` so a full-width 30-column row
+ * (2760 px minimum) scrolls horizontally inside the admin panel instead of squeezing every tile
+ * illegibly thin. `overflow-hidden rounded-field` moved from the `<ul>` onto that wrapper, since it
+ * is now the wrapper's edges that frame the visible sheet; `lg:overflow-x-auto` only ever overrides
+ * the horizontal half of that shorthand, so the vertical clip (and the rounded corners it draws)
+ * survive unchanged below `lg`, where the grid never overflows its container in the first place.
  *
  * ── IT READS NOTHING AND WRITES NOTHING ─────────────────────────────────────────────────────────
  * No Server Action is imported, no `fetch()` is called, and there is no database read here or
@@ -198,49 +210,51 @@ export function PhotoReferencePicker({
         />
       ) : (
         <>
-          <ul className="grid grid-cols-3 gap-[3px] overflow-hidden rounded-field sm:grid-cols-[repeat(auto-fill,minmax(92px,1fr))] lg:grid-cols-10">
-            {view.tiles.map((tile) => (
-              <li key={tile.key} className="relative aspect-square bg-ink-3/20">
-                <button
-                  type="button"
-                  onClick={() => onChange(nextPhotoReferenceValue(value, tile.key))}
-                  aria-pressed={tile.selected}
-                  aria-label={tile.label}
-                  className="block size-full focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset"
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element -- Blob-hosted,
-                   * deliberately un-transformed, and the chat half of this union has no thumbnail
-                   * column at all; see the header. */}
-                  <img
-                    src={tile.src}
-                    alt=""
-                    loading="lazy"
-                    decoding="async"
-                    draggable={false}
-                    className={cn(
-                      'size-full object-cover transition-transform',
-                      tile.selected && 'scale-[0.9]',
+          <div className="overflow-hidden rounded-field lg:overflow-x-auto">
+            <ul className="grid grid-cols-3 gap-[3px] sm:grid-cols-[repeat(auto-fill,minmax(92px,1fr))] lg:grid-cols-[repeat(30,minmax(92px,1fr))]">
+              {view.tiles.map((tile) => (
+                <li key={tile.key} className="relative aspect-square bg-ink-3/20">
+                  <button
+                    type="button"
+                    onClick={() => onChange(nextPhotoReferenceValue(value, tile.key))}
+                    aria-pressed={tile.selected}
+                    aria-label={tile.label}
+                    className="block size-full focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element -- Blob-hosted,
+                     * deliberately un-transformed, and the chat half of this union has no thumbnail
+                     * column at all; see the header. */}
+                    <img
+                      src={tile.src}
+                      alt=""
+                      loading="lazy"
+                      decoding="async"
+                      draggable={false}
+                      className={cn(
+                        'size-full object-cover transition-transform',
+                        tile.selected && 'scale-[0.9]',
+                      )}
+                    />
+                    {tile.selected && (
+                      /*
+                       * `bg-ink text-card` and not `bg-accent`: `components/ui/Button.tsx:46-54`
+                       * measured white type on the cyan accent at near 2:1, well under WCAG's 4.5:1,
+                       * where ink-on-card is ~14:1 and inverts correctly in dark mode. The badge
+                       * carries a glyph, so it is type. `aria-hidden` because `aria-pressed` on the
+                       * button is already the announced state.
+                       */
+                      <span
+                        aria-hidden="true"
+                        className="absolute right-1 bottom-1 flex size-5 items-center justify-center rounded-pill bg-ink text-[11px] font-bold text-card"
+                      >
+                        &#10003;
+                      </span>
                     )}
-                  />
-                  {tile.selected && (
-                    /*
-                     * `bg-ink text-card` and not `bg-accent`: `components/ui/Button.tsx:46-54`
-                     * measured white type on the cyan accent at near 2:1, well under WCAG's 4.5:1,
-                     * where ink-on-card is ~14:1 and inverts correctly in dark mode. The badge
-                     * carries a glyph, so it is type. `aria-hidden` because `aria-pressed` on the
-                     * button is already the announced state.
-                     */
-                    <span
-                      aria-hidden="true"
-                      className="absolute right-1 bottom-1 flex size-5 items-center justify-center rounded-pill bg-ink text-[11px] font-bold text-card"
-                    >
-                      &#10003;
-                    </span>
-                  )}
-                </button>
-              </li>
-            ))}
-          </ul>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
 
           <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
             <p className="text-[10px] font-medium text-ink-3 tabular-nums sm:text-[12px]">

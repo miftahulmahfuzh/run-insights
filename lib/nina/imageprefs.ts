@@ -387,16 +387,16 @@ export function coerceNinaImageReference(value: unknown): NinaImageReference {
  * One page of the caption-less grid. Both the default and the CEILING for `limit`, so a
  * hand-edited request cannot turn one page into the unpaginated read the pager exists to avoid.
  *
- * 30, not the operator's original 50 — `PhotoReferencePicker.tsx`'s grid draws a fixed 3 columns on
- * phones and a fixed 10 columns on desktop, and 30 is the smallest number divisible by both, so a
- * full page tiles perfectly on either breakpoint (10x3 landscape, 3x10 portrait) with no trailing
- * gap in the last row. 50 divides 10 but not 3, and left a 1- or 2-tile hole in the mobile grid's
- * last row whenever the total wasn't itself a multiple of 3 — reported against the 50-per-page
- * pager once the mobile grid went from fluid `auto-fill` to a fixed 3 columns. The trade is fewer
- * photographs per page (more `Next` clicks on desktop for a large collection) for a page that
- * always tiles clean.
+ * 90, not the operator's original 50 — `PhotoReferencePicker.tsx`'s grid draws a fixed 3 columns on
+ * phones and a fixed 30 columns on desktop, and 90 is the smallest number divisible by both, so a
+ * full page tiles perfectly on either breakpoint (30x3 landscape, 3x30 portrait) with no trailing
+ * gap in the last row. 50 divides neither 3 nor 30 cleanly, and left a 1- or 2-tile hole in the
+ * mobile grid's last row whenever the total wasn't itself a multiple of 3 — reported against the
+ * 50-per-page pager once the mobile grid went from fluid `auto-fill` to a fixed 3 columns. The
+ * trade is more photographs per page (fewer `Next` clicks on desktop for a large collection) for a
+ * page that always tiles clean.
  */
-export const NINA_PHOTO_REF_PAGE_SIZE = 30
+export const NINA_PHOTO_REF_PAGE_SIZE = 90
 
 /** The two sets a photograph can come from. `'none'` is not one of them, so it is excluded. */
 type NinaPhotoRefSource = Exclude<NinaImageReferenceSource, 'none'>
