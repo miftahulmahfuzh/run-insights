@@ -2,7 +2,7 @@
 import type { ReactNode } from 'react'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { routerPush, routerRefresh, routerReplace } = vi.hoisted(() => ({
   routerPush: vi.fn(),
@@ -283,6 +283,103 @@ describe('NinaAboutScreen — pagination', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Berikutnya' }))
     expect(fetchNinaMediaPage).toHaveBeenCalledWith(2)
     expect(fetchNinaAlbumPage).not.toHaveBeenCalled()
+  })
+})
+
+describe('NinaAboutScreen — a fresh server render must actually reach the grid', () => {
+  it('a new album prop from router.refresh() replaces the one frozen at first mount', () => {
+    const { rerender } = renderScreen()
+    expect(
+      document.querySelector('img[src="https://blob.example/album-a1.jpg"]'),
+    ).toBeInTheDocument()
+
+    rerender(<NinaAboutScreen {...props({ album: [albumPhoto('a3'), albumPhoto('a2', true)] })} />)
+
+    expect(
+      document.querySelector('img[src="https://blob.example/album-a1.jpg"]'),
+    ).not.toBeInTheDocument()
+    expect(
+      document.querySelector('img[src="https://blob.example/album-a3.jpg"]'),
+    ).toBeInTheDocument()
+  })
+
+  it('a new gallery prop is likewise adopted on the Media tab, not frozen at first mount', () => {
+    const { rerender } = renderScreen()
+    fireEvent.click(screen.getByRole('tab', { name: 'Media' }))
+    expect(
+      document.querySelector('img[src="https://blob.example/chat-c3.jpg"]'),
+    ).not.toBeInTheDocument()
+
+    rerender(
+      <NinaAboutScreen
+        {...props({
+          gallery: [
+            galleryPhoto('c3', 'his'),
+            galleryPhoto('c1', 'his'),
+            galleryPhoto('c2', 'hers'),
+          ],
+        })}
+      />,
+    )
+
+    expect(
+      document.querySelector('img[src="https://blob.example/chat-c3.jpg"]'),
+    ).toBeInTheDocument()
+  })
+
+  it('a Previous/Next page already cached is dropped, not trusted, once a fresh render lands', async () => {
+    fetchNinaAlbumPage.mockResolvedValue({
+      items: [albumPhoto('a-page2')],
+      total: NINA_ABOUT_PAGE_SIZE + 15,
+      page: 2,
+    })
+    const { rerender } = renderScreen({ albumTotal: NINA_ABOUT_PAGE_SIZE + 15 })
+    fireEvent.click(screen.getByRole('button', { name: 'Berikutnya' }))
+    await waitFor(() => expect(fetchNinaAlbumPage).toHaveBeenCalledTimes(1))
+
+    // A fresh server render lands while the runner is sitting on page 2 — the cookie already
+    // named page 2, so the server's own `albumPage` prop matches where they are.
+    rerender(
+      <NinaAboutScreen
+        {...props({
+          album: [albumPhoto('a-page2-edited')],
+          albumTotal: NINA_ABOUT_PAGE_SIZE + 15,
+          albumPage: 2,
+        })}
+      />,
+    )
+    expect(
+      document.querySelector('img[src="https://blob.example/album-a-page2-edited.jpg"]'),
+    ).toBeInTheDocument()
+
+    // Paging away and back must re-fetch page 2 rather than serve the pre-refresh cache entry.
+    fireEvent.click(screen.getByRole('button', { name: 'Sebelumnya' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Berikutnya' }))
+    await waitFor(() => expect(fetchNinaAlbumPage).toHaveBeenCalledTimes(2))
+  })
+})
+
+describe('NinaAboutScreen — refresh on returning to the tab', () => {
+  const originalVisibility = Object.getOwnPropertyDescriptor(document, 'visibilityState')
+
+  afterEach(() => {
+    if (originalVisibility) Object.defineProperty(document, 'visibilityState', originalVisibility)
+  })
+
+  it('refreshes when the tab becomes visible again', () => {
+    renderScreen()
+    routerRefresh.mockClear()
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true })
+    fireEvent(document, new Event('visibilitychange'))
+    expect(routerRefresh).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not refresh on the transition into hidden', () => {
+    renderScreen()
+    routerRefresh.mockClear()
+    Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true })
+    fireEvent(document, new Event('visibilitychange'))
+    expect(routerRefresh).not.toHaveBeenCalled()
   })
 })
 

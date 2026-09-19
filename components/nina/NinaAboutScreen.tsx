@@ -194,6 +194,59 @@ export function NinaAboutScreen({
     ]),
   )
 
+  /**
+   * ── A FRESH SERVER RENDER MUST ACTUALLY REACH THE GRID ────────────────────────────────────────
+   * `ChatScreen.tsx`'s `seenInitial` pattern, ported: `useState(initialAlbum)` runs its
+   * initialiser exactly once, so a `router.refresh()` handing down a NEW `album`/`albumTotal`/
+   * `albumPage` — from a delete elsewhere on this screen, or from the visibility-driven refresh
+   * below — was being silently discarded forever, and the grid kept showing whatever was true at
+   * first mount until the runner navigated fully away and back. Measured in production
+   * 2026-09-19: an avatar photo edited in the admin panel kept showing its old picture on a phone
+   * whose tab had been open a while, and a newly-arrived chat photo stayed invisible however long
+   * the runner paged Media, while a fresh load of the same route was correct both times.
+   *
+   * During render, not an effect — `ChatScreen.tsx`'s own reason applies unchanged: React discards
+   * the in-progress render and restarts with the fresh state before committing, so nothing paints
+   * a stale frame first. `seenAlbum`/`seenGallery` hold the prop identity already adopted; the
+   * server always hands down a new array on a real refresh, so each guard fires once per refresh.
+   *
+   * The two `*Cache` refs are reset in the effects below rather than here: a ref, unlike state, may
+   * not be written during render (`react-hooks/refs` — a ref write is exactly the side effect
+   * render must stay free of). Resetting them a tick later, once the commit lands, still runs
+   * strictly before anything could read them again — the earliest a stale entry could be consulted
+   * is a `Next`/`Previous` tap, which needs a render and a next one of its own to even happen.
+   * REPLACED rather than merged: a refresh means the collection changed by an unknown amount, and a
+   * stale OTHER page is worse than one extra fetch when the runner pages back to it.
+   */
+  const [seenAlbum, setSeenAlbum] = React.useState(initialAlbum)
+  if (seenAlbum !== initialAlbum) {
+    setSeenAlbum(initialAlbum)
+    setAlbumItems(initialAlbum)
+    setAlbumTotal(albumTotalProp ?? initialAlbum.length)
+    setAlbumPage(albumPageProp ?? 1)
+  }
+  React.useEffect(() => {
+    albumCache.current = new Map([
+      [albumPageProp ?? 1, { items: initialAlbum, total: albumTotalProp ?? initialAlbum.length }],
+    ])
+  }, [initialAlbum, albumTotalProp, albumPageProp])
+
+  const [seenGallery, setSeenGallery] = React.useState(initialGallery)
+  if (seenGallery !== initialGallery) {
+    setSeenGallery(initialGallery)
+    setGalleryItems(initialGallery)
+    setGalleryTotal(galleryTotalProp ?? initialGallery.length)
+    setGalleryPage(galleryPageProp ?? 1)
+  }
+  React.useEffect(() => {
+    galleryCache.current = new Map([
+      [
+        galleryPageProp ?? 1,
+        { items: initialGallery, total: galleryTotalProp ?? initialGallery.length },
+      ],
+    ])
+  }, [initialGallery, galleryTotalProp, galleryPageProp])
+
   const goToAlbumPage = React.useCallback(async (page: number) => {
     const cached = albumCache.current.get(page)
     if (cached) {
@@ -236,6 +289,26 @@ export function NinaAboutScreen({
 
   const albumPageCount = Math.max(1, Math.ceil(albumTotal / NINA_ABOUT_PAGE_SIZE))
   const galleryPageCount = Math.max(1, Math.ceil(galleryTotal / NINA_ABOUT_PAGE_SIZE))
+
+  /**
+   * ── REFRESH ON RETURN, NOT ON A TIMER ────────────────────────────────────────────────────────
+   * This screen has no push-driven live-arrival channel the way `ChatScreen` has for messages (an
+   * avatar edited in the admin panel, or a new chat photo landing, notifies no one) and nothing
+   * elsewhere calls `revalidatePath('/nina/about')` for either write. So the one signal this page
+   * CAN act on is the runner coming back to look at it: iOS keeps a backgrounded tab's whole React
+   * tree alive rather than reloading it, so a phone left on this screen can go on showing a stale
+   * server render indefinitely with no way to notice on its own. `visibilitychange` firing
+   * `'visible'` is exactly "the runner is looking at this screen again", and `router.refresh()`
+   * re-runs the server component — which the prop-sync above now actually carries into the grids
+   * rather than the refresh being silently absorbed by `useState`'s frozen initial value.
+   */
+  React.useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') router.refresh()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [router])
 
   /**
    * Tab switches write `?tab=` alongside the tap — `router.replace` (not `push`; a tab flip is not
