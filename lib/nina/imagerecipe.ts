@@ -117,6 +117,67 @@ export const OPENROUTER_IMAGE_URL = 'https://openrouter.ai/api/v1/images/generat
 export const NINA_IMAGE_RESOLUTION = '1K'
 /** Portrait. She is a person, not a badge. */
 export const NINA_IMAGE_ASPECT = '3:4'
+
+/**
+ * **The full `aspect_ratio` enum this provider accepts**, verified against OpenRouter's own image
+ * generation API reference (2026-09-19) — not a guessed subset. `nearestNinaImageAspectRatio`
+ * below is the only reader; every entry needs a numeric `ratio` (width ÷ height) to compare
+ * against, so `'auto'` — "let the provider choose", and never documented to look at a reference
+ * image's own shape — is deliberately left out of this table rather than given a fake ratio.
+ */
+const NINA_IMAGE_ASPECT_RATIOS: ReadonlyArray<{ label: string; ratio: number }> = [
+  { label: '1:1', ratio: 1 / 1 },
+  { label: '1:2', ratio: 1 / 2 },
+  { label: '1:4', ratio: 1 / 4 },
+  { label: '1:8', ratio: 1 / 8 },
+  { label: '2:1', ratio: 2 / 1 },
+  { label: '2:3', ratio: 2 / 3 },
+  { label: '2.35:1', ratio: 2.35 / 1 },
+  { label: '3:2', ratio: 3 / 2 },
+  { label: '3:4', ratio: 3 / 4 },
+  { label: '4:1', ratio: 4 / 1 },
+  { label: '4:3', ratio: 4 / 3 },
+  { label: '4:5', ratio: 4 / 5 },
+  { label: '5:2', ratio: 5 / 2 },
+  { label: '5:4', ratio: 5 / 4 },
+  { label: '8:1', ratio: 8 / 1 },
+  { label: '9:16', ratio: 9 / 16 },
+  { label: '16:9', ratio: 16 / 9 },
+  { label: '9:19.5', ratio: 9 / 19.5 },
+  { label: '19.5:9', ratio: 19.5 / 9 },
+  { label: '9:20', ratio: 9 / 20 },
+  { label: '20:9', ratio: 20 / 9 },
+  { label: '9:21', ratio: 9 / 21 },
+  { label: '21:9', ratio: 21 / 9 },
+]
+
+/**
+ * **The 2026-09-19 edit-mode aspect fix.** `attemptPhotoshopOnce` (`lib/nina/photoshopRun.ts`) and
+ * `scripts/photoshop.ts` always sent `aspect_ratio: NINA_IMAGE_ASPECT` — a hardcoded `'3:4'` —
+ * regardless of the source photo's own shape, which a runner caught live: a 832x938 (0.887) source
+ * edited by `bytedance-seed/seedream-4.5` came back 1664x2218 (0.750), stretched onto a fixed 3:4
+ * canvas rather than kept at the photo's own proportions. Edit mode is documented to keep the rest
+ * of the photo as it is; a canvas shape the source never had breaks that promise.
+ *
+ * Picks the catalogued ratio closest to `width/height` by LOG distance, not raw difference —
+ * ratio comparison is multiplicative (2:1 and 4:1 are as far apart as 1:1 and 2:1), so a linear
+ * distance would favour the extreme entries. Falls back to `NINA_IMAGE_ASPECT` for a source with
+ * no usable dimensions (`0`, negative, `NaN`) rather than dividing by zero.
+ */
+export function nearestNinaImageAspectRatio(width: number, height: number): string {
+  if (!(width > 0) || !(height > 0)) return NINA_IMAGE_ASPECT
+  const target = width / height
+  let best = NINA_IMAGE_ASPECT_RATIOS[0]!
+  let bestDelta = Number.POSITIVE_INFINITY
+  for (const candidate of NINA_IMAGE_ASPECT_RATIOS) {
+    const delta = Math.abs(Math.log(candidate.ratio / target))
+    if (delta < bestDelta) {
+      bestDelta = delta
+      best = candidate
+    }
+  }
+  return best.label
+}
 /** 1K at 3:4. RECORDED, not measured — no image decoder runs on either host. */
 export const NINA_IMAGE_WIDTH = 768
 export const NINA_IMAGE_HEIGHT = 1024
@@ -556,12 +617,20 @@ export function buildImageRequestBody(input: {
    * passes a non-default value today.
    */
   resolution?: string
+  /**
+   * **The 2026-09-19 edit-mode aspect fix.** Optional and defaulted to `NINA_IMAGE_ASPECT` so
+   * every existing caller — anchor mode included, which keeps the fixed `'3:4'` canvas on
+   * purpose — builds the byte-identical body it always built. `attemptPhotoshopOnce`
+   * (`lib/nina/photoshopRun.ts`) is the one caller that passes `nearestNinaImageAspectRatio`'s
+   * result, and only for `mode === 'edit'`.
+   */
+  aspectRatio?: string
 }): Record<string, unknown> {
   const body: Record<string, unknown> = {
     model: input.model ?? NINA_IMAGE_MODEL,
     prompt: input.prompt,
     resolution: input.resolution ?? NINA_IMAGE_RESOLUTION,
-    aspect_ratio: NINA_IMAGE_ASPECT,
+    aspect_ratio: input.aspectRatio ?? NINA_IMAGE_ASPECT,
     n: 1,
     seed: input.seed,
   }

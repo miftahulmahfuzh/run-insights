@@ -22,18 +22,39 @@ export async function getPhotoshopSourcePhoto(
   userId: string,
   sourceKind: 'avatar' | 'message_image',
   sourceId: string,
-): Promise<{ blobUrl: string; contentHash: string | null; folder: string | null } | null> {
+): Promise<{
+  blobUrl: string
+  contentHash: string | null
+  folder: string | null
+  /** The source photo's own shape — `nearestNinaImageAspectRatio`'s input for an edit-mode job,
+   * so the model is not defaulted onto `NINA_IMAGE_ASPECT`'s fixed 3:4 canvas. `null` when the row
+   * predates dimension tracking; the caller degrades to the fixed default in that case. */
+  width: number | null
+  height: number | null
+} | null> {
   if (sourceKind === 'avatar') {
     const row = await getNinaAvatar(userId, sourceId)
     if (row == null) return null
     /* `avatarColumns` (and so `NinaAvatarRow`) does not project `content_hash` — it is a
      * write-time dedup key nothing else reads back, and it is only audited here, never compared
      * against, so `null` costs nothing. */
-    return { blobUrl: row.blobUrl, contentHash: null, folder: row.folder }
+    return {
+      blobUrl: row.blobUrl,
+      contentHash: null,
+      folder: row.folder,
+      width: row.width,
+      height: row.height,
+    }
   }
   const row = await getNinaMessageImage(userId, sourceId)
   if (row == null) return null
-  return { blobUrl: row.blobUrl, contentHash: row.contentHash, folder: null }
+  return {
+    blobUrl: row.blobUrl,
+    contentHash: row.contentHash,
+    folder: null,
+    width: row.width,
+    height: row.height,
+  }
 }
 
 type ResolvableJobError = 'not-found' | 'not-ready' | 'already-resolved'

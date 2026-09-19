@@ -53,6 +53,7 @@ import type { NinaImageFailure } from '../lib/nina/imagefail.ts'
 import {
   buildImageReferenceDataUrl,
   buildImageRequestBody,
+  nearestNinaImageAspectRatio,
   NINA_IMAGE_CACHE_MAX_AGE,
   NINA_IMAGE_CONTENT_TYPE,
   NINA_IMAGE_REFERENCE_FETCH_TIMEOUT_MS,
@@ -153,7 +154,7 @@ const sql = neon(url)
 /* ── 3. The fragment → exactly one photo, across both collections ────────────────────────────── */
 
 const avatarMatches = (await sql`
-  select id, user_id, blob_url, content_hash, folder
+  select id, user_id, blob_url, content_hash, folder, width, height
   from nina_avatars
   where strpos(id, ${fragment}::text) > 0
 `) as Array<{
@@ -162,13 +163,22 @@ const avatarMatches = (await sql`
   blob_url: string
   content_hash: string | null
   folder: string
+  width: number | null
+  height: number | null
 }>
 
 const mediaMatches = (await sql`
-  select id, user_id, blob_url, content_hash
+  select id, user_id, blob_url, content_hash, width, height
   from nina_message_images
   where strpos(id, ${fragment}::text) > 0
-`) as Array<{ id: string; user_id: string; blob_url: string; content_hash: string | null }>
+`) as Array<{
+  id: string
+  user_id: string
+  blob_url: string
+  content_hash: string | null
+  width: number | null
+  height: number | null
+}>
 
 const matches = [
   ...avatarMatches.map((row) => ({ ...row, sourceKind: 'avatar' as const })),
@@ -243,6 +253,7 @@ async function callModel(
   seed: number,
   referenceUrl: string,
   modelId: string,
+  aspectRatio: string | undefined,
 ): Promise<CallOutcome> {
   const startedAt = Date.now()
   const referenceDataUrl = await fetchReference(referenceUrl)
@@ -257,7 +268,14 @@ async function callModel(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(
-        buildImageRequestBody({ prompt, seed, referenceDataUrl, model: modelId, resolution }),
+        buildImageRequestBody({
+          prompt,
+          seed,
+          referenceDataUrl,
+          model: modelId,
+          resolution,
+          aspectRatio,
+        }),
       ),
       signal: AbortSignal.timeout(
         Math.max(1_000, NINA_WORKER_CALL_TIMEOUT_MS - (Date.now() - startedAt)),
@@ -347,6 +365,15 @@ async function storeResult(bytes: Buffer): Promise<{
 
 /* ── 8. Run it — draining the same retry budget the app's own loop would ─────────────────────── */
 
+/* **The 2026-09-19 edit-mode aspect fix** — `nearestNinaImageAspectRatio`'s own header in
+ * `lib/nina/imagerecipe.ts`. Anchor mode keeps `buildImageRequestBody`'s fixed `NINA_IMAGE_ASPECT`
+ * default by getting `undefined` here. Hand-kept in lockstep with `photoshopRun.ts`'s own
+ * `attemptPhotoshopOnce`, this file's header explains why. */
+const aspectRatio =
+  mode === 'edit' && source.width != null && source.height != null
+    ? nearestNinaImageAspectRatio(source.width, source.height)
+    : undefined
+
 let attempts = 0
 let outcome: 'ok' | 'retry' | 'gave-up' = 'retry'
 let lastDetail: string | null = null
@@ -364,7 +391,7 @@ while (outcome === 'retry' && attempts < MAX_ATTEMPTS) {
   await sql`update nina_photoshop_jobs set error_code = 'running', attempts = ${attempts} where id = ${jobId}`
 
   const seed = Math.floor(Math.random() * 2_147_483_647)
-  const call = await callModel(instruction, seed, source.blob_url, model)
+  const call = await callModel(instruction, seed, source.blob_url, model, aspectRatio)
 
   if (!call.ok) {
     lastDetail = `[${call.kind}] ${call.detail}`

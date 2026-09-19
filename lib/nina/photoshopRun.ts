@@ -10,7 +10,11 @@ import { contentHashOf } from '@/lib/photos/contentHash'
 
 import { logNinaError } from './errorlogs'
 import { callNinaImageModel } from './imagecall'
-import { NINA_IMAGE_CACHE_MAX_AGE, NINA_IMAGE_CONTENT_TYPE } from './imagerecipe'
+import {
+  NINA_IMAGE_CACHE_MAX_AGE,
+  NINA_IMAGE_CONTENT_TYPE,
+  nearestNinaImageAspectRatio,
+} from './imagerecipe'
 import {
   claimNinaPhotoshopJob,
   completeNinaPhotoshopJob,
@@ -77,18 +81,28 @@ async function attemptPhotoshopOnce(
   userId: string,
   jobId: string,
   sourceUrl: string,
+  sourceWidth: number | null,
+  sourceHeight: number | null,
 ): Promise<'ok' | 'retry' | 'gave-up'> {
   const claim = await claimNinaPhotoshopJob(userId, jobId)
   if (claim == null) return 'gave-up'
 
   const seed = Math.floor(Math.random() * PHOTOSHOP_SEED_MAX)
   const resolution = photoshopModelResolution(claim.args.model)
+  /* **The 2026-09-19 edit-mode aspect fix** (`nearestNinaImageAspectRatio`'s own header). Anchor
+   * mode keeps `buildImageRequestBody`'s fixed `NINA_IMAGE_ASPECT` default — a deliberate
+   * stylistic choice for a fresh generation — by passing `undefined` here. */
+  const aspectRatio =
+    claim.args.mode === 'edit' && sourceWidth != null && sourceHeight != null
+      ? nearestNinaImageAspectRatio(sourceWidth, sourceHeight)
+      : undefined
   const outcome = await callNinaImageModel(
     claim.args.promptText,
     seed,
     sourceUrl,
     claim.args.model,
     resolution,
+    aspectRatio,
   )
 
   if (!outcome.ok) {
@@ -152,9 +166,11 @@ export async function runPhotoshopJob(
   userId: string,
   jobId: string,
   sourceUrl: string,
+  sourceWidth: number | null = null,
+  sourceHeight: number | null = null,
 ): Promise<'ok' | 'retry' | 'gave-up'> {
   for (;;) {
-    const outcome = await attemptPhotoshopOnce(userId, jobId, sourceUrl)
+    const outcome = await attemptPhotoshopOnce(userId, jobId, sourceUrl, sourceWidth, sourceHeight)
     if (outcome !== 'retry') return outcome
   }
 }
@@ -166,11 +182,15 @@ export function firePhotoshopJob(input: {
   userId: string
   jobId: string
   sourceUrl: string
+  /** The source photo's own dimensions, straight off `getPhotoshopSourcePhoto` — absent (or
+   * `null`) callers get the fixed `NINA_IMAGE_ASPECT` default, same as before this field existed. */
+  sourceWidth?: number | null
+  sourceHeight?: number | null
 }): void {
-  const { userId, jobId, sourceUrl } = input
+  const { userId, jobId, sourceUrl, sourceWidth = null, sourceHeight = null } = input
   after(async () => {
     try {
-      const outcome = await runPhotoshopJob(userId, jobId, sourceUrl)
+      const outcome = await runPhotoshopJob(userId, jobId, sourceUrl, sourceWidth, sourceHeight)
       console.info('[photoshop] job finished', { jobId, outcome })
     } catch (cause) {
       console.error('[photoshop] job threw', { jobId, error: String(cause) })

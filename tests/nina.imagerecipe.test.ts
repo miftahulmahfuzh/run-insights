@@ -62,6 +62,7 @@ import {
   NINA_IMAGE_SCHEDULE_MEASURED_GAP_MS,
   NINA_IMAGE_STALE_MS,
   NINA_IMAGE_SWEEP_BUDGET,
+  nearestNinaImageAspectRatio,
   ninaImageCallTimeoutMs,
   ninaImageDailyCap,
   ninaImagePathname,
@@ -187,6 +188,43 @@ describe('the payload — the two surviving ported facts, and the reference that
     expect(ninaImageReferenceUrl({ referenceUrl: 'https://blob.test/a.png' })).toBe(
       'https://blob.test/a.png',
     )
+  })
+
+  it('an explicit aspectRatio overrides the fixed default, and only that key moves', () => {
+    const overridden = buildImageRequestBody({
+      prompt: 'a photograph',
+      seed: 42,
+      aspectRatio: '4:3',
+    })
+    expect(overridden.aspect_ratio).toBe('4:3')
+    expect({ ...overridden, aspect_ratio: undefined }).toEqual({ ...body, aspect_ratio: undefined })
+  })
+})
+
+describe('nearestNinaImageAspectRatio — the 2026-09-19 edit-mode aspect fix', () => {
+  it('picks the exact enum entry when the source already matches one', () => {
+    expect(nearestNinaImageAspectRatio(1000, 1000)).toBe('1:1')
+    expect(nearestNinaImageAspectRatio(768, 1024)).toBe('3:4')
+    expect(nearestNinaImageAspectRatio(1920, 1080)).toBe('16:9')
+  })
+
+  it('picks the closest enum entry for a source that matches none exactly', () => {
+    /* The runner's own repro: 832x938, ratio 0.887 — nearest by log-distance is 4:5 (0.8, delta
+     * ≈0.103), ahead of 1:1 (delta ≈0.120) and the fixed 3:4 default (delta ≈0.169) the old
+     * hardcoded call always sent instead. */
+    expect(nearestNinaImageAspectRatio(832, 938)).toBe('4:5')
+  })
+
+  it('falls back to the fixed default for unusable dimensions', () => {
+    expect(nearestNinaImageAspectRatio(0, 0)).toBe(NINA_IMAGE_ASPECT)
+    expect(nearestNinaImageAspectRatio(-100, 200)).toBe(NINA_IMAGE_ASPECT)
+    expect(nearestNinaImageAspectRatio(100, 0)).toBe(NINA_IMAGE_ASPECT)
+    expect(nearestNinaImageAspectRatio(Number.NaN, 100)).toBe(NINA_IMAGE_ASPECT)
+  })
+
+  it('landscape and portrait of the same shape pick reciprocal labels', () => {
+    expect(nearestNinaImageAspectRatio(1600, 900)).toBe('16:9')
+    expect(nearestNinaImageAspectRatio(900, 1600)).toBe('9:16')
   })
 })
 

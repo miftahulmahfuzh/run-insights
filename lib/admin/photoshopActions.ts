@@ -73,7 +73,13 @@ export async function runPhotoshopJobAction(input: {
     promptText: instruction,
   })
 
-  firePhotoshopJob({ userId, jobId, sourceUrl: source.blobUrl })
+  firePhotoshopJob({
+    userId,
+    jobId,
+    sourceUrl: source.blobUrl,
+    sourceWidth: source.width,
+    sourceHeight: source.height,
+  })
 
   return { ok: true, jobId }
 }
