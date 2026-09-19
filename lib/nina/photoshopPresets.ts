@@ -175,6 +175,11 @@ export const NINA_PHOTOSHOP_PRESETS: readonly NinaPhotoshopPreset[] = [
     label: 'Thicker thighs',
     text: 'Same woman, but she now has noticeably thicker thighs',
   }),
+  Object.freeze({
+    key: 'hip_curves',
+    label: 'Hip curves',
+    text: 'Same woman, same angle — but the curves of her hips show a little more',
+  }),
 ]
 
 export function photoshopPresetText(key: string): string | null {
