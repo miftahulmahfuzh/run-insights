@@ -9,11 +9,12 @@ import {
   DownloadIcon,
   PersonFrameIcon,
   RotateCcwIcon,
+  SquarePenIcon,
   TrashIcon,
 } from '@/components/admin/photoIcons'
 import { ShareToNinaItem } from '@/components/admin/ShareToNinaItem'
 import { TOUCH_ICON } from '@/components/admin/touch'
-import { Button } from '@/components/ui'
+import { Button, ButtonLink } from '@/components/ui'
 import { useSavePhoto, type SaveNotice } from '@/components/ui/useSavePhoto'
 import {
   deleteNinaAvatarAction,
@@ -275,11 +276,13 @@ function AlbumSelectionPane({
       {/*
        * THE ONE ICON ROW (R6). Left of the hairline: the crop's own two verbs — save the drag,
        * reset to the original. Right of it: what can be DONE to the photograph, in the grammar
-       * `/admin/photos`' rail already established — make it hers, send it to her chat, take a copy
-       * of it, and destructive LAST. The describe verb is NOT in this row any more — R3 moved it
-       * into the labelled `PhotoDescription` section below, next to the prose it rewrites.
-       * Every control names itself with `aria-label` and `title`; the words survive nowhere as
-       * children of a button.
+       * `/admin/photos`' rail already established — make it hers, send it to her chat, open it in
+       * Photoshop, take a copy of it, and destructive LAST. The Photoshop button is a plain
+       * `ButtonLink` to `/admin/photoshop/avatar/[id]` (the same route `PhotoshopPickerGrid` links
+       * to), not a click handler — there is nothing to await, it is pure navigation. The describe
+       * verb is NOT in this row any more — R3 moved it into the labelled `PhotoDescription` section
+       * below, next to the prose it rewrites. Every control names itself with `aria-label` and
+       * `title`; the words survive nowhere as children of a button.
        *
        * SEAM — PHASE 7. The share control needs `shareOrigin()` as a prop, because
        * `lib/share/origin.ts:1` is `server-only` and invariant 9 forbids a `NEXT_PUBLIC_` for it:
@@ -351,6 +354,17 @@ function AlbumSelectionPane({
           described={photo.description != null}
           shareOrigin={shareOrigin}
         />
+
+        <ButtonLink
+          href={`/admin/photoshop/avatar/${photo.id}`}
+          size="md"
+          variant="secondary"
+          className={RAIL_BUTTON}
+          aria-label="Open in Photoshop"
+          title="Open in Photoshop"
+        >
+          <SquarePenIcon className="size-4" />
+        </ButtonLink>
 
         <Button
           size="md"

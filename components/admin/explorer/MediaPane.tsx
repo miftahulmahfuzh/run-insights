@@ -4,9 +4,14 @@ import { useEffect, useRef, useState, useTransition } from 'react'
 
 import { CircleFrame } from '@/components/admin/CircleFrame'
 import { CropStudio } from '@/components/admin/CropStudio'
-import { BrushIcon, DownloadIcon, PersonFrameIcon } from '@/components/admin/photoIcons'
+import {
+  BrushIcon,
+  DownloadIcon,
+  PersonFrameIcon,
+  SquarePenIcon,
+} from '@/components/admin/photoIcons'
 import { TOUCH_ICON } from '@/components/admin/touch'
-import { Button } from '@/components/ui'
+import { Button, ButtonLink } from '@/components/ui'
 import { useSavePhoto, type SaveNotice } from '@/components/ui/useSavePhoto'
 import {
   describeChatPhotoAction,
@@ -219,9 +224,11 @@ export function MediaPane({
        * THE ONE ICON ROW — the old rail's grammar, in the pane's idiom. Left of the hairline: what
        * the photograph IS to her (the brush ONLY while a prompt exists — R2; the describe story
        * lives in the panel section below). Right of it: what the operator can DO — make it hers,
-       * download a copy, replace its bytes, remove it, destructive last. Every control names itself
-       * with `aria-label`/`title`; MediaControls's fragment drops Replace and Remove straight into
-       * this flex row, and its inline messages wrap beneath (basis-full).
+       * download a copy, open it in Photoshop, replace its bytes, remove it, destructive last. The
+       * Photoshop button is a plain `ButtonLink` to `/admin/photoshop/message_image/[id]`, the same
+       * route `PhotoshopPickerGrid` links to — pure navigation, nothing to await. Every control
+       * names itself with `aria-label`/`title`; MediaControls's fragment drops Replace and Remove
+       * straight into this flex row, and its inline messages wrap beneath (basis-full).
        */}
       <div className="mt-5 flex flex-wrap items-center gap-1 border-t border-rule pt-4">
         {/* R2. The conditional IS the feature: no prompt, no button — not a dimmed one. The
@@ -269,6 +276,17 @@ export function MediaPane({
         >
           <DownloadIcon className="size-4" />
         </Button>
+
+        <ButtonLink
+          href={`/admin/photoshop/message_image/${photo.id}`}
+          size="md"
+          variant="secondary"
+          className={RAIL_BUTTON}
+          aria-label="Open in Photoshop"
+          title="Open in Photoshop"
+        >
+          <SquarePenIcon className="size-4" />
+        </ButtonLink>
 
         <MediaControls userId={userId} photoId={photo.id} onRemoved={onRemoved} />
 

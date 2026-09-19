@@ -3,6 +3,8 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
+import { SquarePenIcon } from '@/components/admin/photoIcons'
+
 /**
  * The admin nav's LIST — the one subtree under `AdminNav`'s server shell that needs to know the
  * route, and therefore the repo's only client leaf in that shell.
@@ -324,26 +326,6 @@ function WandSparklesIcon({ className }: { className: string }) {
       <path d="M7 8H3" />
       <path d="M21 16h-4" />
       <path d="M11 3H9" />
-    </svg>
-  )
-}
-
-/** Photoshop: editing an existing photograph — Lucide `square-pen`, fetched 2026-09-19 from
- * unpkg.com/lucide-static, the collection's own sourcing convention (see the file header). */
-function SquarePenIcon({ className }: { className: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      className={className}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-      <path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z" />
     </svg>
   )
 }
