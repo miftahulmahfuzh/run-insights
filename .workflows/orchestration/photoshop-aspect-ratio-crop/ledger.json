@@ -1,0 +1,107 @@
+{
+  "branch": "feature/photoshop-aspect-ratio-crop",
+  "coordinator": "orch-photoshop-aspect-ratio-crop",
+  "coordinator_session_id": "bb672474-c2c3-4a21-a55f-3214b44c2b41",
+  "created": "2026-09-19T07:19:56+00:00",
+  "phases": [
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [],
+      "difficulty": "HARD",
+      "n": 1,
+      "note": "Baseline note (coordinator, before spawn): npm test on origin/main @ b88d5bc already has 4 failing test files unrelated to this plan (components/admin/AdminNavLinks.test.tsx grid-class assertions stale vs current markup; lib/nina/queries.test.ts barrel-contract missing updateNinaAvatarBlob). Confirmed present on main itself, not introduced by this worktree. Invariant 1's 'passes npm test' is satisfied when a phase introduces no NEW failures beyond this known baseline -- do not spend phase time chasing these 4.",
+      "package": "lib/nina",
+      "plan": ".workflows/plan/photoshop-aspect-ratio-crop/phase-1.md",
+      "reported_at": "2026-09-19T07:20:20+00:00",
+      "satisfies": [
+        "R1"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Pure crop-math module + exported ratio enum"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [],
+      "difficulty": "NORMAL",
+      "n": 2,
+      "note": "Baseline note (coordinator, before spawn): npm test on origin/main @ b88d5bc already has 4 failing test files unrelated to this plan (components/admin/AdminNavLinks.test.tsx grid-class assertions stale vs current markup; lib/nina/queries.test.ts barrel-contract missing updateNinaAvatarBlob). Confirmed present on main itself, not introduced by this worktree. Invariant 1's 'passes npm test' is satisfied when a phase introduces no NEW failures beyond this known baseline -- do not spend phase time chasing these 4.",
+      "package": "lib/db/schema/nina`, `drizzle`, `lib/nina`, `scripts",
+      "plan": ".workflows/plan/photoshop-aspect-ratio-crop/phase-2.md",
+      "reported_at": "2026-09-19T07:20:20+00:00",
+      "satisfies": [
+        "R1"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Schema + job-args plumbing"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [
+        1,
+        2
+      ],
+      "difficulty": "HARD",
+      "n": 3,
+      "note": "Baseline note (coordinator, before spawn): npm test on origin/main @ b88d5bc already has 4 failing test files unrelated to this plan (components/admin/AdminNavLinks.test.tsx grid-class assertions stale vs current markup; lib/nina/queries.test.ts barrel-contract missing updateNinaAvatarBlob). Confirmed present on main itself, not introduced by this worktree. Invariant 1's 'passes npm test' is satisfied when a phase introduces no NEW failures beyond this known baseline -- do not spend phase time chasing these 4.",
+      "package": "lib/nina",
+      "plan": ".workflows/plan/photoshop-aspect-ratio-crop/phase-3.md",
+      "reported_at": "2026-09-19T07:20:20+00:00",
+      "satisfies": [
+        "R1"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Server-side crop execution"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [
+        1,
+        2
+      ],
+      "difficulty": "NORMAL",
+      "n": 4,
+      "note": "Baseline note (coordinator, before spawn): npm test on origin/main @ b88d5bc already has 4 failing test files unrelated to this plan (components/admin/AdminNavLinks.test.tsx grid-class assertions stale vs current markup; lib/nina/queries.test.ts barrel-contract missing updateNinaAvatarBlob). Confirmed present on main itself, not introduced by this worktree. Invariant 1's 'passes npm test' is satisfied when a phase introduces no NEW failures beyond this known baseline -- do not spend phase time chasing these 4.",
+      "package": "lib/admin`, `app/admin`, `components/admin` (2 type-only lines)",
+      "plan": ".workflows/plan/photoshop-aspect-ratio-crop/phase-4.md",
+      "reported_at": "2026-09-19T07:20:21+00:00",
+      "satisfies": [
+        "R1"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Server Action + page wiring"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [
+        1,
+        4
+      ],
+      "difficulty": "HARD",
+      "n": 5,
+      "note": "Baseline note (coordinator, before spawn): npm test on origin/main @ b88d5bc already has 4 failing test files unrelated to this plan (components/admin/AdminNavLinks.test.tsx grid-class assertions stale vs current markup; lib/nina/queries.test.ts barrel-contract missing updateNinaAvatarBlob). Confirmed present on main itself, not introduced by this worktree. Invariant 1's 'passes npm test' is satisfied when a phase introduces no NEW failures beyond this known baseline -- do not spend phase time chasing these 4.",
+      "package": "components/admin",
+      "plan": ".workflows/plan/photoshop-aspect-ratio-crop/phase-5.md",
+      "reported_at": "2026-09-19T07:20:21+00:00",
+      "satisfies": [
+        "R1"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Crop UI + PhotoshopDetail wiring"
+    }
+  ],
+  "plan": "/home/miftah/run-insights/.workflows/orchestration/photoshop-aspect-ratio-crop/PLAN.md",
+  "repo": "/home/miftah/run-insights",
+  "slug": "photoshop-aspect-ratio-crop",
+  "updated": "2026-09-19T07:20:21+00:00",
+  "worktree": "/home/miftah/.worktrees/run-insights/photoshop-aspect-ratio-crop"
+}
