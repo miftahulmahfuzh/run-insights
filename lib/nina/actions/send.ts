@@ -691,14 +691,12 @@ export async function sendNinaMessage(input: {
       return null
     })
     if (prefs !== null && prefs.notes.trim().length > 0) {
-      const alreadyRan = await hasNinaImageJobForMessage(userId, runnerMessageId).catch(
-        (cause) => {
-          console.warn('[nina] photo-shortcut duplicate guard failed; proceeding', {
-            error: String(cause),
-          })
-          return false
-        },
-      )
+      const alreadyRan = await hasNinaImageJobForMessage(userId, runnerMessageId).catch((cause) => {
+        console.warn('[nina] photo-shortcut duplicate guard failed; proceeding', {
+          error: String(cause),
+        })
+        return false
+      })
 
       if (!alreadyRan) {
         const result = await generateNinaSelfie({
@@ -729,7 +727,13 @@ export async function sendNinaMessage(input: {
         }
       }
 
-      return { ok: true, userMessageId: runnerMessageId, sessionId, cursor: runnerSeq, turnId: null }
+      return {
+        ok: true,
+        userMessageId: runnerMessageId,
+        sessionId,
+        cursor: runnerSeq,
+        turnId: null,
+      }
     }
   }
 
