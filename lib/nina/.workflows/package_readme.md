@@ -172,8 +172,10 @@ modules into `'use client'` components.
     `NINA_IMAGE_PREFS_DEFAULTS`) and nowhere else; a nullable column's NULL means exactly one
     thing, and the coercer defines what.
 11. **No confirmation dialogs on `/nina/jobs` row controls** — the user's explicit requirement.
-    `SessionRow`'s three-tap confirm is deliberately not the precedent: it hard-deletes a
-    conversation with no undo; these controls cost a capped generation or write a reversible flag.
+    `SessionRow` argued for a confirm panel on the same grounds — a hard delete with no undo —
+    but task #136 took that panel out too, on this same instruction. The stakes it named are
+    still real and still separate the two controls: `SessionRow`'s delete has no undo at all,
+    while these controls cost a capped generation or write a reversible flag.
 
 ## The character layer
 
