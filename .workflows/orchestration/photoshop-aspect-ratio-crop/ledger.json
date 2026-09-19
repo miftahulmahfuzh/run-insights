@@ -3,6 +3,12 @@
   "coordinator": "orch-photoshop-aspect-ratio-crop",
   "coordinator_session_id": "bb672474-c2c3-4a21-a55f-3214b44c2b41",
   "created": "2026-09-19T07:19:56+00:00",
+  "landed": {
+    "at": "2026-09-19T08:06:27+00:00",
+    "base": "main",
+    "commit": "520dfb91835f289a61f204cc856939f62a0fd5a5",
+    "machine": "GPD"
+  },
   "phases": [
     {
       "card": null,
@@ -102,7 +108,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/photoshop-aspect-ratio-crop/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "photoshop-aspect-ratio-crop",
-  "updated": "2026-09-19T08:04:26+00:00",
+  "updated": "2026-09-19T08:06:27+00:00",
   "verified_at": "2026-09-19T07:55:33+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/photoshop-aspect-ratio-crop"
 }
