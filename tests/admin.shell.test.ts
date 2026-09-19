@@ -39,6 +39,18 @@ const adminNav = read('components/admin/AdminNav.tsx')
  * split itself is pinned in its own `it` below.
  */
 const adminNavLinks = read('components/admin/AdminNavLinks.tsx')
+/*
+ * `feat(admin): add Photoshop shortcut to image-collection icon row` moved `SquarePenIcon` (the
+ * Photoshop cell's glyph) out of `AdminNavLinks.tsx` into `photoIcons.tsx`, once the
+ * image-collection rail needed the same picture for its own "open in Photoshop" button. The
+ * per-cell assertions below still need to see all eight glyphs in one source, so this file's own
+ * `SquarePenIcon` export is spliced back in rather than reading the whole of `photoIcons.tsx` —
+ * which draws nine OTHER glyphs for unrelated controls and would wreck the "eight distinct" count.
+ */
+const photoIcons = read('components/admin/photoIcons.tsx')
+const squarePenIconSvg =
+  photoIcons.match(/export function SquarePenIcon[\s\S]*?(<svg\b[\s\S]*?<\/svg>)/)?.[1] ?? ''
+const navGlyphSource = `${adminNavLinks}\n${squarePenIconSvg}`
 
 /**
  * Every `className="…"` literal in a `.tsx` source, joined.
@@ -112,9 +124,9 @@ describe('the admin nav', () => {
     expect(hrefs).toEqual([
       '/admin',
       '/admin/nina',
-      '/admin/personality',
       '/admin/image-generation',
       '/admin/photoshop',
+      '/admin/personality',
       '/admin/memory',
       '/admin/shortcuts',
       '/admin/error-logs',
@@ -179,7 +191,7 @@ describe('the admin nav', () => {
      * above. `toHaveLength(1)` is therefore the exact-fit form here: two spans would mean a
      * second cell template somewhere, zero means the bar lost its names.
      */
-    const svgTags = [...adminNavLinks.matchAll(/<svg\b[\s\S]*?>/g)].map((m) => m[0]!)
+    const svgTags = [...navGlyphSource.matchAll(/<svg\b[\s\S]*?>/g)].map((m) => m[0]!)
     expect(svgTags, 'the bar no longer inlines one glyph per cell').toHaveLength(8)
     for (const tag of svgTags) {
       expect(tag, 'a glyph is not aria-hidden decor').toContain('aria-hidden="true"')
@@ -190,7 +202,7 @@ describe('the admin nav', () => {
     expect(names, 'the cell template lost its sr-only accessible-name span').toHaveLength(1)
   })
 
-  it('inlines seven DISTINCT glyphs', () => {
+  it('inlines eight DISTINCT glyphs', () => {
     /*
      * The photograph pair is the hard part of an icon bar: two routes a reader tells apart by
      * words alone ("Image collection" / "Image Generation"), which is why they were never
@@ -198,7 +210,7 @@ describe('the admin nav', () => {
      * stack) / `wand-sparkles` (how a photo is MADE) are two different silhouettes; this holds
      * the line, because a copy-pasted glyph body would pass the count above and fail here.
      */
-    const glyphs = [...adminNavLinks.matchAll(/<svg\b[\s\S]*?<\/svg>/g)].map((m) => m[0]!)
+    const glyphs = [...navGlyphSource.matchAll(/<svg\b[\s\S]*?<\/svg>/g)].map((m) => m[0]!)
     expect(new Set(glyphs).size, 'two cells render the same glyph').toBe(8)
   })
 
