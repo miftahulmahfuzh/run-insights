@@ -282,22 +282,28 @@ export const NINA_STEAMY_POSE_SENTENCES: Readonly<Record<NinaCameraAngleKey, str
   })
 
 /**
- * **The flirty gaze clause, camera-angle-aware — the same fix as `NINA_STEAMY_POSE_SENTENCES`, one
- * dial over.** "Looking straight down the lens" is another camera-relative claim: it means she is
- * face to face with it, which only makes sense when the lens is in front of her. For `from_behind`
- * her face is not toward the camera at all (`NINA_CAMERA_ANGLE_SENTENCES.from_behind`), so the
- * gaze becomes a glance back over her shoulder instead of dropping the sentence — `flirty` is a
- * standing trait about commanding the camera's attention, and a from-behind shot can still do that
- * without claiming a straight-on gaze it cannot have. `overhead` has its own dedicated attitude
- * sentence (`NINA_OVERHEAD_ATTITUDE_SENTENCE`) and never reaches this record either; its entry here
- * is unreachable, kept only for completeness.
+ * **The flirty attitude clause, camera-angle-aware — and no longer a literal gaze claim
+ * (2026-09-19, job `PF_J_9BucB_0`).** This sentence used to open with "looking straight down the
+ * lens" / "glancing back over one shoulder at the lens" on the theory that it was an idiom for
+ * commanding the camera's attention, not a literal statement about her eyes — `RX2RdFptwdlL`'s own
+ * fix (see the call site's comment) kept exactly that half on exactly that theory. `PF_J_9BucB_0`
+ * disproved it: the operator's Facial expression field was set to the closed-eye "cute kiss"
+ * preset, `flirty` was high, and the photograph came back with both eyes open and no pucker at
+ * all — the diffusion model reads "looking straight down the lens" as a literal open-eyed stare
+ * into the camera, the same class of contradiction `NINA_FACE_TAIL` was fixed for. So this record
+ * now states ONLY the attitude (aware of the camera, commanding it), never a gaze direction, the
+ * same shape `NINA_OVERHEAD_ATTITUDE_SENTENCE` already had to adopt for a different reason
+ * (overhead's gaze has to travel up, not down). `from_behind` keeps the shoulder-turn — a body/head
+ * orientation fact, not an eye-state one — but drops "at the lens" for the same reason.
+ * `overhead`'s entry here is still unreachable (`NINA_OVERHEAD_ATTITUDE_SENTENCE` is spent
+ * instead — see that constant's call site) and kept only for completeness, matching it verbatim.
  */
 export const NINA_FLIRTY_GAZE_SENTENCES: Readonly<Record<NinaCameraAngleKey, string>> =
   Object.freeze({
-    eye_level: `She is looking straight down the lens, fully aware of the camera and commanding it, like she knows exactly what she is doing.`,
-    low_angle: `She is looking straight down the lens, fully aware of the camera and commanding it, like she knows exactly what she is doing.`,
-    overhead: `She is looking straight down the lens, fully aware of the camera and commanding it, like she knows exactly what she is doing.`,
-    from_behind: `She is glancing back over one shoulder at the lens, fully aware of the camera and commanding it, like she knows exactly what she is doing.`,
+    eye_level: NINA_OVERHEAD_ATTITUDE_SENTENCE,
+    low_angle: NINA_OVERHEAD_ATTITUDE_SENTENCE,
+    overhead: NINA_OVERHEAD_ATTITUDE_SENTENCE,
+    from_behind: `She is glancing back over one shoulder, fully aware of the camera and commanding it, like she knows exactly what she is doing.`,
   })
 
 /**
@@ -360,7 +366,8 @@ const isDialHigh = (value: number): boolean => ninaBand(value).index >= 3
  * `NINA_AVATAR_STYLE` asks for head and shoulders inside a 28-44 px circle. A pose instruction
  * about her hips under a head-and-shoulders crop is a prompt arguing with itself, which this file's
  * header names as the thing that "degrades a prompt for free" (the deleted reference-image line).
- * `flirty` survives into the avatar because a look down the lens is compatible with any crop.
+ * `flirty` survives into the avatar because its attitude clause (`NINA_FLIRTY_GAZE_SENTENCES`) is
+ * compatible with any crop.
  *
  * ── WHERE THE CLOTHES ARE, AND ARE NOT ────────────────────────────────────────────────────────
  * Nowhere in here. What she WEARS is `prefs.wardrobe`, and it belongs to the SUBJECT paragraph via
@@ -410,18 +417,19 @@ function ninaPhotoPresence(
 
   if (isDialHigh(tuning.traits.flirty)) {
     /*
-     * NO FACIAL EXPRESSION HERE (2026-09-18, job `RX2RdFptwdlL`). This clause used to also assert
-     * "a sensual, serious expression, her lips just barely parted... She is not smiling" — a
-     * flat contradiction of the operator's Facial expression field whenever it asked for anything
-     * else (the runner's own repro: `flirty` high + the "Cute kiss, eyes closed" preset produced
-     * neither a kiss nor closed eyes, because this sentence and `{{expression}}` were fighting in
-     * the same prompt). `flirty` is a STANDING trait about how she carries herself for the camera,
-     * not a per-photograph face; facial expression is `NINA_EXPRESSION_DEFAULT_TEXT`/the operator's
-     * field, full stop, so this keeps only the gaze-and-attitude half of the original sentence.
+     * NO FACIAL EXPRESSION HERE (2026-09-18, job `RX2RdFptwdlL`; tightened 2026-09-19, job
+     * `PF_J_9BucB_0`). This clause used to also assert "a sensual, serious expression, her lips
+     * just barely parted... She is not smiling" — a flat contradiction of the operator's Facial
+     * expression field whenever it asked for anything else. `RX2RdFptwdlL`'s fix kept the
+     * gaze-and-attitude half ("looking straight down the lens... commanding it") on the theory that
+     * a gaze was attitude, not a literal eye claim; `PF_J_9BucB_0` showed that theory wrong — a
+     * closed-eye expression preset plus this gaze sentence still rendered wide-open eyes, because
+     * the model reads "looking straight down the lens" literally. `NINA_FLIRTY_GAZE_SENTENCES` now
+     * states only the attitude. `flirty` is a STANDING trait about how she carries herself for the
+     * camera, not a per-photograph face; facial expression is `NINA_EXPRESSION_DEFAULT_TEXT`/the
+     * operator's field, full stop.
      */
-    clauses.push(
-      NINA_FLIRTY_GAZE_SENTENCES[angleKey],
-    )
+    clauses.push(NINA_FLIRTY_GAZE_SENTENCES[angleKey])
   }
 
   if (clauses.length === 0) return null

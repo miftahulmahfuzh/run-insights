@@ -20,6 +20,7 @@ import {
   NINA_HAIRSTYLE_DEFAULT,
   NINA_HAIRSTYLE_KEYS,
   NINA_IMAGE_FOCUS_KEYS,
+  NINA_EXPRESSION_PRESETS,
   NINA_IMAGE_MODEL_DEFAULT,
   NINA_IMAGE_MODEL_IDS,
   NINA_IMAGE_PREFS_DEFAULTS,
@@ -1288,7 +1289,29 @@ describe('the prompt', () => {
       tuning: withTrait('flirty', 100),
     })
     expect(flirtyAvatar).toContain('POSE AND PRESENCE:')
-    expect(flirtyAvatar).toContain('straight down the lens')
+    expect(flirtyAvatar).toContain('fully aware of the camera and commanding it')
+  })
+
+  it('regression — job `PF_J_9BucB_0`: a high flirty dial no longer fights a closed-eye expression preset', () => {
+    // The runner set the "Cute kiss, eyes closed" expression preset with `flirty` dialed high and
+    // got back a photo with both eyes wide open, no pucker at all — `NINA_FLIRTY_GAZE_SENTENCES`
+    // used to open with "looking straight down the lens", a literal open-eyed gaze claim one
+    // paragraph away from `{{expression}}`'s "her eyes closed softly". The gaze claim is gone now;
+    // only the attitude survives, so nothing in this prompt states or implies an eye state anymore.
+    const kissEyesClosedPreset = NINA_EXPRESSION_PRESETS.find(
+      (preset) => preset.key === 'kiss_eyes_closed',
+    )
+    expect(kissEyesClosedPreset).toBeDefined()
+    const prompt = buildNinaImagePrompt({
+      purpose: 'selfie',
+      scene: 'on a boat off Lovina beach',
+      tuning: withTrait('flirty', 100),
+      prefs: prefsWith({ expression: kissEyesClosedPreset!.text }),
+    })
+    expect(prompt).toContain(kissEyesClosedPreset!.text)
+    expect(prompt).toContain('fully aware of the camera and commanding it')
+    expect(prompt).not.toContain('looking straight down the lens')
+    expect(prompt).not.toContain('wide open')
   })
 
   it('a dial just below the threshold adds nothing at all', () => {
@@ -1350,7 +1373,7 @@ describe('the prompt', () => {
       tuning: tuned({ traits: { ...NINA_TUNING_DEFAULTS.traits, steamy: 100, flirty: 100 } }),
     })
     expect(prompt).toContain('mid-stride, arms pumping')
-    expect(prompt).toContain('straight down the lens')
+    expect(prompt).toContain('fully aware of the camera and commanding it')
   })
 
   /* ────────────────────────────────────────────────────────────────────────────────────────────
