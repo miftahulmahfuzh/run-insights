@@ -47,6 +47,7 @@ const {
   editNinaAvatarDescriptionAction,
   editNinaAvatarNegativeSearchKeywordsAction,
   editNinaAvatarSearchKeywordsAction,
+  replaceNinaAvatarAction,
   saveNinaAvatarCropAction,
   setCurrentNinaAvatarAction,
 } = vi.hoisted(() => ({
@@ -55,6 +56,7 @@ const {
   editNinaAvatarDescriptionAction: vi.fn(),
   editNinaAvatarNegativeSearchKeywordsAction: vi.fn(),
   editNinaAvatarSearchKeywordsAction: vi.fn(),
+  replaceNinaAvatarAction: vi.fn(),
   saveNinaAvatarCropAction: vi.fn(),
   setCurrentNinaAvatarAction: vi.fn(),
 }))
@@ -64,9 +66,13 @@ vi.mock('@/lib/admin/ninaAlbumActions', () => ({
   editNinaAvatarDescriptionAction,
   editNinaAvatarNegativeSearchKeywordsAction,
   editNinaAvatarSearchKeywordsAction,
+  replaceNinaAvatarAction,
   saveNinaAvatarCropAction,
   setCurrentNinaAvatarAction,
 }))
+
+const { uploadAvatarPhoto } = vi.hoisted(() => ({ uploadAvatarPhoto: vi.fn() }))
+vi.mock('./avatarUpload', () => ({ uploadAvatarPhoto }))
 
 // The media dispatch arm renders `MediaPane`, whose own suite exercises it in full — mocked here
 // the way `ChatScreen.test.tsx` mocks a sibling component that is already covered elsewhere.
@@ -163,8 +169,17 @@ describe('AlbumSelectionPane (via SelectionPane)', () => {
     editNinaAvatarDescriptionAction.mockReset().mockResolvedValue({ ok: true })
     editNinaAvatarSearchKeywordsAction.mockReset().mockResolvedValue({ ok: true })
     editNinaAvatarNegativeSearchKeywordsAction.mockReset().mockResolvedValue({ ok: true })
+    replaceNinaAvatarAction.mockReset().mockResolvedValue({ ok: true })
     saveNinaAvatarCropAction.mockReset().mockResolvedValue({ ok: true })
     setCurrentNinaAvatarAction.mockReset().mockResolvedValue({ ok: true })
+    uploadAvatarPhoto.mockReset().mockResolvedValue({
+      blobUrl: 'https://blob.example/avatar-new.jpg',
+      pathname: 'nina/u1/avatar-new.jpg',
+      width: 800,
+      height: 600,
+      bytes: 1234,
+      contentHash: 'a'.repeat(64),
+    })
     saver.busy = false
     saver.notice = null
   })
@@ -277,6 +292,42 @@ describe('AlbumSelectionPane (via SelectionPane)', () => {
   it('disables Remove when the photo is her current profile picture, so she is never left without one', () => {
     render(<SelectionPane {...baseProps()} photo={albumPhoto({ isCurrent: true })} />)
     expect(screen.getByRole('button', { name: 'Remove this photo' })).toBeDisabled()
+  })
+
+  it('uploads and replaces on a file pick, then clears the input', async () => {
+    const { container } = render(
+      <SelectionPane {...baseProps()} photo={albumPhoto({ id: 'replace-me' })} />,
+    )
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement
+
+    await userEvent.upload(fileInput, new File(['x'], 'new.jpg', { type: 'image/jpeg' }))
+
+    expect(uploadAvatarPhoto).toHaveBeenCalledWith(
+      'user1',
+      expect.objectContaining({ name: 'new.jpg' }),
+    )
+    await waitFor(() =>
+      expect(replaceNinaAvatarAction).toHaveBeenCalledWith({
+        id: 'replace-me',
+        blobUrl: 'https://blob.example/avatar-new.jpg',
+        pathname: 'nina/u1/avatar-new.jpg',
+        width: 800,
+        height: 600,
+        bytes: 1234,
+        contentHash: 'a'.repeat(64),
+      }),
+    )
+    expect(fileInput.value).toBe('')
+  })
+
+  it('shows an inline error when the replace action refuses', async () => {
+    replaceNinaAvatarAction.mockResolvedValue({ ok: false, error: 'that one is a pointer' })
+    const { container } = render(<SelectionPane {...baseProps()} photo={albumPhoto()} />)
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement
+
+    await userEvent.upload(fileInput, new File(['x'], 'new.jpg', { type: 'image/jpeg' }))
+
+    await waitFor(() => expect(screen.getByText('that one is a pointer')).toBeInTheDocument())
   })
 
   it('renders the ShareToNinaItem with this photo id and the threaded shareOrigin, never window.location', () => {

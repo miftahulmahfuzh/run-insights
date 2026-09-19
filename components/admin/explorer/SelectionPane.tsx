@@ -10,6 +10,7 @@ import {
   PersonFrameIcon,
   RotateCcwIcon,
   SquarePenIcon,
+  SwapIcon,
   TrashIcon,
 } from '@/components/admin/photoIcons'
 import { ShareToNinaItem } from '@/components/admin/ShareToNinaItem'
@@ -22,6 +23,7 @@ import {
   editNinaAvatarDescriptionAction,
   editNinaAvatarNegativeSearchKeywordsAction,
   editNinaAvatarSearchKeywordsAction,
+  replaceNinaAvatarAction,
   saveNinaAvatarCropAction,
   setCurrentNinaAvatarAction,
 } from '@/lib/admin/ninaAlbumActions'
@@ -29,6 +31,7 @@ import { folderBreadcrumbs } from '@/lib/admin/filetree'
 import { cn } from '@/lib/cn'
 import { isIdentityCrop, resolveCrop, type NinaCrop } from '@/lib/nina/crop'
 
+import { uploadAvatarPhoto } from './avatarUpload'
 import { isMediaRow, MediaPane } from './MediaPane'
 import { PhotoDescription } from './PhotoDescription'
 import type { AlbumExplorerPhoto, ExplorerPhoto } from './model'
@@ -131,6 +134,7 @@ export function SelectionPane({
   return (
     <AlbumSelectionPane
       photo={photo}
+      userId={userId}
       shareOrigin={shareOrigin}
       onClose={onClose}
       onRemoved={() => onRemoved(null)}
@@ -140,11 +144,14 @@ export function SelectionPane({
 
 function AlbumSelectionPane({
   photo,
+  userId,
   shareOrigin,
   onClose,
   onRemoved,
 }: {
   photo: AlbumExplorerPhoto
+  /** From the server page (`requireAdmin()`). Replace's uploads land under it. */
+  userId: string
   /** `shareOrigin()`'s output, threaded from the page. Never `window.location`. Phase 7 / R2. */
   shareOrigin: string
   onClose: () => void
@@ -158,6 +165,40 @@ function AlbumSelectionPane({
 
   /** The download's own flight, independent of the server actions' shared `pending`. */
   const saver = useSavePhoto(photo.url, 'nina')
+
+  /**
+   * Replace, `MediaControls`' `onPick` (`components/admin/explorer/MediaControls.tsx`) onto this
+   * table: pick a file, upload it, swap the row's bytes. Its own busy flag rather than `pending` —
+   * an upload is not a `startTransition`-wrapped Server Action call, it is a Blob PUT ahead of one
+   * — and its own `note`, since a successful replace can still have something to say ("the old
+   * file is still used elsewhere"). No `router.refresh()`: this pane is mounted on `/admin/nina`
+   * itself, and `replaceNinaAvatarAction`'s `revalidatePath('/admin/nina')` already re-renders it
+   * with the new bytes in the same round trip.
+   */
+  const [replacing, setReplacing] = useState(false)
+  const [replaceNote, setReplaceNote] = useState<string | null>(null)
+  const replaceFileRef = useRef<HTMLInputElement>(null)
+
+  async function onReplacePick(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    // Clearing the input is what makes picking the SAME file twice fire `change` again.
+    event.target.value = ''
+    if (file == null || replacing) return
+
+    setReplacing(true)
+    setError(null)
+    setReplaceNote(null)
+    try {
+      const uploaded = await uploadAvatarPhoto(userId, file)
+      const result = await replaceNinaAvatarAction({ id: photo.id, ...uploaded })
+      if (!result.ok) setError(result.error ?? 'That replacement did not stick.')
+      else if (result.note != null) setReplaceNote(result.note)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'That upload failed.')
+    } finally {
+      setReplacing(false)
+    }
+  }
 
   const stored = resolveCrop(photo.crop)
   const crop = draft ?? stored
@@ -382,6 +423,26 @@ function AlbumSelectionPane({
 
         <Button
           size="md"
+          variant="secondary"
+          className={RAIL_BUTTON}
+          aria-label="Replace this photo"
+          title="Replace this photo"
+          loading={replacing}
+          disabled={replacing}
+          onClick={() => replaceFileRef.current?.click()}
+        >
+          <SwapIcon className="size-4" />
+        </Button>
+        <input
+          ref={replaceFileRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(event) => void onReplacePick(event)}
+        />
+
+        <Button
+          size="md"
           variant="destructive"
           className={RAIL_BUTTON}
           disabled={pending || photo.isCurrent}
@@ -399,6 +460,11 @@ function AlbumSelectionPane({
         {saver.notice !== null && (
           <p role="status" className="basis-full text-[12px] font-medium text-ink-3">
             {SAVE_NOTICE_TEXT[saver.notice]}
+          </p>
+        )}
+        {replaceNote !== null && (
+          <p role="status" className="basis-full text-[12px] font-medium text-ink-3">
+            {replaceNote}
           </p>
         )}
         {error && (
