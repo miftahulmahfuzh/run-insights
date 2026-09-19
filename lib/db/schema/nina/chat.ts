@@ -843,6 +843,21 @@ export const ninaMessageImages = pgTable(
     /** Stable order for a multi-image message, the `run_photos.sort_order` precedent. */
     sortOrder: integer('sort_order').notNull().default(0),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+    /**
+     * **When a Replace last swapped this row's bytes, or NULL — never written by an insert.**
+     * media-recency-sort, 2026-09-19. `created_at` above stays untouched by Replace on purpose
+     * (its own header, two fields up: *"Replacing a photograph is not taking a new one"*) — this
+     * column exists so the Media grid can still surface a just-edited photo without lying about
+     * when the row was created. `listNinaMediaPhotos` orders by
+     * `COALESCE(last_replaced_at, created_at)` rather than by this column alone, so an
+     * untouched photo still sorts by the date it was added.
+     *
+     * Written only by `updateNinaChatPhotoBlob`'s `.set()`, in the same statement as the byte
+     * swap — there must be no window in which the row shows new bytes under an old sort key.
+     * Nullable, no default, no backfill: every existing row has never been replaced, and NULL
+     * correctly falls back to `created_at` in the COALESCE above.
+     */
+    lastReplacedAt: timestamp('last_replaced_at', { withTimezone: true, mode: 'date' }),
   },
   (t) => [
     /** "the images on these messages" — phase 4's list hydration. */

@@ -667,6 +667,14 @@ function mediaCollectionScope(userId: string) {
  * so every tile loads its full blob — `lib/nina/album.ts:80-105`), and this grid pays exactly the
  * same cost per tile. The number travels with the cost, not with the predicate.
  *
+ * **Sort key, media-recency-sort (2026-09-19): `COALESCE(last_replaced_at, created_at) DESC`,
+ * not `created_at DESC` alone.** A photo nobody has touched since it was added sorts by when it
+ * was added, exactly as before. A photo a photoshop Replace swapped bytes under jumps to the top
+ * on its NEW timestamp, even though `created_at` (deliberately) never moved —
+ * `updateNinaChatPhotoBlob` is the one writer of `last_replaced_at`. No new index: the column is
+ * NULL on nearly every row and the table is a few hundred rows, well under the size where a
+ * `COALESCE` on the ORDER BY would cost more than it saves.
+ *
  * Two statements run concurrently and `offset` is floored at 0, for the reasons
  * `listNinaChatPhotos` and `NinaAvatarFolderPage` already record; not re-argued here.
  */
@@ -685,7 +693,10 @@ export async function listNinaMediaPhotos(
       .select(imageColumns)
       .from(ninaMessageImages)
       .where(mediaCollectionScope(userId))
-      .orderBy(desc(ninaMessageImages.createdAt), desc(ninaMessageImages.id))
+      .orderBy(
+        desc(sql`coalesce(${ninaMessageImages.lastReplacedAt}, ${ninaMessageImages.createdAt})`),
+        desc(ninaMessageImages.id),
+      )
       .limit(limit)
       .offset(offset),
     countNinaMediaPhotos(userId),
@@ -819,6 +830,14 @@ export async function updateNinaChatPhotoBlob(
        */
       perceptualHash: null,
       perceptualSig: null,
+      /*
+       * media-recency-sort, 2026-09-19. `created_at` stays untouched (this function's own header
+       * argues why); this is the column the Media view's sort key reads instead —
+       * `listNinaMediaPhotos` orders by `COALESCE(last_replaced_at, created_at)`. Same statement
+       * as the byte swap, for the same reason as every other field here: no window in which the
+       * row shows new bytes under a stale sort key.
+       */
+      lastReplacedAt: new Date(),
     })
     .where(
       and(eq(ninaMessageImages.userId, userId), eq(ninaMessageImages.id, id), isOriginalPhoto()),

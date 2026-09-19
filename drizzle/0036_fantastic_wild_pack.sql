@@ -1,0 +1,1 @@
+ALTER TABLE "nina_message_images" ADD COLUMN "last_replaced_at" timestamp with time zone;
