@@ -158,12 +158,12 @@ export const NINA_PHOTOSHOP_PRESETS: readonly NinaPhotoshopPreset[] = [
   Object.freeze({
     key: 'bigger_boobs',
     label: 'Bigger boobs',
-    text: 'Same woman, same photo, same angle — but with a little bit larger, perky breasts.',
+    text: 'Same woman, same outfit, same angle — but with a little bit larger, perky breasts.',
   }),
   Object.freeze({
     key: 'bigger_butt',
     label: 'Bubble butt',
-    text: 'Same woman, but she now has noticeably more prominent, bubble butt',
+    text: 'Same woman, same angle, but she now has noticeably more prominent, bubble butt',
   }),
   Object.freeze({
     key: 'longer_calves',
@@ -178,7 +178,7 @@ export const NINA_PHOTOSHOP_PRESETS: readonly NinaPhotoshopPreset[] = [
   Object.freeze({
     key: 'hip_curves',
     label: 'Hip curves',
-    text: 'Same woman, same angle — but the curves of her hips show a little more',
+    text: 'Same woman, same angle — but the curves of her hips show a little more, and her thighs are slightly bigger',
   }),
   Object.freeze({
     key: 'thicker_arms',
