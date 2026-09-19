@@ -206,10 +206,16 @@ const jobId = newId()
 await sql`
   insert into nina_photoshop_jobs
     (id, user_id, source_kind, source_id, source_content_hash, mode, model, preset_key, prompt_text,
+     crop_ratio_label, crop_scale, crop_x, crop_y,
      status, error_code, attempts, created_at)
   values (
     ${jobId}, ${userId}, ${source.sourceKind}, ${source.id}, ${source.content_hash}, ${mode}, ${model},
-    null, ${instruction}, 'pending', 'queued', 0, now()
+    null, ${instruction},
+    -- A CLI run never crops: there is no browser to drag a rectangle in, so every CLI job is a
+    -- "skipped the crop step" job and falls back to nearestNinaImageAspectRatio exactly as before.
+    -- Spelled out rather than omitted so this list stays readable against the real table.
+    null, null, null, null,
+    'pending', 'queued', 0, now()
   )
 `
 console.error(`[photoshop] opened ${jobId} on ${source.sourceKind}:${source.id}, running now…`)
