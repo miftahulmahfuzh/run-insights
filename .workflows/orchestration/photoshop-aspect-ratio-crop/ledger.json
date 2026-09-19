@@ -23,19 +23,19 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "60a3d6978db712da0db741b4ef07030886b185d3",
       "depends_on": [],
       "difficulty": "NORMAL",
       "n": 2,
-      "note": "Baseline note (coordinator, before spawn): npm test on origin/main @ b88d5bc already has 4 failing test files unrelated to this plan (components/admin/AdminNavLinks.test.tsx grid-class assertions stale vs current markup; lib/nina/queries.test.ts barrel-contract missing updateNinaAvatarBlob). Confirmed present on main itself, not introduced by this worktree. Invariant 1's 'passes npm test' is satisfied when a phase introduces no NEW failures beyond this known baseline -- do not spend phase time chasing these 4.",
+      "note": "Schema + job-args plumbing landed. Migration 0035_first_loa.sql generated, reviewed, NOT applied (per Invariant 5 -- user must run db:migrate before deploy). Independently confirmed the coordinator's baseline-drift note: 5 pre-existing failing tests on base b88d5bc (admin.photoReference, nina.errorlogs, AdminNavLinks x2, nina.queries barrel), verified via disposable worktree.",
       "package": "lib/db/schema/nina`, `drizzle`, `lib/nina`, `scripts",
       "plan": ".workflows/plan/photoshop-aspect-ratio-crop/phase-2.md",
-      "reported_at": "2026-09-19T07:20:20+00:00",
+      "reported_at": "2026-09-19T07:36:36+00:00",
       "satisfies": [
         "R1"
       ],
-      "status": "pending",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-DB-A008",
       "title": "Schema + job-args plumbing"
     },
     {
@@ -102,6 +102,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/photoshop-aspect-ratio-crop/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "photoshop-aspect-ratio-crop",
-  "updated": "2026-09-19T07:20:21+00:00",
+  "updated": "2026-09-19T07:36:36+00:00",
+  "verified_at": "2026-09-19T07:36:36+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/photoshop-aspect-ratio-crop"
 }
