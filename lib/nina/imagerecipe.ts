@@ -120,12 +120,18 @@ export const NINA_IMAGE_ASPECT = '3:4'
 
 /**
  * **The full `aspect_ratio` enum this provider accepts**, verified against OpenRouter's own image
- * generation API reference (2026-09-19) — not a guessed subset. `nearestNinaImageAspectRatio`
- * below is the only reader; every entry needs a numeric `ratio` (width ÷ height) to compare
- * against, so `'auto'` — "let the provider choose", and never documented to look at a reference
- * image's own shape — is deliberately left out of this table rather than given a fake ratio.
+ * generation API reference (2026-09-19) — not a guessed subset. Every entry needs a numeric `ratio`
+ * (width ÷ height) to compare against, so `'auto'` — "let the provider choose", and never documented
+ * to look at a reference image's own shape — is deliberately left out of this table rather than
+ * given a fake ratio.
+ *
+ * **Exported because the photoshop crop step needs the same list** (`lib/nina/photoshopCrop.ts`'s
+ * plan set, R1): the admin's ratio picker, the Server Action's closed-set validation of the label
+ * it gets back, and `nearestNinaImageAspectRatio`'s default pick must all read ONE list. A second
+ * copy in a `<select>` is a list that drifts from the one on the wire, silently, the first time
+ * this table is corrected — which is the whole reason this is a table and not a literal.
  */
-const NINA_IMAGE_ASPECT_RATIOS: ReadonlyArray<{ label: string; ratio: number }> = [
+export const NINA_IMAGE_ASPECT_RATIOS: ReadonlyArray<{ label: string; ratio: number }> = [
   { label: '1:1', ratio: 1 / 1 },
   { label: '1:2', ratio: 1 / 2 },
   { label: '1:4', ratio: 1 / 4 },
@@ -177,6 +183,23 @@ export function nearestNinaImageAspectRatio(width: number, height: number): stri
     }
   }
   return best.label
+}
+
+/**
+ * A catalogued label as the number `lib/nina/photoshopCrop.ts` needs, or `null` for anything not in
+ * the table.
+ *
+ * `null` is the closed-set membership test as well as the miss: the crop label arrives from a
+ * browser, so "is this one of the provider's 23 values" and "what is it numerically" are the same
+ * question asked twice, and one function answering both is one place to be wrong. Exact string
+ * match, deliberately — no trimming, no case folding: the label goes on the wire verbatim as
+ * `aspect_ratio`, so a value this function accepts must be a value the provider accepts.
+ */
+export function ninaImageAspectRatioValue(label: string): number | null {
+  for (const candidate of NINA_IMAGE_ASPECT_RATIOS) {
+    if (candidate.label === label) return candidate.ratio
+  }
+  return null
 }
 /** 1K at 3:4. RECORDED, not measured — no image decoder runs on either host. */
 export const NINA_IMAGE_WIDTH = 768

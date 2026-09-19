@@ -550,6 +550,15 @@ fallback constant `NINA_IMAGE_DAILY_CAP = 30` (the 2026-09-10 ask), moved at run
 modest), counting FAILED generations too. `photoEagerness` changes how eagerly she OFFERS, never
 what the operator spends.
 
+**`NINA_IMAGE_ASPECT_RATIOS`** (`imagerecipe.ts`) is OpenRouter's ~23-value discrete `aspect_ratio`
+enum — exported (2026-09-19, was module-private) alongside a new lookup,
+`ninaImageAspectRatioValue(label)`, which resolves a label back to its numeric ratio or `null` for
+an unrecognized one. Both are phase 1 of the photoshop aspect-ratio crop feature: the picker in a
+later phase reads the enum directly, and `photoshopRun.ts` resolves the admin's chosen label
+through the lookup rather than re-deriving it. `nearestNinaImageAspectRatio` (unchanged) still picks
+the CLOSEST bucket to a source photo's real shape; it cannot make the match exact, which is the
+whole reason `photoshopCrop.ts` exists — see Module map.
+
 **The photograph's aesthetic is decided in `imagegen.ts` and nowhere else.** `NINA_SELFIE_STYLE` is
 the camera block at the head of `NINA_PROMPT_TEMPLATE_DEFAULT`; `GENERATE_IMAGE_TOOL.description`
 ("take a photo of yourself and send it") is what the CHAT model reads when it decides to offer a
@@ -1258,7 +1267,7 @@ it: the album row shows the `nina_message_images` row's bytes and names it in `s
 | Prompts | `prompts/index.ts`, `prompts/system.ts`, `prompts/tools.ts`, `prompts/distill.ts`, `prompts/describe.ts` (two witness prompts behind a `Record` — a third subject is a compile error, and `subject` defaults to `'runner'` so existing callers are byte-identical), `prompts/caption.ts` |
 | Character | `tuning.ts`, `persona.ts` (barrel) + `persona/` (bands, identity, appearance, voice, instructor, anger, verbosity, never-say, tuning-blocks) |
 | Memory/behaviour | `memory.ts`, `distill.ts`, `promise.ts`(T)/`promises.ts`, `reminders.ts`/`reminderstore.ts`* (2026-09-16 — the same pure/impure split as promises; the pure half imports NO value and never reads a clock, and the impure half is the only file in the feature that knows a database exists; its suite is repo-level `tests/nina.reminders.test.ts`, not colocated), `nags.ts`, `patterns.ts`, `shortcuts.ts`(T), `title.ts`/`autotitle.ts` |
-| Images | `imagerecipe.ts`, `imagegen.ts`, `imageprefs.ts`, `imagejobs.ts`, `imagecall.ts`, `imageDedupe.ts`, `perceptual.ts`/`perceptualSign.ts`, `imagerun.ts`, `imagefail.ts`, `caption.ts`, `imagetools.ts`/`avatartools.ts`, `selfiegen.ts`/`avatargen.ts`/`avatarAdopt.ts`*(2026-09-17 — the no-camera avatar path; the only avatar writer that announces inline)/`imagetest.ts`, `jobview.ts`(T), `provenancePromotion.ts` (2026-09-16 — the promote-before-delete pass; `blobRelease.ts` is the reference-checked release every single-object delete goes through; neither declares `server-only`, both are db-touching and neither is a Server Action) |
+| Images | `imagerecipe.ts`, `imagegen.ts`, `imageprefs.ts`, `imagejobs.ts`, `imagecall.ts`, `imageDedupe.ts`, `perceptual.ts`/`perceptualSign.ts`, `imagerun.ts`, `imagefail.ts`, `caption.ts`, `imagetools.ts`/`avatartools.ts`, `selfiegen.ts`/`avatargen.ts`/`avatarAdopt.ts`*(2026-09-17 — the no-camera avatar path; the only avatar writer that announces inline)/`imagetest.ts`, `jobview.ts`(T), `provenancePromotion.ts` (2026-09-16 — the promote-before-delete pass; `blobRelease.ts` is the reference-checked release every single-object delete goes through; neither declares `server-only`, both are db-touching and neither is a Server Action), `photoshopCrop.ts`(T) (2026-09-19 — zero-import, same footing as `imagerecipe.ts`; the rectangle/ratio-aware analogue of `crop.ts` — resolve/clamp/pan/zoom/nudge over a per-axis `x`/`y` thousandths-of-frame crop, `ninaPhotoshopCropStyle` for the CSS preview, and `photoshopCropBox(source, targetRatio, crop)`, the one capability `crop.ts` never needed: an integer pixel rectangle for `sharp().extract()`, or `null` when the crop cannot be applied — phase 1 of the photoshop aspect-ratio crop feature; no caller yet) |
 | Vision/intake | `vision.ts`(T), `imageTicket.ts`(T) (HMAC carrier, `node:crypto`), `images.ts`(T), `crop.ts`(T) |
 | Provider constants | `openrouter.ts` (zero imports; the ONE home of `OPENROUTER_CHAT_URL` + `OPENROUTER_EMBEDDINGS_URL` and of all three model vocabularies — `NINA_VISION_FALLBACK_MODEL` hardcoded, `NINA_CHAT_FALLBACK_MODEL_IDS`/`_SPECS`/`_DEFAULT_MODEL` operator-picked, `NINA_EMBEDDING_MODEL` migration-locked; read by the vision fallback, the text-chat fallback client and `embedding.ts`) |
 | Embeddings | `embedding.ts`*(T) (one `fetch` to `OPENROUTER_EMBEDDINGS_URL`, no fallback ladder, no retry; the width guard gates the return against `NINA_EMBEDDING_DIMENSIONS`) |

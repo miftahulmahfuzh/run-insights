@@ -2,17 +2,17 @@
 
 **Package Path**: `lib/nina`
 **Package Code**: NIN
-**Last Updated**: 2026-09-17
-**Total Active Tasks**: 0
+**Last Updated**: 2026-09-19
+**Total Active Tasks**: 1
 
 ## Quick Stats
 - P0 Critical: 0
-- P1 High: 0
+- P1 High: 1
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 57
+- Completed: 58
 - Archived: 36
 
 ---
@@ -20,6 +20,16 @@
 ## Active Tasks
 
 ### [P1] High
+
+- [ ] **P1-NIN-A056** Phase 3: Server-side crop execution
+  - **Difficulty**: HARD
+  - **Type**: Feature
+  - **Context**: Owns `lib/nina/imagecall.ts` (`fetchNinaImageReference`/`callNinaImageModel` gain an optional pixel crop-box parameter, additive only, every existing caller unaffected) and `lib/nina/photoshopRun.ts` (`attemptPhotoshopOnce` reads the job's four crop fields; when present, computes the pixel crop box via Phase 1's `photoshopCropBox`, resolves the label via `ninaImageAspectRatioValue`, treats a `null` label or box as "no crop"; bypasses `nearestNinaImageAspectRatio` for that call in BOTH anchor and edit mode). Test coverage: `tests/nina.imagecall.test.ts` additions plus new `tests/nina.photoshopRun.test.ts` covering crop-vs-no-crop branching in both modes including the null-box branch. Does not touch the DB schema, any Server Action, any UI. Exit criteria: a crop job sends the model bytes cropped to the exact pixel box with `aspect_ratio` set to the exact chosen label in BOTH modes; a no-crop job is byte-identical to `main`'s current behavior (regression asserted); `npx tsc --noEmit`, `npm run lint`, `npm test` pass; `ci:openrouter-guard`/`ci:llm-payload-guard` still pass.
+  - **Status**: pending
+  - **Plan Set**: `photoshop-aspect-ratio-crop_PLAN.md` (phase 3 of 5)
+  - **Satisfies**: R1 — Add an optional "aspect ratio crop" step to `/admin/photoshop/[source]/[id]`, for BOTH anchor and edit mode.
+  - **Depends on**: `P1-NIN-A055` (done), `P1-DB-A008` (done) — both satisfied, no longer blocked
+  - **Plan**: `.workflows/plan/P1-NIN-A056.md`
 
 ### [P2] Medium
 
@@ -34,6 +44,23 @@
 (all thirty-five completed tasks were archived on 2026-09-12 — see Archive; full
 per-task detail — Context, Drift, Decided, Files — survives in git history and in
 `.workflows/package_readme.md`)
+
+- [x] **P1-NIN-A055** Phase 1: Pure crop-math module + exported ratio enum
+  - **Difficulty**: HARD
+  - **Type**: Feature
+  - **Context**: Owns exporting `NINA_IMAGE_ASPECT_RATIOS` from `lib/nina/imagerecipe.ts` (currently module-private) plus a new `ninaImageAspectRatioValue(label)` lookup beside it, and the new zero-import `lib/nina/photoshopCrop.ts` — the rectangle/ratio-aware analogue of `lib/nina/crop.ts` (resolve/clamp/pan/zoom/nudge, per-axis `x`/`y` thousandths of the frame's width/height, `ninaPhotoshopCropStyle` for the CSS preview, and the new capability `crop.ts` never needed, `photoshopCropBox(source, targetRatio, crop)`, producing an integer pixel rectangle for `sharp().extract()` or `null` when none exists). New `tests/nina.photoshopCrop.test.ts` with full first-principles coverage. Does not touch the DB schema, `photoshopRun.ts`, `imagecall.ts`, any Server Action or UI. Exit criteria: `NINA_IMAGE_ASPECT_RATIOS` exported; `lib/nina/photoshopCrop.ts` exists with a pixel-crop-box function and a thorough test suite; `npx tsc --noEmit`, `npm run lint`, `npm test` all pass; the module stays zero-import.
+  - **Status**: completed
+  - **Plan Set**: `photoshop-aspect-ratio-crop_PLAN.md` (phase 1 of 5)
+  - **Satisfies**: R1 — Add an optional "aspect ratio crop" step to `/admin/photoshop/[source]/[id]`, for BOTH anchor and edit mode.
+  - **Depends on**: none
+  - **Plan**: `.workflows/plan/P1-NIN-A055.md`
+  - **Completed**: 2026-09-19
+  - **Method**: /implement (plan set phase 1 of 5; phase 2 landed concurrently in the same worktree via a peer swarm session)
+  - **Files**: lib/nina/imagerecipe.ts, lib/nina/photoshopCrop.ts, tests/nina.photoshopCrop.test.ts
+  - **Drift**: `clampPhotoshopCrop`'s inner `clamp` helper, as the plan's own code block wrote it, routed `+Infinity`/`NaN` offset input through a `finiteOr(value, 0)` helper before clamping, which folds `+Infinity` to `0` instead of clamping it to the bound — contradicting both the function's own docstring ("folds non-finite input into something storable" — Infinity should clamp to the max, not zero out) and the plan's own test case (`clampPhotoshopCrop(source, 1, { scale: NaN, x: +Infinity, y: NaN })` expects `{ scale: 1, x: 166, y: 0 }`, i.e. `+Infinity` clamps to the 166 bound while `NaN` folds to `0`). Fixed by changing the inner `clamp` helper to only fold `NaN` to `0` (via `Number.isNaN`) and let `Math.min`/`Math.max` handle `±Infinity` naturally (which correctly clamps it to the bound). Small, contained fix — one helper function, no interface/signature change, no other code touched it yet since Phase 1 has no callers.
+  - **Decided**: `clampPhotoshopCrop` +Infinity-vs-NaN clamping bug → fixed the implementation to match the docstring/test intent, not relaxed the test (rung: a failing verification is never settled by relaxing the check — fix the code, or stop).
+    5 pre-existing test failures (`components/admin/AdminNavLinks.test.tsx` x2 — a route-count/grid-layout mismatch, `lib/nina/queries.test.ts`'s barrel-contract test — an `updateNinaAvatarBlob` export not in the frozen list) and 1 pre-existing `format:check` issue (`lib/nina/actions/send.ts`) exist on the base tree, confirmed present identically before and after this phase's changes, unrelated to Phase 1's Owns list → left untouched per the ladder's "never widen scope" rule.
+  - **Verification**: `npx vitest run tests/nina.photoshopCrop.test.ts tests/nina.imagerecipe.test.ts` 183/183; full `npm test` 6534/6539 (vs 6479/6484 baseline — the new suite added 55 passing tests, zero new failures, same 5 pre-existing failures as baseline); `npm run typecheck` clean; `npm run lint` clean; `npm run format:check` clean except the one pre-existing unrelated file noted above; `npm run ci:openrouter-guard`, `npm run ci:data-layer-guard`, `npm run ci:llm-payload-guard` all pass.
 
 - [x] **P1-NIN-A054** Phase 1: Add `set_avatar_from_photo`: adopt an existing photo as Nina's avatar from chat
   - **Difficulty**: NORMAL
