@@ -40,22 +40,22 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "e2da975",
       "depends_on": [
         1,
         2
       ],
       "difficulty": "HARD",
       "n": 3,
-      "note": "Baseline note (coordinator, before spawn): npm test on origin/main @ b88d5bc already has 4 failing test files unrelated to this plan (components/admin/AdminNavLinks.test.tsx grid-class assertions stale vs current markup; lib/nina/queries.test.ts barrel-contract missing updateNinaAvatarBlob). Confirmed present on main itself, not introduced by this worktree. Invariant 1's 'passes npm test' is satisfied when a phase introduces no NEW failures beyond this known baseline -- do not spend phase time chasing these 4.",
+      "note": "Server-side crop execution landed. imagecall.ts's fetchNinaImageReference/callNinaImageModel gain an optional pixel crop-box (sharp().extract before base64-encode); photoshopRun.ts's attemptPhotoshopOnce reads the job's crop_* args, resolves via ninaImageAspectRatioValue + photoshopCropBox, sends the exact chosen aspect_ratio label in both anchor and edit mode, bypassing nearestNinaImageAspectRatio. Null label/box degrades to no-crop, never a failed job. Purely additive. Drift found and fixed: TS 5.9/@types/node 22.20.1 default bare Buffer to Buffer<ArrayBufferLike> not Buffer<ArrayBuffer> -- the plan's code blocks (verified by reading source only, no working toolchain at plan time) didn't anticipate this; fixed with explicit Buffer<ArrayBuffer> annotations, type-only, confined to this phase's 2 files. FLAG for phase 5 (or any later reviewer): if its plan quotes a bare Buffer return type it will hit the same tsc wall. Test state: same 5 pre-existing baseline failures, zero new; independently re-confirmed both root-cause commits are ancestors of origin/main@b88d5bc.",
       "package": "lib/nina",
       "plan": ".workflows/plan/photoshop-aspect-ratio-crop/phase-3.md",
-      "reported_at": "2026-09-19T07:20:20+00:00",
+      "reported_at": "2026-09-19T07:55:33+00:00",
       "satisfies": [
         "R1"
       ],
-      "status": "pending",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-NIN-A056",
       "title": "Server-side crop execution"
     },
     {
@@ -94,7 +94,7 @@
       "satisfies": [
         "R1"
       ],
-      "status": "spawned",
+      "status": "pending",
       "task_id": null,
       "title": "Crop UI + PhotoshopDetail wiring"
     }
@@ -102,7 +102,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/photoshop-aspect-ratio-crop/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "photoshop-aspect-ratio-crop",
-  "updated": "2026-09-19T07:51:57+00:00",
-  "verified_at": "2026-09-19T07:51:48+00:00",
+  "updated": "2026-09-19T07:55:33+00:00",
+  "verified_at": "2026-09-19T07:55:33+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/photoshop-aspect-ratio-crop"
 }
