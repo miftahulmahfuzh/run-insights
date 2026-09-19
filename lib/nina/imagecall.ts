@@ -1,5 +1,7 @@
 import 'server-only'
 
+import sharp from 'sharp'
+
 import { ninaEnv } from '@/lib/env'
 
 import { classifyImageFailure, type NinaImageFailure } from './imagefail'
@@ -116,11 +118,85 @@ export type NinaImageCallResult =
     }
 
 /**
+ * **A pixel rectangle inside the SOURCE image, for `sharp().extract(...)`.** Origin is the source's
+ * top-left, every field is an integer count of pixels, and the rectangle is required to lie wholly
+ * within the source — this type is the wire between `lib/nina/photoshopCrop.ts`'s pure arithmetic
+ * (which computes it) and `sharp` (which applies it).
+ *
+ * Declared HERE rather than imported from the crop module so that `imagecall.ts` — the one file
+ * that actually touches the bytes — owns the shape it consumes, and so this file keeps no
+ * dependency on a module whose only other consumer is the admin UI. The crop module's own return
+ * type assigns to it structurally.
+ */
+export interface NinaImageCropBox {
+  left: number
+  top: number
+  width: number
+  height: number
+}
+
+/**
+ * **The crop, applied to real bytes. It never throws, and it never guesses.**
+ *
+ * Returns null — which costs the caller its anchor and nothing else — on every way this can go
+ * wrong: a non-integer or negative box, a degenerate box, bytes `sharp` cannot decode, or a box
+ * that does not fit the pixels that actually arrived.
+ *
+ * **It deliberately does NOT clamp a box that overhangs.** The box came from the admin's chosen
+ * ratio; trimming it to fit changes its aspect ratio, and a reference at the wrong ratio sent under
+ * an exact `aspect_ratio` label reproduces the very stretch this feature removes, invisibly. The
+ * job losing its anchor is loud (`anchored: false`, and `photoshopRun.ts` warns on it); a silently
+ * mis-shaped anchor is not.
+ *
+ * **No format method before `toBuffer()`, on purpose.** `sharp` re-encodes in the input's own
+ * format, so a JPEG source stays a JPEG and the served `content-type` that
+ * `buildImageReferenceDataUrl` is about to vouch for stays true. Forcing PNG here would let a
+ * cropped 8 MiB JPEG come back bigger than `NINA_IMAGE_REFERENCE_MAX_BYTES`.
+ */
+async function cropImageReferenceBytes(
+  bytes: Buffer,
+  box: NinaImageCropBox,
+): Promise<Buffer<ArrayBuffer> | null> {
+  if (
+    !Number.isInteger(box.left) ||
+    !Number.isInteger(box.top) ||
+    !Number.isInteger(box.width) ||
+    !Number.isInteger(box.height) ||
+    box.left < 0 ||
+    box.top < 0 ||
+    box.width < 1 ||
+    box.height < 1
+  ) {
+    return null
+  }
+
+  try {
+    /* One instance, read then extracted. `metadata()` does not consume the pipeline, so the same
+     * object serves both — and `failOn: 'none'` is `measureImageBytes`'s posture in
+     * `lib/nina/photoshopRun.ts`, for the same reason: a warning-level defect in an album photo
+     * must not cost the operator the job. */
+    const image = sharp(bytes, { failOn: 'none' })
+    const meta = await image.metadata()
+    const width = meta.width ?? 0
+    const height = meta.height ?? 0
+    if (width < 1 || height < 1) return null
+    if (box.left + box.width > width) return null
+    if (box.top + box.height > height) return null
+
+    return await image
+      .extract({ left: box.left, top: box.top, width: box.width, height: box.height })
+      .toBuffer()
+  } catch {
+    return null
+  }
+}
+
+/**
  * **The anchor, off Blob and into a `data:` URL. It never throws and it never blocks a job.**
  *
  * Modelled on `lib/nina/vision.ts`'s `toDataUri` (`:253-286`) — a `data:` URL rather than the
  * hosted URL, and the media type READ BACK from the object's own `content-type` and allow-listed
- * rather than assumed — with two differences that matter here:
+ * rather than assumed — with three differences that matter here:
  *
  *   1. **It returns null instead of throwing.** `vision.ts` throws because a description with no
  *      image is worthless; a photograph with no anchor is still a photograph.
@@ -129,8 +205,21 @@ export type NinaImageCallResult =
  *      construction — so `NINA_IMAGE_REFERENCE_MAX_BYTES` is a belt-and-braces guard on a set that
  *      every writer already bounds, checked twice: once against the declared `content-length`
  *      (cheap, and Vercel Blob serves one) and once against the bytes actually read.
+ *   3. **It may CROP.** `cropBox` is the photoshop aspect-ratio crop's one execution site: the
+ *      admin's rectangle is stored on the job row as parameters, never as a derived blob, and it is
+ *      applied HERE — to bytes fetched fresh on this attempt — in the one gap between "the object
+ *      arrived" and "it became a `data:` URL". A third check against
+ *      `NINA_IMAGE_REFERENCE_MAX_BYTES` follows the crop, because a re-encode is new bytes and a
+ *      ceiling that is only checked on the input is a ceiling with a hole in it.
  */
-async function fetchNinaImageReference(url: string): Promise<string | null> {
+async function fetchNinaImageReference(
+  url: string,
+  /**
+   * The photoshop crop, in source pixels, or null for every other caller. Defaulted so that the
+   * only call site that does not supply it reads exactly as it did before this parameter existed.
+   */
+  cropBox: NinaImageCropBox | null = null,
+): Promise<string | null> {
   const startedAt = Date.now()
   try {
     const res = await fetch(url, {
@@ -172,7 +261,39 @@ async function fetchNinaImageReference(url: string): Promise<string | null> {
     }
 
     const served = res.headers.get('content-type') ?? ''
-    const dataUrl = buildImageReferenceDataUrl(served, bytes.toString('base64'))
+
+    /* ── THE CROP ───────────────────────────────────────────────────────────────────────────────
+     * Skipped entirely when no box was supplied, so every non-photoshop caller and every
+     * skipped-the-crop-step photoshop job runs the same instructions it ran before this block
+     * existed. When a box IS supplied and cannot be applied, the anchor is dropped rather than the
+     * uncropped bytes being sent: uncropped bytes under an exact `aspect_ratio` label is the
+     * stretch this feature exists to remove, and it would go unreported.
+     *
+     * `served` is read above rather than below so this warning can name the content type even when
+     * the reason `sharp` refused the bytes is that they were never an image. */
+    let payload = bytes
+    if (cropBox != null) {
+      const cropped = await cropImageReferenceBytes(bytes, cropBox)
+      if (cropped == null) {
+        console.warn('[nina] image reference dropped — crop could not be applied', {
+          url,
+          contentType: served,
+          cropBox,
+        })
+        return null
+      }
+      if (cropped.byteLength === 0 || cropped.byteLength > NINA_IMAGE_REFERENCE_MAX_BYTES) {
+        console.warn('[nina] image reference dropped — cropped bytes too large', {
+          url,
+          bytes: cropped.byteLength,
+          maxBytes: NINA_IMAGE_REFERENCE_MAX_BYTES,
+        })
+        return null
+      }
+      payload = cropped
+    }
+
+    const dataUrl = buildImageReferenceDataUrl(served, payload.toString('base64'))
     if (dataUrl == null) {
       console.warn('[nina] image reference dropped — content type not vouched for', {
         url,
@@ -182,8 +303,9 @@ async function fetchNinaImageReference(url: string): Promise<string | null> {
     }
 
     console.info('[nina] image reference attached', {
-      bytes: bytes.byteLength,
+      bytes: payload.byteLength,
       contentType: served,
+      cropped: cropBox != null,
       fetchMs: Date.now() - startedAt,
     })
     return dataUrl
@@ -217,6 +339,16 @@ export async function callNinaImageModel(
   /** Passed straight to `buildImageRequestBody`'s own `aspectRatio` — see that field's header.
    * Optional and defaulted (there, not here) so every existing positional call is unchanged. */
   aspectRatio?: string,
+  /**
+   * **The photoshop aspect-ratio crop, in SOURCE pixels.** Absent for every caller but
+   * `attemptPhotoshopOnce` on a job whose admin used the crop step — and absent there too when they
+   * skipped it. Threaded straight to `fetchNinaImageReference` and applied to the reference bytes
+   * before they are encoded; it changes nothing about the request body, which is
+   * `aspectRatio`'s job. Passing a box without also passing the matching `aspectRatio` label is a
+   * caller bug this function does not police: `photoshopRun.ts` derives both from one place so the
+   * pair cannot drift.
+   */
+  cropBox?: NinaImageCropBox | null,
 ): Promise<NinaImageCallResult> {
   const startedAt = Date.now()
 
@@ -252,7 +384,7 @@ export async function callNinaImageModel(
   const referenceDataUrl =
     referenceUrl == null || referenceUrl.length === 0
       ? null
-      : await fetchNinaImageReference(referenceUrl)
+      : await fetchNinaImageReference(referenceUrl, cropBox ?? null)
 
   /*
    * The ceiling for what is ACTUALLY being sent — a reference that could not be fetched is an

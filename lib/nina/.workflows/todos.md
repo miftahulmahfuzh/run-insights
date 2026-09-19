@@ -3,16 +3,16 @@
 **Package Path**: `lib/nina`
 **Package Code**: NIN
 **Last Updated**: 2026-09-19
-**Total Active Tasks**: 1
+**Total Active Tasks**: 0
 
 ## Quick Stats
 - P0 Critical: 0
-- P1 High: 1
+- P1 High: 0
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 58
+- Completed: 59
 - Archived: 36
 
 ---
@@ -20,16 +20,6 @@
 ## Active Tasks
 
 ### [P1] High
-
-- [ ] **P1-NIN-A056** Phase 3: Server-side crop execution
-  - **Difficulty**: HARD
-  - **Type**: Feature
-  - **Context**: Owns `lib/nina/imagecall.ts` (`fetchNinaImageReference`/`callNinaImageModel` gain an optional pixel crop-box parameter, additive only, every existing caller unaffected) and `lib/nina/photoshopRun.ts` (`attemptPhotoshopOnce` reads the job's four crop fields; when present, computes the pixel crop box via Phase 1's `photoshopCropBox`, resolves the label via `ninaImageAspectRatioValue`, treats a `null` label or box as "no crop"; bypasses `nearestNinaImageAspectRatio` for that call in BOTH anchor and edit mode). Test coverage: `tests/nina.imagecall.test.ts` additions plus new `tests/nina.photoshopRun.test.ts` covering crop-vs-no-crop branching in both modes including the null-box branch. Does not touch the DB schema, any Server Action, any UI. Exit criteria: a crop job sends the model bytes cropped to the exact pixel box with `aspect_ratio` set to the exact chosen label in BOTH modes; a no-crop job is byte-identical to `main`'s current behavior (regression asserted); `npx tsc --noEmit`, `npm run lint`, `npm test` pass; `ci:openrouter-guard`/`ci:llm-payload-guard` still pass.
-  - **Status**: pending
-  - **Plan Set**: `photoshop-aspect-ratio-crop_PLAN.md` (phase 3 of 5)
-  - **Satisfies**: R1 — Add an optional "aspect ratio crop" step to `/admin/photoshop/[source]/[id]`, for BOTH anchor and edit mode.
-  - **Depends on**: `P1-NIN-A055` (done), `P1-DB-A008` (done) — both satisfied, no longer blocked
-  - **Plan**: `.workflows/plan/P1-NIN-A056.md`
 
 ### [P2] Medium
 
@@ -44,6 +34,23 @@
 (all thirty-five completed tasks were archived on 2026-09-12 — see Archive; full
 per-task detail — Context, Drift, Decided, Files — survives in git history and in
 `.workflows/package_readme.md`)
+
+- [x] **P1-NIN-A056** Phase 3: Server-side crop execution
+  - **Difficulty**: HARD
+  - **Type**: Feature
+  - **Context**: Owns `lib/nina/imagecall.ts` (`fetchNinaImageReference`/`callNinaImageModel` gain an optional pixel crop-box parameter, additive only, every existing caller unaffected) and `lib/nina/photoshopRun.ts` (`attemptPhotoshopOnce` reads the job's four crop fields; when present, computes the pixel crop box via Phase 1's `photoshopCropBox`, resolves the label via `ninaImageAspectRatioValue`, treats a `null` label or box as "no crop"; bypasses `nearestNinaImageAspectRatio` for that call in BOTH anchor and edit mode). Test coverage: `tests/nina.imagecall.test.ts` additions plus new `tests/nina.photoshopRun.test.ts` covering crop-vs-no-crop branching in both modes including the null-box branch. Does not touch the DB schema, any Server Action, any UI. Exit criteria: a crop job sends the model bytes cropped to the exact pixel box with `aspect_ratio` set to the exact chosen label in BOTH modes; a no-crop job is byte-identical to `main`'s current behavior (regression asserted); `npx tsc --noEmit`, `npm run lint`, `npm test` pass; `ci:openrouter-guard`/`ci:llm-payload-guard` still pass.
+  - **Status**: completed
+  - **Plan Set**: `PHOTOSHOP_ASPECT_RATIO_CROP_PLAN.md` (phase 3 of 5)
+  - **Satisfies**: R1 — Add an optional "aspect ratio crop" step to `/admin/photoshop/[source]/[id]`, for BOTH anchor and edit mode.
+  - **Depends on**: `P1-NIN-A055` (done), `P1-DB-A008` (done)
+  - **Plan**: `.workflows/plan/P1-NIN-A056.md`
+  - **Completed**: 2026-09-19 14:50
+  - **Method**: /do (plan set phase 3 of 5, run as a swarm session in a worktree shared with concurrent peer phases)
+  - **Files**: lib/nina/imagecall.ts, lib/nina/photoshopRun.ts, tests/nina.imagecall.test.ts, tests/nina.photoshopRun.test.ts
+  - **Drift**: TypeScript 5.9 / `@types/node` 22.20.1 default the bare `Buffer` type to `Buffer<ArrayBufferLike>` (not `Buffer<ArrayBuffer>`), which the plan's code blocks did not anticipate — the phase planner verified by reading source only (per this worktree's own environment note, `npm ci` had not run and Node was below the engine floor) and could not run `tsc`. This made `cropImageReferenceBytes`'s declared return type and the test file's `pngOf` helper's return type fail `tsc --noEmit` against `sharp`'s actual `Buffer<ArrayBuffer>` return and `fetch`'s `BodyInit`/`Response` typing. Fixed by explicitly annotating both as `Buffer<ArrayBuffer>` instead of bare `Buffer` — type-only, no behavior change, confined to the two files this phase owns.
+    `npm test` reports 5 pre-existing failures across 4 files unrelated to this phase and to this whole plan set: `components/admin/AdminNavLinks.test.tsx` (2 — a stale route-count/class assertion after the admin Photoshop nav tab was added) and `lib/nina/queries.test.ts` (1 — a frozen barrel-export list missing `updateNinaAvatarBlob`), plus the two others in the coordinator's recorded baseline. Verified both root-cause commits (`fbe837e`, `ba4603b`) are ancestors of this plan set's base commit (`origin/main` @ `b88d5bc`) via `git merge-base --is-ancestor` — i.e. already broken before Phase 1 ran, in files no phase of this set (1–5) owns. Left unfixed as out-of-scope per the plan's own Scope/Owns boundaries.
+    `npm run format:check` also flags a pre-existing formatting issue in `lib/nina/actions/send.ts`, untouched by this phase (confirmed via `git status`) and left alone for the same out-of-scope reason.
+  - **Commit note**: committed file-by-file, never `git add -A` — this worktree is shared with concurrent peer swarm sessions for phases 4 and 5, whose in-flight edits must not be swept into this phase's commit.
 
 - [x] **P1-NIN-A055** Phase 1: Pure crop-math module + exported ratio enum
   - **Difficulty**: HARD

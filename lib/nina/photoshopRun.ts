@@ -9,18 +9,21 @@ import { newId } from '@/lib/id'
 import { contentHashOf } from '@/lib/photos/contentHash'
 
 import { logNinaError } from './errorlogs'
-import { callNinaImageModel } from './imagecall'
+import { callNinaImageModel, type NinaImageCropBox } from './imagecall'
 import {
   NINA_IMAGE_CACHE_MAX_AGE,
   NINA_IMAGE_CONTENT_TYPE,
   nearestNinaImageAspectRatio,
+  ninaImageAspectRatioValue,
 } from './imagerecipe'
+import { photoshopCropBox } from './photoshopCrop'
 import {
   claimNinaPhotoshopJob,
   completeNinaPhotoshopJob,
   failNinaPhotoshopJob,
   requeueNinaPhotoshopJob,
   NINA_PHOTOSHOP_MAX_ATTEMPTS,
+  type NinaPhotoshopJobArgs,
 } from './photoshopJobs'
 import { photoshopModelResolution } from './photoshopPresets'
 
@@ -73,6 +76,66 @@ async function putPhotoshopBlob(
 }
 
 /**
+ * **The job row's crop, turned into something `sharp` can apply — or nothing at all.**
+ *
+ * The all-or-nothing convention is `nina_avatars`' own, widened by one field: four NULLs (or any
+ * one of the four NULL) means "the admin skipped the crop step", and this returns null, and
+ * `attemptPhotoshopOnce` runs the code it ran before this feature existed. A partial set is
+ * treated as absent rather than as a crop with defaults — a half-written crop is not a crop the
+ * admin ever looked at, and guessing the missing half is how a photo gets cropped somewhere nobody
+ * chose. (`runPhotoshopJobAction` coerces partials away at the boundary too, in Phase 4; this is
+ * the second of the two, because the row can also be written by a future caller.)
+ *
+ * **This function is the ONLY place in this phase that names a Phase 1 or Phase 2 symbol** —
+ * `photoshopCropBox`, `ninaImageAspectRatioValue`, and the four `args.crop*` fields. If either
+ * phase landed a different spelling, this body is the whole edit.
+ *
+ * `photoshopCropBox` itself returns `null` for a source/ratio pair no integer rectangle can express
+ * (a 3x2 thumbnail asked for 1:8) — Phase 1's documented contract, and it means exactly what the
+ * bounds checks below mean: no crop, today's behaviour, not a failed job.
+ *
+ * The bounds re-check after `photoshopCropBox` is not distrust of Phase 1's clamping; it is the
+ * difference between two failure modes. A box that overhangs makes `sharp` refuse and the job lose
+ * its anchor entirely; returning null here instead degrades to "no crop", which is today's shipped
+ * behaviour and a photograph the operator can use. The cheaper failure is the better one, and the
+ * expensive one is still reachable (the stored `sourceWidth`/`sourceHeight` can, in principle,
+ * disagree with the bytes that actually arrive) — `imagecall.ts` warns loudly when it happens.
+ */
+function photoshopCropFor(
+  args: NinaPhotoshopJobArgs,
+  sourceWidth: number | null,
+  sourceHeight: number | null,
+): { ratioLabel: string; box: NinaImageCropBox } | null {
+  const { cropRatioLabel, cropScale, cropX, cropY } = args
+  if (cropRatioLabel == null || cropScale == null || cropX == null || cropY == null) return null
+  if (sourceWidth == null || sourceHeight == null) return null
+  if (!(sourceWidth > 0) || !(sourceHeight > 0)) return null
+  if (!Number.isFinite(cropScale) || !Number.isFinite(cropX) || !Number.isFinite(cropY)) return null
+
+  /* The stored label must still be one the provider accepts. A label that fell out of the enum
+   * between the click and the run is not a ratio we may send, and it is not worth failing a job
+   * over either — the nearest-bucket fallback below is exactly what a job with no crop gets.
+   * `ninaImageAspectRatioValue` answers "is it catalogued" and "what is it numerically" in one
+   * call: `null` is the miss, and it is the same closed set Phase 4's boundary check reads. */
+  const targetRatio = ninaImageAspectRatioValue(cropRatioLabel)
+  if (targetRatio == null) return null
+
+  /* Argument order is Phase 1's: SOURCE, then TARGET RATIO, then the crop. */
+  const box = photoshopCropBox({ width: sourceWidth, height: sourceHeight }, targetRatio, {
+    scale: cropScale,
+    x: cropX,
+    y: cropY,
+  })
+  if (box == null) return null
+  if (box.width < 1 || box.height < 1) return null
+  if (box.left < 0 || box.top < 0) return null
+  if (box.left + box.width > sourceWidth) return null
+  if (box.top + box.height > sourceHeight) return null
+
+  return { ratioLabel: cropRatioLabel, box }
+}
+
+/**
  * One claim-call-store-finish cycle. `sourceUrl` is resolved by the caller on every attempt rather
  * than stored on the job row, so a source photo replaced mid-job is read honestly rather than off
  * a URL that may no longer serve what the admin picked.
@@ -89,13 +152,25 @@ async function attemptPhotoshopOnce(
 
   const seed = Math.floor(Math.random() * PHOTOSHOP_SEED_MAX)
   const resolution = photoshopModelResolution(claim.args.model)
-  /* **The 2026-09-19 edit-mode aspect fix** (`nearestNinaImageAspectRatio`'s own header). Anchor
-   * mode keeps `buildImageRequestBody`'s fixed `NINA_IMAGE_ASPECT` default — a deliberate
-   * stylistic choice for a fresh generation — by passing `undefined` here. */
+
+  /* **The admin's aspect-ratio crop, when they used it.** It overrides BOTH modes' fallback and it
+   * overrides them identically, because it needs no guessing: the rectangle IS one of the
+   * provider's exact `aspect_ratio` values, so the label below is the truth about the bytes rather
+   * than the nearest bucket to them. Anchor mode's fixed `NINA_IMAGE_ASPECT` default and edit
+   * mode's `nearestNinaImageAspectRatio` both survive UNCHANGED as the no-crop path. */
+  const crop = photoshopCropFor(claim.args, sourceWidth, sourceHeight)
+
+  /* **The 2026-09-19 edit-mode aspect fix** (`nearestNinaImageAspectRatio`'s own header), now the
+   * middle branch. Anchor mode with no crop keeps `buildImageRequestBody`'s fixed
+   * `NINA_IMAGE_ASPECT` default — a deliberate stylistic choice for a fresh generation — by
+   * passing `undefined` here. */
   const aspectRatio =
-    claim.args.mode === 'edit' && sourceWidth != null && sourceHeight != null
-      ? nearestNinaImageAspectRatio(sourceWidth, sourceHeight)
-      : undefined
+    crop != null
+      ? crop.ratioLabel
+      : claim.args.mode === 'edit' && sourceWidth != null && sourceHeight != null
+        ? nearestNinaImageAspectRatio(sourceWidth, sourceHeight)
+        : undefined
+
   const outcome = await callNinaImageModel(
     claim.args.promptText,
     seed,
@@ -103,6 +178,7 @@ async function attemptPhotoshopOnce(
     claim.args.model,
     resolution,
     aspectRatio,
+    crop?.box,
   )
 
   if (!outcome.ok) {
@@ -134,6 +210,19 @@ async function attemptPhotoshopOnce(
     }
     await failNinaPhotoshopJob(userId, jobId, outcome.kind, outcome.costMicroUsd)
     return 'gave-up'
+  }
+
+  /* A crop that was asked for and did not happen is the one failure this feature can have that
+   * costs money and looks like success: the picture comes back, billed, composed onto the ratio the
+   * label promised, from bytes that were never cropped to it. `fetchNinaImageReference` refuses to
+   * send uncropped bytes under an exact label — it drops the anchor instead — so the symptom is
+   * always `anchored: false`, and this is where the job log says so. */
+  if (crop != null && !outcome.anchored) {
+    console.warn('[photoshop] crop requested but the reference was dropped — nothing was cropped', {
+      jobId,
+      ratioLabel: crop.ratioLabel,
+      box: crop.box,
+    })
   }
 
   try {

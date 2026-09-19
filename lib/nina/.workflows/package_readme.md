@@ -553,11 +553,57 @@ what the operator spends.
 **`NINA_IMAGE_ASPECT_RATIOS`** (`imagerecipe.ts`) is OpenRouter's ~23-value discrete `aspect_ratio`
 enum — exported (2026-09-19, was module-private) alongside a new lookup,
 `ninaImageAspectRatioValue(label)`, which resolves a label back to its numeric ratio or `null` for
-an unrecognized one. Both are phase 1 of the photoshop aspect-ratio crop feature: the picker in a
-later phase reads the enum directly, and `photoshopRun.ts` resolves the admin's chosen label
-through the lookup rather than re-deriving it. `nearestNinaImageAspectRatio` (unchanged) still picks
+an unrecognized one. Both are phase 1 of the photoshop aspect-ratio crop feature: the picker reads
+the enum directly, and `photoshopRun.ts` (phase 3, landed 2026-09-19) resolves the admin's chosen
+label through the lookup rather than re-deriving it — a label that fell out of the enum between the
+click and the run resolves to `null`, which is read as "no crop", never as a failed job.
+`nearestNinaImageAspectRatio` (unchanged) still picks
 the CLOSEST bucket to a source photo's real shape; it cannot make the match exact, which is the
 whole reason `photoshopCrop.ts` exists — see Module map.
+
+**The crop is applied to real bytes in exactly ONE place** (2026-09-19, phase 3):
+`fetchNinaImageReference` (`imagecall.ts`, module-private), in the gap between "the Blob object
+arrived" and "it became a `data:` URL". `callNinaImageModel` gained a trailing optional `cropBox`
+— a `NinaImageCropBox`, integer `left`/`top`/`width`/`height` in SOURCE pixels, declared in
+`imagecall.ts` rather than imported so the one file that touches the bytes owns the shape it
+consumes (`photoshopCropBox`'s return type assigns to it structurally) — threaded straight through
+and applied with `sharp().extract(...)`. Purely additive: every existing positional caller,
+`imagerun.ts` included, is byte-identical to before. Four rules hold it together:
+
+- **The crop changes the REFERENCE, never the request body.** The `aspect_ratio` label is
+  `aspectRatio`'s job, one parameter earlier. `photoshopRun.ts` derives both from one place so the
+  pair cannot drift; `callNinaImageModel` does not police a box passed without its label.
+- **A box that cannot be applied drops the ANCHOR — it does not clamp.** A non-integer, negative or
+  degenerate box, bytes `sharp` cannot decode, or a box that overhangs the pixels that actually
+  arrived each return `null` and the job degrades to unanchored with a `console.warn`. Trimming an
+  overhanging box would change its ratio, and off-ratio bytes sent under an EXACT `aspect_ratio`
+  label reproduce the very stretch this feature removes, invisibly. A lost anchor is loud; a
+  silently mis-shaped one is not.
+- **No format method before `toBuffer()`, on purpose.** `sharp` re-encodes in the input's own
+  format, so a JPEG stays a JPEG and the served `content-type` that `buildImageReferenceDataUrl`
+  vouches for stays true. `NINA_IMAGE_REFERENCE_MAX_BYTES` is then checked a THIRD time, against the
+  cropped bytes, because a re-encode is new bytes and a ceiling checked only on the input has a hole
+  in it.
+- **The crop lives on the job row as parameters, never as a derived blob.** It is recomputed and
+  re-applied to bytes fetched fresh on every attempt — the same posture as `sourceUrl`, which is
+  resolved per attempt rather than stored.
+
+In `photoshopRun.ts`, `photoshopCropFor` is the whole seam and the only place naming a phase-1/2
+symbol: it reads the job's four `crop_*` args, resolves the label through
+`ninaImageAspectRatioValue`, calls `photoshopCropBox(source, targetRatio, crop)` and re-checks the
+returned box against the stored source dimensions. Every miss — four NULLs, a PARTIAL set (a
+half-written crop is not a crop the admin ever looked at, and guessing the missing half crops
+somewhere nobody chose), an uncatalogued label, unknown source dimensions, a `null` box, an
+overhanging box — degrades to "no crop, today's path" rather than failing the job; the bounds
+re-check is not distrust of phase 1 but a choice between two failure modes, since the cheap one
+(no crop) beats the expensive one (`sharp` refuses, anchor gone). On a hit the label is passed to
+`callNinaImageModel` EXACTLY, **bypassing `nearestNinaImageAspectRatio` in BOTH anchor and edit
+mode** — the rectangle IS one of the provider's exact values, so the label is the truth about the
+bytes rather than the nearest bucket to them. Anchor mode's fixed `NINA_IMAGE_ASPECT` default and
+edit mode's nearest-bucket fix both survive UNCHANGED as the no-crop path. The one failure that
+costs money and still looks like success — a picture billed and composed to the promised ratio from
+bytes that were never cropped — always surfaces as `anchored: false`, and the
+`[photoshop] crop requested but the reference was dropped` warning is where the job log says so.
 
 **The photograph's aesthetic is decided in `imagegen.ts` and nowhere else.** `NINA_SELFIE_STYLE` is
 the camera block at the head of `NINA_PROMPT_TEMPLATE_DEFAULT`; `GENERATE_IMAGE_TOOL.description`
@@ -1267,7 +1313,7 @@ it: the album row shows the `nina_message_images` row's bytes and names it in `s
 | Prompts | `prompts/index.ts`, `prompts/system.ts`, `prompts/tools.ts`, `prompts/distill.ts`, `prompts/describe.ts` (two witness prompts behind a `Record` — a third subject is a compile error, and `subject` defaults to `'runner'` so existing callers are byte-identical), `prompts/caption.ts` |
 | Character | `tuning.ts`, `persona.ts` (barrel) + `persona/` (bands, identity, appearance, voice, instructor, anger, verbosity, never-say, tuning-blocks) |
 | Memory/behaviour | `memory.ts`, `distill.ts`, `promise.ts`(T)/`promises.ts`, `reminders.ts`/`reminderstore.ts`* (2026-09-16 — the same pure/impure split as promises; the pure half imports NO value and never reads a clock, and the impure half is the only file in the feature that knows a database exists; its suite is repo-level `tests/nina.reminders.test.ts`, not colocated), `nags.ts`, `patterns.ts`, `shortcuts.ts`(T), `title.ts`/`autotitle.ts` |
-| Images | `imagerecipe.ts`, `imagegen.ts`, `imageprefs.ts`, `imagejobs.ts`, `imagecall.ts`, `imageDedupe.ts`, `perceptual.ts`/`perceptualSign.ts`, `imagerun.ts`, `imagefail.ts`, `caption.ts`, `imagetools.ts`/`avatartools.ts`, `selfiegen.ts`/`avatargen.ts`/`avatarAdopt.ts`*(2026-09-17 — the no-camera avatar path; the only avatar writer that announces inline)/`imagetest.ts`, `jobview.ts`(T), `provenancePromotion.ts` (2026-09-16 — the promote-before-delete pass; `blobRelease.ts` is the reference-checked release every single-object delete goes through; neither declares `server-only`, both are db-touching and neither is a Server Action), `photoshopCrop.ts`(T) (2026-09-19 — zero-import, same footing as `imagerecipe.ts`; the rectangle/ratio-aware analogue of `crop.ts` — resolve/clamp/pan/zoom/nudge over a per-axis `x`/`y` thousandths-of-frame crop, `ninaPhotoshopCropStyle` for the CSS preview, and `photoshopCropBox(source, targetRatio, crop)`, the one capability `crop.ts` never needed: an integer pixel rectangle for `sharp().extract()`, or `null` when the crop cannot be applied — phase 1 of the photoshop aspect-ratio crop feature; no caller yet) |
+| Images | `imagerecipe.ts`, `imagegen.ts`, `imageprefs.ts`, `imagejobs.ts`, `imagecall.ts`, `imageDedupe.ts`, `perceptual.ts`/`perceptualSign.ts`, `imagerun.ts`, `imagefail.ts`, `caption.ts`, `imagetools.ts`/`avatartools.ts`, `selfiegen.ts`/`avatargen.ts`/`avatarAdopt.ts`*(2026-09-17 — the no-camera avatar path; the only avatar writer that announces inline)/`imagetest.ts`, `jobview.ts`(T), `provenancePromotion.ts` (2026-09-16 — the promote-before-delete pass; `blobRelease.ts` is the reference-checked release every single-object delete goes through; neither declares `server-only`, both are db-touching and neither is a Server Action), `photoshopCrop.ts`(T) (2026-09-19 — zero-import, same footing as `imagerecipe.ts`; the rectangle/ratio-aware analogue of `crop.ts` — resolve/clamp/pan/zoom/nudge over a per-axis `x`/`y` thousandths-of-frame crop, `ninaPhotoshopCropStyle` for the CSS preview, and `photoshopCropBox(source, targetRatio, crop)`, the one capability `crop.ts` never needed: an integer pixel rectangle for `sharp().extract()`, or `null` when the crop cannot be applied — phase 1 of the photoshop aspect-ratio crop feature; its one server-side caller is `photoshopRun.ts`'s `photoshopCropFor`, which hands the box to `callNinaImageModel`'s `cropBox` — phase 3, 2026-09-19) |
 | Vision/intake | `vision.ts`(T), `imageTicket.ts`(T) (HMAC carrier, `node:crypto`), `images.ts`(T), `crop.ts`(T) |
 | Provider constants | `openrouter.ts` (zero imports; the ONE home of `OPENROUTER_CHAT_URL` + `OPENROUTER_EMBEDDINGS_URL` and of all three model vocabularies — `NINA_VISION_FALLBACK_MODEL` hardcoded, `NINA_CHAT_FALLBACK_MODEL_IDS`/`_SPECS`/`_DEFAULT_MODEL` operator-picked, `NINA_EMBEDDING_MODEL` migration-locked; read by the vision fallback, the text-chat fallback client and `embedding.ts`) |
 | Embeddings | `embedding.ts`*(T) (one `fetch` to `OPENROUTER_EMBEDDINGS_URL`, no fallback ladder, no retry; the width guard gates the return against `NINA_EMBEDDING_DIMENSIONS`) |
@@ -1354,7 +1400,9 @@ not a (T): it is the barrel contract test, not a pure module's suite.
 `next/server`'s `after()`, `next/cache`'s `revalidatePath` (jobActions only), `server-only`
 (33 top-level modules, measured 2026-09-16 — `reminderstore.ts` is the newest; the count moves with
 every landing, so `grep -l "import 'server-only'" lib/nina/*.ts | wc -l` rather than trust it),
-`node:crypto`.
+`node:crypto`, `sharp` (three `server-only` files and no more: `perceptualSign.ts` measures,
+`photoshopRun.ts` measures, and — since 2026-09-19 — `imagecall.ts` `extract()`s the photoshop
+crop; all three treat a `sharp` failure as a degraded result, never as a throw).
 **Internal:** `@/lib/db` + `@/lib/db/schema`
 (heaviest), `@/lib/photos/contentHash` (the sha-256 hex format the whole dedupe set answers
 from), `@/lib/date/ranges` (the Jakarta day model behind nags/patterns/promises/proactive),
@@ -1710,6 +1758,19 @@ recursive — a new module under `queries/` does not automatically join the walk
   because `ninaEnv()` memoizes its parse (`ninaCache ??=` in `lib/env.ts`) and any earlier case in
   the same registry has warmed it with a key — the test gets the cold registry with
   `vi.resetModules()` plus a dynamic re-import.
+- **The photoshop crop is pinned on both sides of the seam** (2026-09-19). The new
+  `tests/nina.photoshopRun.test.ts` drives `attemptPhotoshopOnce` with `callNinaImageModel` mocked
+  and asserts the ARGUMENTS, because the whole feature is which two values that call receives: the
+  three no-crop cases are pinned byte-identical to before (edit mode's nearest bucket, anchor
+  mode's `undefined`, edit mode with unknown dimensions), a crop overrides BOTH modes' fallback
+  identically, and every degradation — partial args, an uncatalogued label, missing source
+  dimensions, a `null` box, an overhanging box — comes back as "no crop" rather than a failed job,
+  with the crop module asserted NEVER asked on a partial set. The `anchored: false` warning has a
+  case of its own, since a silently uncropped-but-billed picture is the failure worth the test.
+  `tests/nina.imagecall.test.ts` holds the other side with an injected `fetch` and real bytes: a box
+  crops before encoding, NO box leaves the reference byte-identical to the fetched object, a box
+  that does not fit the bytes that arrived drops the anchor rather than sending the wrong pixels,
+  and a box on an UNANCHORED call is inert — no reference, no fetch, no throw.
 - **The describe fallback is driven by a fake that routes on URL** (`vision.test.ts`, 32 cases as
   of 2026-09-12): the single-provider core keeps its own cases untouched, and the orchestrator's
   cases hand it a fake that answers `LLM_VISION_BASE_URL` one way and `OPENROUTER_CHAT_URL`
