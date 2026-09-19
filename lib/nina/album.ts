@@ -425,13 +425,13 @@ export function decodeAboutTab(raw: unknown): NinaAboutTab {
 }
 
 /**
- * How many photographs one page of Foto profil or Media holds — 30 columns x 3 rows on desktop,
- * 3 x 30 on phones, the same tiling `NINA_PHOTO_REF_PAGE_SIZE` (the photo-reference picker,
+ * How many photographs one page of Foto profil or Media holds — 33 columns x 3 rows on desktop,
+ * 3 x 33 on phones, the same tiling `NINA_PHOTO_REF_PAGE_SIZE` (the photo-reference picker,
  * `lib/nina/imageprefs.ts`) already settled on for the identical grid shape. A separate constant
  * rather than a shared import: that module is deliberately zero-import (its header) so it stays
  * loadable from the image-generation worker, and this page is not part of that boundary.
  */
-export const NINA_ABOUT_PAGE_SIZE = 90
+export const NINA_ABOUT_PAGE_SIZE = 99
 
 /**
  * Where the last page a runner viewed is remembered across a reload — one cookie per tab, written

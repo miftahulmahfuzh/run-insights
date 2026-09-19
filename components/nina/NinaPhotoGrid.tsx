@@ -11,18 +11,18 @@ import * as React from 'react'
  * the tap target — is identical, and two components would be two chances for them to drift the way
  * `ScreenshotStrip`'s arrows and its swipe drifted before F18 unified them.
  *
- * ── 3 COLUMNS ON A PHONE, 30 ON DESKTOP (nina-about-pagination) ────────────────────────────────
- * `NinaAboutScreen` now pages both grids at `NINA_ABOUT_PAGE_SIZE` (90) rows at a time — the same
- * number `components/admin/PhotoReferencePicker.tsx` settled on for the identical reason: 90 is
- * divisible by both 3 and 30, so a full page tiles as a clean sheet with no trailing gap on either
+ * ── 3 COLUMNS ON A PHONE, 33 ON DESKTOP (nina-about-pagination) ────────────────────────────────
+ * `NinaAboutScreen` now pages both grids at `NINA_ABOUT_PAGE_SIZE` (99) rows at a time — the same
+ * number `components/admin/PhotoReferencePicker.tsx` settled on for the identical reason: 99 is
+ * divisible by both 3 and 33, so a full page tiles as a clean sheet with no trailing gap on either
  * breakpoint. Only the collection's last (partial) page can ever leave a row short.
  *
  * ── WHY THE DESKTOP TIER SCROLLS SIDEWAYS ───────────────────────────────────────────────────────
- * 30 columns of plain `1fr` would divide whatever width this screen has and shrink every tile below
+ * 33 columns of plain `1fr` would divide whatever width this screen has and shrink every tile below
  * a usable tap target on anything but an extra-wide monitor — the same 92 px floor
  * `PHOTO_REFERENCE_MIN_TILE_PX` (`components/admin/photoReferenceModel.ts`) enforces for the
  * identical grid shape in the admin picker. So the `lg` track is `minmax(92px,1fr)` per column, and
- * the wrapping `<div>` carries `lg:overflow-x-auto` so a full 30-column row (2760 px minimum)
+ * the wrapping `<div>` carries `lg:overflow-x-auto` so a full 33-column row (3036 px minimum)
  * scrolls horizontally instead of squeezing every tile illegibly thin. Below `lg` the grid is a
  * fixed 3 columns that never overflows its container, so the wrapper's overflow is inert there.
  *
@@ -58,7 +58,7 @@ export function NinaPhotoGrid({
 
   return (
     <div className="lg:overflow-x-auto">
-      <ul className="grid grid-cols-3 gap-1 lg:grid-cols-[repeat(30,minmax(92px,1fr))]">
+      <ul className="grid grid-cols-3 gap-1 lg:grid-cols-[repeat(33,minmax(92px,1fr))]">
         {cells.map((cell, i) => (
           <li key={cell.id} className="overflow-hidden rounded-field bg-ink-3/20">
             <button

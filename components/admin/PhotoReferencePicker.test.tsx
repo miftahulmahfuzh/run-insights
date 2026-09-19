@@ -255,7 +255,7 @@ describe('PhotoReferencePicker', () => {
     expect(grid).not.toHaveClass('border')
 
     // The rounded, clipped frame — and the desktop-only horizontal scroll for the fixed-width
-    // 30-column track — live one level up, on the wrapper whose edges are now the visible sheet.
+    // 33-column track — live one level up, on the wrapper whose edges are now the visible sheet.
     const wrapper = grid?.parentElement
     expect(wrapper).toHaveClass('overflow-hidden', 'rounded-field', 'lg:overflow-x-auto')
 

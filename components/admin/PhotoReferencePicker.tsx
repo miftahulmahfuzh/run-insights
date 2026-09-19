@@ -60,18 +60,18 @@ import type { PhotoReferenceItem } from './photoReferenceModel'
  * `PHOTO_REFERENCE_MIN_TILE_PX` is the `minmax()` floor for the fluid tablet range (`sm` to `lg`):
  * `auto-fill` drops a column before it lets a tile go under 92 px — 2.1x `docs/design-brief.md`'s
  * 44 pt minimum. Below `sm` (phones) the grid is a fixed 3 columns, comfortably clear of the floor
- * even on a narrow screen; at `lg` and up (desktop) it is a fixed 30 columns. `NINA_PHOTO_REF_PAGE_SIZE`
- * is 90 — divisible by both 3 and 30 — so a full page tiles as a clean sheet with no trailing gap
- * on either breakpoint: 30x3 on desktop, 3x30 on phones. Only the collection's last (partial) page
+ * even on a narrow screen; at `lg` and up (desktop) it is a fixed 33 columns. `NINA_PHOTO_REF_PAGE_SIZE`
+ * is 99 — divisible by both 3 and 33 — so a full page tiles as a clean sheet with no trailing gap
+ * on either breakpoint: 33x3 on desktop, 3x33 on phones. Only the collection's last (partial) page
  * can ever leave a row short.
  *
  * ── WHY THE DESKTOP TIER SCROLLS SIDEWAYS ───────────────────────────────────────────────────────
- * 30 columns of `1fr` (Tailwind's plain `grid-cols-30`, if it existed) would divide whatever width
+ * 33 columns of `1fr` (Tailwind's plain `grid-cols-33`, if it existed) would divide whatever width
  * the admin panel happens to have and let each tile shrink below the 92 px floor on anything but an
  * extra-wide monitor — the same floor the tablet tier enforces with `auto-fill`, silently abandoned
  * at `lg` if columns are allowed to compress. So the `lg` track is `minmax(92px,1fr)` per column,
- * same floor, and the wrapping `<div>` carries `lg:overflow-x-auto` so a full-width 30-column row
- * (2760 px minimum) scrolls horizontally inside the admin panel instead of squeezing every tile
+ * same floor, and the wrapping `<div>` carries `lg:overflow-x-auto` so a full-width 33-column row
+ * (3036 px minimum) scrolls horizontally inside the admin panel instead of squeezing every tile
  * illegibly thin. `overflow-hidden rounded-field` moved from the `<ul>` onto that wrapper, since it
  * is now the wrapper's edges that frame the visible sheet; `lg:overflow-x-auto` only ever overrides
  * the horizontal half of that shorthand, so the vertical clip (and the rounded corners it draws)
@@ -211,7 +211,7 @@ export function PhotoReferencePicker({
       ) : (
         <>
           <div className="overflow-hidden rounded-field lg:overflow-x-auto">
-            <ul className="grid grid-cols-3 gap-[3px] sm:grid-cols-[repeat(auto-fill,minmax(92px,1fr))] lg:grid-cols-[repeat(30,minmax(92px,1fr))]">
+            <ul className="grid grid-cols-3 gap-[3px] sm:grid-cols-[repeat(auto-fill,minmax(92px,1fr))] lg:grid-cols-[repeat(33,minmax(92px,1fr))]">
               {view.tiles.map((tile) => (
                 <li key={tile.key} className="relative aspect-square bg-ink-3/20">
                   <button
