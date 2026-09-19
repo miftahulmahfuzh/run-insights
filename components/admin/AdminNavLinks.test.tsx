@@ -27,9 +27,9 @@ function at(path: string) {
 const HREFS = [
   '/admin',
   '/admin/nina',
-  '/admin/personality',
   '/admin/image-generation',
   '/admin/photoshop',
+  '/admin/personality',
   '/admin/memory',
   '/admin/shortcuts',
   '/admin/error-logs',
@@ -64,9 +64,9 @@ describe('AdminNavLinks', () => {
     const pairs: Array<[string, string, string]> = [
       ['/admin', 'Overview', 'Overview'],
       ['/admin/nina', 'Photos', 'Image collection'],
-      ['/admin/personality', 'Persona', 'Personality'],
       ['/admin/image-generation', 'Images', 'Image Generation'],
       ['/admin/photoshop', 'Edit', 'Photoshop'],
+      ['/admin/personality', 'Persona', 'Personality'],
       ['/admin/memory', 'Memory', 'Memory'],
       ['/admin/shortcuts', 'Shortcut', 'Shortcuts'],
       ['/admin/error-logs', 'Errors', 'Error logs'],

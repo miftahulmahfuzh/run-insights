@@ -70,23 +70,9 @@ const LINKS = [
   { href: '/admin', label: 'Overview', short: 'Overview', icon: LayoutDashboardIcon },
   { href: '/admin/nina', label: 'Image collection', short: 'Photos', icon: ImagesIcon },
   /*
-   * The character tuning, which used to be a shut disclosure on the album route until the user
-   * asked for it as its own tab: *"move it as a new tab with name: Personality"*. It sits between
-   * the album and the image-generation tab: the two configuration surfaces — who she is, and how
-   * she is photographed — are neighbours, and the routes above and below them are the things you
-   * look AT.
-   *
-   * The phone name is "Persona" and not "Personality": a true short form of the word rather than
-   * an invented abbreviation — `docs/nina/persona.md` is what this page edits. It was the label
-   * pair's text fit; it is the accessible name now.
-   */
-  { href: '/admin/personality', label: 'Personality', short: 'Persona', icon: SmileIcon },
-  /*
-   * *"make a new tab in admin: Image Generation."* It is placed HERE, directly after the
-   * personality tab, rather than appended at the end, and the reason is a move that has to be
-   * findable: the Wardrobe field leaves the personality tab and arrives on this page, so the two
-   * tabs are neighbours. They are the pair of configuration surfaces — who she is, and how she is
-   * photographed — and the routes above and below them are the things you look AT.
+   * *"make a new tab in admin: Image Generation."* It sits directly after Image collection: the
+   * first of the two photograph tabs — make one from scratch, or fix one that already exists —
+   * stays paired with Photoshop right below it.
    *
    * Its `short` is "Images", and the photo-ish routes left in the bar are this one and the album —
    * a wand for making, a stack for what is kept.
@@ -99,11 +85,23 @@ const LINKS = [
   },
   /*
    * The admin's "edit an existing photo" tab — distinct from Image Generation (a fresh photo
-   * from a prompt) and from Image collection (the library the edited result lands in). Placed right
-   * after Image Generation for the same reason that tab sits after Personality: the two photograph
-   * tabs — make one from scratch, or fix one that already exists — stay neighbours.
+   * from a prompt) and from Image collection (the library the edited result lands in). Placed
+   * right after Image Generation: the two photograph tabs — make one from scratch, or fix one
+   * that already exists — stay neighbours.
    */
   { href: '/admin/photoshop', label: 'Photoshop', short: 'Edit', icon: SquarePenIcon },
+  /*
+   * The character tuning, which used to be a shut disclosure on the album route until the user
+   * asked for it as its own tab: *"move it as a new tab with name: Personality"*. It originally
+   * sat between Image collection and Image Generation so the two configuration surfaces — who she
+   * is, and how she is photographed — were neighbours; it moved to just after Photoshop on request
+   * (a desktop tab-order nitpick), so the two photograph tabs stay adjacent above it instead.
+   *
+   * The phone name is "Persona" and not "Personality": a true short form of the word rather than
+   * an invented abbreviation — `docs/nina/persona.md` is what this page edits. It was the label
+   * pair's text fit; it is the accessible name now.
+   */
+  { href: '/admin/personality', label: 'Personality', short: 'Persona', icon: SmileIcon },
   { href: '/admin/memory', label: 'Memory', short: 'Memory', icon: BrainIcon },
   /*
    * `nina-emoji-shortcuts` R1's route, and it sits directly after Memory because Memory is the one
