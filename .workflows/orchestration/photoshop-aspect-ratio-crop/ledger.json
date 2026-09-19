@@ -54,28 +54,28 @@
       "satisfies": [
         "R1"
       ],
-      "status": "spawned",
+      "status": "pending",
       "task_id": null,
       "title": "Server-side crop execution"
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "f571fe9",
       "depends_on": [
         1,
         2
       ],
       "difficulty": "NORMAL",
       "n": 4,
-      "note": "Baseline note (coordinator, before spawn): npm test on origin/main @ b88d5bc already has 4 failing test files unrelated to this plan (components/admin/AdminNavLinks.test.tsx grid-class assertions stale vs current markup; lib/nina/queries.test.ts barrel-contract missing updateNinaAvatarBlob). Confirmed present on main itself, not introduced by this worktree. Invariant 1's 'passes npm test' is satisfied when a phase introduces no NEW failures beyond this known baseline -- do not spend phase time chasing these 4.",
+      "note": "Server Action + page wiring landed. runPhotoshopJobAction validates 4 optional crop fields inline (closed-set label via Phase 1's ninaImageAspectRatioValue; numeric bounds from Phase 1's exported constants); all-or-none coercion for a partial/malformed set from an untrusted client. page.tsx passes photo.width/height; PhotoshopDetail's two prop-type members declared (type-only, unread) per the plan's file-ownership split -- Phase 5 owns the rest of that file. Verified clean in isolation (Phase 3's in-flight WIP in imagecall.ts/photoshopRun.ts currently fails tsc on the live tree, but Phase 4 does not touch those files and is clean when they're reverted to HEAD; Phase 3 owns resolving it before its own exit). Baseline correction: 5 pre-existing failing TESTS across 4 files (admin.photoReference, nina.errorlogs, AdminNavLinks x2, nina.queries barrel), not '4 failing' as originally logged -- same file count, precise test count. Set-level plan files (PLAN.md/analysis.md/.workflows/plan/.../phase-*.md) in the worktree are local /analyze artifacts, not the swarm's source of truth (that's .workflows/orchestration/ on main, already pushed) -- no action needed on them; they are discarded with the worktree at land. Invariant 5 (migrate before deploy) still outstanding, to be handled at Step 5 land.",
       "package": "lib/admin`, `app/admin`, `components/admin` (2 type-only lines)",
       "plan": ".workflows/plan/photoshop-aspect-ratio-crop/phase-4.md",
-      "reported_at": "2026-09-19T07:20:21+00:00",
+      "reported_at": "2026-09-19T07:51:48+00:00",
       "satisfies": [
         "R1"
       ],
-      "status": "spawned",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-ADM-N8QW",
       "title": "Server Action + page wiring"
     },
     {
@@ -94,7 +94,7 @@
       "satisfies": [
         "R1"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": null,
       "title": "Crop UI + PhotoshopDetail wiring"
     }
@@ -102,7 +102,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/photoshop-aspect-ratio-crop/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "photoshop-aspect-ratio-crop",
-  "updated": "2026-09-19T07:39:27+00:00",
-  "verified_at": "2026-09-19T07:36:36+00:00",
+  "updated": "2026-09-19T07:51:57+00:00",
+  "verified_at": "2026-09-19T07:51:48+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/photoshop-aspect-ratio-crop"
 }
