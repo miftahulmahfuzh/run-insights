@@ -2,7 +2,7 @@
 
 **Package Path**: `lib/admin`
 **Package Code**: ADM
-**Last Updated**: 2026-09-16
+**Last Updated**: 2026-09-19
 **Total Active Tasks**: 0
 
 ## Quick Stats
@@ -12,7 +12,7 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 10
+- Completed: 11
 - Archived: 4
 
 ---
@@ -38,6 +38,24 @@
 (all four completed tasks were archived on 2026-09-12 — see Archive; full
 per-task detail — Context, Drift, Decided, Files — survives in git history and
 in `.workflows/package_readme.md`)
+
+- [x] **P1-ADM-N8QW** Phase 4: Server Action + page wiring
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns `lib/admin/photoshopActions.ts` (`runPhotoshopJobAction`'s input gains the four optional crop fields, validated inline with a closed-set check via Phase 1's `ninaImageAspectRatioValue` and numeric bounds from Phase 1's exported constants; all four fields present together or all four absent — a partial set is coerced to "no crop"), `app/admin/photoshop/[source]/[id]/page.tsx` (passes `photo.width`/`photo.height` down to `<PhotoshopDetail>` as new props), and — type-only, two lines only — `components/admin/PhotoshopDetail.tsx`'s two new prop-type members `sourceWidth`/`sourceHeight` (not destructured or read here; Phase 5 owns every other line of that file). Adds focused validation-branch test coverage. Does not touch `imagecall.ts`/`photoshopRun.ts`'s consumption of the fields or the crop UI. Exit criteria: `runPhotoshopJobAction` accepts a well-formed crop and coerces a malformed/partial one to "no crop" while still running the job; the admin page passes the source's natural width/height; `PhotoshopDetail` declares the two new props so the tree typechecks at the end of this phase; `npx tsc --noEmit`, `npm run lint`, `npm test` all pass.
+  - **Status**: completed
+  - **Plan Set**: `PHOTOSHOP_ASPECT_RATIO_CROP_PLAN.md` (phase 4 of 5)
+  - **Satisfies**: R1 — Add an optional "aspect ratio crop" step to `/admin/photoshop/[source]/[id]`, for BOTH anchor and edit mode.
+  - **Depends on**: `P1-NIN-A055`, `P1-DB-A008`
+  - **Plan**: `.workflows/plan/P1-ADM-N8QW.md`
+  - **Completed**: 2026-09-19 14:47
+  - **Method**: /do
+  - **Files**: lib/admin/photoshopActions.ts, app/admin/photoshop/[source]/[id]/page.tsx, components/admin/PhotoshopDetail.tsx, tests/admin.photoshopActions.test.ts
+  - **Drift**: No drift from the plan file itself — every file the plan quoted (`lib/admin/photoshopActions.ts`, `app/admin/photoshop/[source]/[id]/page.tsx`, `components/admin/PhotoshopDetail.tsx`) matched the plan's quoted "before" state exactly, and Phase 1/Phase 2's exports (`ninaImageAspectRatioValue`, `NINA_PHOTOSHOP_CROP_MIN_SCALE`/`_MAX_SCALE`/`_MAX_ABS_OFFSET`, `NinaPhotoshopJobArgs`' four crop fields) were confirmed present verbatim as the plan required.
+  - **Decided**: Live-tree `npm run typecheck` fails with a `Buffer<ArrayBufferLike>` error in `lib/nina/imagecall.ts` → traced to a concurrent peer swarm session's uncommitted Phase 3 (`P1-NIN-A056`) work-in-progress in this same shared worktree (git status shows `lib/nina/imagecall.ts`, `lib/nina/photoshopRun.ts`, `tests/nina.imagecall.test.ts` modified but uncommitted). Verified in an isolated rsync copy of the tree with those three files reverted to HEAD that Phase 4's own changes typecheck cleanly (`tsc --noEmit` exit 0). Rung 4/Scope: Phase 4's plan explicitly "Does not touch" `imagecall.ts`/`photoshopRun.ts` (Phase 3's ownership) — fixing or touching that file would be scope-widening, not a decision. No code change made to Phase 3's files.
+    `npm test` shows 5 failures (`tests/admin.photoReference.test.ts`, `tests/nina.errorlogs.test.ts`, `components/admin/AdminNavLinks.test.tsx` ×2, `lib/nina/queries.test.ts`) — these are the exact same 5 pre-existing failures already documented and confirmed pre-existing on `main` by Phase 2's (`P1-DB-A008`) completion report in `lib/db/.workflows/todos.md`. Rung 5 (inherited decision, not re-litigated): treated as out-of-scope and not fixed, same as Phase 2's precedent.
+    `npm run format:check` flagged `lib/nina/actions/send.ts` (pre-existing, untouched, unmodified by this phase — confirmed via git status) and `lib/nina/photoshopRun.ts` + `tests/nina.photoshopRun.test.ts` (Phase 3's uncommitted WIP) in addition to the new test file. Ran `npx prettier --write` on only this phase's own new file, `tests/admin.photoshopActions.test.ts`; left the peer's Phase 3 WIP files untouched (out of scope). All Phase 4-owned files are format-clean.
+  - **Verified**: `npx vitest run tests/admin.photoshopActions.test.ts` — 17/17 passed. `npx tsc --noEmit` — clean in an isolated copy with Phase 4's changes only (peer Phase 3 WIP reverted to HEAD); the live tree's failure is Phase 3's WIP, not Phase 4's. `npm run lint` clean. `npm run format:check` clean for all Phase 4-owned files. `npm test` — 6566/6571 passed; the 5 failures are pre-existing per Phase 2's own recorded decision, unrelated to photoshop/crop. `npm run ci:openrouter-guard`, `ci:data-layer-guard`, `ci:client-secret-guard` — all OK.
 
 - [x] **P1-ADM-R6XQ** Phase 2: Admin reminder management in `/admin/memory`
   - **Difficulty**: NORMAL

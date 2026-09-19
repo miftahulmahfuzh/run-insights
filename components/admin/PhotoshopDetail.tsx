@@ -38,6 +38,11 @@ export function PhotoshopDetail({
   sourceKind: NinaPhotoshopSourceKind
   sourceId: string
   sourceUrl: string
+  /** The source photo's intrinsic pixel size, `null` for a row that predates dimension tracking.
+   * Accepted here so `app/admin/photoshop/[source]/[id]/page.tsx` can hand it over; READ by the
+   * aspect-ratio crop step (Phase 5), which needs the source's own shape to fit a rectangle to it. */
+  sourceWidth: number | null
+  sourceHeight: number | null
 }) {
   const [mode, setMode] = React.useState<NinaPhotoshopMode>('edit')
   const [model, setModel] = React.useState<string>('bytedance-seed/seedream-4.5')

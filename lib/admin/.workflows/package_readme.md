@@ -1,7 +1,10 @@
 # Package: admin
 
 **Location**: `lib/admin`
-**Last Updated**: 2026-09-17 (the media collection joins the search — merged album+media ranking,
+**Last Updated**: 2026-09-19 (the photoshop crop step's boundary — `runPhotoshopJobAction`'s four
+optional crop fields, checked inline and coerced to "no crop" rather than trusted or refused,
+P1-ADM-N8QW, phase 4 of 5 of `PHOTOSHOP_ASPECT_RATIO_CROP_PLAN.md`).
+Previously: 2026-09-17 (the media collection joins the search — merged album+media ranking,
 the Media describe/embed pipeline, keyword actions, promotion-as-a-link and the deletion guard,
 P2-NIN-A002, phase 2 of 4 of `MEDIA_ALBUM_UNIFIED_SEARCH_PLAN.md`).
 Previously: 2026-09-16 (the Reminders group on `/admin/memory` — full add/edit/delete over
@@ -25,9 +28,10 @@ is a directory of pure modules behind the `filetree.ts` re-export barrel since 2
 
 The surfaces: `/admin/nina` (the explorer: her album **and** the media collection formerly
 mounted at `/admin/photos`), `/admin/personality` (character panel + text-model select),
-`/admin/memory`, `/admin/shortcuts`, `/admin/image-generation`, `/admin/error-logs` (read-only:
-every failed LLM call, tabbed Text / Multimodal / Image generation). There is no `/admin/photos`
-route any more; `ADMIN_CHAT_PHOTOS_PATH` is `'/admin/nina'`.
+`/admin/memory`, `/admin/shortcuts`, `/admin/image-generation`, `/admin/photoshop` (the photo
+picker and `/admin/photoshop/[source]/[id]`, the run-and-resolve panel), `/admin/error-logs`
+(read-only: every failed LLM call, tabbed Text / Multimodal / Image generation). There is no
+`/admin/photos` route any more; `ADMIN_CHAT_PHOTOS_PATH` is `'/admin/nina'`.
 
 It is a *boundary-plus-actions* package. Nothing in it is a general utility: every export exists
 because one admin screen needs it, and the organising rule is that a value with two readers has
@@ -126,6 +130,7 @@ exactly one definition — `schema.ts` imports every bound it enforces rather th
 | `imageGenActions.ts` | `'use server'` | Three actions: the one whole-prefs save, the test dispatch, the test read. |
 | `imageGenTestView.ts` | pure | The test job's verdict vocabulary and poll schedule — a lookup over `nina_turns.error_code`, never a second classifier. |
 | `textModelActions.ts` | `'use server'` | One action: save the narrative text model (`app_settings`, not `nina_tuning`). |
+| `photoshopActions.ts` | `'use server'` | `/admin/photoshop/[source]/[id]`'s three actions: open-and-fire a job, poll it, resolve it (replace / add / discard). No Zod schema of its own — every field is narrowed inline. Since 2026-09-19 it also takes the four optional aspect-ratio crop fields and coerces an untrustworthy set to "no crop". |
 | `shareToNina.ts` | pure | `ninaPhotoShareUrl` — the album photo → her chat link, as a URL. |
 | `errorLogModel.ts` | pure, **zero imports** | `/admin/error-logs`' pure half: the `?tab=`/`?page=` grammar, the Jakarta timestamp, the timeout fold, row→prop. |
 
@@ -1357,6 +1362,75 @@ export, the tuning is one row, and this is a different store with a different bl
 text call in the app). There is no cache on the resolution path — `narrativeModel()` reads the
 row live, so the write is live on the next call; the revalidation is for the page's select.
 
+### `photoshopActions.ts` — `/admin/photoshop/[source]/[id]`'s writes
+
+```ts
+export type PhotoshopRunResult = { ok: true; jobId: string } | { ok: false; message: string }
+export async function runPhotoshopJobAction(input: {
+  sourceKind: NinaPhotoshopSourceKind
+  sourceId: string
+  mode: string
+  model: string
+  presetKey: string | null
+  instruction: string
+  // the optional crop step (2026-09-19) — all four together, or all four absent
+  cropRatioLabel?: string | null
+  cropScale?: number | null
+  cropX?: number | null
+  cropY?: number | null
+}): Promise<PhotoshopRunResult>
+
+export interface PhotoshopJobView { jobId; status: 'pending' | 'ok' | 'failed'; stale; errorCode;
+                                    resultUrl; resolvedAction }
+export async function readPhotoshopJobAction(jobId: string): Promise<PhotoshopJobView | null>
+export type PhotoshopResolveActionResult = { ok: true } | { ok: false; message: string }
+export async function resolvePhotoshopJobAction(input: { jobId; action: 'replace' | 'add' | 'discard' }): Promise<PhotoshopResolveActionResult>
+```
+
+**The one file in this package with no Zod layer, on purpose.** Every other admin surface's input
+goes through `schema.ts`; this one narrows by hand in the action itself — a handful of scalars and
+an id, cheap enough to check inline and not worth a second file that has to be kept in step with
+this one. `requireAdmin()` is still line 1 of all three.
+
+**The crop step's four fields are all-or-nothing, and a bad set is COERCED, never refused**
+(2026-09-19, phase 4 of 5 of `PHOTOSHOP_ASPECT_RATIO_CROP_PLAN.md`). `coercePhotoshopCrop` returns
+either all four values or the module's `PHOTOSHOP_NO_CROP` (four explicit `null`s — the value every
+pre-crop job row already reads back). Four rules hold the shape:
+
+- **A partial set is not completed with defaults.** A rectangle missing its ratio, or its offsets,
+  is not a crop; inventing the missing member is how a job silently sends the model the wrong
+  region of the photograph with nothing failing anywhere.
+- **A rejected crop does not fail the run.** It degrades to the uncropped behaviour, which is
+  exactly what "the admin skipped the crop step" already means. Only a hand-crafted request can
+  reach the coercion at all — the picker emits nothing but catalogued labels — so refusing the
+  whole job would trade a working photoshop run for a scolding nobody is present to read. (Contrast
+  `ninaTuningWriteSchema`, where a refusal IS the message: there a human is watching a form.)
+- **Every bound is imported, none is declared** — the package rule, one file over.
+  `NINA_PHOTOSHOP_CROP_MIN_SCALE` / `_MAX_SCALE` / `_MAX_ABS_OFFSET` come from
+  `lib/nina/photoshopCrop.ts`, and the ratio label's closed set is asked as
+  `ninaImageAspectRatioValue(label) != null` (`lib/nina/imagerecipe.ts`) rather than re-spelled as a
+  local list: "is this one of the provider's values" and "what is it numerically" are one question,
+  and one function answering both is one place to be wrong. Exact string match, no trimming and no
+  case folding — the label goes on the wire verbatim as `aspect_ratio`, so a value this accepts must
+  be a value the provider accepts.
+- **These bounds are a COARSE gate, not the clamp.** The dimension-aware clamp lives in
+  `lib/nina/photoshopCrop.ts`: the browser applies it on every drag, and the pixel crop-box function
+  applies it again against the source's own bounds when the job runs. This boundary only has to stop
+  nonsense before it reaches a `numeric(5,3)` column — which is also why the scale is rounded to
+  three decimals HERE, so the number the admin chose and the number the row stores are the same one.
+  Offsets are rounded to integers with the `+ 0` that normalises `Math.round(-0)`, the same reason
+  `lib/nina/crop.ts` gives.
+
+**The crop is written to the row and NOT passed to `firePhotoshopJob`.** `openNinaPhotoshopJob`
+persists all four columns; the runner reads them back through `claimNinaPhotoshopJob`, the same way
+it reads mode, model and prompt. One source of truth for what the job is, and the retry path gets
+the crop for free. Covered by `tests/admin.photoshopActions.test.ts`.
+
+The page half of the same phase: `app/admin/photoshop/[source]/[id]/page.tsx` now passes the source
+photo's intrinsic `width`/`height` (both nullable — rows predate dimension tracking) into
+`<PhotoshopDetail>`, which accepts them as `sourceWidth`/`sourceHeight` and does not yet read them.
+Phase 5 owns the rectangle UI that does.
+
 ### `shareToNina.ts` — the album→chat pointer
 
 ```ts
@@ -1901,6 +1975,24 @@ the browser and so never survive an upload; the orphaned-blob window (blob PUT a
 registered) is real and belongs to the reaper, not to this package.
 
 ## Recent Changes
+
+- **2026-09-19** — `photoshop-aspect-ratio-crop` phase 4 of 5 (P1-ADM-N8QW): the crop step's
+  boundary. `runPhotoshopJobAction` gained four OPTIONAL fields — `cropRatioLabel`, `cropScale`,
+  `cropX`, `cropY` — narrowed by the new module-private `coercePhotoshopCrop` in the file's own
+  established inline style, with no Zod schema added anywhere (`schema.ts` is untouched). The label
+  is checked against the catalogue through phase 1's `ninaImageAspectRatioValue(label) != null` and
+  the numbers against phase 1's `NINA_PHOTOSHOP_CROP_MIN_SCALE` / `_MAX_SCALE` / `_MAX_ABS_OFFSET`;
+  no bound is re-declared as a literal in this package. All four must arrive together — a partial or
+  malformed set becomes `PHOTOSHOP_NO_CROP` (four nulls) and **the job still runs uncropped**, since
+  only a hand-crafted request can reach the check and a working run beats a refusal nobody reads.
+  The scale is rounded to the `numeric(5,3)` column's three decimals and the offsets to integers
+  (with the `-0` normalisation) at this boundary, so the stored value is the chosen value. All four
+  go to `openNinaPhotoshopJob` and none to `firePhotoshopJob` — phase 3's `claimNinaPhotoshopJob`
+  reads them off the row, which is also what gives the retry path its crop. Outside the package but
+  in this task: `app/admin/photoshop/[source]/[id]/page.tsx` now hands `photo.width`/`photo.height`
+  to `<PhotoshopDetail>`, and `components/admin/PhotoshopDetail.tsx` gained exactly two prop-type
+  members (`sourceWidth`/`sourceHeight`), accepted and not yet read — phase 5 owns the rectangle UI.
+  Covered by `tests/admin.photoshopActions.test.ts`.
 
 - **2026-09-17** — `media-album-unified-search` phase 2 of 4 (P2-NIN-A002): the query/action layer
   for one search over both collections. In this package, four movements. **(1) The media collection
