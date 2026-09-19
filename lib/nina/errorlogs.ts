@@ -68,6 +68,10 @@ export interface NinaErrorLogWrite {
   timeoutMs?: number | null
   /** Blob URL of the INPUT image, when the call had one. Never a generated output. */
   imageUrl?: string | null
+  /** `nina_photoshop_jobs.id`, `category = 'photoshop'` only. */
+  jobId?: string | null
+  /** The source photo's id, `category = 'photoshop'` only. */
+  sourceId?: string | null
 }
 
 /** One page of one tab. `total` is a second statement — see `NinaAvatarFolderPage`'s note. */
@@ -87,6 +91,8 @@ const errorLogColumns = {
   errorMessage: ninaErrorLogs.errorMessage,
   timeoutMs: ninaErrorLogs.timeoutMs,
   imageUrl: ninaErrorLogs.imageUrl,
+  jobId: ninaErrorLogs.jobId,
+  sourceId: ninaErrorLogs.sourceId,
   createdAt: ninaErrorLogs.createdAt,
 }
 
@@ -121,6 +127,8 @@ export async function logNinaError(entry: NinaErrorLogWrite): Promise<void> {
       errorMessage: clampNinaErrorText(entry.errorMessage),
       timeoutMs: entry.timeoutMs ?? null,
       imageUrl: entry.imageUrl ?? null,
+      jobId: entry.jobId ?? null,
+      sourceId: entry.sourceId ?? null,
     })
   } catch (cause) {
     console.warn('[nina] error log write failed', {

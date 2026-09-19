@@ -37,21 +37,28 @@ export const appSettings = pgTable('app_settings', {
  * ==========================================================================*/
 
 /**
- * Which of Nina's three model calls failed, and the discriminator that gives
- * `/admin/error-logs` its three tabs (R2).
+ * Which of Nina's model calls failed, and the discriminator that gives
+ * `/admin/error-logs` its tabs (R2, plus the 2026-09-19 photoshop addition).
  *
  *   - `'text'`             — a chat or proactive reply (`lib/nina/turn.ts`)
  *   - `'multimodal'`       — a photo-understanding describe call (`lib/nina/vision.ts`)
  *   - `'image_generation'` — a selfie/photo draw (`lib/nina/imagecall.ts`)
+ *   - `'photoshop'`        — a photoshop job's model call (`lib/nina/photoshopRun.ts`)
  *
  * Plain `text` with `.$type<>()`, like every other domain in this file — see `Sex`'s note for why
- * there is no `pgEnum` anywhere here, and therefore why a fourth member would be a union edit
- * rather than a migration.
+ * there is no `pgEnum` anywhere here, and therefore why a member is a union edit rather than a
+ * migration — exactly how `'photoshop'` itself was added.
  */
-export type NinaErrorCategory = 'text' | 'multimodal' | 'image_generation'
+export type NinaErrorCategory = 'text' | 'multimodal' | 'image_generation' | 'photoshop'
 
-/** Tab order on `/admin/error-logs`, and the iteration order of the schema pin. One source. */
-export const NINA_ERROR_CATEGORIES = ['text', 'multimodal', 'image_generation'] as const
+/** Tab order on `/admin/error-logs`, and the iteration order of the schema pin. One source.
+ * `'photoshop'` (2026-09-19) is the fourth: a photoshop job's failed model call. */
+export const NINA_ERROR_CATEGORIES = [
+  'text',
+  'multimodal',
+  'image_generation',
+  'photoshop',
+] as const
 
 /**
  * **One failed attempt, with enough detail to diagnose it a day later.** Written best-effort by
@@ -118,6 +125,13 @@ export const ninaErrorLogs = pgTable(
     timeoutMs: integer('timeout_ms'),
     /** Blob URL of the INPUT image. NULL for `'text'`, and for a generation with no anchor. */
     imageUrl: text('image_url'),
+    /** `nina_photoshop_jobs.id`, `category = 'photoshop'` only. No FK — an audit pointer must
+     * not be able to block a delete, `nina_messages.turn_id`'s own precedent. Copyable straight
+     * into `/pull-photoshop-job`. */
+    jobId: text('job_id'),
+    /** The source photo's id (`nina_avatars.id` or `nina_message_images.id`), `category =
+     * 'photoshop'` only — the "image-id" the admin pastes to pick a photo for `/photoshop`. */
+    sourceId: text('source_id'),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
   },
   (t) => [

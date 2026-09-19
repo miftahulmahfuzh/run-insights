@@ -147,9 +147,18 @@ export function PhotoshopDetail({
       </div>
 
       {!showResult && (
-        <div className="overflow-hidden rounded-field bg-ink-3/20">
-          {/* eslint-disable-next-line @next/next/no-img-element -- Blob-hosted, un-transformed. */}
-          <img src={sourceUrl} alt="" className="max-h-[420px] w-full object-contain" />
+        <div>
+          <div className="overflow-hidden rounded-field bg-ink-3/20">
+            {/* eslint-disable-next-line @next/next/no-img-element -- Blob-hosted, un-transformed. */}
+            <img src={sourceUrl} alt="" className="max-h-[420px] w-full object-contain" />
+          </div>
+          {/* The id the `/photoshop` and `/pull-photoshop-job` skills take as their first
+              argument — the runner's own ask: "print the image id below it, so i can paste it
+              here to run the skill." Plain selectable text, not a copy button: a 12-character
+              nanoid is one tap-and-hold away on a phone and a triple-click away on a desktop. */}
+          <p className="mt-1.5 text-[12px] font-semibold text-ink-3">
+            Image ID: <span className="font-mono text-ink-2 select-all">{sourceId}</span>
+          </p>
         </div>
       )}
 
@@ -303,8 +312,10 @@ export function PhotoshopDetail({
           )}
           {job?.status === 'failed' && (
             <p className="text-[13px] font-semibold text-red">
-              The model call failed ({job.errorCode ?? 'unknown reason'}). Try again, or pick a
-              different model.
+              The model call failed ({job.errorCode ?? 'unknown reason'}). Try again, pick a
+              different model, or paste <span className="font-mono select-all">{job.jobId}</span>{' '}
+              into <span className="font-mono">/pull-photoshop-job</span> for the raw provider
+              error.
             </p>
           )}
 

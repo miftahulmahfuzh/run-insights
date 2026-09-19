@@ -32,6 +32,8 @@ const SOURCE: ErrorLogSource = {
   errorMessage: 'Connection error.',
   timeoutMs: 22_000,
   imageUrl: null,
+  jobId: null,
+  sourceId: null,
   createdAt: new Date('2026-09-12T00:31:15Z'),
 }
 
@@ -51,7 +53,7 @@ describe('the URL grammar', () => {
   })
 
   it('names the three categories once, in the order the user wrote them', () => {
-    expect(ADMIN_ERROR_CATEGORIES).toEqual(['text', 'multimodal', 'image_generation'])
+    expect(ADMIN_ERROR_CATEGORIES).toEqual(['text', 'multimodal', 'image_generation', 'photoshop'])
   })
 })
 
@@ -144,6 +146,8 @@ describe('toErrorLogListItem', () => {
       fullInput: '{"system":"…","messages":[]}',
       errorText: 'Timeout: 22s\n\nConnection error.',
       imageUrl: null,
+      jobId: null,
+      sourceId: null,
     })
   })
 

@@ -58,13 +58,15 @@ describe('logNinaError', () => {
       '"error_message"',
       '"timeout_ms"',
       '"image_url"',
+      '"job_id"',
+      '"source_id"',
     ]) {
       expect(sql, column).toContain(column)
     }
     // created_at is defaulted by the column, not sent — no writer carries a clock. This drizzle
     // spells that by naming the column and sending the literal `default`, rather than omitting it.
-    expect(sql).toContain('"image_url", "created_at") values')
-    expect(sql).toContain('$9, default)')
+    expect(sql).toContain('"image_url", "job_id", "source_id", "created_at") values')
+    expect(sql).toContain('$11, default)')
     expect(params.some((p) => p instanceof Date)).toBe(false)
     expect(params).toContain(USER)
     expect(params).toContain('multimodal')

@@ -26,6 +26,8 @@ const BASE: ErrorLogListItem = {
   fullInput: 'SYSTEM: you are Nina\nUSER: halo',
   errorText: 'Timeout: 22s\n\nConnection error.',
   imageUrl: null,
+  jobId: null,
+  sourceId: null,
 }
 
 const WITH_PHOTO: ErrorLogListItem = {
@@ -99,6 +101,29 @@ describe('the image affordance', () => {
     // One photo, so PhotoViewer draws no pager at all — which is also the proof that two rows
     // sharing a URL did not become two React children keyed the same.
     expect(screen.queryByRole('button', { name: /Show the/ })).toBeNull()
+  })
+})
+
+describe('the photoshop IDs affordance', () => {
+  const WITH_JOB: ErrorLogListItem = {
+    ...BASE,
+    id: 'e4',
+    jobId: 'jobABC123456',
+    sourceId: 'srcXYZ987654',
+  }
+
+  it('draws NOTHING — not a disabled control — when the row has no job id', () => {
+    render(<ErrorLogList items={[BASE]} />)
+    expect(screen.queryByRole('button', { name: /Job and image IDs/ })).toBeNull()
+  })
+
+  it('draws a fourth button when the row has one, and it opens the ids as text', () => {
+    render(<ErrorLogList items={[WITH_JOB]} />)
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Job and image IDs — glm-5.3-flash, 12/09 07:31' }),
+    )
+    expect(screen.getByText(/Job ID: jobABC123456/)).toBeTruthy()
+    expect(screen.getByText(/Image ID: srcXYZ987654/)).toBeTruthy()
   })
 })
 

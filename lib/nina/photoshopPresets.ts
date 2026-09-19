@@ -18,6 +18,22 @@ export interface NinaPhotoshopModelSpec {
 
 export const NINA_PHOTOSHOP_MODES = ['anchor', 'edit'] as const
 
+/**
+ * **Per-model resolution override (2026-09-19).** `NINA_IMAGE_RESOLUTION` (`'1K'`, 768x1024,
+ * 786,432px) is the shared default every other caller rides, and `bytedance-seed/seedream-4.5`
+ * 400s on it — measured live: *"requires at least 3,686,400 output pixels ... use a larger
+ * resolution such as '2K'"*. Absent = ride the default; only the one model that has actually been
+ * measured to need more gets an entry, so this stays a fix for a known constraint and not a guess
+ * applied to every model that has never been probed.
+ */
+const NINA_PHOTOSHOP_MODEL_RESOLUTION: Readonly<Record<string, string>> = Object.freeze({
+  'bytedance-seed/seedream-4.5': '2K',
+})
+
+export function photoshopModelResolution(model: string): string | undefined {
+  return NINA_PHOTOSHOP_MODEL_RESOLUTION[model]
+}
+
 export function coercePhotoshopMode(value: unknown): NinaPhotoshopMode {
   return value === 'edit' ? 'edit' : 'anchor'
 }

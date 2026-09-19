@@ -211,6 +211,9 @@ export async function callNinaImageModel(
    * built.
    */
   model?: string,
+  /** Passed straight to `buildImageRequestBody`'s own `resolution` — see that field's header.
+   * Optional and defaulted (there, not here) so every existing positional call is unchanged. */
+  resolution?: string,
 ): Promise<NinaImageCallResult> {
   const startedAt = Date.now()
 
@@ -267,7 +270,9 @@ export async function callNinaImageModel(
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(buildImageRequestBody({ prompt, seed, referenceDataUrl, model })),
+      body: JSON.stringify(
+        buildImageRequestBody({ prompt, seed, referenceDataUrl, model, resolution }),
+      ),
       signal: AbortSignal.timeout(postTimeoutMs),
       cache: 'no-store',
     })

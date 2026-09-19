@@ -59,7 +59,12 @@ export const ADMIN_ERROR_LOG_PAGE_CEILING = 1000
  * `'text'` is first and is therefore the DEFAULT, which is what makes it the absent parameter
  * below.
  */
-export const ADMIN_ERROR_CATEGORIES = ['text', 'multimodal', 'image_generation'] as const
+export const ADMIN_ERROR_CATEGORIES = [
+  'text',
+  'multimodal',
+  'image_generation',
+  'photoshop',
+] as const
 
 export type AdminErrorCategory = (typeof ADMIN_ERROR_CATEGORIES)[number]
 
@@ -67,6 +72,7 @@ export const ADMIN_ERROR_CATEGORY_LABEL: Record<AdminErrorCategory, string> = {
   text: 'Text',
   multimodal: 'Multimodal',
   image_generation: 'Image generation',
+  photoshop: 'Photoshop',
 }
 
 /**
@@ -135,6 +141,11 @@ export interface ErrorLogSource {
   /** The INPUT image: the photo she failed to describe, or the generation's anchor. Never an
    *  output — a failed generation produces none. `null` renders nothing at all. */
   imageUrl: string | null
+  /** `nina_photoshop_jobs.id`, `category = 'photoshop'` only — copyable into
+   * `/pull-photoshop-job`. `null` for every other category. */
+  jobId: string | null
+  /** The source photo's id, `category = 'photoshop'` only — copyable into `/photoshop`. */
+  sourceId: string | null
   createdAt: Date
 }
 
@@ -155,6 +166,8 @@ export interface ErrorLogListItem {
   /** `errorMessage` with the timeout line already folded in. See `composeErrorText`. */
   errorText: string
   imageUrl: string | null
+  jobId: string | null
+  sourceId: string | null
 }
 
 /**
@@ -218,6 +231,8 @@ export function toErrorLogListItem(row: ErrorLogSource): ErrorLogListItem {
     fullInput: row.fullInput,
     errorText: composeErrorText(row.errorMessage, row.timeoutMs),
     imageUrl: row.imageUrl,
+    jobId: row.jobId,
+    sourceId: row.sourceId,
   }
 }
 

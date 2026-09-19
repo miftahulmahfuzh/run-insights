@@ -546,11 +546,21 @@ export function buildImageRequestBody(input: {
    * default like every other absent member.
    */
   model?: string
+  /**
+   * **The 2026-09-19 photoshop fix.** Some models refuse `NINA_IMAGE_RESOLUTION` outright —
+   * measured live: `bytedance-seed/seedream-4.5` 400s on `'1K'` (768x1024, 786,432px) with
+   * *"requires at least 3,686,400 output pixels ... use a larger resolution such as '2K'"*.
+   * Optional and defaulted to `NINA_IMAGE_RESOLUTION` so every existing caller — every job opened
+   * before this field existed, every pre-fix test — builds the byte-identical body it always
+   * built. `lib/nina/photoshopPresets.ts`'s `photoshopModelResolution` is the one caller that
+   * passes a non-default value today.
+   */
+  resolution?: string
 }): Record<string, unknown> {
   const body: Record<string, unknown> = {
     model: input.model ?? NINA_IMAGE_MODEL,
     prompt: input.prompt,
-    resolution: NINA_IMAGE_RESOLUTION,
+    resolution: input.resolution ?? NINA_IMAGE_RESOLUTION,
     aspect_ratio: NINA_IMAGE_ASPECT,
     n: 1,
     seed: input.seed,

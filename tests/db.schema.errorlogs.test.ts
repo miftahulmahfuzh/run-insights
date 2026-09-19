@@ -73,6 +73,8 @@ describe('nina_error_logs', () => {
         'error_message',
         'timeout_ms',
         'image_url',
+        'job_id',
+        'source_id',
         'created_at',
       ].sort(),
     )
@@ -153,8 +155,13 @@ describe('nina_error_logs', () => {
     expect(sqlType(schema.ninaErrorLogs, 'provider')).toBe('text')
   })
 
-  it('NINA_ERROR_CATEGORIES is the three tabs, in tab order', () => {
-    expect(schema.NINA_ERROR_CATEGORIES).toEqual(['text', 'multimodal', 'image_generation'])
+  it('NINA_ERROR_CATEGORIES is the four tabs, in tab order', () => {
+    expect(schema.NINA_ERROR_CATEGORIES).toEqual([
+      'text',
+      'multimodal',
+      'image_generation',
+      'photoshop',
+    ])
   })
 })
 

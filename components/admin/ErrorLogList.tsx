@@ -148,6 +148,25 @@ export function ErrorLogList({ items }: { items: readonly ErrorLogListItem[] }) 
                   <ImageIcon className="size-4" />
                 </button>
               )}
+
+              {/* Photoshop rows only — the two ids the runner pastes into `/photoshop` and
+                  `/pull-photoshop-job`. Absent, not disabled, for every other category: those
+                  writers never had a job or a source photo to name. */}
+              {item.jobId !== null && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setDetail({
+                      title: `IDs · ${item.stamp} · ${item.model}`,
+                      body: `Job ID: ${item.jobId}\nImage ID: ${item.sourceId ?? '(none)'}`,
+                    })
+                  }
+                  aria-label={`Job and image IDs — ${item.model}, ${item.stamp}`}
+                  className={cn(TOUCH_ICON, 'text-ink-2')}
+                >
+                  <HashIcon className="size-4" />
+                </button>
+              )}
             </span>
           </li>
         ))}
@@ -229,6 +248,27 @@ function TriangleAlertIcon({ className }: { className: string }) {
       <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" />
       <path d="M12 9v4" />
       <path d="M12 17h.01" />
+    </svg>
+  )
+}
+
+/** Job/image IDs — Lucide `hash`, fetched 2026-09-19 from unpkg.com/lucide-static. */
+function HashIcon({ className }: { className: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <line x1="4" x2="20" y1="9" y2="9" />
+      <line x1="4" x2="20" y1="15" y2="15" />
+      <line x1="10" x2="8" y1="3" y2="21" />
+      <line x1="16" x2="14" y1="3" y2="21" />
     </svg>
   )
 }

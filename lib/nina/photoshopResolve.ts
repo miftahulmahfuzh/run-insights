@@ -80,8 +80,14 @@ export async function resolvePhotoshopReplace(
   return { ok: true }
 }
 
-/** "Add this as a new photo": always lands in the album (`nina_avatars`), not current, in the
- * source avatar's own folder when the source was an avatar, else the album root. A photoshopped
+/** The album folder every photoshop result lands in on "Add as a new photo" — the runner's own
+ * words: *"the image result must be added as a new image in directory Photoshop in Album."*
+ * Shared with the `/photoshop` skill's script, which writes the identical literal in raw SQL
+ * because it cannot import this module (`scripts/photoshop.mjs`'s header explains why). */
+export const NINA_PHOTOSHOP_ALBUM_FOLDER = 'Photoshop'
+
+/** "Add this as a new photo": always lands in the album (`nina_avatars`), never current, always
+ * in the `Photoshop` folder — regardless of where the source photo came from. A photoshopped
  * chat photo has no message to attach a new row to (`insertNinaMessageImages` requires one it
  * owns), and the album is the one collection this admin-only feature can always write into. */
 export async function resolvePhotoshopAdd(
@@ -94,15 +100,12 @@ export async function resolvePhotoshopAdd(
   }
   const job = loaded.job
 
-  const sourceAvatar =
-    job.sourceKind === 'avatar' ? await getNinaAvatar(userId, job.sourceId) : null
-
   const inserted = await insertNinaAvatars(userId, [
     {
       blobUrl: job.resultBlobUrl!,
       pathname: job.resultPathname!,
       source: 'admin',
-      folder: sourceAvatar?.folder ?? '',
+      folder: NINA_PHOTOSHOP_ALBUM_FOLDER,
       filename: null,
       sourceKey: `photoshop:${jobId}`,
       width: job.resultWidth,
