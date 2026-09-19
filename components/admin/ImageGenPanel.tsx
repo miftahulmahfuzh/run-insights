@@ -1084,23 +1084,28 @@ export function ImageGenPanel({
               {draft.promptTemplate.length} / {NINA_PROMPT_TEMPLATE_MAX}
             </span>
           </span>
-          <ul className="mt-3 grid gap-1.5 sm:grid-cols-2 xl:grid-cols-3">
-            {/*
-             * The legend IS phase 1's specs, not a copy table here — the same rule as every other
-             * label in this panel, so the browser cannot promise a block the assembler does not
-             * produce.
-             */}
-            {NINA_IMAGE_TEMPLATE_KEYS.map((key) => (
-              <li key={key} className="flex items-start gap-2 rounded-card bg-paper-2 p-2.5">
-                <code className="shrink-0 font-mono text-[11px] font-semibold text-accent">
-                  {`{{${key}}}`}
-                </code>
-                <span className="text-[11px] leading-snug font-medium text-ink-3">
-                  {NINA_IMAGE_TEMPLATE_SPECS[key].description}
-                </span>
-              </li>
-            ))}
-          </ul>
+          <details className="mt-3">
+            <summary className="cursor-pointer list-none text-[11px] font-semibold text-ink-3 [&::-webkit-details-marker]:hidden">
+              Placeholder reference
+            </summary>
+            <ul className="mt-2 grid gap-1.5 sm:grid-cols-2 xl:grid-cols-3">
+              {/*
+               * The legend IS phase 1's specs, not a copy table here — the same rule as every other
+               * label in this panel, so the browser cannot promise a block the assembler does not
+               * produce.
+               */}
+              {NINA_IMAGE_TEMPLATE_KEYS.map((key) => (
+                <li key={key} className="flex items-start gap-2 rounded-card bg-paper-2 p-2.5">
+                  <code className="shrink-0 font-mono text-[11px] font-semibold text-accent">
+                    {`{{${key}}}`}
+                  </code>
+                  <span className="text-[11px] leading-snug font-medium text-ink-3">
+                    {NINA_IMAGE_TEMPLATE_SPECS[key].description}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </details>
         </section>
 
         <details className="mb-6 rounded-card bg-paper-2 p-4">
