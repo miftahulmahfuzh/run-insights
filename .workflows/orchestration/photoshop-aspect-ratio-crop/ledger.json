@@ -80,29 +80,29 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "811d48c",
       "depends_on": [
         1,
         4
       ],
       "difficulty": "HARD",
       "n": 5,
-      "note": "Baseline note (coordinator, before spawn): npm test on origin/main @ b88d5bc already has 4 failing test files unrelated to this plan (components/admin/AdminNavLinks.test.tsx grid-class assertions stale vs current markup; lib/nina/queries.test.ts barrel-contract missing updateNinaAvatarBlob). Confirmed present on main itself, not introduced by this worktree. Invariant 1's 'passes npm test' is satisfied when a phase introduces no NEW failures beyond this known baseline -- do not spend phase time chasing these 4.",
+      "note": "Crop UI + PhotoshopDetail wiring landed (branch HEAD 1f6bd9e includes a follow-up readme-doc commit). New PhotoshopCropStudio.tsx is a SIBLING of CropStudio.tsx (both crop.ts and CropStudio.tsx untouched by the whole set) -- only zoomFactorForWheel imported across. Ratio <select> sourced from NINA_IMAGE_ASPECT_RATIOS, auto-picks via nearestNinaImageAspectRatio. PhotoshopDetail hides the step when source dims unknown, offers it identically in both modes, sends 4 crop fields only when used (regression-asserted byte-identical payload when skipped). 28 new test cases. Verified with Node 24 (worktree default v20 below engines floor): targeted suites 30/30, typecheck/lint clean, full npm test 6596/6601 (same 5 baseline failures, zero new), build succeeds, guards pass, knip clean. Invariant 5 still outstanding -- npm run db:migrate must be applied to production and confirmed BEFORE this branch's code deploys (Drizzle names every declared column in every statement; unmigrated deploy breaks every photoshop job). To be handled at Step 5 land, by the user's own deliberate step.",
       "package": "components/admin",
       "plan": ".workflows/plan/photoshop-aspect-ratio-crop/phase-5.md",
-      "reported_at": "2026-09-19T07:20:21+00:00",
+      "reported_at": "2026-09-19T08:04:26+00:00",
       "satisfies": [
         "R1"
       ],
-      "status": "pending",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-CA-A007",
       "title": "Crop UI + PhotoshopDetail wiring"
     }
   ],
   "plan": "/home/miftah/run-insights/.workflows/orchestration/photoshop-aspect-ratio-crop/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "photoshop-aspect-ratio-crop",
-  "updated": "2026-09-19T07:55:33+00:00",
+  "updated": "2026-09-19T08:04:26+00:00",
   "verified_at": "2026-09-19T07:55:33+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/photoshop-aspect-ratio-crop"
 }
