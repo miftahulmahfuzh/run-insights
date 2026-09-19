@@ -272,15 +272,34 @@ export function PhotoshopDetail({
             >
               What should change
             </label>
-            <input
-              id="photoshop-instruction"
-              type="text"
-              value={instruction}
-              maxLength={NINA_PHOTOSHOP_INSTRUCTION_MAX}
-              onChange={(event) => setInstruction(event.target.value)}
-              placeholder="e.g. fix her eyes so they look natural"
-              className="w-full rounded-field bg-paper-2 px-3 py-2 text-[14px] font-medium text-ink"
-            />
+            <div className="relative">
+              <input
+                id="photoshop-instruction"
+                type="text"
+                value={instruction}
+                maxLength={NINA_PHOTOSHOP_INSTRUCTION_MAX}
+                onChange={(event) => setInstruction(event.target.value)}
+                placeholder="e.g. fix her eyes so they look natural"
+                className="w-full rounded-field bg-paper-2 py-2 pr-9 pl-3 text-[14px] font-medium text-ink"
+              />
+              {instruction.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setInstruction('')}
+                  aria-label="Clear text"
+                  className="absolute top-1/2 right-1.5 grid size-6 -translate-y-1/2 place-items-center rounded-pill text-ink-3 active:scale-[0.97]"
+                >
+                  <svg viewBox="0 0 24 24" className="size-4" fill="none" aria-hidden="true">
+                    <path
+                      d="M6 6l12 12M18 6L6 18"
+                      stroke="currentColor"
+                      strokeWidth="2.4"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </button>
+              )}
+            </div>
             <select
               aria-label="Improvement preset"
               value={presetSelect}
