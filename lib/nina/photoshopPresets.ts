@@ -162,8 +162,8 @@ export const NINA_PHOTOSHOP_PRESETS: readonly NinaPhotoshopPreset[] = [
   }),
   Object.freeze({
     key: 'bigger_butt',
-    label: 'Bigger butt (bubble butt)',
-    text: 'Same woman, same photo, same angle — but with a bigger, bubble butt.',
+    label: 'Bubble butt',
+    text: 'Same woman, same photo, same angle — but with a little bit bigger, bubble butt.',
   }),
   Object.freeze({
     key: 'longer_calves',
