@@ -2,6 +2,8 @@
 
 import * as React from 'react'
 
+import { useRouter } from 'next/navigation'
+
 import { Button } from '@/components/ui'
 import {
   readPhotoshopJobAction,
@@ -47,6 +49,7 @@ export function PhotoshopDetail({
   const [running, setRunning] = React.useState(false)
   const [resolving, setResolving] = React.useState<'replace' | 'add' | 'discard' | null>(null)
 
+  const router = useRouter()
   const aliveRef = React.useRef(true)
   React.useEffect(
     () => () => {
@@ -118,15 +121,11 @@ export function PhotoshopDetail({
         setError(result.message)
         return
       }
-      setJob((current) =>
-        current == null
-          ? current
-          : {
-              ...current,
-              resolvedAction:
-                action === 'replace' ? 'replaced' : action === 'add' ? 'added' : 'discarded',
-            },
-      )
+      if (action === 'replace' || action === 'add') {
+        router.push('/admin/photoshop')
+        return
+      }
+      setJob((current) => (current == null ? current : { ...current, resolvedAction: 'discarded' }))
     } finally {
       setResolving(null)
     }
@@ -182,11 +181,7 @@ export function PhotoshopDetail({
           </div>
 
           {resolved ? (
-            <p className="text-[13px] font-semibold text-ink-2">
-              {job.resolvedAction === 'replaced' && 'Replaced the original photo.'}
-              {job.resolvedAction === 'added' && 'Added as a new photo in the album.'}
-              {job.resolvedAction === 'discarded' && 'Discarded.'}
-            </p>
+            <p className="text-[13px] font-semibold text-ink-2">Discarded.</p>
           ) : (
             <div className="flex flex-wrap gap-2">
               <Button
