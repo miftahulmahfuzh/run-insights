@@ -173,7 +173,7 @@ export const NINA_PHOTOSHOP_PRESETS: readonly NinaPhotoshopPreset[] = [
   Object.freeze({
     key: 'bigger_thighs',
     label: 'Bigger thighs',
-    text: 'Same woman, same photo, same angle — make her thighs perfectly bigger, but keep her calves and lower legs completely unchanged at their original size — only the thighs should get bigger, not the calves.',
+    text: 'Same woman, same photo, same angle — make only thighs bigger. keep the lower legs size as they are.',
   }),
 ]
 
