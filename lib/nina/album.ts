@@ -437,9 +437,21 @@ export const NINA_ABOUT_PAGE_SIZE = 99
  * Where the last page a runner viewed is remembered across a reload — one cookie per tab, written
  * by the fetch action that serves each page (`lib/nina/aboutPageActions.ts`) and read on the
  * server render that seeds the first page. Non-sensitive: a page number, not a credential.
+ *
+ * ── THE NAME CARRIES `NINA_ABOUT_PAGE_SIZE` ─────────────────────────────────────────────────────
+ * A bare page NUMBER is only meaningful against the page SIZE it was recorded under. Bump the
+ * constant (30x3, then 33x3, both this same sitting) and a phone that had wandered to, say, page 3
+ * under the old size lands on a DIFFERENT, often near-empty offset window under the new one — the
+ * exact bug reported 2026-09-19: Foto profil showing a single photograph on one device (a stale
+ * cookie from before the bump) while a browser with no cookie yet, or one still on page 1, looked
+ * completely normal. Folding the size into the cookie's NAME means a size change orphans the old
+ * cookie outright — read as absent, which `clampNinaAboutPage` already treats as "start over on
+ * page 1" — rather than silently reinterpreting its number against new math. The 30-day `maxAge` on
+ * a page number cookie was already accepted as disposable; this just makes "disposable" include
+ * "across a resize" too.
  */
-export const NINA_ABOUT_PROFILE_PAGE_COOKIE = 'nina-about-ppage'
-export const NINA_ABOUT_MEDIA_PAGE_COOKIE = 'nina-about-mpage'
+export const NINA_ABOUT_PROFILE_PAGE_COOKIE = `nina-about-ppage-${NINA_ABOUT_PAGE_SIZE}`
+export const NINA_ABOUT_MEDIA_PAGE_COOKIE = `nina-about-mpage-${NINA_ABOUT_PAGE_SIZE}`
 
 /**
  * The one sanitizer for a page number from anywhere untrusted — a cookie string, a hand-edited
