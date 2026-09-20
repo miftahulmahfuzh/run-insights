@@ -283,6 +283,27 @@ describe('PhotoReferencePicker', () => {
     )
   })
 
+  it('keeps the full-view link OUTSIDE the <details>, so a closed disclosure still reaches it', () => {
+    // The whole point of the 2026-09-21 fix: the button used to live in the footer, below the
+    // grid, which a closed `<details>` hides along with everything else after its `<summary>`.
+    render(
+      <PhotoReferencePicker
+        items={[item('a')]}
+        total={1}
+        page={1}
+        pageCount={1}
+        preloadUrls={[]}
+        value="a"
+        selectedId="a"
+        onChange={vi.fn()}
+        fullViewHref="/nina/about?photo=album.a"
+        collapsible
+      />,
+    )
+    const link = screen.getByRole('link', { name: 'Lihat foto referensi ukuran penuh' })
+    expect(link.closest('details')).toBeNull()
+  })
+
   it('names no caption and no provenance anywhere in a tile — only the check glyph when selected', () => {
     // `tests/admin.photoReference.test.ts` asserted this by grepping the JSX source; that never
     // renders, so a conditional that only LOOKS like it strips this text would still pass. This

@@ -94,7 +94,9 @@ import type { PhotoReferenceItem } from './photoReferenceModel'
  * and "The assembled image prompt" idiom applied here: a native disclosure rather than a
  * hand-rolled `useState` toggle, closed on every mount. The current selection still reads at a
  * glance without opening it — the status line moved from a sibling paragraph into the `<summary>`
- * itself, the same place "The assembled image prompt" puts its own "(as saved…)" qualifier.
+ * itself, the same place "The assembled image prompt" puts its own "(as saved…)" qualifier. The
+ * `<details>` itself is only ONE flex child of the returned wrapper, not the whole return value —
+ * see `fullViewButton`'s own header entry for why.
  *
  * `NinaJobAnchorPicker.tsx` mounts this as the ENTIRE content of its own dedicated
  * `/nina/jobs/[id]/anchor` page — there `collapsible` is `false`, because a grid that is the whole
@@ -230,6 +232,28 @@ export function PhotoReferencePicker({
     </div>
   )
 
+  /**
+   * The 2026-09-20 "full view" button, promoted (2026-09-21) OUT of the footer and beside the
+   * header itself — *"even if Photo reference is in its default compacted state, admin can still
+   * see and click the button to view the image anchor full screen"*: a closed `<details>` hides
+   * everything after its `<summary>`, so a button living in the footer (below the whole grid) was
+   * unreachable without opening the disclosure and scrolling past every tile first. Living beside
+   * the header instead, as a flex SIBLING of the `<details>`/`<section>` rather than a child of it,
+   * means it renders whether or not the disclosure is open.
+   */
+  const fullViewButton =
+    fullViewHref !== null ? (
+      <ButtonLink
+        href={fullViewHref}
+        size="md"
+        variant="secondary"
+        aria-label="Lihat foto referensi ukuran penuh"
+        className="shrink-0"
+      >
+        <Maximize2Icon className="size-4" />
+      </ButtonLink>
+    ) : null
+
   const body = (
     <>
       <p className="mt-2 mb-2 max-w-[70ch] text-[13px] font-medium text-ink-2">
@@ -323,16 +347,6 @@ export function PhotoReferencePicker({
                   Next
                 </ButtonLink>
               )}
-              {fullViewHref !== null && (
-                <ButtonLink
-                  href={fullViewHref}
-                  size="md"
-                  variant="secondary"
-                  aria-label="Lihat foto referensi ukuran penuh"
-                >
-                  <Maximize2Icon className="size-4" />
-                </ButtonLink>
-              )}
               {value !== PHOTO_REFERENCE_NONE && (
                 <Button
                   type="button"
@@ -351,11 +365,16 @@ export function PhotoReferencePicker({
   )
 
   return collapsible ? (
-    <details ref={setSectionRef} className="mb-6">
-      {preloadLinks}
-      {header}
-      {body}
-    </details>
+    <div className="mb-6">
+      <div className="flex items-start justify-between gap-2">
+        <details ref={setSectionRef} className="min-w-0 flex-1">
+          {preloadLinks}
+          {header}
+          {body}
+        </details>
+        {fullViewButton}
+      </div>
+    </div>
   ) : (
     <section ref={setSectionRef} className="mb-6">
       {preloadLinks}
