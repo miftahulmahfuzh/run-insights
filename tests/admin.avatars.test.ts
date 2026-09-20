@@ -72,9 +72,7 @@ describe('adminAvatarPathname / isAdminAvatarRequestPathname', () => {
     // `isAdminChatPhotoPathname` in `lib/admin/chatPhotos.ts`. Before this widened, every
     // legitimate replace was refused with "That file did not land in her photo folder."
     const suffix = 'b'.repeat(30)
-    expect(isAdminAvatarRequestPathname(`nina/${USER}/avatar-${ID}-${suffix}.jpg`, USER)).toBe(
-      true,
-    )
+    expect(isAdminAvatarRequestPathname(`nina/${USER}/avatar-${ID}-${suffix}.jpg`, USER)).toBe(true)
     expect(
       isAdminAvatarRequestPathname(`nina/${USER}/avatar-${ID}-${'b'.repeat(16)}.png`, USER),
     ).toBe(true)
