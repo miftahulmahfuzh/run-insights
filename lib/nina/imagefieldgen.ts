@@ -7,11 +7,34 @@ import { narrativeModel } from '@/lib/llm/textModel'
 import type Anthropic from '@anthropic-ai/sdk'
 
 import {
+  NINA_CAMERA_ANGLE_SPECS,
   NINA_IMAGE_TEXT_KEYS,
   NINA_IMAGE_TEXT_SPECS,
   coerceNinaImageText,
+  type NinaCameraAngleKey,
   type NinaImageTextKey,
 } from './imageprefs'
+
+/**
+ * **The 2026-09-20 fix for a Notes suggestion that fights the camera.** Measured: with
+ * `cameraAngle: 'overhead'` saved, this module still proposed "She jogs along the wet sand" — a
+ * standing, ground-level action a drone directly above her could not have framed. Notes is the
+ * field that names her body's position and action, so it is the one field a camera-angle mismatch
+ * actually breaks; the other four (wardrobe, venue, time, expression) don't claim a pose and are
+ * left alone. Phrased as guidance for the MODEL, not a fixed list the operator sees, so it still
+ * reads like every other style example above it.
+ */
+const NINA_IMAGE_FIELD_GEN_NOTES_ANGLE_GUIDANCE: Readonly<Record<NinaCameraAngleKey, string>> =
+  Object.freeze({
+    eye_level:
+      'The camera is a normal few-steps-away, eye-level shot — any natural standing, walking, sitting or reclining action fits.',
+    overhead:
+      'The camera is a drone directly overhead, looking straight down — she must be lying flat on a horizontal surface beneath it. Only a prone or supine position reads correctly from this angle: lying on her back, lying face-down, lying on her back with her knees bent, lying on her back with her hands cushioning her head, lying face-down with her head resting on her forearms, or a close variation. Never standing, walking, running, sitting upright, or any action that implies a horizon or a ground-level vantage.',
+    low_angle:
+      'The camera is low to the ground near her feet, looking up along her body — an action that reads naturally from below works: standing over the lens, walking toward it, or looking down at it. Avoid an action that assumes an eye-level or overhead vantage.',
+    from_behind:
+      'The camera is directly behind her at hip height — the action must keep her back and butt toward the lens; her face need not be visible and she should not turn to face the camera.',
+  })
 
 /**
  * ════════════════════════════════════════════════════════════════════════════════════════════
@@ -55,6 +78,10 @@ export interface ImageFieldGenRequest {
   currentText: Readonly<Record<NinaImageTextKey, string>>
   /** This field's past suggestions, in any order — the "do not repeat these" list. */
   recentValues: readonly string[]
+  /** The saved `/admin/image-generation` camera-angle preset — always read from the row, never
+   * from a draft, because the dropdown commits on change and has no unsaved-edit state the way the
+   * text fields do (`lib/admin/imageGenActions.ts`'s own docstring on the panel's commit rule). */
+  cameraAngle: NinaCameraAngleKey
 }
 
 const IMAGE_FIELD_GEN_TOOL: Anthropic.Tool = {
@@ -88,7 +115,12 @@ function buildImageFieldGenRequest(request: ImageFieldGenRequest): string {
     `What it means: ${spec.userSaid}`,
     `Style example: "${spec.placeholder}"`,
     `Character limit: ${spec.max}`,
+    '',
+    `Camera angle for this photograph: ${NINA_CAMERA_ANGLE_SPECS[request.cameraAngle].label}`,
   ]
+  if (request.field === 'notes') {
+    lines.push(NINA_IMAGE_FIELD_GEN_NOTES_ANGLE_GUIDANCE[request.cameraAngle])
+  }
 
   const others = (Object.keys(request.currentText) as NinaImageTextKey[])
     .filter((key) => key !== request.field && request.currentText[key] !== '')
@@ -232,6 +264,9 @@ export interface ImageFieldGenAllRequest {
    * given no anchor at all.
    */
   adminRequest?: string
+  /** The saved camera-angle preset — `ImageFieldGenRequest.cameraAngle`'s own reason: read from
+   * the row, never from a draft, since the dropdown commits on change. */
+  cameraAngle: NinaCameraAngleKey
 }
 
 const ImageFieldGenAllSchema = z.object({
@@ -284,6 +319,10 @@ function buildImageFieldGenAllRequest(request: ImageFieldGenAllRequest): string 
       '',
     )
   }
+  lines.push(
+    `Camera angle for this photograph: ${NINA_CAMERA_ANGLE_SPECS[request.cameraAngle].label}`,
+    '',
+  )
   for (const key of NINA_IMAGE_TEXT_KEYS) {
     const spec = NINA_IMAGE_TEXT_SPECS[key]
     lines.push(
@@ -292,6 +331,9 @@ function buildImageFieldGenAllRequest(request: ImageFieldGenAllRequest): string 
       `Style example: "${spec.placeholder}"`,
       `Character limit: ${spec.max}`,
     )
+    if (key === 'notes') {
+      lines.push(NINA_IMAGE_FIELD_GEN_NOTES_ANGLE_GUIDANCE[request.cameraAngle])
+    }
     const recent = request.recentValues[key]
     if (recent.length > 0) {
       lines.push('Already used for this field — do not repeat or paraphrase any of these:')

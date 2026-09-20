@@ -377,7 +377,10 @@ export async function generateImageFieldValueAction(
   if (!parsed.success) return { ok: false }
 
   try {
-    const recentValues = await readRecentFieldValues(userId, parsed.data.field)
+    const [recentValues, prefs] = await Promise.all([
+      readRecentFieldValues(userId, parsed.data.field),
+      readNinaImagePrefs(userId),
+    ])
     const value = await generateImageFieldValue({
       field: parsed.data.field,
       currentText: {
@@ -388,6 +391,7 @@ export async function generateImageFieldValueAction(
         expression: parsed.data.expression,
       },
       recentValues,
+      cameraAngle: prefs.cameraAngle,
     })
     if (value === null) return { ok: false }
 
@@ -436,15 +440,23 @@ export async function generateAllImageFieldValuesAction(
   const adminRequest = parsed.success ? parsed.data.adminRequest : undefined
 
   try {
-    const recentValues = Object.fromEntries(
-      await Promise.all(
+    const [recentValues, prefs] = await Promise.all([
+      Promise.all(
         NINA_IMAGE_TEXT_KEYS.map(
           async (field) => [field, await readRecentFieldValues(userId, field)] as const,
         ),
+      ).then(
+        (entries) =>
+          Object.fromEntries(entries) as Record<(typeof NINA_IMAGE_TEXT_KEYS)[number], string[]>,
       ),
-    ) as Record<(typeof NINA_IMAGE_TEXT_KEYS)[number], string[]>
+      readNinaImagePrefs(userId),
+    ])
 
-    const values = await generateAllImageFieldValues({ recentValues, adminRequest })
+    const values = await generateAllImageFieldValues({
+      recentValues,
+      adminRequest,
+      cameraAngle: prefs.cameraAngle,
+    })
     if (values === null) return { ok: false }
 
     await Promise.all(
