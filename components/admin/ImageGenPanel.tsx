@@ -1101,69 +1101,85 @@ export function ImageGenPanel({
          * failure the user asked this feature to make impossible is a BROKEN PROMPT, not a
          * refused edit.
          */}
-        <section className="mb-6">
-          <div className="flex items-baseline justify-between gap-4">
-            <h3 className="text-[13px] font-semibold text-ink">Prompt template</h3>
-            <Button variant="secondary" size="md" type="button" onClick={resetTemplate}>
-              Reset to default template
-            </Button>
-          </div>
-          <p className="mt-1 mb-3 max-w-[70ch] text-[11px] font-medium text-ink-3">
-            This is the prompt she is photographed by — every word of it, editable. A{' '}
-            <code className="font-mono text-[11px] text-ink-2">{'{{placeholder}}'}</code> is where a
-            changing value lands: the Wardrobe field, the ticked Focus terms, the scene she picks
-            per photograph. A line whose value is empty takes the whole line with it, and a
-            placeholder can never be saved broken — rewrite any sentence, delete any line, add your
-            own; it saves when you leave the field.
-          </p>
-          {/* The one control here a wrapping `<label>` cannot name — it sits beside an `<h3>`,
-           * which labels nothing — so it names itself, the way the table cells
-           * (`MemoryTable.tsx`) do. */}
-          <textarea
-            aria-label="Prompt template"
-            className={cn(
-              CONTROL_CLASS,
-              'min-h-[220px] resize-y py-2 font-mono text-[12px] leading-snug',
+        {/*
+         * 2026-09-21: collapsed by default, `PhotoReferencePicker`'s own idiom applied to the
+         * template — *"make Prompt template collapsible too, with compacted state as default"*.
+         * `pendingFields.has('promptTemplate')` folds into the `<summary>` itself so an unsaved
+         * edit reads without opening the disclosure, the same place "The assembled image prompt"
+         * puts its own qualifier. "Reset to default template" moves inside the body: unlike the
+         * photo reference's full-view button, nothing asked for it to survive the collapse, and a
+         * button that only matters once the textarea is visible belongs beside the textarea.
+         */}
+        <details className="mb-6">
+          <summary className="cursor-pointer list-none text-[13px] font-semibold text-ink [&::-webkit-details-marker]:hidden">
+            Prompt template
+            {pendingFields.has('promptTemplate') && (
+              <span className="ml-2 text-[11px] font-semibold text-accent">unsaved</span>
             )}
-            value={draft.promptTemplate}
-            maxLength={NINA_PROMPT_TEMPLATE_MAX}
-            spellCheck={false}
-            onChange={(event) =>
-              setDraft((current) => ({ ...current, promptTemplate: event.target.value }))
-            }
-            onBlur={commitText}
-          />
-          <span className="mt-1.5 flex items-baseline justify-between gap-4">
-            <span className="text-[11px] font-semibold text-accent">
-              {pendingFields.has('promptTemplate') && 'unsaved'}
+          </summary>
+          <div className="mt-3">
+            <div className="flex items-baseline justify-end gap-4">
+              <Button variant="secondary" size="md" type="button" onClick={resetTemplate}>
+                Reset to default template
+              </Button>
+            </div>
+            <p className="mt-1 mb-3 max-w-[70ch] text-[11px] font-medium text-ink-3">
+              This is the prompt she is photographed by — every word of it, editable. A{' '}
+              <code className="font-mono text-[11px] text-ink-2">{'{{placeholder}}'}</code> is where
+              a changing value lands: the Wardrobe field, the ticked Focus terms, the scene she
+              picks per photograph. A line whose value is empty takes the whole line with it, and a
+              placeholder can never be saved broken — rewrite any sentence, delete any line, add
+              your own; it saves when you leave the field.
+            </p>
+            {/* The one control here a wrapping `<label>` cannot name — it sits beside an `<h3>`,
+             * which labels nothing — so it names itself, the way the table cells
+             * (`MemoryTable.tsx`) do. */}
+            <textarea
+              aria-label="Prompt template"
+              className={cn(
+                CONTROL_CLASS,
+                'min-h-[220px] resize-y py-2 font-mono text-[12px] leading-snug',
+              )}
+              value={draft.promptTemplate}
+              maxLength={NINA_PROMPT_TEMPLATE_MAX}
+              spellCheck={false}
+              onChange={(event) =>
+                setDraft((current) => ({ ...current, promptTemplate: event.target.value }))
+              }
+              onBlur={commitText}
+            />
+            <span className="mt-1.5 flex items-baseline justify-between gap-4">
+              <span className="text-[11px] font-semibold text-accent">
+                {pendingFields.has('promptTemplate') && 'unsaved'}
+              </span>
+              <span className="text-[11px] font-medium text-ink-3">
+                {draft.promptTemplate.length} / {NINA_PROMPT_TEMPLATE_MAX}
+              </span>
             </span>
-            <span className="text-[11px] font-medium text-ink-3">
-              {draft.promptTemplate.length} / {NINA_PROMPT_TEMPLATE_MAX}
-            </span>
-          </span>
-          <details className="mt-3">
-            <summary className="cursor-pointer list-none text-[11px] font-semibold text-ink-3 [&::-webkit-details-marker]:hidden">
-              Placeholder reference
-            </summary>
-            <ul className="mt-2 grid gap-1.5 sm:grid-cols-2 xl:grid-cols-3">
-              {/*
-               * The legend IS phase 1's specs, not a copy table here — the same rule as every other
-               * label in this panel, so the browser cannot promise a block the assembler does not
-               * produce.
-               */}
-              {NINA_IMAGE_TEMPLATE_KEYS.map((key) => (
-                <li key={key} className="flex items-start gap-2 rounded-card bg-paper-2 p-2.5">
-                  <code className="shrink-0 font-mono text-[11px] font-semibold text-accent">
-                    {`{{${key}}}`}
-                  </code>
-                  <span className="text-[11px] leading-snug font-medium text-ink-3">
-                    {NINA_IMAGE_TEMPLATE_SPECS[key].description}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </details>
-        </section>
+            <details className="mt-3">
+              <summary className="cursor-pointer list-none text-[11px] font-semibold text-ink-3 [&::-webkit-details-marker]:hidden">
+                Placeholder reference
+              </summary>
+              <ul className="mt-2 grid gap-1.5 sm:grid-cols-2 xl:grid-cols-3">
+                {/*
+                 * The legend IS phase 1's specs, not a copy table here — the same rule as every
+                 * other label in this panel, so the browser cannot promise a block the assembler
+                 * does not produce.
+                 */}
+                {NINA_IMAGE_TEMPLATE_KEYS.map((key) => (
+                  <li key={key} className="flex items-start gap-2 rounded-card bg-paper-2 p-2.5">
+                    <code className="shrink-0 font-mono text-[11px] font-semibold text-accent">
+                      {`{{${key}}}`}
+                    </code>
+                    <span className="text-[11px] leading-snug font-medium text-ink-3">
+                      {NINA_IMAGE_TEMPLATE_SPECS[key].description}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          </div>
+        </details>
 
         <details className="mb-6 rounded-card bg-paper-2 p-4">
           <summary className="cursor-pointer list-none text-[12px] font-semibold text-ink [&::-webkit-details-marker]:hidden">

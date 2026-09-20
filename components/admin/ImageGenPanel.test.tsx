@@ -161,10 +161,10 @@ describe('ImageGenPanel — chrome', () => {
     expect(select).toHaveValue('ponytail')
   })
 
-  it('names the template textarea — the one control whose heading is not a label', () => {
+  it('names the template textarea — the one control whose disclosure summary is not a label', () => {
     panel()
-    // The five fields above it sit inside wrapping <label>s; the template's <h3> labels nothing.
-    // Without an explicit accessible name it is the panel's one anonymous control.
+    // The five fields above it sit inside wrapping <label>s; the template's <summary> labels
+    // nothing. Without an explicit accessible name it is the panel's one anonymous control.
     expect(screen.getByRole('textbox', { name: 'Prompt template' })).toBe(templateBox())
   })
 
@@ -176,6 +176,15 @@ describe('ImageGenPanel — chrome', () => {
     ).toBeInTheDocument()
     expect(screen.getByText('{{scene}}')).toBeInTheDocument()
     expect(screen.getByText('Reset to default template')).toBeInTheDocument()
+  })
+
+  it('renders the Prompt template section as a collapsed <details>, compacted by default', () => {
+    panel()
+    const summaries = screen.getAllByText(/^Prompt template/, { selector: 'summary' })
+    expect(summaries).toHaveLength(1)
+    const details = summaries[0]!.closest('details')
+    expect(details).not.toBeNull()
+    expect(details).not.toHaveAttribute('open')
   })
 })
 
