@@ -241,6 +241,32 @@ export function AnchorIcon({ className }: { className: string }) {
   )
 }
 
+/**
+ * Open in the full-screen viewer. Lucide's `maximize-2`, verbatim — the same glyph
+ * `components/nina/NinaJobDetail.tsx` draws for its own "Lihat foto ukuran penuh" buttons; kept as
+ * a second small copy here rather than a shared import, `DownloadIcon`'s own precedent one glyph
+ * up: N glyphs is not worth a package, and this file is the admin surface's home for one.
+ */
+export function Maximize2Icon({ className }: { className: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M15 3h6v6" />
+      <path d="m21 3-7 7" />
+      <path d="m3 21 7-7" />
+      <path d="M9 21H3v-6" />
+    </svg>
+  )
+}
+
 /** Describe it — have the vision model give her eyes on this photo. Lucide's `sparkles`, verbatim. */
 export function SparklesIcon({ className }: { className: string }) {
   return (

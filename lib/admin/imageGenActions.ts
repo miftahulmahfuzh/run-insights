@@ -7,6 +7,7 @@ import { toImageGenDraft, type ImageGenDraft } from '@/lib/admin/imageGenModel'
 import { imageTestVerdict, type NinaImageTestJobView } from '@/lib/admin/imageGenTestView'
 import { requireAdmin } from '@/lib/admin/requireAdmin'
 import {
+  generateAllImageFieldValuesSchema,
   generateImageFieldValueSchema,
   ninaImagePrefsWriteSchema,
   type NinaImagePrefsWriteInput,
@@ -401,9 +402,11 @@ export async function generateImageFieldValueAction(
 /* ── the 2026-09-18 "regenerate all five" control ────────────────────────────────────────────
  *
  * One action, one call, all five fields — the batch sibling of the action above, for an operator
- * who wants a fresh coherent scene instead of five separate clicks. No client input: unlike the
- * single-field action, there is no "current draft" context to read, because all five fields are
- * being proposed together in the one call rather than one at a time around four fixed neighbours.
+ * who wants a fresh coherent scene instead of five separate clicks. Unlike the single-field action
+ * there is no "current draft" context to read, because all five fields are being proposed together
+ * in the one call rather than one at a time around four fixed neighbours — the one client input it
+ * DOES take (2026-09-20) is the optional "Admin request" box, an anchor for the scene rather than a
+ * neighbouring field's value.
  *
  * Unlike the single-field action, this ONE calls `commitImmediate` from the panel rather than
  * filling the draft and waiting on a blur — there is no single control to blur after a five-field
@@ -417,9 +420,20 @@ export type GenerateAllImageFieldValuesResult =
 /**
  * Ask the model for fresh values for all five text fields at once, reading each field's own
  * history for its avoid-list. `requireAdmin()` first, same order as every action in this file.
+ *
+ * `input` is `unknown` and Zod-checked, `saveNinaImagePrefsAction`'s own rule: a Server Action is a
+ * POST endpoint whether or not a button exists. An input that fails to parse is treated exactly
+ * like an empty box (`adminRequest: undefined`) rather than a refusal — the field is a convenience
+ * on top of a call that already works with nothing, so a malformed extra should degrade, not block
+ * the five fields the operator actually asked for.
  */
-export async function generateAllImageFieldValuesAction(): Promise<GenerateAllImageFieldValuesResult> {
+export async function generateAllImageFieldValuesAction(
+  input?: unknown,
+): Promise<GenerateAllImageFieldValuesResult> {
   const { userId } = await requireAdmin()
+
+  const parsed = generateAllImageFieldValuesSchema.safeParse(input ?? {})
+  const adminRequest = parsed.success ? parsed.data.adminRequest : undefined
 
   try {
     const recentValues = Object.fromEntries(
@@ -430,7 +444,7 @@ export async function generateAllImageFieldValuesAction(): Promise<GenerateAllIm
       ),
     ) as Record<(typeof NINA_IMAGE_TEXT_KEYS)[number], string[]>
 
-    const values = await generateAllImageFieldValues({ recentValues })
+    const values = await generateAllImageFieldValues({ recentValues, adminRequest })
     if (values === null) return { ok: false }
 
     await Promise.all(

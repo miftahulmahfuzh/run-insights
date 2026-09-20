@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 
+import { Maximize2Icon } from '@/components/admin/photoIcons'
 import { Button, ButtonLink, EmptyState } from '@/components/ui'
 import { cn } from '@/lib/cn'
 
@@ -85,6 +86,31 @@ import type { PhotoReferenceItem } from './photoReferenceModel'
  * drizzle type and no Zod schema crosses this boundary. The `<link rel="prefetch">` hints below are
  * a browser resource hint, not a fetch this code performs — they name URLs the server already
  * computed and let the browser decide whether and when to act on them.
+ *
+ * ── `collapsible`, BECAUSE THIS COMPONENT HAS TWO VERY DIFFERENT HOMES (2026-09-20) ─────────────
+ * `ImageGenPanel.tsx` mounts this beside ten other controls, where a permanently-open photo grid
+ * pushes everything below it down the page — so THERE, `collapsible` is `true` and the grid sits
+ * inside a `<details>` with no `open` attribute, `ImageGenPanel.tsx`'s own "Placeholder reference"
+ * and "The assembled image prompt" idiom applied here: a native disclosure rather than a
+ * hand-rolled `useState` toggle, closed on every mount. The current selection still reads at a
+ * glance without opening it — the status line moved from a sibling paragraph into the `<summary>`
+ * itself, the same place "The assembled image prompt" puts its own "(as saved…)" qualifier.
+ *
+ * `NinaJobAnchorPicker.tsx` mounts this as the ENTIRE content of its own dedicated
+ * `/nina/jobs/[id]/anchor` page — there `collapsible` is `false`, because a grid that is the whole
+ * reason the page exists must not open collapsed; a runner who lands here should see photographs,
+ * not a closed disclosure they have to know to tap.
+ *
+ * ── THE "FULL VIEW" BUTTON DOES NOT PARSE `key` (2026-09-20) ────────────────────────────────────
+ * `/nina/jobs/[id]`'s Detail-foto screen (`NinaJobDetail.tsx`) opens its reference photo in the
+ * app's one full-screen viewer (`components/ui/PhotoViewer.tsx`, mounted by `/nina/about`) through
+ * a `ButtonLink` built by `aboutPhotoHref(section, id, returnTo)`. This picker offers the same
+ * button for the same reason — so the admin can see what the current anchor actually looks like at
+ * full size, not just its thumbnail — but it does NOT build that href itself: `fullViewHref` is
+ * handed in already-built, from `ImageGenPanel.tsx`'s own `draft.reference.source`/`.id`. Building
+ * it here would mean parsing `source`/`id` back out of the opaque `key`, which is exactly what "THE
+ * SELECTION IS AN OPAQUE STRING" above rules out — this keeps that invariant intact by having the
+ * one caller that already HOLDS `source`/`id` unparsed do the one thing that needs them.
  */
 export function PhotoReferencePicker({
   items,
@@ -95,6 +121,8 @@ export function PhotoReferencePicker({
   value,
   selectedId,
   onChange,
+  fullViewHref,
+  collapsible,
 }: {
   /**
    * One real `?page=` window of the deduplicated union — album rows and `kind = 'generated'` chat
@@ -127,14 +155,35 @@ export function PhotoReferencePicker({
   /** Called with the next value — a `key`, or `PHOTO_REFERENCE_NONE` to clear. */
   onChange: (next: string) => void
   /**
+   * The current selection's full-screen viewer link — `aboutPhotoHref(section, id, returnTo)`,
+   * already built by `ImageGenPanel.tsx` from the draft's own `reference.source`/`.id`. `null` when
+   * nothing is selected, or when the caller offers no such link (`NinaJobAnchorPicker.tsx` passes
+   * `null` unconditionally — R10's "full view" ask was for the admin panel). See the header's "THE
+   * 'FULL VIEW' BUTTON DOES NOT PARSE `key`" for why this arrives pre-built rather than being
+   * derived from `value` in here.
+   */
+  fullViewHref: string | null
+  /**
+   * Whether the grid sits behind a closed `<details>` (`ImageGenPanel.tsx`) or is always open
+   * (`NinaJobAnchorPicker.tsx`). Required rather than defaulted — see the header's `collapsible`
+   * section — so a new caller has to decide rather than inherit whichever mode this happened to
+   * default to.
+   */
+  collapsible: boolean
+  /**
    * No `disabled` prop (2026-09-12 sweep): it was born for "while the save transition runs" but
    * the one call site never armed it, and a prop with no caller is a second way to render,
    * waiting (the `RunDateLink` round-3 rule). The save keeps its protection one level up — the
    * transition state lives with the form that owns the save.
    */
 }) {
-  const headingId = React.useId()
-  const sectionRef = React.useRef<HTMLElement>(null)
+  const sectionRef = React.useRef<HTMLElement | null>(null)
+  /** A plain callback ref, because `sectionRef` has to fit both a `<details>` and a `<section>` —
+   * the two elements `collapsible` chooses between — and `Ref<HTMLDetailsElement>` and
+   * `Ref<HTMLElement>` are not the same object type even though one element is the other. */
+  const setSectionRef = (el: HTMLElement | null) => {
+    sectionRef.current = el
+  }
   const mountedRef = React.useRef(false)
 
   /*
@@ -143,8 +192,9 @@ export function PhotoReferencePicker({
    * it — so without this effect the viewport would just stay wherever it was, which on a page
    * taller than the grid is usually still scrolled past the top. Scrolling the section itself into
    * view puts the first row back under the pointer instead. Skipped on mount: the section is
-   * already in view on first load, and `useId` gives this instance a stable ref across the
-   * `page`-prop change a Previous/Next click causes, so the effect fires exactly on that change.
+   * already in view on first load, and the component instance (and its `sectionRef`) persists
+   * across the `page`-prop change a Previous/Next click causes, so the effect fires exactly on
+   * that change.
    */
   React.useEffect(() => {
     if (!mountedRef.current) {
@@ -156,32 +206,33 @@ export function PhotoReferencePicker({
 
   const view = photoReferenceView({ items, value })
 
-  return (
-    <section ref={sectionRef} aria-labelledby={headingId} className="mb-6">
-      {/*
-       * React 19 hoists a `<link>` rendered anywhere in the tree into `<head>`, deduping by `href`
-       * — no `next/head`, no portal. `rel="prefetch"` (not `preload`): this is a resource for a
-       * LIKELY next navigation, not one the current render needs, so it should not compete with
-       * this page's own images for bandwidth or priority.
-       */}
-      {preloadUrls.map((url) => (
-        <link key={url} rel="prefetch" as="image" href={url} />
-      ))}
+  /* Hoisted into `<head>` by React 19 (deduped by `href`) regardless of where in the tree it
+   * renders — `rel="prefetch"` and not `preload` because this warms a LIKELY next navigation
+   * rather than something the current render needs, so it should not compete for bandwidth or
+   * priority with this page's own images. */
+  const preloadLinks = preloadUrls.map((url) => (
+    <link key={url} rel="prefetch" as="image" href={url} />
+  ))
 
-      <div className="mb-1.5 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <h3 id={headingId} className="text-[13px] font-semibold text-ink">
-          Photo reference
-        </h3>
-        {/*
-         * The status line `aria-pressed` alone cannot give. No `aria-live`: each tile already
-         * announces its own pressed state on activation, and a live region would say it twice.
-         */}
-        <p className="text-[12px] font-semibold text-ink-3">
-          {view.selectedLabel === null ? 'No reference' : `${view.selectedLabel} selected`}
-        </p>
-      </div>
+  /* The status line `aria-pressed` alone cannot give. No `aria-live`: each tile already announces
+   * its own pressed state on activation, and a live region would say it twice. */
+  const statusText = view.selectedLabel === null ? 'No reference' : `${view.selectedLabel} selected`
 
-      <p className="mb-2 max-w-[70ch] text-[13px] font-medium text-ink-2">
+  const header = collapsible ? (
+    <summary className="cursor-pointer list-none text-[13px] font-semibold text-ink [&::-webkit-details-marker]:hidden">
+      Photo reference
+      <span className="ml-2 text-[12px] font-semibold text-ink-3">{statusText}</span>
+    </summary>
+  ) : (
+    <div className="mb-1.5 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+      <h3 className="text-[13px] font-semibold text-ink">Photo reference</h3>
+      <p className="text-[12px] font-semibold text-ink-3">{statusText}</p>
+    </div>
+  )
+
+  const body = (
+    <>
+      <p className="mt-2 mb-2 max-w-[70ch] text-[13px] font-medium text-ink-2">
         One photograph to anchor the generation on. Her profile album and her chat photographs are
         one grid here, newest first and unlabelled &mdash; tap a photo to choose it, tap it again
         for no reference.
@@ -272,6 +323,16 @@ export function PhotoReferencePicker({
                   Next
                 </ButtonLink>
               )}
+              {fullViewHref !== null && (
+                <ButtonLink
+                  href={fullViewHref}
+                  size="md"
+                  variant="secondary"
+                  aria-label="Lihat foto referensi ukuran penuh"
+                >
+                  <Maximize2Icon className="size-4" />
+                </ButtonLink>
+              )}
               {value !== PHOTO_REFERENCE_NONE && (
                 <Button
                   type="button"
@@ -286,6 +347,20 @@ export function PhotoReferencePicker({
           </div>
         </>
       )}
+    </>
+  )
+
+  return collapsible ? (
+    <details ref={setSectionRef} className="mb-6">
+      {preloadLinks}
+      {header}
+      {body}
+    </details>
+  ) : (
+    <section ref={setSectionRef} className="mb-6">
+      {preloadLinks}
+      {header}
+      {body}
     </section>
   )
 }

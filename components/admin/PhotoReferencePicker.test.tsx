@@ -34,6 +34,8 @@ function picker(props?: Partial<Parameters<typeof PhotoReferencePicker>[0]>) {
       value={PHOTO_REFERENCE_NONE}
       selectedId=""
       onChange={onChange}
+      fullViewHref={null}
+      collapsible
       {...props}
     />,
   )
@@ -141,6 +143,8 @@ describe('PhotoReferencePicker', () => {
         value={PHOTO_REFERENCE_NONE}
         selectedId=""
         onChange={vi.fn()}
+        fullViewHref={null}
+        collapsible
       />,
     )
     expect(screen.getByText('No photos to choose from')).toBeInTheDocument()
@@ -219,6 +223,66 @@ describe('PhotoReferencePicker', () => {
     expect(onChange).toHaveBeenCalledWith(PHOTO_REFERENCE_NONE)
   })
 
+  it('renders as a <details> element, collapsed on mount — compacted like the placeholder reference', () => {
+    const { container } = render(
+      <PhotoReferencePicker
+        items={[item('a')]}
+        total={1}
+        page={1}
+        pageCount={1}
+        preloadUrls={[]}
+        value={PHOTO_REFERENCE_NONE}
+        selectedId=""
+        onChange={vi.fn()}
+        fullViewHref={null}
+        collapsible
+      />,
+    )
+    const details = container.querySelector('details')
+    expect(details).not.toBeNull()
+    expect(details).not.toHaveAttribute('open')
+    expect(container.querySelector('summary')?.textContent).toContain('Photo reference')
+  })
+
+  it('offers a full-view link to the current anchor only when fullViewHref is given', () => {
+    const { rerender } = render(
+      <PhotoReferencePicker
+        items={[item('a')]}
+        total={1}
+        page={1}
+        pageCount={1}
+        preloadUrls={[]}
+        value="a"
+        selectedId="a"
+        onChange={vi.fn()}
+        fullViewHref={null}
+        collapsible
+      />,
+    )
+    expect(
+      screen.queryByRole('link', { name: 'Lihat foto referensi ukuran penuh' }),
+    ).not.toBeInTheDocument()
+
+    rerender(
+      <PhotoReferencePicker
+        items={[item('a')]}
+        total={1}
+        page={1}
+        pageCount={1}
+        preloadUrls={[]}
+        value="a"
+        selectedId="a"
+        onChange={vi.fn()}
+        fullViewHref="/nina/about?photo=album.a"
+        collapsible
+      />,
+    )
+    expect(screen.getByRole('link', { name: 'Lihat foto referensi ukuran penuh' })).toHaveAttribute(
+      'href',
+      '/nina/about?photo=album.a',
+    )
+  })
+
   it('names no caption and no provenance anywhere in a tile — only the check glyph when selected', () => {
     // `tests/admin.photoReference.test.ts` asserted this by grepping the JSX source; that never
     // renders, so a conditional that only LOOKS like it strips this text would still pass. This
@@ -280,6 +344,8 @@ function pickerRender(props: Partial<Parameters<typeof PhotoReferencePicker>[0]>
       value={PHOTO_REFERENCE_NONE}
       selectedId=""
       onChange={vi.fn()}
+      fullViewHref={null}
+      collapsible
       {...props}
     />,
   )

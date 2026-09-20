@@ -314,6 +314,19 @@ export function coerceNinaImageText(key: NinaImageTextKey, value: unknown): stri
   return value.replace(/\s+/g, ' ').trim().slice(0, max)
 }
 
+/**
+ * The 2026-09-20 "Admin request" free-text field beside "Regenerate all five" — *"add a free text
+ * field... this Admin request will be filled manually by me... if this field is not empty,
+ * regenerate all five button will use this text as the starting point to generate the 5 fields."*
+ *
+ * **Not part of `NinaImagePrefs`. It is never saved.** It exists only for the one round trip to
+ * `generateAllImageFieldValuesAction`, the way `ImageFieldGenAllRequest.recentValues` is
+ * request-only rather than a column — an operator types it right before the click, and the next
+ * page load starts blank again. 300 is generous for a short scene cue ("pool table", "laying on
+ * her chest playing PS5") while staying well clear of the batch call's own token budget.
+ */
+export const NINA_IMAGE_ADMIN_REQUEST_MAX = 300
+
 /* ============================================================================
  * §4 The photograph reference (R10 — the storage half)
  * ==========================================================================*/

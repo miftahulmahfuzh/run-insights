@@ -89,6 +89,8 @@ export function NinaJobAnchorPicker({
         value={value}
         selectedId={selectedId}
         onChange={choose}
+        fullViewHref={null}
+        collapsible={false}
       />
       {pending && <p className="mt-2 text-[12px] font-semibold text-ink-3">Nyimpen…</p>}
       {note !== null && (

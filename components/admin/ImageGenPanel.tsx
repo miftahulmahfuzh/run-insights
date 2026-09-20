@@ -30,10 +30,12 @@ import {
   type ImageReferenceOption,
 } from '@/lib/admin/imageGenModel'
 import { cn } from '@/lib/cn'
+import { aboutPhotoHref } from '@/lib/nina/album'
 import {
   NINA_CAMERA_ANGLE_KEYS,
   NINA_EXPRESSION_PRESETS,
   NINA_HAIRSTYLE_KEYS,
+  NINA_IMAGE_ADMIN_REQUEST_MAX,
   NINA_IMAGE_EXPRESSION_MAX,
   NINA_IMAGE_FOCUS_KEYS,
   NINA_IMAGE_MODEL_IDS,
@@ -227,6 +229,13 @@ export function ImageGenPanel({
   /* The 2026-09-18 "regenerate all five" control, above the photo reference section —
    * `fieldGen`'s own shape but with nothing to key on since it touches every field at once. */
   const [allFieldGen, setAllFieldGen] = React.useState<'loading' | 'error' | null>(null)
+  /**
+   * The 2026-09-20 "Admin request" box beside it. Deliberately NOT part of `draft` — it is never
+   * saved (`NINA_IMAGE_ADMIN_REQUEST_MAX`'s header), so it has no business in the row `saved`
+   * tracks or in `changedImageGenFields`'s "unsaved" bookkeeping. It just sits here until the next
+   * click reads it.
+   */
+  const [adminRequest, setAdminRequest] = React.useState('')
   const [pending, startTransition] = React.useTransition()
 
   /* Refs for the five text controls' own ✕ — `SessionRow.tsx`'s pattern: the click handler
@@ -274,6 +283,23 @@ export function ImageGenPanel({
    * selected" question in this file is asked of this string rather than of `reference.id` directly.
    */
   const selectedKey = referenceKey(draft.reference)
+
+  /**
+   * The 2026-09-20 "full view" button's target — the job detail screen's own
+   * `aboutPhotoHref(section, id, returnTo)`, so the current anchor opens in the one full-screen
+   * viewer the app already has (`components/ui/PhotoViewer.tsx`) rather than a second one built
+   * for this page. `null` when nothing is selected, exactly `selectedKey === ''`'s condition —
+   * `draft.reference.source` is loosely typed (the adaptation seam), but `referenceKey` already
+   * proved it is `'album'` or `'chat'` whenever `selectedKey` is non-empty.
+   */
+  const referenceFullViewHref =
+    selectedKey === ''
+      ? null
+      : aboutPhotoHref(
+          draft.reference.source as 'album' | 'chat',
+          draft.reference.id,
+          '/admin/image-generation',
+        )
 
   /**
    * THE one dispatch. `sent` is the exact draft that left the browser — the merge's reference
@@ -447,10 +473,13 @@ export function ImageGenPanel({
    * five fields as one coherent scene; unlike `generateField` there is no single control to focus
    * and blur afterwards, so a success here goes straight through `commitImmediate` — the same
    * "the click IS the finished edit" path the camera/hairstyle/angle dropdowns already use.
+   *
+   * `adminRequest` rides along untrimmed-but-optional — the action treats a blank box exactly like
+   * no argument at all, so there is nothing to branch on here.
    */
   async function generateAllFields() {
     setAllFieldGen('loading')
-    const outcome = await generateAllImageFieldValuesAction()
+    const outcome = await generateAllImageFieldValuesAction({ adminRequest })
     if (!outcome.ok) {
       setAllFieldGen('error')
       return
@@ -999,6 +1028,32 @@ export function ImageGenPanel({
          * than filling the draft, so the per-field icons are disabled while it runs — a click on
          * one mid-batch would race the same draft this is about to overwrite.
          */}
+        {/*
+         * The 2026-09-20 "Admin request" box — *"the llm cenderung memberikan isian text pada
+         * situasi yang serupa"*: an operator-typed anchor for the scene, read only at the moment
+         * the button below is clicked. It is not part of `draft` and never saves; see
+         * `NINA_IMAGE_ADMIN_REQUEST_MAX`'s header in `lib/nina/imageprefs.ts`.
+         */}
+        <div className="mb-3">
+          <label className="block">
+            <span className="mb-1.5 block text-[12px] font-semibold tracking-[0.02em] text-ink-2">
+              Admin request
+            </span>
+            <input
+              type="text"
+              className={CONTROL_CLASS}
+              value={adminRequest}
+              maxLength={NINA_IMAGE_ADMIN_REQUEST_MAX}
+              placeholder="e.g. pool table, laying on her chest playing PS5, main padel, melukis di canvas"
+              onChange={(event) => setAdminRequest(event.target.value)}
+            />
+          </label>
+          <span className="mt-1.5 block max-w-[70ch] text-[11px] font-medium text-ink-3">
+            Optional. Leave it empty and &ldquo;Regenerate all five&rdquo; proposes a scene on its
+            own; fill it in and the five fields below are built around this starting point instead.
+          </span>
+        </div>
+
         <div className="mb-3 flex justify-end">
           <Button
             variant="secondary"
@@ -1027,6 +1082,8 @@ export function ImageGenPanel({
           value={selectedKey}
           selectedId={draft.reference.id}
           onChange={(next) => setReference(parseReferenceKey(next))}
+          fullViewHref={referenceFullViewHref}
+          collapsible
         />
 
         {/*

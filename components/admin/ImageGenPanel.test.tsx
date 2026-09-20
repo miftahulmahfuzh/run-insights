@@ -324,7 +324,7 @@ describe('ImageGenPanel — the commit moments', () => {
     await advance(0)
     await advance(0) // second flush: the save's own promise chain settles here
 
-    expect(generateAllAction).toHaveBeenCalledWith()
+    expect(generateAllAction).toHaveBeenCalledWith({ adminRequest: '' })
     expect(wardrobeBox()).toHaveValue('silk robe')
     // A whole-row save, exactly like a dropdown pick — no extra blur needed.
     expect(saveAction).toHaveBeenCalledTimes(1)
@@ -334,6 +334,16 @@ describe('ImageGenPanel — the commit moments', () => {
     expect(sent.time).toBe('blue hour')
     expect(sent.notes).toBe('windy')
     expect(sent.expression).toBe('She is smiling warmly.')
+  })
+
+  it('sends the "Admin request" box as the batch call\'s starting point', async () => {
+    generateAllAction.mockResolvedValueOnce({ ok: false })
+    panel()
+    fireEvent.change(screen.getByLabelText('Admin request'), { target: { value: 'pool table' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Regenerate all five' }))
+    await advance(0)
+
+    expect(generateAllAction).toHaveBeenCalledWith({ adminRequest: 'pool table' })
   })
 
   it('shows an inline error and saves nothing when the batch call fails', async () => {

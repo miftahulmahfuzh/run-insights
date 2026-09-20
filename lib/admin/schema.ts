@@ -51,6 +51,7 @@ import {
 import {
   NINA_CAMERA_ANGLE_KEYS,
   NINA_HAIRSTYLE_KEYS,
+  NINA_IMAGE_ADMIN_REQUEST_MAX,
   NINA_IMAGE_EXPRESSION_MAX,
   NINA_IMAGE_FOCUS_KEYS,
   NINA_IMAGE_MODEL_IDS,
@@ -887,3 +888,13 @@ export const generateImageFieldValueSchema = z.object({
   expression: z.string().max(NINA_IMAGE_EXPRESSION_MAX),
 })
 export type GenerateImageFieldValueInput = z.infer<typeof generateImageFieldValueSchema>
+
+/**
+ * The 2026-09-20 "Admin request" box beside "Regenerate all five" — optional, and empty is the
+ * common case (the operator left it blank). `.trim()` so a box holding only spaces reads as blank
+ * to `generateAllImageFieldValuesAction` the same way an empty string does.
+ */
+export const generateAllImageFieldValuesSchema = z.object({
+  adminRequest: z.string().trim().max(NINA_IMAGE_ADMIN_REQUEST_MAX).optional(),
+})
+export type GenerateAllImageFieldValuesInput = z.infer<typeof generateAllImageFieldValuesSchema>

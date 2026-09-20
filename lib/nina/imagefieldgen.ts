@@ -223,6 +223,15 @@ export interface ImageFieldGenAllRequest {
   /** Every field's own past suggestions, in any order — one avoid-list per field, the single-field
    * pass's `recentValues` but for all five at once. */
   recentValues: Readonly<Record<NinaImageTextKey, readonly string[]>>
+  /**
+   * The 2026-09-20 "Admin request" box, hand-typed right before the click — *"pool table"*,
+   * *"laying on her chest playing PS5"*. `undefined` or `''` means the operator left it blank,
+   * which is the common case and changes nothing about the call. When it is non-empty it is the
+   * scene's STARTING POINT: the five fields are built around it rather than proposed independently,
+   * because the measured complaint was the model settling into the same handful of scenes when
+   * given no anchor at all.
+   */
+  adminRequest?: string
 }
 
 const ImageFieldGenAllSchema = z.object({
@@ -261,10 +270,20 @@ const IMAGE_FIELD_GEN_ALL_SYSTEM_PROMPT = `You propose values for all five field
 
 Return all five values through the "field_values" tool. Nothing else — no labels, no quotes, no markdown, no trailing period unless a field's style example has one.
 
-Stay inside each field's own character limit. Match the style and level of detail of each field's example. The five values describe ONE photograph, so they must plausibly belong in the same scene together — do not contradict each other. Never repeat, or closely paraphrase, a value listed as already used for that field.`
+Stay inside each field's own character limit. Match the style and level of detail of each field's example. The five values describe ONE photograph, so they must plausibly belong in the same scene together — do not contradict each other. Never repeat, or closely paraphrase, a value listed as already used for that field.
+
+When an admin request names a starting point for the scene, treat it as the anchor: the five fields must plausibly belong to THAT scene rather than a generic or previously-used one, even if it means departing from your usual defaults.`
 
 function buildImageFieldGenAllRequest(request: ImageFieldGenAllRequest): string {
   const lines: string[] = []
+  const adminRequest = request.adminRequest?.trim()
+  if (adminRequest !== undefined && adminRequest !== '') {
+    lines.push(
+      `Admin's requested starting point for this photograph: "${adminRequest}"`,
+      'Build the five fields around this scene rather than proposing an independent one.',
+      '',
+    )
+  }
   for (const key of NINA_IMAGE_TEXT_KEYS) {
     const spec = NINA_IMAGE_TEXT_SPECS[key]
     lines.push(
