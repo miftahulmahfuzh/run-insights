@@ -132,6 +132,17 @@ describe('PhotoReferencePicker', () => {
     expect(screen.getByRole('button', { name: 'Clear reference' })).toBeInTheDocument()
   })
 
+  it('does not say "No reference" in the always-visible status line when the saved reference is only off this page', () => {
+    // The 2026-09-20 bug: an admin anchors a photo from Image collection, then opens Image
+    // generation on a page that doesn't happen to contain it, and the closed <details>'s summary
+    // line — the only thing visible before expanding — claimed "No reference" even though a
+    // reference genuinely was saved (the full-view button, built independently of `items`, still
+    // linked straight to it). The status line must say the reference is set, not that it's absent.
+    picker({ value: 'gone' })
+    expect(screen.queryByText('No reference')).not.toBeInTheDocument()
+    expect(screen.getByText('Reference set — not shown on this page')).toBeInTheDocument()
+  })
+
   it('renders the empty state and no grid when the union has no photographs', () => {
     render(
       <PhotoReferencePicker

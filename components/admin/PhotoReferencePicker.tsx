@@ -216,9 +216,22 @@ export function PhotoReferencePicker({
     <link key={url} rel="prefetch" as="image" href={url} />
   ))
 
-  /* The status line `aria-pressed` alone cannot give. No `aria-live`: each tile already announces
-   * its own pressed state on activation, and a live region would say it twice. */
-  const statusText = view.selectedLabel === null ? 'No reference' : `${view.selectedLabel} selected`
+  /*
+   * The status line `aria-pressed` alone cannot give. No `aria-live`: each tile already announces
+   * its own pressed state on activation, and a live region would say it twice.
+   *
+   * `view.selectedLabel === null` is true in TWO different cases — nothing was ever chosen
+   * (`value === PHOTO_REFERENCE_NONE`), or a reference IS saved but isn't on this page's window
+   * (`view.missing`) — and this line must not say "No reference" for the second one: that reads as
+   * a lie to an admin who set an anchor from Image collection and lands here on page 1 while the
+   * anchor sits on page 2. `view.missing`'s own paragraph (below, inside the closed `<details>`)
+   * explains why; this is the one-word version that has to be right even collapsed.
+   */
+  const statusText = view.missing
+    ? 'Reference set — not shown on this page'
+    : view.selectedLabel === null
+      ? 'No reference'
+      : `${view.selectedLabel} selected`
 
   const header = collapsible ? (
     <summary className="cursor-pointer list-none text-[13px] font-semibold text-ink [&::-webkit-details-marker]:hidden">
