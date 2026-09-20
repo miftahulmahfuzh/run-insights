@@ -190,6 +190,11 @@ export const NINA_PHOTOSHOP_PRESETS: readonly NinaPhotoshopPreset[] = [
     label: 'Slimmer waist',
     text: 'Same woman, same angle, but she now has slightly slimmer waist',
   }),
+  Object.freeze({
+    key: 'bird_eye_view',
+    label: "Bird's eye view",
+    text: 'True orthographic bird eye view: camera directly ABOVE her body center, like a flatbed scanner — zero perspective distortion, head and feet identical scale, thighs same size as shoulders, no foreshortening anywhere. No walls, ceiling, TV, horizon. Only flat surface beneath her. Keep pose, outfit.',
+  }),
 ]
 
 export function photoshopPresetText(key: string): string | null {
