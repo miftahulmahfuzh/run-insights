@@ -67,6 +67,14 @@ export const NINA_BODY_SENTENCES: readonly string[] = [
   `Her butt is round, high and prominent, standing out from her back rather than flattening into it.`,
   `Her thighs are thick and strong, filling whatever she is wearing, with a runner's muscle visible under soft skin.`,
   `Her calves are very long and full, defined all the way down to a narrow ankle, on legs that are unusually long for her height. She is curvy and heavy-bodied, never lean and never slight.`,
+  /**
+   * Element 5 (2026-09-21). Scoped to the shoulder girdle only — never "petite" or "slim" at the
+   * whole-body or torso level, which is exactly the "Lean, narrow shoulders" contradiction this
+   * file's header already repealed once for arguing with element 0's "voluptuous" silhouette. A
+   * narrow, delicate shoulder LINE is compatible with a full chest (the classic hourglass
+   * contrast); a "petite upper body" or "slim frame" clause is not, so those were left out.
+   */
+  `Her shoulders are slender, narrow and delicate, with a graceful shoulder line and soft, delicate collarbones — never broad, wide, square or muscular, and never a swimmer's build, an athletic upper body or masculine shoulders.`,
 ]
 
 /**
@@ -113,8 +121,13 @@ export const NINA_HANDS_SENTENCE = `Her hands have long, elegant fingers with ne
  * a pref but "always" would still be false for half the generations. So the body survives as ONE
  * sentence naming all four facts as facts about HER, and the crop is reconciled out loud in the
  * clause after the dash rather than left for the model to guess at.
+ *
+ * ── THE SECOND SENTENCE, ADDED FOR ELEMENT 5 (2026-09-21) ─────────────────────────────────────
+ * Unlike the boobs/calves silhouette, the shoulders ARE inside this crop — a head-and-shoulders
+ * photograph is the one place the shoulder line is actually visible — so the shoulder fact is
+ * restated here rather than folded into the "shows almost none of it" clause above.
  */
-export const NINA_BODY_AVATAR = `She is voluptuous — big boobs and very long calves — even though this photograph is cropped to her head and shoulders and shows almost none of it.`
+export const NINA_BODY_AVATAR = `She is voluptuous — big boobs and very long calves — even though this photograph is cropped to her head and shoulders and shows almost none of it. Her shoulders themselves are slender, narrow and delicate, with a graceful line and soft collarbones — never broad, wide, square or muscular.`
 
 /**
  * The anchor image in words, minus the body clause that moved to `NINA_BODY_SENTENCES`.

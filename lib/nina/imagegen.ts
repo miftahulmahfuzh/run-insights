@@ -562,15 +562,16 @@ function ninaMoodBlock(mood: string | null | undefined): string {
  * rather than hand-copied, so the template cannot drift from the words the built-in assembly
  * uses — there is one home for each sentence.
  *
- * The body paragraph carries the first THREE canon sentences — sentence 0's own enumeration
- * (`NINA_BODY_FACTS`), then sentence 1 verbatim, then `{{buttClause}}` standing in for sentence 2.
- * The four facts are prose here, not a token: `{{bodyFacts}}` was dropped because it could only
- * ever expand to this one constant, which made it a decoration on `{{focus}}`'s real job rather
- * than a second control. `{{buttClause}}` is the one exception, added 2026-09-18 for job
- * `lUARJrfreQta`: unlike the enumeration, sentence 2 genuinely has more than one correct value —
- * see `NINA_BODY_BUTT_SENTENCES`'s header for the contradiction that forced it. `NINA_HANDS_SENTENCE`
- * (2026-09-18, job `tyFdHavh_jmE`) closes the paragraph unconditionally — see its own header in
- * `persona/appearance.ts` for why hands needed the same explicit treatment the calf/thigh ratio got.
+ * The body paragraph carries sentence 0's own enumeration (`NINA_BODY_FACTS`), then sentence 1
+ * verbatim, then sentence 5 (the shoulder/collarbone clause, 2026-09-21) verbatim, then
+ * `{{buttClause}}` standing in for sentence 2. The four facts are prose here, not a token:
+ * `{{bodyFacts}}` was dropped because it could only ever expand to this one constant, which made
+ * it a decoration on `{{focus}}`'s real job rather than a second control. `{{buttClause}}` is the
+ * one exception, added 2026-09-18 for job `lUARJrfreQta`: unlike the enumeration, sentence 2
+ * genuinely has more than one correct value — see `NINA_BODY_BUTT_SENTENCES`'s header for the
+ * contradiction that forced it. `NINA_HANDS_SENTENCE` (2026-09-18, job `tyFdHavh_jmE`) closes the
+ * paragraph unconditionally — see its own header in `persona/appearance.ts` for why hands needed
+ * the same explicit treatment the calf/thigh ratio got.
  *
  * The face paragraph IS a token, unlike the body: `NINA_FACE_TEMPLATE_LINE` (`lib/nina/persona/appearance.ts`)
  * carries the same fixed prose `NINA_FACE` always did, with `{{hairstyle}}` and `{{expression}}`
@@ -596,7 +597,7 @@ export const NINA_PROMPT_TEMPLATE_DEFAULT = [
   '',
   'SUBJECT:',
   `She has got an alluring body, ${NINA_BODY_FACTS}. This silhouette is the point of the photograph and it ` +
-    `must be visible in it. ${NINA_BODY_SENTENCES[1]} {{buttClause}} ${NINA_HANDS_SENTENCE}`,
+    `must be visible in it. ${NINA_BODY_SENTENCES[1]} ${NINA_BODY_SENTENCES[5]} {{buttClause}} ${NINA_HANDS_SENTENCE}`,
   '',
   NINA_FACE_TEMPLATE_LINE,
   '',
