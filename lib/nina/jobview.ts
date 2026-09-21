@@ -1,6 +1,7 @@
 import { formatDuration, MISSING } from '@/lib/format'
 import { isValidId } from '@/lib/id'
-import { aboutPhotoHref } from '@/lib/nina/album'
+import { aboutPhotoHref, NINA_ABOUT_RETURN_PARAM } from '@/lib/nina/album'
+import { clampScrollTop, type ScrollGeometry } from '@/lib/nina/scroll'
 
 /**
  * **R1's whole vocabulary: what a job's row says, and where its "go to the bubble" button points.**
@@ -364,7 +365,12 @@ export function toNinaJobListItems(rows: readonly JobLike[]): NinaJobListItem[] 
       errorLabel: stage === 'failed' ? jobErrorLabel(row.errorCode) : null,
       latencyMs: row.latencyMs,
       open: jobIsOpen(stage),
-      photo: planJobPhoto({ jobId: row.id, purpose: row.purpose, imageId: row.imageId }),
+      photo: planJobPhoto({
+        jobId: row.id,
+        purpose: row.purpose,
+        imageId: row.imageId,
+        returnTo: NINA_JOBS_HREF,
+      }),
     }
   })
 }
@@ -653,17 +659,30 @@ export type NinaJobPhoto = { kind: 'ready'; href: string } | { kind: 'none' }
  * codec had to move to `lib/` at all.
  */
 export function planJobPhoto(input: {
-  /** The job's id — the RETURN leg of the deep link, so closing the viewer lands back here. */
+  /** The job's id — the default RETURN leg of the deep link, so closing the viewer lands back
+   * here. See `returnTo` below for the one caller that overrides it. */
   jobId: string
   purpose: 'selfie' | 'avatar'
   /** The job photograph's row id, or `null` when `getNinaJobPhoto` resolved nothing. */
   imageId: string | null
+  /**
+   * Where closing the viewer lands, when the caller is not the job's OWN detail page. Defaults to
+   * `ninaJobHref(jobId)` — the detail page's own full-view button, unchanged since R2.
+   *
+   * `toNinaJobListItems` passes `NINA_JOBS_HREF` instead: a row's full-view link is tapped FROM
+   * the list, and closing the viewer must land back on the list, not open the row it never asked
+   * to open. `NinaJobActions.tsx`'s click handler then widens exactly this string — never the
+   * detail page's own default — with a scroll mark computed at the moment of the tap (see
+   * `withJobListScrollMark` below), because that fact does not exist yet when this function runs
+   * on the server.
+   */
+  returnTo?: string
 }): NinaJobPhoto {
   if (input.purpose === 'avatar') return { kind: 'none' }
   if (input.imageId === null) return { kind: 'none' }
   return {
     kind: 'ready',
-    href: aboutPhotoHref('chat', input.imageId, `/nina/jobs/${input.jobId}`),
+    href: aboutPhotoHref('chat', input.imageId, input.returnTo ?? ninaJobHref(input.jobId)),
   }
 }
 
@@ -732,4 +751,141 @@ export function nextSoftNavJump(prev: string | null, raw: string | null): string
   if (raw === null) return null
   if (raw === prev) return null
   return parseNinaJumpParam(raw)
+}
+
+/* ── the list's own scroll mark ───────────────────────────────────────────────────────────── */
+
+/**
+ * **`/nina/jobs`'s `?at=<jobId>~<offset>` — closing the full-view link returns to the row the
+ * runner tapped it from, not to the top of the list.**
+ *
+ * Same shape and the same reason as `lib/nina/scroll.ts`'s chat mark: an anchor and an offset,
+ * not a raw `scrollTop`, because the list can change height while the viewer is open (a
+ * background sweep can finish a job between the tap and the close) — restoration re-derives the
+ * pixel from wherever the anchored ROW is now, on that module's own `resolveRestoreTop` argument.
+ * `clampScrollTop`/`ScrollGeometry` are reused from there directly: that arithmetic has nothing
+ * chat-specific in it.
+ *
+ * **It is not `ChatScrollMark` reused, and it does not travel the same way.** Chat's mark is
+ * written onto the CURRENT entry (`saveMark`, `history.replaceState`) before the runner leaves,
+ * and read back only on a browser POP — a mechanism this list cannot use, because
+ * `NinaAboutScreen.tsx`'s `close()` always `router.push(returnTo)`s a deep link's return leg
+ * forward, never `history.back()`s one (see `planJobPhoto`'s own header: "history cannot be
+ * presumed behind a deep link"). So this mark instead rides FORWARD, inside the full-view link's
+ * own `return` query value — `withJobListScrollMark` widens it at the moment of the tap, in
+ * `NinaJobActions.tsx`'s click handler, which is the only place both facts exist at once: where
+ * the viewport is right now, and which link is about to carry the return leg.
+ */
+export const JOB_LIST_SCROLL_PARAM = 'at'
+
+/** Same bound and the same reason as `MAX_CHAT_SCROLL_OFFSET_PX`: far past any phone, small
+ * enough that a hand-edited URL cannot ask for a position no document has. */
+export const MAX_JOB_LIST_SCROLL_OFFSET_PX = 20000
+
+export interface JobListScrollMark {
+  /** The job row that was at or just below the viewport's top edge when the runner tapped away. */
+  jobId: string
+  /** Signed pixels from the viewport's top edge to that row's top edge. */
+  offset: number
+}
+
+/** One row's position in *document* coordinates: `rect.top + window.scrollY`. */
+export interface JobListScrollAnchorRow {
+  jobId: string
+  top: number
+}
+
+/** `<jobId>~<offset>`. Rounded, on `encodeChatScrollMark`'s precedent: a fractional pixel is
+ * noise in a URL. */
+export function encodeJobListScrollMark(mark: JobListScrollMark): string {
+  return `${mark.jobId}~${Math.round(mark.offset)}`
+}
+
+/**
+ * Tolerant by design, exactly as `decodeChatScrollMark` is: a missing param, a truncated one, an
+ * id with a `~` in it, a float, a hand-typed word — all of them mean "no mark", which means
+ * "start where the list normally would". `isValidId` in place of `decodeChatScrollMark`'s own
+ * looser regex, because a job id is never anything but `lib/id.ts`'s exact 12-character shape —
+ * unlike a chat message id, which may also be a client-minted `local-…` id.
+ */
+export function decodeJobListScrollMark(raw: string | null | undefined): JobListScrollMark | null {
+  if (raw == null) return null
+  const separator = raw.lastIndexOf('~')
+  if (separator <= 0 || separator === raw.length - 1) return null
+
+  const jobId = raw.slice(0, separator)
+  const offsetText = raw.slice(separator + 1)
+
+  if (!isValidId(jobId)) return null
+  if (!/^-?\d{1,6}$/.test(offsetText)) return null
+
+  const offset = Number(offsetText)
+  if (!Number.isFinite(offset)) return null
+  if (Math.abs(offset) > MAX_JOB_LIST_SCROLL_OFFSET_PX) return null
+
+  return { jobId, offset }
+}
+
+/**
+ * Which row to remember, given where the reader is — `pickScrollAnchor`'s rule, one screen over:
+ * the topmost row whose top edge is at or below the viewport's top edge, so the offset is
+ * non-negative and small; below every row's top (scrolled to the very bottom of a short list),
+ * the last row wins with a negative offset, which restores just as exactly.
+ *
+ * `rows` must be in document order, on the same precedent: the DOM produces them that way and
+ * sorting here would hide a caller bug.
+ */
+export function pickJobListScrollAnchor(
+  rows: readonly JobListScrollAnchorRow[],
+  scrollTop: number,
+): JobListScrollMark | null {
+  if (rows.length === 0) return null
+
+  for (const row of rows) {
+    if (row.top >= scrollTop) return { jobId: row.jobId, offset: row.top - scrollTop }
+  }
+
+  const last = rows[rows.length - 1]
+  if (last == null) return null
+  return { jobId: last.jobId, offset: last.top - scrollTop }
+}
+
+/** `resolveRestoreTop`'s rule, one screen over: null on a missing anchor and only on a missing
+ * anchor: everything else is the anchor's current document position minus the offset it had,
+ * clamped into the document. */
+export function resolveJobListScrollTop(input: {
+  mark: JobListScrollMark
+  /** The anchor row's current top in document coordinates, or null when its `<li>` is gone. */
+  anchorTop: number | null
+  geometry: ScrollGeometry
+}): number | null {
+  if (input.anchorTop == null) return null
+  return clampScrollTop(input.anchorTop - input.mark.offset, input.geometry)
+}
+
+/**
+ * **Widens a full-view link's `return` leg with a fresh scroll mark, computed at the moment of
+ * the tap.** The only caller is `NinaJobActions.tsx`'s click handler: `planJobPhoto` already
+ * pointed `photoHref`'s return leg at `NINA_JOBS_HREF` when the row rendered, and this function
+ * appends `?at=` onto that SAME value rather than replacing it, so whatever `decodeAboutReturnTo`
+ * already accepted (an in-app absolute path, nothing else) stays exactly that shape — a query
+ * string is not a second `/`, so a value this appends to can never fail that check because of it.
+ *
+ * `photoHref` is `NinaJobPhoto`'s own `href` — always `aboutPhotoHref`'s shape, always carrying a
+ * `return` value the list itself set — so the miss branch (no `return` param on the href at all)
+ * is unreachable in practice and exists only so a shape this function does not recognise degrades
+ * to "no mark" rather than throwing, `decodeChatScrollMark`'s own habit.
+ */
+export function withJobListScrollMark(photoHref: string, mark: JobListScrollMark): string {
+  const url = new URL(photoHref, 'https://x.invalid')
+  const returnTo = url.searchParams.get(NINA_ABOUT_RETURN_PARAM)
+  if (returnTo === null) return photoHref
+
+  const returnUrl = new URL(returnTo, 'https://x.invalid')
+  returnUrl.searchParams.set(JOB_LIST_SCROLL_PARAM, encodeJobListScrollMark(mark))
+  url.searchParams.set(
+    NINA_ABOUT_RETURN_PARAM,
+    `${returnUrl.pathname}?${returnUrl.searchParams.toString()}`,
+  )
+  return `${url.pathname}?${url.searchParams.toString()}`
 }

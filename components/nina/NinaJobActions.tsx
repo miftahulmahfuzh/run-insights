@@ -1,10 +1,18 @@
 'use client'
 
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import * as React from 'react'
 
 import { deleteNinaImageJob, type NinaJobActionResult } from '@/lib/nina/jobActions'
-import { ninaJobTitle, type NinaJobListItem, type NinaJobRefusal } from '@/lib/nina/jobview'
+import {
+  ninaJobTitle,
+  pickJobListScrollAnchor,
+  withJobListScrollMark,
+  type NinaJobListItem,
+  type NinaJobRefusal,
+} from '@/lib/nina/jobview'
+import { readJobAnchorRows } from './useJobListScroll'
 
 /**
  * **R2's row controls: the full-view link to the job's generated photograph, and the delete
@@ -22,6 +30,21 @@ import { ninaJobTitle, type NinaJobListItem, type NinaJobRefusal } from '@/lib/n
  * It navigates; it mutates nothing. `deleteNinaImageJob` is the only action left in this
  * component, so `pending`/`note` below exist for that control alone — a second, unrelated
  * navigation control does not need to freeze while a delete is in flight.
+ *
+ * ── WHY THE CLICK IS INTERCEPTED, AND ONLY A PLAIN ONE ────────────────────────────────────────
+ * Closing the viewer must land back on THIS list, at THIS row — not on the job's own detail page
+ * (`planJobPhoto`'s default return leg, which the detail page's own full-view button still
+ * uses), and not at the top of the list either. `item.photo.href` already points its return leg
+ * at `NINA_JOBS_HREF`; what it cannot carry is a scroll mark, because that fact — where the
+ * viewport is right now — does not exist until the tap happens, and `item.photo.href` was built
+ * on the server, long before it. So a plain click is intercepted, widens the href with
+ * `withJobListScrollMark`, and pushes that instead — the same "measure now" idea
+ * `useChatScrollMark`'s `saveMark` uses, aimed at the destination's return leg instead of at this
+ * entry's own URL, because closing the viewer `router.push`es forward rather than popping back
+ * (see `lib/nina/jobview.ts`'s header on this mark for why). A modified click (a new-tab tap, a
+ * middle-click) is left alone — `RunAttachmentCard`'s recorded reason: the browser is going to
+ * handle it itself, and rewriting the `href` a screen reader or a "copy link" menu sees would be
+ * the wrong thing to do to a link that still works without any of this.
  *
  * ── WHY IT IS A SIBLING OF THE ROW'S LINK AND NOT A CHILD ─────────────────────────────────────
  * A nested `<a>` breaks the outer link's hit testing — `SessionRow`'s recorded rule, one list
@@ -57,8 +80,25 @@ export const NOTE: Record<NinaJobRefusal, string> = {
 }
 
 export function NinaJobActions({ item }: { item: NinaJobListItem }) {
+  const router = useRouter()
   const [note, setNote] = React.useState<string | null>(null)
   const [pending, startTransition] = React.useTransition()
+
+  /**
+   * `e.button !== 0` and the four modifier keys are exactly what `RunAttachmentCard` checks
+   * before treating a click as "this component's to navigate" rather than "the browser's to
+   * open a new tab with". `defaultPrevented` first, on the same file's habit: something else
+   * already decided.
+   */
+  function openFullView(event: React.MouseEvent<HTMLAnchorElement>) {
+    if (event.defaultPrevented || event.button !== 0) return
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+    if (item.photo.kind !== 'ready') return
+
+    event.preventDefault()
+    const mark = pickJobListScrollAnchor(readJobAnchorRows(), window.scrollY)
+    router.push(mark === null ? item.photo.href : withJobListScrollMark(item.photo.href, mark))
+  }
 
   /**
    * The delete button's submit. `SessionRow`'s `run()`, same shape, one caller now instead of two:
@@ -86,6 +126,7 @@ export function NinaJobActions({ item }: { item: NinaJobListItem }) {
         {item.photo.kind === 'ready' && (
           <Link
             href={item.photo.href}
+            onClick={openFullView}
             aria-label={`Lihat foto ukuran penuh ${title}`}
             className="grid size-11 shrink-0 place-items-center rounded-pill text-ink-3"
           >

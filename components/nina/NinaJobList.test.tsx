@@ -9,6 +9,13 @@ vi.mock('./NinaJobActions', () => ({
   NinaJobActions: () => <div data-testid="job-actions" />,
 }))
 
+// `useJobListScrollRestore` (`useJobListScroll.ts`) reads `useSearchParams`, which needs a router
+// scope this bare renderer lacks — the same reason `useChatScroll.test.tsx` mocks it. No `?at=` on
+// any of these renders, so the restore effect always no-ops; this file is not the scroll suite.
+vi.mock('next/navigation', () => ({
+  useSearchParams: () => new URLSearchParams(),
+}))
+
 import { NinaJobList } from './NinaJobList'
 import {
   formatJobLatency,

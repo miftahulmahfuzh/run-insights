@@ -6,6 +6,7 @@ import { cn } from '@/lib/cn'
 import { formatJobLatency, ninaJobTitle, type NinaJobListItem } from '@/lib/nina/jobview'
 import { NinaJobActions } from './NinaJobActions'
 import { NinaJobElapsed } from './NinaJobElapsed'
+import { useJobListScrollRestore } from './useJobListScroll'
 
 /**
  * **R1's job list — and PHASE 5 RENDERS THIS EXACT COMPONENT.**
@@ -80,6 +81,16 @@ export function NinaJobList({
    */
   actions?: boolean
 }) {
+  /*
+   * The full-view link's return leg (`withJobListScrollMark`, `lib/nina/jobview.ts`) rides a
+   * mark forward into THIS page's own `?at=` — restoring it is this list's job, not the viewer's,
+   * on `useChatPageScroll`'s precedent. Harmless on `NinaAboutScreen`'s read-only summary: that
+   * page's URL never carries `?at=`, so the mark always decodes to null there and the effect is a
+   * no-op — scoping the call to `withActions` would need a second component just to skip a call
+   * that already costs nothing.
+   */
+  useJobListScrollRestore()
+
   if (items.length === 0) {
     return (
       <p className="rounded-field border border-dashed border-rule px-4 py-6 text-center text-[12px] font-medium text-ink-2">
@@ -102,6 +113,7 @@ export function NinaJobList({
         return (
           <li
             key={item.id}
+            id={`nina-job-${item.id}`}
             className={
               withActions
                 ? cn('flex flex-wrap items-center gap-x-1 rounded-card pr-1', surface)

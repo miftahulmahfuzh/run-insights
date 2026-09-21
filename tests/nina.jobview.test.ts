@@ -3,7 +3,11 @@ import { describe, expect, it } from 'vitest'
 import { SESSION_PARAM } from '@/lib/nina/active'
 import { CHAT_SCROLL_PARAM } from '@/lib/nina/scroll'
 import {
+  decodeJobListScrollMark,
+  encodeJobListScrollMark,
   JOB_JUMP_PARAM,
+  JOB_LIST_SCROLL_PARAM,
+  MAX_JOB_LIST_SCROLL_OFFSET_PX,
   NINA_JOBS_HREF,
   NINA_JOB_JUMP_NOTE,
   NINA_JOB_STAGE_LABEL,
@@ -20,13 +24,17 @@ import {
   ninaJumpHref,
   nextSoftNavJump,
   parseNinaJumpParam,
+  pickJobListScrollAnchor,
   planJobJump,
   planJobPhoto,
   planJobReferencePhoto,
+  resolveJobListScrollTop,
   splitSidecarReference,
   toNinaJobListItems,
   withCostSourceLine,
   withJobIdLine,
+  withJobListScrollMark,
+  type JobListScrollAnchorRow,
 } from '@/lib/nina/jobview'
 
 describe('the deep link is its own parameter', () => {
@@ -172,7 +180,12 @@ describe('toNinaJobListItems', () => {
      */
     const [withPhoto] = toNinaJobListItems([{ ...base, imageId: 'imgAAAAAA1234' }])
     expect(withPhoto!.photo).toEqual(
-      planJobPhoto({ jobId: base.id, purpose: base.purpose, imageId: 'imgAAAAAA1234' }),
+      planJobPhoto({
+        jobId: base.id,
+        purpose: base.purpose,
+        imageId: 'imgAAAAAA1234',
+        returnTo: NINA_JOBS_HREF,
+      }),
     )
 
     const [withoutPhoto] = toNinaJobListItems([{ ...base, imageId: null }])
@@ -486,6 +499,20 @@ describe('planJobPhoto — the photograph link', () => {
     expect(url.searchParams.get('return')).not.toMatch(/^\/\//)
   })
 
+  it('overrides the return leg when a caller supplies one — the list’s own use', () => {
+    /* `toNinaJobListItems` passes `NINA_JOBS_HREF` here so a row's full-view link returns to the
+     * list rather than opening the row it was tapped from. */
+    const plan = planJobPhoto({
+      jobId: JOB_ID,
+      purpose: 'selfie',
+      imageId: 'imgAAAAAA1234',
+      returnTo: NINA_JOBS_HREF,
+    })
+    if (plan.kind !== 'ready') throw new Error('expected a ready plan')
+    const url = new URL(plan.href, 'https://example.test')
+    expect(url.searchParams.get('return')).toBe(NINA_JOBS_HREF)
+  })
+
   it('draws nothing for a job whose photo row is gone', () => {
     /* Admin Remove deletes the row; a removed session cascades the carrier message. Both arrive
      * as the same `null` from `getNinaJobPhoto` and the same `none` here — never a link the
@@ -532,5 +559,171 @@ describe('planJobReferencePhoto — the reference photo’s link, over the SAME 
 
   it('draws nothing when the reference photo was never found — never a link the server has not proved', () => {
     expect(planJobReferencePhoto({ jobId: JOB_ID, match: null })).toEqual({ kind: 'none' })
+  })
+})
+
+describe('the job list’s own scroll mark', () => {
+  it('spells the same query key as the chat mark, and that is fine — different routes never collide', () => {
+    expect(JOB_LIST_SCROLL_PARAM).toBe(CHAT_SCROLL_PARAM)
+  })
+})
+
+describe('encodeJobListScrollMark', () => {
+  it('joins the id and the offset with a tilde', () => {
+    expect(encodeJobListScrollMark({ jobId: 'jobAAAAAAAAA', offset: 42 })).toBe('jobAAAAAAAAA~42')
+  })
+
+  it('rounds a fractional offset', () => {
+    expect(encodeJobListScrollMark({ jobId: 'jobAAAAAAAAA', offset: 41.6 })).toBe('jobAAAAAAAAA~42')
+  })
+
+  it('round-trips through the decoder', () => {
+    const mark = { jobId: 'jobAAAAAAAAA', offset: -12 }
+    expect(decodeJobListScrollMark(encodeJobListScrollMark(mark))).toEqual(mark)
+  })
+})
+
+describe('decodeJobListScrollMark', () => {
+  it('reads a well-formed mark', () => {
+    expect(decodeJobListScrollMark('jobAAAAAAAAA~250')).toEqual({
+      jobId: 'jobAAAAAAAAA',
+      offset: 250,
+    })
+  })
+
+  it('reads a negative offset', () => {
+    expect(decodeJobListScrollMark('jobAAAAAAAAA~-250')).toEqual({
+      jobId: 'jobAAAAAAAAA',
+      offset: -250,
+    })
+  })
+
+  it.each([
+    ['null', null],
+    ['undefined', undefined],
+    ['empty', ''],
+    ['no separator', 'jobAAAAAAAAA'],
+    ['nothing before the separator', '~250'],
+    ['nothing after the separator', 'jobAAAAAAAAA~'],
+    ['a non-numeric offset', 'jobAAAAAAAAA~soon'],
+    ['a fractional offset', 'jobAAAAAAAAA~250.5'],
+    // Unlike a chat message id, a job id is ALWAYS exactly lib/id.ts's 12-character shape — an
+    // 11- or 13-character id is never one of ours, which is exactly what `isValidId` enforces.
+    ['a short id', 'short~250'],
+    ['a long id', 'jobAAAAAAAAATOOLONG~250'],
+  ])('treats %s as no mark', (_label, raw) => {
+    expect(decodeJobListScrollMark(raw)).toBeNull()
+  })
+
+  it('refuses an offset past the sanity bound rather than clamping it', () => {
+    expect(decodeJobListScrollMark(`jobAAAAAAAAA~${MAX_JOB_LIST_SCROLL_OFFSET_PX + 1}`)).toBeNull()
+  })
+
+  it('accepts the bound itself', () => {
+    expect(decodeJobListScrollMark(`jobAAAAAAAAA~${MAX_JOB_LIST_SCROLL_OFFSET_PX}`)).toEqual({
+      jobId: 'jobAAAAAAAAA',
+      offset: MAX_JOB_LIST_SCROLL_OFFSET_PX,
+    })
+  })
+
+  it('splits on the LAST tilde, so an id may never lose its tail silently', () => {
+    expect(decodeJobListScrollMark('a~b~250')).toBeNull()
+  })
+})
+
+describe('pickJobListScrollAnchor', () => {
+  const ROWS: JobListScrollAnchorRow[] = [
+    { jobId: 'job000000001', top: 0 },
+    { jobId: 'job000000002', top: 200 },
+    { jobId: 'job000000003', top: 480 },
+  ]
+
+  it('picks the topmost row at or below the viewport top', () => {
+    expect(pickJobListScrollAnchor(ROWS, 200)).toEqual({ jobId: 'job000000002', offset: 0 })
+  })
+
+  it('records how far below the top edge that row sat', () => {
+    expect(pickJobListScrollAnchor(ROWS, 150)).toEqual({ jobId: 'job000000002', offset: 50 })
+  })
+
+  it('below every row’s top, picks the last one with a negative offset', () => {
+    expect(pickJobListScrollAnchor(ROWS, 1000)).toEqual({ jobId: 'job000000003', offset: -520 })
+  })
+
+  it('is null with nothing rendered', () => {
+    expect(pickJobListScrollAnchor([], 0)).toBeNull()
+  })
+})
+
+describe('resolveJobListScrollTop', () => {
+  const GEOMETRY = { scrollHeight: 2000, clientHeight: 800 }
+
+  it('re-derives the pixel from where the anchor row is NOW', () => {
+    expect(
+      resolveJobListScrollTop({
+        mark: { jobId: 'job000000003', offset: 50 },
+        anchorTop: 780,
+        geometry: GEOMETRY,
+      }),
+    ).toBe(730)
+  })
+
+  it('is null when the anchor row is gone — the caller does the ordinary thing', () => {
+    expect(
+      resolveJobListScrollTop({
+        mark: { jobId: 'gone', offset: 50 },
+        anchorTop: null,
+        geometry: GEOMETRY,
+      }),
+    ).toBeNull()
+  })
+
+  it('clamps into a document that shrank', () => {
+    expect(
+      resolveJobListScrollTop({
+        mark: { jobId: 'job000000003', offset: 0 },
+        anchorTop: 1900,
+        geometry: GEOMETRY,
+      }),
+    ).toBe(1200)
+  })
+})
+
+describe('withJobListScrollMark — widening the full-view link’s own return leg', () => {
+  const JOB_ID = 'jobAAAAAAAAA'
+
+  it('appends ?at= onto the return value, leaving the outer photo param untouched', () => {
+    const photoHref = planJobPhoto({
+      jobId: JOB_ID,
+      purpose: 'selfie',
+      imageId: 'imgAAAAAA1234',
+      returnTo: NINA_JOBS_HREF,
+    })
+    if (photoHref.kind !== 'ready') throw new Error('expected a ready plan')
+
+    const widened = withJobListScrollMark(photoHref.href, { jobId: JOB_ID, offset: -40 })
+    const url = new URL(widened, 'https://example.test')
+    expect(url.pathname).toBe('/nina/about')
+    expect(url.searchParams.get('photo')).toBe('chat.imgAAAAAA1234')
+
+    const returnUrl = new URL(url.searchParams.get('return')!, 'https://example.test')
+    expect(returnUrl.pathname).toBe(NINA_JOBS_HREF)
+    expect(returnUrl.searchParams.get(JOB_LIST_SCROLL_PARAM)).toBe(`${JOB_ID}~-40`)
+  })
+
+  it('the widened return value still passes an in-app-path check — a query string is not a second "/"', () => {
+    const widened = withJobListScrollMark(
+      `/nina/about?photo=chat.imgAAAAAA1234&return=${encodeURIComponent(NINA_JOBS_HREF)}`,
+      { jobId: JOB_ID, offset: 10 },
+    )
+    const returnValue = new URL(widened, 'https://example.test').searchParams.get('return')!
+    expect(returnValue.startsWith('/')).toBe(true)
+    expect(returnValue.startsWith('//')).toBe(false)
+    expect(returnValue.includes('\\')).toBe(false)
+  })
+
+  it('a photo href with no return leg at all is handed back unchanged — nothing to widen', () => {
+    const bare = '/nina/about?photo=chat.imgAAAAAA1234'
+    expect(withJobListScrollMark(bare, { jobId: JOB_ID, offset: 10 })).toBe(bare)
   })
 })
