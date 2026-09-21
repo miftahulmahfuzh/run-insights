@@ -372,6 +372,51 @@ describe('getNinaJobPhoto — the job→photo join (this set)', () => {
   })
 })
 
+describe('listNinaJobPhotoIds — getNinaJobPhoto, batched (this set)', () => {
+  it('answers an empty map with no query at all when there are no job ids', async () => {
+    await expect(queries.listNinaJobPhotoIds('u1', [])).resolves.toEqual(new Map())
+    expect(fake.queries).toHaveLength(0)
+  })
+
+  it('scopes by user and kind, and filters by turn_id — no join, unlike getNinaJobPhoto', async () => {
+    fake.enqueue([])
+    await queries.listNinaJobPhotoIds('u1', [JOB])
+
+    const { sql } = fake.only()
+    expect(sql).not.toContain('inner join')
+    const where = whereOf(sql)
+    expect(where).toContain('"nina_message_images"."user_id" = $')
+    expect(where).toContain('"nina_message_images"."kind" = $')
+    expect(where).toContain('"nina_message_images"."turn_id" in (')
+    expect(fake.only().params).toContain(JOB)
+  })
+
+  it('the same tiebreak as getNinaJobPhoto, and the first row seen per job id wins', async () => {
+    const OTHER_JOB = 'jobBBBBBBBBB'
+    fake.enqueue([
+      [JOB, 'imgNEWEST111'],
+      [JOB, 'imgOLDER1111'],
+      [OTHER_JOB, 'imgOnlyOne11'],
+    ])
+    const map = await queries.listNinaJobPhotoIds('u1', [JOB, OTHER_JOB])
+
+    const { sql } = fake.only()
+    expect(sql).toContain(
+      'order by "nina_message_images"."created_at" desc, "nina_message_images"."id" desc',
+    )
+    expect(map.get(JOB)).toBe('imgNEWEST111')
+    expect(map.get(OTHER_JOB)).toBe('imgOnlyOne11')
+    expect(map.size).toBe(2)
+  })
+
+  it('a job with no landed photograph is absent from the map, not present as null', async () => {
+    fake.enqueue([])
+    const map = await queries.listNinaJobPhotoIds('u1', [JOB])
+    expect(map.has(JOB)).toBe(false)
+    expect(map.get(JOB)).toBeUndefined()
+  })
+})
+
 describe('getNinaJobPhotoBubble — the earliest bubble carrying the photograph (this set)', () => {
   it('scopes BOTH tables, joins on the carrier message, and takes the original OR its references', async () => {
     fake.enqueue([])

@@ -294,6 +294,10 @@ export interface JobLike {
   attempts: number
   createdAt: Date
   latencyMs: number | null
+  /** The job's generated photograph id (`nina_message_images.id`), or `null` when none has landed
+   * yet — `planJobPhoto`'s `imageId` input. The caller resolves this in bulk for every row on the
+   * screen at once (`listNinaJobPhotoIds`), never with a query per row. */
+  imageId: string | null
 }
 
 export interface NinaJobListItem {
@@ -313,16 +317,20 @@ export interface NinaJobListItem {
   /** Whether a live clock is honest for this row. See D4. */
   open: boolean
   /**
-   * Whether R1's redo control is drawn on this row — `jobCanRedo(stage)`, resolved HERE so the
-   * only surface that draws it cannot disagree with the only test that asserts it.
+   * The row's full-view control, resolved HERE via `planJobPhoto` so the only surface that draws
+   * it (`NinaJobActions`) cannot disagree with the only test that asserts it.
    *
-   * REQUIRED and not optional, deliberately. Both callers of `toNinaJobListItems` go through that
-   * one function, so there is no third construction site for an optional field to be forgotten at,
-   * and `tsc` is the right thing to notice if one ever appears. `/nina/about` receives the field
-   * and ignores it: the controls are opt-in per SURFACE (`NinaJobList`'s `actions` prop), not per
-   * item, so a read-only surface simply never looks at it.
+   * Replaces the old `canRedo` field. A one-tap redo of a photo the runner cannot see on this
+   * screen turned out not to be a usable control; the row already carries the job id `planJobPhoto`
+   * needs to jump straight to the full-screen viewer instead, which is the thing a runner scanning
+   * this list actually wants to do with a finished row. Redo itself is not gone — it stays on
+   * `/nina/jobs/[id]`'s own retry button, gated by `jobCanRedo` directly.
+   *
+   * REQUIRED and not optional, deliberately, on the same reasoning `canRedo` stated: the one
+   * caller of `toNinaJobListItems` cannot forget it, and `tsc` is the right thing to notice if a
+   * second construction site ever appears.
    */
-  canRedo: boolean
+  photo: NinaJobPhoto
 }
 
 /**
@@ -356,7 +364,7 @@ export function toNinaJobListItems(rows: readonly JobLike[]): NinaJobListItem[] 
       errorLabel: stage === 'failed' ? jobErrorLabel(row.errorCode) : null,
       latencyMs: row.latencyMs,
       open: jobIsOpen(stage),
-      canRedo: jobCanRedo(stage),
+      photo: planJobPhoto({ jobId: row.id, purpose: row.purpose, imageId: row.imageId }),
     }
   })
 }

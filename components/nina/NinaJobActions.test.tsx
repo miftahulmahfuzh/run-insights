@@ -3,11 +3,10 @@ import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { redoNinaImageJob, deleteNinaImageJob } = vi.hoisted(() => ({
-  redoNinaImageJob: vi.fn(),
+const { deleteNinaImageJob } = vi.hoisted(() => ({
   deleteNinaImageJob: vi.fn(),
 }))
-vi.mock('@/lib/nina/jobActions', () => ({ redoNinaImageJob, deleteNinaImageJob }))
+vi.mock('@/lib/nina/jobActions', () => ({ deleteNinaImageJob }))
 
 // Real `ninaJobTitle`: the accessible name must be the SAME string the row renders — that one
 // string shared between two renderers is the whole point of this component's naming rule.
@@ -20,6 +19,11 @@ function deferred() {
   let resolve!: (value: Outcome) => void
   const promise = new Promise<Outcome>((res) => (resolve = res))
   return { promise, resolve }
+}
+
+const READY_PHOTO = {
+  kind: 'ready' as const,
+  href: '/nina/about?photo=chat.img-1&return=%2Fnina%2Fjobs%2Fjob-1',
 }
 
 function item(overrides?: Partial<NinaJobListItem>): NinaJobListItem {
@@ -35,77 +39,76 @@ function item(overrides?: Partial<NinaJobListItem>): NinaJobListItem {
     errorLabel: 'model overload',
     latencyMs: null,
     open: false,
-    canRedo: true,
+    photo: READY_PHOTO,
     ...overrides,
   }
 }
 
 describe('NinaJobActions', () => {
   beforeEach(() => {
-    redoNinaImageJob.mockReset().mockResolvedValue({ ok: true, reason: null })
     deleteNinaImageJob.mockReset().mockResolvedValue({ ok: true, reason: null })
   })
 
-  it('the redo control names the ROW, not just the verb', () => {
+  it('the full-view link names the ROW, not just the verb', () => {
     render(<NinaJobActions item={item()} />)
-    // Six rows of "Coba lagi" is a list a screen reader cannot navigate.
-    expect(screen.getByRole('button', { name: 'Coba lagi sore di kos' })).toBeInTheDocument()
+    // Six rows of "Lihat foto ukuran penuh" is a list a screen reader cannot navigate.
+    expect(
+      screen.getByRole('link', { name: 'Lihat foto ukuran penuh sore di kos' }),
+    ).toBeInTheDocument()
   })
 
   it('the name falls back with the title, because they are one string', () => {
     render(<NinaJobActions item={item({ scene: null, purpose: 'avatar' })} />)
     expect(
-      screen.getByRole('button', {
-        name: `Coba lagi ${ninaJobTitle({ scene: null, purpose: 'avatar' })}`,
+      screen.getByRole('link', {
+        name: `Lihat foto ukuran penuh ${ninaJobTitle({ scene: null, purpose: 'avatar' })}`,
       }),
     ).toBeInTheDocument()
   })
 
-  it('redo draws only where the server said a redo is possible; delete draws on EVERY row', () => {
-    const failed = render(<NinaJobActions item={item()} />)
-    expect(failed.getByRole('button', { name: 'Coba lagi sore di kos' })).toBeInTheDocument()
+  it('the full-view link draws only where the server resolved a photo; delete draws on EVERY row', () => {
+    const ready = render(<NinaJobActions item={item()} />)
     expect(
-      failed.getByRole('button', { name: 'Hapus sore di kos dari daftar' }),
+      ready.getByRole('link', { name: 'Lihat foto ukuran penuh sore di kos' }),
     ).toBeInTheDocument()
-    failed.unmount()
+    expect(ready.getByRole('button', { name: 'Hapus sore di kos dari daftar' })).toBeInTheDocument()
+    ready.unmount()
 
-    // A done row: keep-the-list-tidy is about the whole list, so the trash is not gated at all.
-    const done = render(<NinaJobActions item={item({ stage: 'done', canRedo: false })} />)
-    expect(done.queryByRole('button', { name: /Coba lagi/ })).not.toBeInTheDocument()
-    expect(done.getByRole('button', { name: 'Hapus sore di kos dari daftar' })).toBeInTheDocument()
+    // A job still drawing, or one whose photograph never landed: keep-the-list-tidy is about the
+    // whole list, so the trash is not gated at all.
+    const none = render(<NinaJobActions item={item({ photo: { kind: 'none' } })} />)
+    expect(none.queryByRole('link', { name: /Lihat foto ukuran penuh/ })).not.toBeInTheDocument()
+    expect(none.getByRole('button', { name: 'Hapus sore di kos dari daftar' })).toBeInTheDocument()
+  })
+
+  it('the full-view link points exactly at the resolved photo href', () => {
+    render(<NinaJobActions item={item()} />)
+    expect(
+      screen.getByRole('link', { name: 'Lihat foto ukuran penuh sore di kos' }),
+    ).toHaveAttribute('href', READY_PHOTO.href)
   })
 
   it('both controls hold the 44px floor — the safeguard in a scrolling list', () => {
     render(<NinaJobActions item={item()} />)
-    for (const button of screen.getAllByRole('button')) {
-      expect(button.className).toContain('size-11')
-    }
+    expect(screen.getByRole('link', { name: /Lihat foto ukuran penuh/ }).className).toContain(
+      'size-11',
+    )
+    expect(screen.getByRole('button', { name: /Hapus/ }).className).toContain('size-11')
   })
 
-  it('a redo asks to redo THIS job; success says nothing', async () => {
+  it('delete asks to delete THIS job; success says nothing', async () => {
     const user = userEvent.setup()
     render(<NinaJobActions item={item()} />)
-    await user.click(screen.getByRole('button', { name: 'Coba lagi sore di kos' }))
+    await user.click(screen.getByRole('button', { name: 'Hapus sore di kos dari daftar' }))
 
-    await waitFor(() => expect(redoNinaImageJob).toHaveBeenCalledWith({ jobId: 'job-1' }))
+    await waitFor(() => expect(deleteNinaImageJob).toHaveBeenCalledWith({ jobId: 'job-1' }))
     await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument())
   })
 
-  it('each refusal says its own sentence, announced as a status', async () => {
-    const user = userEvent.setup()
-    redoNinaImageJob.mockResolvedValue({ ok: false, reason: 'capped' })
-    render(<NinaJobActions item={item()} />)
-    await user.click(screen.getByRole('button', { name: 'Coba lagi sore di kos' }))
-
-    expect(await screen.findByRole('status')).toHaveTextContent(
-      'Jatah foto hari ini sudah habis. Coba lagi besok ya.',
-    )
-  })
-
-  it('delete refuses with the same words whichever button asked', async () => {
+  it('delete refuses with the same words whichever screen asked', async () => {
     const user = userEvent.setup()
     deleteNinaImageJob.mockResolvedValue({ ok: false, reason: 'not-found' })
-    render(<NinaJobActions item={item({ stage: 'done', canRedo: false })} />)
+    render(<NinaJobActions item={item()} />)
     await user.click(screen.getByRole('button', { name: 'Hapus sore di kos dari daftar' }))
 
     expect(await screen.findByRole('status')).toHaveTextContent('Job ini sudah nggak ada.')
@@ -113,34 +116,31 @@ describe('NinaJobActions', () => {
 
   it('a new attempt clears the previous refusal', async () => {
     const user = userEvent.setup()
-    redoNinaImageJob.mockResolvedValueOnce({ ok: false, reason: 'capped' })
+    deleteNinaImageJob.mockResolvedValueOnce({ ok: false, reason: 'not-found' })
     render(<NinaJobActions item={item()} />)
-    await user.click(screen.getByRole('button', { name: 'Coba lagi sore di kos' }))
+    await user.click(screen.getByRole('button', { name: 'Hapus sore di kos dari daftar' }))
     expect(await screen.findByRole('status')).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'Coba lagi sore di kos' }))
+    deleteNinaImageJob.mockResolvedValueOnce({ ok: true, reason: null })
+    await user.click(screen.getByRole('button', { name: 'Hapus sore di kos dari daftar' }))
     await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument())
   })
 
-  it('while the action is in flight both controls go busy and refuse a second tap', async () => {
+  it('while delete is in flight the trash goes busy and refuses a second tap', async () => {
     const user = userEvent.setup()
     const flight = deferred()
-    redoNinaImageJob.mockReturnValue(flight.promise)
+    deleteNinaImageJob.mockReturnValue(flight.promise)
     render(<NinaJobActions item={item()} />)
-    const redo = screen.getByRole('button', { name: 'Coba lagi sore di kos' })
     const trash = screen.getByRole('button', { name: 'Hapus sore di kos dari daftar' })
 
-    await user.click(redo)
-    await waitFor(() => expect(redo).toBeDisabled())
-    expect(redo).toHaveAttribute('aria-busy', 'true')
-    // `pending` is shared: the trash cannot fire a second mutation mid-flight either.
-    expect(trash).toBeDisabled()
+    await user.click(trash)
+    await waitFor(() => expect(trash).toBeDisabled())
+    expect(trash).toHaveAttribute('aria-busy', 'true')
 
     await act(async () => {
       flight.resolve({ ok: true, reason: null })
     })
-    await waitFor(() => expect(redo).toBeEnabled())
-    expect(redoNinaImageJob).toHaveBeenCalledTimes(1)
-    expect(deleteNinaImageJob).not.toHaveBeenCalled()
+    await waitFor(() => expect(trash).toBeEnabled())
+    expect(deleteNinaImageJob).toHaveBeenCalledTimes(1)
   })
 })

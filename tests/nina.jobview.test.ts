@@ -134,6 +134,7 @@ describe('toNinaJobListItems', () => {
     attempts: 1,
     createdAt: new Date('2026-09-06T03:02:31.897Z'),
     latencyMs: null,
+    imageId: null as string | null,
   }
 
   it('preserves the order it is given', () => {
@@ -162,26 +163,27 @@ describe('toNinaJobListItems', () => {
     expect(item!.href).toBe(ninaJobHref('aaaaaaaaaaaa'))
   })
 
-  it('offers a redo on the failed row and the done row, and on no other', () => {
+  it('resolves each row’s full-view link via planJobPhoto, threading the row’s own imageId through', () => {
     /*
-     * The two derivations that share one `stage`: a row that shows a failure sentence is exactly a
-     * row that offers a redo. Coupling them here rather than in the component is the point of
-     * `jobCanRedo` existing at all — `vitest` is `environment: 'node'` and cannot reach a rule
-     * living inside `NinaJobActions`.
+     * Coupling this here rather than in the component is the point of `planJobPhoto` existing at
+     * all — `vitest` is `environment: 'node'` and cannot reach a rule living inside
+     * `NinaJobActions`. `stage` plays no part any more: unlike the old `canRedo`, the link's
+     * presence depends only on whether a photograph has landed and on the job's purpose.
      */
-    const [open] = toNinaJobListItems([base])
-    expect(open!.canRedo).toBe(false)
+    const [withPhoto] = toNinaJobListItems([{ ...base, imageId: 'imgAAAAAA1234' }])
+    expect(withPhoto!.photo).toEqual(
+      planJobPhoto({ jobId: base.id, purpose: base.purpose, imageId: 'imgAAAAAA1234' }),
+    )
 
-    const [failed] = toNinaJobListItems([{ ...base, status: 'failed', errorCode: 'stale' }])
-    expect(failed!.canRedo).toBe(true)
-    expect(failed!.errorLabel).not.toBeNull()
+    const [withoutPhoto] = toNinaJobListItems([{ ...base, imageId: null }])
+    expect(withoutPhoto!.photo).toEqual({ kind: 'none' })
 
-    const [done] = toNinaJobListItems([{ ...base, status: 'ok', errorCode: null }])
-    expect(done!.canRedo).toBe(true)
+    const [avatar] = toNinaJobListItems([{ ...base, purpose: 'avatar', imageId: 'imgAAAAAA1234' }])
+    expect(avatar!.photo).toEqual({ kind: 'none' })
   })
 
   it('titles a row by its scene, and by its purpose when it has none', () => {
-    /* The row's visible title and the redo button's accessible name are this one string. Two
+    /* The row's visible title and the full-view link's accessible name are this one string. Two
      * copies of it would drift, and the drift would be invisible to anyone who can see the
      * screen. */
     const [item] = toNinaJobListItems([base])

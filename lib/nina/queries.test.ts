@@ -78,6 +78,10 @@ import * as barrel from '@/lib/nina/queries'
  * `kind = 'generated'` alone. `generatedChatPhotoScope` itself is unchanged and keeps its own
  * callers; `listNinaPhotoReferences` and `resolveNinaPhotoReference` (`queries/imageprefs.ts`)
  * repoint to the new scope.
+ *
+ * The 2026-09-21 "full-view link replaces redo" follow-up takes it 109 → 110: adds
+ * `listNinaJobPhotoIds`, `getNinaJobPhoto` batched over every row `/nina/jobs`'s list renders, so
+ * the new per-row link costs the screen one query total rather than one per row.
  */
 const BARREL_VALUE_EXPORTS = [
   'adoptNinaMessageImage',
@@ -170,6 +174,8 @@ const BARREL_VALUE_EXPORTS = [
   // the SAME commit's removal of `listNinaMessageImages` (its one caller moved to the
   // already-paginated `listNinaMediaPhotos`, leaving it with no caller left).
   'listNinaAvatarsPage',
+  // 2026-09-21 "full-view link replaces redo": `getNinaJobPhoto`, batched — see this file's header.
+  'listNinaJobPhotoIds',
   'listNinaMediaPhotos',
   'listNinaMemoryFacts',
   // media-album-unified-search phase 2 (R1/R2): the MEDIA twin of `listNinaAvatarDescribeBacklog`

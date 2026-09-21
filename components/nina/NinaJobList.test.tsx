@@ -32,7 +32,7 @@ function item(overrides?: Partial<NinaJobListItem>): NinaJobListItem {
     errorLabel: null,
     latencyMs: 74_000,
     open: false,
-    canRedo: false,
+    photo: { kind: 'none' },
     ...overrides,
   }
 }

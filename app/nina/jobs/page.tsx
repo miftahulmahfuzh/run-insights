@@ -3,14 +3,19 @@ import { AppShell, ScreenHeader } from '@/components/ui/AppShell'
 import { requireUserId } from '@/lib/auth/requireUserId'
 import { listNinaImageJobs } from '@/lib/nina/imagejobs'
 import { toNinaJobListItems } from '@/lib/nina/jobview'
+import { listNinaJobPhotoIds } from '@/lib/nina/queries'
 
 /**
  * `/nina/jobs` — R1's tracking page: every image generation, newest first, with its stage, its
  * elapsed time and its error at a glance.
  *
- * ── ONE INDEXED READ AND NOTHING ELSE ─────────────────────────────────────────────────────────
+ * ── TWO INDEXED READS, BOTH BATCHED, AND NOTHING WRITTEN ─────────────────────────────────────
  * `listNinaImageJobs` reads `nina_turns_user_created_idx` with `kind` as a heap filter and a real
- * `LIMIT`. No model call, so invariant 4 is satisfied structurally — there is nothing here for
+ * `LIMIT`. `listNinaJobPhotoIds` then resolves every one of those rows' generated photographs in
+ * ONE second query (`nina_message_images.turn_id IN (...)`, scoped by `user_id`), so the full-view
+ * link on each row costs the screen one extra round trip total, never one per row — see that
+ * function's own header for why the join `getNinaJobPhoto` uses per job is avoidable here. No
+ * model call either way, so invariant 4 is satisfied structurally — there is nothing here for
  * `scripts/check-llm-payload-boundary.mjs` to object to — and `app/nina/about/page.tsx` is the
  * precedent for the whole shape.
  *
@@ -23,36 +28,28 @@ import { toNinaJobListItems } from '@/lib/nina/jobview'
  * skeleton would flash and be replaced. One at `app/nina/` would wrap the conversation too, which
  * is the specific thing that page declined to impose on a route it did not own.
  *
- * ── `maxDuration = 300`, AND IT USED TO SAY THE OPPOSITE ──────────────────────────────────────
- * This block used to argue that the export would be cargo, on the true premise that the route
- * "calls no action and awaits no model". **R1 made that premise false.** `NinaJobActions` calls
- * `redoNinaImageJob`, which registers a generation in `after()`; a Server Action's timeout is the
- * page SEGMENT's — Next 16.3.1's `maxDuration` reference: *"If using Server Actions, set the
- * `maxDuration` at the page level to change the default timeout of all Server Actions used on the
- * page"* — and `after()` inherits the same budget: *"`after` will run for the platform's default
- * or configured max duration of your route"*.
- *
- * `lib/nina/imagerun.ts`'s header predicted this exact edit: `app/nina/page.tsx` and
- * `app/api/cron/nina/route.ts` are the two segments that can start a generation, and *"a third
- * caller would need the same line"*. This is the third caller. Without it the platform default
- * kills the invocation partway through a 78 s generation and the runner gets a job that is
- * `pending` forever until a sweep apologises for it — which is the failure this whole feature
- * exists to let him recover from.
- *
- * See `app/nina/page.tsx`'s own `maxDuration` block for why the number is 300 and not 60, and for
- * why it is a LITERAL: segment config exports are statically analysed at build time and an
- * imported constant is not a value the analyser can see.
+ * ── NO `maxDuration` HERE, AND IT USED TO CARRY ONE ───────────────────────────────────────────
+ * R1 shipped `maxDuration = 300` on this segment because `NinaJobActions` called
+ * `redoNinaImageJob`, which registers a generation in `after()` — a Server Action's timeout is the
+ * page SEGMENT's, and `after()` inherits it. That control is gone from this screen: R2 (see
+ * `NinaJobActions.tsx`'s header) swapped the redo button for a full-view link, so this list's only
+ * remaining mutation is `deleteNinaImageJob`, a soft-delete `UPDATE` with nothing behind it in
+ * `after()`. Nothing on this segment starts a generation any more, so the export goes with the
+ * call that justified it. Redo itself is unaffected — it still runs from `/nina/jobs/[id]`, whose
+ * own `maxDuration = 300` this page never shared and does not need.
  *
  * ── `nowMs` IS READ ONCE, HERE ────────────────────────────────────────────────────────────────
  * One reading of the clock for this render, shared by every ticking row, so two rows a millisecond
  * apart cannot show two different elapsed times for jobs opened in the same second.
  * `app/nina/page.tsx` hoists `todayInJakarta()` out of `<ChatScreen>` for exactly this reason.
  */
-export const maxDuration = 300
-
 export default async function NinaJobsPage() {
   const userId = await requireUserId()
   const jobs = await listNinaImageJobs(userId)
+  const photoIds = await listNinaJobPhotoIds(
+    userId,
+    jobs.map((job) => job.id),
+  )
 
   /*
    * ── `react-hooks/purity` IS A FALSE POSITIVE ON AN ASYNC SERVER COMPONENT, AND IT IS DISABLED
@@ -76,7 +73,9 @@ export default async function NinaJobsPage() {
     <AppShell>
       <ScreenHeader title="Proses foto" />
       <NinaJobList
-        items={toNinaJobListItems(jobs)}
+        items={toNinaJobListItems(
+          jobs.map((job) => ({ ...job, imageId: photoIds.get(job.id) ?? null })),
+        )}
         nowMs={nowMs}
         emptyText="Belum ada foto yang pernah digenerate. Minta Nina kirim satu di chat."
         /* The one caller that sets it. `components/nina/NinaAboutScreen.tsx` renders the same

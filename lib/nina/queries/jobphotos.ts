@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, isNotNull, or } from 'drizzle-orm'
+import { and, asc, desc, eq, gte, inArray, isNotNull, or } from 'drizzle-orm'
 
 import { db } from '@/lib/db'
 import { ninaAvatars, ninaMessageImages, ninaMessages } from '@/lib/db/schema'
@@ -246,6 +246,50 @@ export async function getNinaJobPhotoBubble(
     .orderBy(asc(ninaMessages.seq), asc(ninaMessageImages.id))
     .limit(1)
   return rows[0] ?? null
+}
+
+/**
+ * **`getNinaJobPhoto`, batched — every job's photograph id in one query, for `/nina/jobs`'s
+ * list.** That function's own join through `nina_messages` predates `nina_message_images.turn_id`
+ * (`lib/db/schema/nina/chat.ts`: "written by `finishSelfie` at insert time, copied … rather than
+ * joined … at read time"), and a list rendering sixty rows has no business repeating that join
+ * once per row when the column it exists for answers the same question directly.
+ *
+ * `IN (...)` over the caller's own job ids — `/nina/jobs`' page reads `listNinaImageJobs` first
+ * and hands this function exactly those ids, never a second, independent list — scoped by
+ * `user_id` and `kind = 'generated'`, the same two predicates `getNinaJobPhoto` uses. One round
+ * trip for the whole screen instead of one per row.
+ *
+ * The `Map` carries one entry per job that has a landed photograph. A job with none — still
+ * drawing, failed, or an avatar job (`finishAvatar` writes no `nina_message_images` row with this
+ * `turn_id` at all) — is simply absent, and the caller reads that as `null` the same way a missing
+ * `Map` key always does. `(created_at desc, id desc)` is `getNinaJobPhoto`'s own tiebreak, kept
+ * for a job that somehow carries two: the first row seen per job id wins.
+ */
+export async function listNinaJobPhotoIds(
+  userId: string,
+  jobIds: readonly string[],
+): Promise<ReadonlyMap<string, string>> {
+  if (jobIds.length === 0) return new Map()
+
+  const rows = await db
+    .select({ jobId: ninaMessageImages.turnId, imageId: ninaMessageImages.id })
+    .from(ninaMessageImages)
+    .where(
+      and(
+        eq(ninaMessageImages.userId, userId),
+        eq(ninaMessageImages.kind, 'generated'),
+        inArray(ninaMessageImages.turnId, [...jobIds]),
+      ),
+    )
+    .orderBy(desc(ninaMessageImages.createdAt), desc(ninaMessageImages.id))
+
+  const map = new Map<string, string>()
+  for (const row of rows) {
+    if (row.jobId === null) continue
+    if (!map.has(row.jobId)) map.set(row.jobId, row.imageId)
+  }
+  return map
 }
 
 /* ============================================================================

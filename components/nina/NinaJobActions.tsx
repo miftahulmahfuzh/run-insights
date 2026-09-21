@@ -1,80 +1,54 @@
 'use client'
 
+import Link from 'next/link'
 import * as React from 'react'
 
-import {
-  deleteNinaImageJob,
-  redoNinaImageJob,
-  type NinaJobActionResult,
-} from '@/lib/nina/jobActions'
+import { deleteNinaImageJob, type NinaJobActionResult } from '@/lib/nina/jobActions'
 import { ninaJobTitle, type NinaJobListItem, type NinaJobRefusal } from '@/lib/nina/jobview'
 
 /**
- * **R1's redo control — one tap, no dialog — and the slot phase 2 puts its delete button in.**
+ * **R2's row controls: the full-view link to the job's generated photograph, and the delete
+ * button beside it.**
  *
- * ── ONE TAP, AND THE PRECEDENT IT OVERRIDES ON PURPOSE ────────────────────────────────────────
- * `components/nina/SessionRow.tsx` used to guard its remove behind `⋯` → Hapus → Hapus chat, and
- * its header argued why at length: that control hard-deletes a conversation and its messages — its
- * photographs survive it since R1 — permanently, with no undo. **None of that transferred here**,
- * and the user said so first: *"we dont need confirmation message to execute them"*. A redo opens
- * one row and spends one of six generations a day, and what it produces is a photograph he asked
- * for. So: no menu, no panel, no second tap, and no `window.confirm` — which `RetryExtraction`
- * already refuses on iOS grounds anyway ("a system dialog that reads as an error").
+ * ── WHY THE FULL-VIEW LINK REPLACED R1's REDO BUTTON ──────────────────────────────────────────
+ * R1 shipped a one-tap redo here first ("clicking this will redo the failed job"). In practice a
+ * redo the runner cannot see the result of from this screen was not a control worth the tap: he
+ * still has to open the row to find out what changed. The row already carries everything
+ * `planJobPhoto` needs to jump straight to the same full-screen viewer the detail page opens, so
+ * R2 swapped the verb — one tap now shows the photograph instead of re-running the job. Redo did
+ * not disappear: it is still `/nina/jobs/[id]`'s own retry button, gated by `jobCanRedo` there.
  *
- * Task #136 then applied that same instruction to `SessionRow` itself, so the panel this file
- * argued past no longer exists — that row is `⋯` → Hapus and deletes on the tap. The STAKES still
- * differ, and `deleteNinaImageJob`'s header keeps that reasoning because it is what would have
- * justified a divergence: a session removal destroys the conversation irreversibly (its
- * photographs excepted, since R1), and this writes a nullable column. What is gone is the
- * divergence, not the argument.
- *
- * The mis-tap protection that IS here is the one that costs nothing: `disabled={pending}`, so a
- * double-tap cannot open two jobs. After the list refreshes he can tap again, and that is a second
- * deliberate act rather than a bug — the cap is what bounds it, on the server.
+ * ── WHY IT IS A LINK, NOT A BUTTON, AND CARRIES NO `pending` ──────────────────────────────────
+ * It navigates; it mutates nothing. `deleteNinaImageJob` is the only action left in this
+ * component, so `pending`/`note` below exist for that control alone — a second, unrelated
+ * navigation control does not need to freeze while a delete is in flight.
  *
  * ── WHY IT IS A SIBLING OF THE ROW'S LINK AND NOT A CHILD ─────────────────────────────────────
- * A `<button>` inside an `<a>` is invalid HTML and breaks the link's hit testing —
- * `SessionRow`'s recorded rule, one list over. So `NinaJobList` makes the row a flex line and this
- * component is the second item in it. It renders a FRAGMENT of two flex children, not one wrapper:
- * the icon cluster, which sits on the row's own line, and the refusal note, which carries `w-full`
- * so the parent's `flex-wrap` drops it onto a line of its own underneath. A sentence squeezed into
- * a 44px column would be unreadable, and an absolutely-positioned one would need a z-index over
- * rows this component does not own.
+ * A nested `<a>` breaks the outer link's hit testing — `SessionRow`'s recorded rule, one list
+ * over. `NinaJobList` makes the row a flex line and this component is the second item in it: a
+ * fragment of flex children, not one wrapper — the icon cluster, on the row's own line, and the
+ * refusal note, which carries `w-full` so the parent's `flex-wrap` drops it onto its own line
+ * underneath.
  *
- * ── THE ICON IS HAND-WRITTEN SVG ──────────────────────────────────────────────────────────────
+ * ── THE ICONS ARE HAND-WRITTEN SVG ────────────────────────────────────────────────────────────
  * `SessionRow`'s `PinIcon` and `TabBar`'s glyphs, for `TabBar`'s stated reason — "four glyphs is
- * not worth a package, and an icon font would be a second webfont on a page whose first is already
- * Poppins". `aria-hidden` on the path, because the accessible name belongs on the button.
+ * not worth a package, and an icon font would be a second webfont on a page whose first is
+ * already Poppins". `aria-hidden` on the path, because the accessible name belongs on the link
+ * or button.
  *
  * ── THE ACCESSIBLE NAME NAMES THE ROW ─────────────────────────────────────────────────────────
- * `Coba lagi sore di kos`, not `Coba lagi`. Six rows of "Coba lagi" is a list a screen reader
- * cannot navigate. `ninaJobTitle` is the same pure function `NinaJobList` renders as the visible
- * title, so the two are one string and cannot drift.
+ * `Lihat foto ukuran penuh sore di kos`, not `Lihat foto ukuran penuh`. Six rows of the same
+ * generic name is a list a screen reader cannot navigate. `ninaJobTitle` is the same pure
+ * function `NinaJobList` renders as the visible title, so the two are one string and cannot
+ * drift.
  *
  * ── THE SERVER OWNS THE REFUSAL; THIS FILE OWNS THE WORDS ─────────────────────────────────────
- * `NinaJobActionResult` is `{ ok, reason }` and carries no prose — `SessionRow` renders its own
- * sentence for exactly this reason, and `FolderMenu`'s rule is the one both obey: "there is
- * exactly one place a rule lives and no chance of a control that permits what the action refuses".
- * What differs from `SessionRow` is one field: `reason` is a discriminant, so `capped` can say the
- * thing a runner actually needs to hear rather than a generic "tidak bisa".
- *
- * ── WHAT PHASE 2 APPENDS, AND WHERE ───────────────────────────────────────────────────────────
- * A second `<button>` inside the SAME `<span>` cluster below, calling `run(() =>
- * deleteNinaImageJob({ jobId: item.id }))`. It needs nothing else: `run()` already owns the
- * pending flag and the note for both controls, `NOTE` is already keyed by the whole
- * `NinaJobRefusal` union, and the cluster is already a flex container. Nothing in this file has to
- * be restructured for it.
+ * `NinaJobActionResult` is `{ ok, reason }` and carries no prose — `SessionRow`'s header records
+ * why ("there is exactly one place a rule lives and no chance of a control that permits what the
+ * action refuses"). `NOTE` below only has one caller left in this file (delete), but stays
+ * exported: `NinaJobDetail.tsx`'s own retry button renders the identical Indonesian sentence for
+ * the redo refusals it still needs, rather than a second copy that can drift.
  */
-
-/**
- * Every refusal, in his language. A `Record` over the whole union so `tsc` fails the day a fifth
- * refusal appears without a sentence — the property `NINA_JOB_JUMP_NOTE` has one module over.
- *
- * Phase 2's delete reuses `not-found` verbatim: "the row is not there any more" is the same fact
- * whichever button asked.
- */
-/** Exported so `NinaJobDetail.tsx`'s retry button — same action, same refusals, a different
- * screen — renders the identical Indonesian sentence instead of a second copy that can drift. */
 export const NOTE: Record<NinaJobRefusal, string> = {
   'not-found': 'Job ini sudah nggak ada.',
   'in-progress': 'Job ini masih jalan, tungguin dulu ya.',
@@ -87,12 +61,9 @@ export function NinaJobActions({ item }: { item: NinaJobListItem }) {
   const [pending, startTransition] = React.useTransition()
 
   /**
-   * Every control's submit, so the pending flag and the note cannot get out of step —
-   * `SessionRow`'s `run()`, same reason and same shape. Phase 2's delete button calls this too.
-   *
-   * A success clears the note and does nothing else: `revalidatePath` on the server has already
-   * re-rendered the list this control is standing in, so there is no navigation to perform and no
-   * local state to reconcile.
+   * The delete button's submit. `SessionRow`'s `run()`, same shape, one caller now instead of two:
+   * a success clears the note and does nothing else, because `revalidatePath` on the server has
+   * already re-rendered the list this control is standing in.
    */
   function run(action: () => Promise<NinaJobActionResult>) {
     setNote(null)
@@ -112,37 +83,32 @@ export function NinaJobActions({ item }: { item: NinaJobListItem }) {
   return (
     <>
       <span className="flex shrink-0 items-center gap-0.5">
-        {item.canRedo && (
-          <button
-            type="button"
-            aria-label={`Coba lagi ${title}`}
-            aria-busy={pending}
-            disabled={pending}
-            onClick={() => run(() => redoNinaImageJob({ jobId: item.id }))}
-            className="grid size-11 shrink-0 place-items-center rounded-pill text-ink-3 disabled:opacity-40"
+        {item.photo.kind === 'ready' && (
+          <Link
+            href={item.photo.href}
+            aria-label={`Lihat foto ukuran penuh ${title}`}
+            className="grid size-11 shrink-0 place-items-center rounded-pill text-ink-3"
           >
-            <RedoIcon />
-          </button>
+            <Maximize2Icon />
+          </Link>
         )}
         {/*
           R2's control, and it renders on EVERY row — a done job, a queued job and a failed job all
           get it, because "so i can keep the job list tidy and pristine" is about the whole list.
-          Redo is gated above (failed or done only, never a job still in progress); this one is not
-          gated at all.
+          The full-view link above is gated on `item.photo.kind === 'ready'` instead — a job whose
+          photograph has not landed yet has nothing to show.
 
           A SIBLING of the row's <Link>, never a child: `SessionRow` records the rule ("a <button>
-          inside an <a> is invalid and breaks the link's hit testing"), and phase 1's slot is where
-          that separation already lives.
+          inside an <a> is invalid and breaks the link's hit testing"), and this row's slot is
+          where that separation already lives.
 
-          `size-11` is 44px — `Button.tsx`'s `md`, "the iOS minimum tap target, never less" — which
-          matters more here than anywhere else on the screen: this is a one-tap mutation sitting in
-          a vertically-scrolling list, so the target has to be big enough that a scroll never ends
-          on it by accident. That is the safeguard the confirmation dialog would have been, spent on
-          the input instead of on a second screen.
+          `size-11` is 44px — `Button.tsx`'s `md`, "the iOS minimum tap target, never less" —
+          which matters more here than anywhere else on the screen: this is a one-tap mutation
+          sitting in a vertically-scrolling list, so the target has to be big enough that a scroll
+          never ends on it by accident.
 
-          No `window.confirm`, no panel, no second tap. `SessionRow`'s R11 lost its confirmation to
-          #136 and now does the same; see `deleteNinaImageJob`'s header for the stakes that still
-          separate the two controls.
+          No `window.confirm`, no panel, no second tap. His own words: *"we dont need confirmation
+          message to execute them"*.
         */}
         <button
           type="button"
@@ -171,29 +137,25 @@ export function NinaJobActions({ item }: { item: NinaJobListItem }) {
   )
 }
 
-/**
- * A clockwise arrow that does not quite close, with a head at the top right — the shape every
- * "run it again" control has worn since a refresh button was a thing. 18px, `currentColor`, so the
- * button's `text-ink-3` and its `disabled:opacity-40` are the only styling it needs.
- *
- * `aria-hidden`, because the button already carries the name. `PinIcon`'s arrangement exactly.
- */
-function RedoIcon() {
+/** "Lihat foto ukuran penuh" — the job's photograph in the full-screen viewer. Lucide's
+ * `maximize-2`, verbatim — `NinaJobDetail.tsx`'s own copy of the same glyph, a different screen.
+ * `aria-hidden`, because the link already carries the accessible name. */
+function Maximize2Icon() {
   return (
-    <svg viewBox="0 0 24 24" className="size-[18px]" fill="none" aria-hidden="true">
-      <path
-        d="M20 12a8 8 0 1 1-2.34-5.66"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-      />
-      <path
-        d="M20 4v5h-5"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+    <svg
+      viewBox="0 0 24 24"
+      className="size-[18px]"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M15 3h6v6" />
+      <path d="m21 3-7 7" />
+      <path d="m3 21 7-7" />
+      <path d="M9 21H3v-6" />
     </svg>
   )
 }

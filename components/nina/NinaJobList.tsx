@@ -71,7 +71,8 @@ export function NinaJobList({
   /** What absence says on this surface. */
   emptyText: string
   /**
-   * Draw the per-row mutation controls (R1's redo; phase 2's delete).
+   * Draw the per-row controls: R2's full-view link to the row's generated photograph (replacing
+   * R1's redo), and phase 2's delete beside it.
    *
    * **Absent by default, and only `app/nina/jobs/page.tsx` sets it.** See the header. Optional
    * rather than required precisely so `NinaAboutScreen` compiles untouched — the read-only surface
