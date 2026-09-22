@@ -173,6 +173,7 @@ export function ImageGenTestPanel({ dirty = false }: { dirty?: boolean }) {
   const capped = quotaLeft !== null && quotaLeft <= 0
   const job = view?.job ?? null
   const reason = job === null ? null : imageTestReason(job.errorCode)
+  const promptText = job?.prompt ?? view?.promptPreview ?? ''
 
   return (
     <section className="mb-8 rounded-card border border-rule bg-card px-5">
@@ -262,7 +263,10 @@ export function ImageGenTestPanel({ dirty = false }: { dirty?: boolean }) {
 
       {/* ── the prompt as sent ────────────────────────────────────────────────────────────── */}
       <div className="pb-5">
-        <h3 className="text-[13px] font-semibold text-ink">Prompt as sent</h3>
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="text-[13px] font-semibold text-ink">Prompt as sent</h3>
+          <CopyPromptButton text={promptText} />
+        </div>
         <p className="mb-1 max-w-[70ch] text-[11px] font-medium text-ink-3">
           Assembled from the <strong>saved</strong> settings by the same function the button uses.{' '}
           {view?.referenceUrl == null
@@ -270,9 +274,94 @@ export function ImageGenTestPanel({ dirty = false }: { dirty?: boolean }) {
             : 'Anchored to the selected photo reference.'}
         </p>
         <pre className="mt-3 max-h-[420px] overflow-auto text-[12px] leading-relaxed whitespace-pre-wrap text-ink-2">
-          {job?.prompt ?? view?.promptPreview ?? ''}
+          {promptText}
         </pre>
       </div>
     </section>
+  )
+}
+
+/** How long the checkmark stands in for the copy glyph, same hold `ShareButton.tsx` uses. */
+const COPY_HOLD_MS = 2000
+
+/**
+ * Icon-only copy button for the "Prompt as sent" preview — `ShareButton.tsx`'s copy-and-revert
+ * shape without the `navigator.share()` branch, since this text never leaves the clipboard.
+ */
+function CopyPromptButton({ text }: { text: string }) {
+  const [status, setStatus] = React.useState<'idle' | 'copied' | 'failed'>('idle')
+
+  React.useEffect(() => {
+    if (status === 'idle') return
+    const timer = window.setTimeout(() => setStatus('idle'), COPY_HOLD_MS)
+    return () => window.clearTimeout(timer)
+  }, [status])
+
+  async function onClick() {
+    try {
+      await navigator.clipboard.writeText(text)
+      setStatus('copied')
+    } catch {
+      setStatus('failed')
+    }
+  }
+
+  const label = status === 'copied' ? 'Copied' : 'Copy the prompt as sent'
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => void onClick()}
+        disabled={text === ''}
+        aria-label={label}
+        title={label}
+        className="-m-1 inline-flex shrink-0 p-1 text-accent disabled:opacity-40"
+      >
+        {status === 'copied' ? <CheckIcon /> : <CopyIcon />}
+      </button>
+      <span role="status" aria-live="polite" className="sr-only">
+        {status === 'copied' ? 'Copied' : status === 'failed' ? 'Could not copy' : ''}
+      </span>
+    </>
+  )
+}
+
+/** Two overlapping rectangles — the standard "copy" glyph, same line weight as `ShareButton.tsx`. */
+function CopyIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="size-5" fill="none" aria-hidden="true">
+      <rect
+        x="8.5"
+        y="8.5"
+        width="11"
+        height="11"
+        rx="1.8"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      />
+      <path
+        d="M15.5 8.5V6.3a1.8 1.8 0 0 0-1.8-1.8H6.3a1.8 1.8 0 0 0-1.8 1.8v7.4a1.8 1.8 0 0 0 1.8 1.8h2.2"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+/** The copied confirmation, for {@link COPY_HOLD_MS}. Same box as `CopyIcon`, so the row never shifts. */
+function CheckIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="size-5" fill="none" aria-hidden="true">
+      <path
+        d="m5 12.5 4.5 4.5L19 7"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   )
 }

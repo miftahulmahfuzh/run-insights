@@ -1252,17 +1252,17 @@ describe('the prompt', () => {
    * THE BLOCK ORDER
    * ──────────────────────────────────────────────────────────────────────────────────────────*/
 
-  it('the block order is SUBJECT, FOCUS, POSE, outfit, VENUE, TIME, SCENE, ENERGY', () => {
+  it('the block order is SUBJECT, FOCUS, outfit, POSE, VENUE, TIME, SCENE, ENERGY', () => {
     /*
      * Every position is argued in `buildNinaImagePrompt`'s docblock. The two that were already
      * load-bearing are unchanged: POSE before SCENE because it is a standing property of the
      * subject, ENERGY after SCENE because it refines this photograph (the
      * `gen_badge_art.py --note` precedent). VENUE and TIME go before SCENE so the model reads
      * general-then-specific and a scene that names its own place wins. The outfit line moved
-     * (2026-09-22) to sit immediately above VENUE, no longer beside the face paragraph. NOTES is
-     * asserted separately below, with no tuning, because a non-empty NOTES now suppresses both
-     * POSE AND PRESENCE and SCENE entirely (`ninaPhotoPresence`'s header, and `buildNinaImagePrompt`'s
-     * block 7) — NOTES can never coexist with either in one prompt.
+     * (2026-09-22, second move) to sit immediately below FOCUS, ahead of the negative prompt and
+     * the pose. NOTES is asserted separately below, with no tuning, because a non-empty NOTES now
+     * suppresses both POSE AND PRESENCE and SCENE entirely (`ninaPhotoPresence`'s header, and
+     * `buildNinaImagePrompt`'s block 7) — NOTES can never coexist with either in one prompt.
      */
     const prompt = buildNinaImagePrompt({
       purpose: 'selfie',
@@ -1278,8 +1278,8 @@ describe('the prompt', () => {
     const order = [
       'SUBJECT:',
       'FOCUS:',
-      'POSE AND PRESENCE:',
       'Her outfit for this photograph:',
+      'POSE AND PRESENCE:',
       'VENUE:',
       'TIME:',
       'SCENE:',

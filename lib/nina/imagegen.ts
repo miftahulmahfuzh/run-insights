@@ -609,7 +609,7 @@ const NINA_NEGATIVE_PROMPT_LINE = `Negative Prompt: skinny arms, bony arms, thin
  * (2026-09-18, job `tyFdHavh_jmE`) needed the same explicit treatment the calf/thigh ratio got, for
  * the reasons in its own header in `persona/appearance.ts`.
  *
- * `NINA_NEGATIVE_PROMPT_LINE` (2026-09-22) sits right after the `FOCUS:` line, static and
+ * `NINA_NEGATIVE_PROMPT_LINE` (2026-09-22) sits right after the outfit line, static and
  * unconditional — see its own header for why it is prose, not a second API parameter.
  *
  * The face paragraph IS a token, unlike the body: `NINA_FACE_TEMPLATE_LINE` (`lib/nina/persona/appearance.ts`)
@@ -644,13 +644,13 @@ export const NINA_PROMPT_TEMPLATE_DEFAULT = [
   '',
   'FOCUS: Emphasise {{focus}} above everything else in this photograph.',
   '',
+  'Her outfit for this photograph: {{wardrobe}}',
+  '',
   NINA_NEGATIVE_PROMPT_LINE,
   '',
   '{{faceLock}}',
   '',
   'POSE AND PRESENCE: {{presence}}',
-  '',
-  'Her outfit for this photograph: {{wardrobe}}',
   '',
   'VENUE: {{venue}}',
   '',
@@ -750,10 +750,14 @@ function renderNinaImagePrompt(template: string, blocks: Record<string, string>)
  *  3. **`FOCUS:`** — emphasis on the subject just described, so it sits immediately after the
  *     sentences it amplifies and BEFORE the pose: what to emphasise decides how she stands,
  *     rather than the other way round.
- *  3a. **the negative prompt (`NINA_NEGATIVE_PROMPT_LINE`, 2026-09-22)** — static, right after
- *      `FOCUS:`, mirroring where the source prompt this template folded in put it. Unconditional
- *      and not a block any pref can suppress — see that constant's own header.
- *  3b. **the face lock** — immediately after the negative prompt, since it is conditional on the
+ *  3a. **the outfit line (`Her outfit for this photograph: {{wardrobe}}`)** — moved here
+ *      (2026-09-22, second move) to sit immediately BELOW `FOCUS:`, ahead of the negative prompt
+ *      and the pose. What she is wearing reads as the next fact about her that the emphasis line
+ *      might itself be about, rather than a note grouped with the scene's where/when.
+ *  3b. **the negative prompt (`NINA_NEGATIVE_PROMPT_LINE`, 2026-09-22)** — static, right after
+ *      the outfit line, mirroring where the source prompt this template folded in put it.
+ *      Unconditional and not a block any pref can suppress — see that constant's own header.
+ *  3c. **the face lock** — immediately after the negative prompt, since it is conditional on the
  *      SAME Face tick and is the last word on who she is before the pose is decided. Empty unless
  *      Face is ticked AND a photo reference actually reached the payload (`NINA_FACE_LOCK_SENTENCE`).
  *  4. **`POSE AND PRESENCE:`** — before the scene, because it is a standing property of the
@@ -761,11 +765,6 @@ function renderNinaImagePrompt(template: string, blocks: Record<string, string>)
  *     ordering assertion that has always been in `tests/nina.imagerecipe.test.ts`. As of
  *     2026-09-22, `ninaPhotoPresence` is not even called when `NOTES` is non-empty — see its own
  *     header for why a hand-typed NOTES makes this block redundant rather than complementary.
- *  4b. **the outfit line (`Her outfit for this photograph: {{wardrobe}}`)** — moved here
- *      (2026-09-22) from right after the face paragraph, so it sits immediately ABOVE `VENUE:`
- *      instead of inside the body/face run. What she is wearing reads as circumstantial detail
- *      about THIS photograph, grouped with where and when it was taken, not a standing physical
- *      fact about her the way the body/face paragraphs are.
  *  5. **`VENUE:`** then 6. **`TIME:`** — the operator's standing opinion about where and when she
  *     is photographed. They go immediately BEFORE `SCENE:` so the model reads
  *     general-then-specific: a scene that names its own place is the later and more specific
