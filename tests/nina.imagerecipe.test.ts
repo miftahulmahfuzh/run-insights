@@ -1252,14 +1252,16 @@ describe('the prompt', () => {
    * THE BLOCK ORDER
    * ──────────────────────────────────────────────────────────────────────────────────────────*/
 
-  it('the block order is SUBJECT, FOCUS, POSE, VENUE, TIME, SCENE, ENERGY, NOTES', () => {
+  it('the block order is SUBJECT, FOCUS, POSE, outfit, VENUE, TIME, SCENE, ENERGY', () => {
     /*
      * Every position is argued in `buildNinaImagePrompt`'s docblock. The two that were already
      * load-bearing are unchanged: POSE before SCENE because it is a standing property of the
      * subject, ENERGY after SCENE because it refines this photograph (the
      * `gen_badge_art.py --note` precedent). VENUE and TIME go before SCENE so the model reads
-     * general-then-specific and a scene that names its own place wins. NOTES goes last, because it
-     * must be able to amend everything above it.
+     * general-then-specific and a scene that names its own place wins. The outfit line moved
+     * (2026-09-22) to sit immediately above VENUE, no longer beside the face paragraph. NOTES is
+     * asserted separately below, with no tuning, because a non-empty NOTES now suppresses POSE AND
+     * PRESENCE entirely (`ninaPhotoPresence`'s header) — the two can never coexist in one prompt.
      */
     const prompt = buildNinaImagePrompt({
       purpose: 'selfie',
@@ -1270,18 +1272,17 @@ describe('the prompt', () => {
         focus: focusOnly(...NINA_IMAGE_FOCUS_KEYS),
         venue: 'Kuta streets in Bali',
         time: 'rainy night',
-        notes: 'nina is full of sweat',
       }),
     })
     const order = [
       'SUBJECT:',
       'FOCUS:',
       'POSE AND PRESENCE:',
+      'Her outfit for this photograph:',
       'VENUE:',
       'TIME:',
       'SCENE:',
       'ENERGY:',
-      'NOTES:',
     ]
     let cursor = -1
     for (const label of order) {
@@ -1289,7 +1290,30 @@ describe('the prompt', () => {
       expect(at, `${label} is missing or out of order`).toBeGreaterThan(cursor)
       cursor = at
     }
-    expect(prompt.trimEnd().endsWith('NOTES: nina is full of sweat')).toBe(true)
+
+    const notesPrompt = buildNinaImagePrompt({
+      purpose: 'selfie',
+      scene: 'at home in her rented room in Tebet',
+      prefs: prefsWith({ notes: 'nina is full of sweat' }),
+    })
+    expect(notesPrompt.indexOf('SCENE:')).toBeLessThan(notesPrompt.indexOf('NOTES:'))
+    expect(notesPrompt.trimEnd().endsWith('NOTES: nina is full of sweat')).toBe(true)
+  })
+
+  it('a non-empty NOTES suppresses POSE AND PRESENCE even with a high dial', () => {
+    /* NOTES already says how she is standing, so the dial-driven pose clause is not generated —
+     * not just hidden — when NOTES has one. `flirty` (unlike `steamy`) reaches both cameras, so it
+     * proves the gating on each. */
+    for (const purpose of ['selfie', 'avatar'] as const) {
+      const prompt = buildNinaImagePrompt({
+        purpose,
+        scene: 'x',
+        tuning: withTrait('flirty', 100),
+        prefs: prefsWith({ notes: 'she squats on a rattan table, knees drawn up' }),
+      })
+      expect(prompt, purpose).not.toContain('POSE AND PRESENCE:')
+      expect(prompt, purpose).toContain('NOTES: she squats on a rattan table, knees drawn up')
+    }
   })
 
   /* ────────────────────────────────────────────────────────────────────────────────────────────

@@ -362,6 +362,16 @@ const isDialHigh = (value: number): boolean => ninaBand(value).index >= 3
  * are below the threshold. That null is the compatibility contract: `NINA_TUNING_DEFAULTS` renders
  * the prompt that shipped, character for character.
  *
+ * ── NOTES SUPERSEDES THIS ENTIRELY (2026-09-22) ───────────────────────────────────────────────
+ * `buildNinaImagePrompt` does not even call this function when the resolved `NOTES:` text is
+ * non-empty. An operator (or the chat model, via the tool's own `pose` argument) who already wrote
+ * a NOTES sentence describing how she is standing or positioned — "she squats on a rattan table,
+ * knees drawn up" — has said the same thing `POSE AND PRESENCE:` exists to say, one paragraph
+ * later and in the LLM's own words rather than the operator's. Two stance instructions in one
+ * prompt is the same defect `outfit` was built to close (one wardrobe line, ever); this is the
+ * pose equivalent. NOTES wins because it is the more specific, more recently written instruction —
+ * the same "later and more specific wins" reasoning `VENUE`/`TIME` vs `SCENE` already uses.
+ *
  * ── WHY `steamy` IS SELFIE-ONLY ───────────────────────────────────────────────────────────────
  * `NINA_AVATAR_STYLE` asks for head and shoulders inside a 28-44 px circle. A pose instruction
  * about her hips under a head-and-shoulders crop is a prompt arguing with itself, which this file's
@@ -581,7 +591,7 @@ function ninaMoodBlock(mood: string | null | undefined): string {
  *
  * The outfit line no longer appends the canon's watch-and-track sentence — that was fixed prose
  * ("a red 400 m athletics track", "flat morning sun") competing with the operator's own
- * `{{venue}}`, `{{time}}` and `{{notes}}` lines a few lines below. One place to say where and
+ * `{{venue}}`, `{{time}}` and `{{notes}}` lines immediately below. One place to say where and
  * when is enough.
  *
  * Line semantics (the renderer below): a line containing a token that expanded to empty is
@@ -601,13 +611,13 @@ export const NINA_PROMPT_TEMPLATE_DEFAULT = [
   '',
   NINA_FACE_TEMPLATE_LINE,
   '',
-  'Her outfit for this photograph: {{wardrobe}}',
-  '',
   'FOCUS: Emphasise {{focus}} above everything else in this photograph.',
   '',
   '{{faceLock}}',
   '',
   'POSE AND PRESENCE: {{presence}}',
+  '',
+  'Her outfit for this photograph: {{wardrobe}}',
   '',
   'VENUE: {{venue}}',
   '',
@@ -702,7 +712,8 @@ function renderNinaImagePrompt(template: string, blocks: Record<string, string>)
  *
  *  1. **the camera block** — the aesthetic, first, so everything after it is read as a
  *     photograph. The measured probe used a prompt of exactly this shape.
- *  2. **`SUBJECT:`** — who she is: body, then face, then clothes. Body first is R1's reorder.
+ *  2. **`SUBJECT:`** — who she is: body, then face. Body first is R1's reorder. Clothes used to
+ *     close this block too, but the outfit line moved to block 4b (2026-09-22) — see there.
  *  3. **`FOCUS:`** — emphasis on the subject just described, so it sits immediately after the
  *     sentences it amplifies and BEFORE the pose: what to emphasise decides how she stands,
  *     rather than the other way round.
@@ -711,7 +722,14 @@ function renderNinaImagePrompt(template: string, blocks: Record<string, string>)
  *      ticked AND a photo reference actually reached the payload (`NINA_FACE_LOCK_SENTENCE`).
  *  4. **`POSE AND PRESENCE:`** — before the scene, because it is a standing property of the
  *     subject the operator set once and not a per-photograph note. UNCHANGED reasoning, and the
- *     ordering assertion that has always been in `tests/nina.imagerecipe.test.ts`.
+ *     ordering assertion that has always been in `tests/nina.imagerecipe.test.ts`. As of
+ *     2026-09-22, `ninaPhotoPresence` is not even called when `NOTES` is non-empty — see its own
+ *     header for why a hand-typed NOTES makes this block redundant rather than complementary.
+ *  4b. **the outfit line (`Her outfit for this photograph: {{wardrobe}}`)** — moved here
+ *      (2026-09-22) from right after the face paragraph, so it sits immediately ABOVE `VENUE:`
+ *      instead of inside the body/face run. What she is wearing reads as circumstantial detail
+ *      about THIS photograph, grouped with where and when it was taken, not a standing physical
+ *      fact about her the way the body/face paragraphs are.
  *  5. **`VENUE:`** then 6. **`TIME:`** — the operator's standing opinion about where and when she
  *     is photographed. They go immediately BEFORE `SCENE:` so the model reads
  *     general-then-specific: a scene that names its own place is the later and more specific
@@ -820,7 +838,10 @@ export function buildNinaImagePrompt(input: {
     }
 
     const focusText = ninaFocusBlock('avatar', prefs)
-    const presenceText = ninaPhotoPresence('avatar', tuning)
+    const notesBlock = ninaFreeTextBlock('NOTES', prefs.notes)
+    /* See `ninaPhotoPresence`'s header: a non-empty NOTES already says how she is standing, so the
+     * dial-driven pose clause is not even generated — not just hidden — when NOTES has one. */
+    const presenceText = notesBlock == null ? ninaPhotoPresence('avatar', tuning) : null
 
     const avatarBlocks: Record<string, string> = {
       camera: NINA_AVATAR_STYLE,
@@ -832,7 +853,7 @@ export function buildNinaImagePrompt(input: {
       time: ninaFreeTextBlock('TIME', prefs.time) ?? '',
       scene: `SCENE: ${input.scene.trim()}`,
       mood: ninaMoodBlock(input.mood),
-      notes: ninaFreeTextBlock('NOTES', prefs.notes) ?? '',
+      notes: notesBlock ?? '',
     }
 
     return renderNinaImagePrompt(NINA_AVATAR_PROMPT_TEMPLATE_DEFAULT, avatarBlocks)
@@ -875,12 +896,16 @@ export function buildNinaImagePrompt(input: {
     ? (angleOverride as NinaCameraAngleKey)
     : prefs.cameraAngle
   const angleValue = NINA_CAMERA_ANGLE_SENTENCES[angleKey]
+  const notesValue = prefs.notes.trim()
 
   const blocks: Record<string, string> = {
     wardrobe: withSentenceStop(wardrobeValue),
     focus: focusTerms,
     faceLock: faceLockValue,
-    presence: ninaPhotoPresence('selfie', tuning, input.pose, angleKey) ?? '',
+    /* See `ninaPhotoPresence`'s header: a non-empty NOTES already says how she is standing, so the
+     * dial-driven pose clause is not even generated — not just hidden — when NOTES has one. */
+    presence:
+      notesValue === '' ? (ninaPhotoPresence('selfie', tuning, input.pose, angleKey) ?? '') : '',
     venue: prefs.venue.trim(),
     time: prefs.time.trim(),
     scene: input.scene.trim(),
@@ -889,7 +914,7 @@ export function buildNinaImagePrompt(input: {
     buttClause: NINA_BODY_BUTT_SENTENCES[angleKey],
     hairstyle: NINA_HAIRSTYLE_SENTENCES[prefs.hairstyle],
     expression: prefs.expression.trim() || NINA_EXPRESSION_DEFAULT_TEXT,
-    notes: prefs.notes.trim(),
+    notes: notesValue,
     angleReminder: NINA_CAMERA_ANGLE_REMINDER[angleKey],
   }
 
