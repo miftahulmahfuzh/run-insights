@@ -736,7 +736,10 @@ function renderNinaImagePrompt(template: string, blocks: Record<string, string>)
  *     instruction and wins. Putting them AFTER the scene was the alternative and it is rejected —
  *     it would read as a correction of the scene, and the index's Scope keeps the scene hers per
  *     photograph.
- *  7. **`SCENE:`** — the model's own `generate_image` argument. What this photograph is of.
+ *  7. **`SCENE:`** — the model's own `generate_image` argument. What this photograph is of. As of
+ *     2026-09-22, this block is not even generated — not just hidden — when `NOTES` is non-empty,
+ *     the same rule and reasoning as block 4's `POSE AND PRESENCE`: a hand-typed NOTES already says
+ *     what this photograph is of, so the two can never coexist in one prompt.
  *  8. **`ENERGY:`** — after the scene, so it reads as a refinement of THIS
  *     photograph rather than an amendment to who she is. UNCHANGED, and it is exactly where
  *     `tools/gen_badge_art.py` puts `--note`, for the same reason.
@@ -840,7 +843,9 @@ export function buildNinaImagePrompt(input: {
     const focusText = ninaFocusBlock('avatar', prefs)
     const notesBlock = ninaFreeTextBlock('NOTES', prefs.notes)
     /* See `ninaPhotoPresence`'s header: a non-empty NOTES already says how she is standing, so the
-     * dial-driven pose clause is not even generated — not just hidden — when NOTES has one. */
+     * dial-driven pose clause is not even generated — not just hidden — when NOTES has one. As of
+     * 2026-09-22 the same is true of SCENE: a hand-typed NOTES already says what this photograph is
+     * of, so the chat model's own `scene` argument is dropped rather than left to compete with it. */
     const presenceText = notesBlock == null ? ninaPhotoPresence('avatar', tuning) : null
 
     const avatarBlocks: Record<string, string> = {
@@ -851,7 +856,7 @@ export function buildNinaImagePrompt(input: {
       pose: presenceText != null ? `POSE AND PRESENCE: ${presenceText}` : '',
       venue: ninaFreeTextBlock('VENUE', prefs.venue) ?? '',
       time: ninaFreeTextBlock('TIME', prefs.time) ?? '',
-      scene: `SCENE: ${input.scene.trim()}`,
+      scene: notesBlock == null ? `SCENE: ${input.scene.trim()}` : '',
       mood: ninaMoodBlock(input.mood),
       notes: notesBlock ?? '',
     }
@@ -908,7 +913,10 @@ export function buildNinaImagePrompt(input: {
       notesValue === '' ? (ninaPhotoPresence('selfie', tuning, input.pose, angleKey) ?? '') : '',
     venue: prefs.venue.trim(),
     time: prefs.time.trim(),
-    scene: input.scene.trim(),
+    /* Same suppression as POSE AND PRESENCE, and for the same reason: a hand-typed NOTES already
+     * says what this photograph is of, so the chat model's own `scene` argument is dropped rather
+     * than left to compete with it (2026-09-22). */
+    scene: notesValue === '' ? input.scene.trim() : '',
     mood: input.mood?.trim() ?? '',
     angle: angleValue,
     buttClause: NINA_BODY_BUTT_SENTENCES[angleKey],

@@ -1260,8 +1260,9 @@ describe('the prompt', () => {
      * `gen_badge_art.py --note` precedent). VENUE and TIME go before SCENE so the model reads
      * general-then-specific and a scene that names its own place wins. The outfit line moved
      * (2026-09-22) to sit immediately above VENUE, no longer beside the face paragraph. NOTES is
-     * asserted separately below, with no tuning, because a non-empty NOTES now suppresses POSE AND
-     * PRESENCE entirely (`ninaPhotoPresence`'s header) — the two can never coexist in one prompt.
+     * asserted separately below, with no tuning, because a non-empty NOTES now suppresses both
+     * POSE AND PRESENCE and SCENE entirely (`ninaPhotoPresence`'s header, and `buildNinaImagePrompt`'s
+     * block 7) — NOTES can never coexist with either in one prompt.
      */
     const prompt = buildNinaImagePrompt({
       purpose: 'selfie',
@@ -1296,14 +1297,15 @@ describe('the prompt', () => {
       scene: 'at home in her rented room in Tebet',
       prefs: prefsWith({ notes: 'nina is full of sweat' }),
     })
-    expect(notesPrompt.indexOf('SCENE:')).toBeLessThan(notesPrompt.indexOf('NOTES:'))
+    expect(notesPrompt).not.toContain('SCENE:')
     expect(notesPrompt.trimEnd().endsWith('NOTES: nina is full of sweat')).toBe(true)
   })
 
-  it('a non-empty NOTES suppresses POSE AND PRESENCE even with a high dial', () => {
-    /* NOTES already says how she is standing, so the dial-driven pose clause is not generated —
-     * not just hidden — when NOTES has one. `flirty` (unlike `steamy`) reaches both cameras, so it
-     * proves the gating on each. */
+  it('a non-empty NOTES suppresses POSE AND PRESENCE and SCENE even with a high dial', () => {
+    /* NOTES already says how she is standing and what this photograph is of, so neither the
+     * dial-driven pose clause nor the chat model's own `scene` argument is generated — not just
+     * hidden — when NOTES has one. `flirty` (unlike `steamy`) reaches both cameras, so it proves
+     * the gating on each. */
     for (const purpose of ['selfie', 'avatar'] as const) {
       const prompt = buildNinaImagePrompt({
         purpose,
@@ -1312,6 +1314,7 @@ describe('the prompt', () => {
         prefs: prefsWith({ notes: 'she squats on a rattan table, knees drawn up' }),
       })
       expect(prompt, purpose).not.toContain('POSE AND PRESENCE:')
+      expect(prompt, purpose).not.toContain('SCENE:')
       expect(prompt, purpose).toContain('NOTES: she squats on a rattan table, knees drawn up')
     }
   })
