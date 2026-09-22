@@ -559,6 +559,25 @@ function ninaMoodBlock(mood: string | null | undefined): string {
   return `ENERGY: ${text}`
 }
 
+/**
+ * **The static negative-prompt line (2026-09-22 ask, folding a runner-supplied prompt into the
+ * default template).** There is no `negative_prompt` field on this provider — see
+ * `buildImageRequestBody`'s header in `lib/nina/imagerecipe.ts` — so, same as every other "no X"
+ * clause in this file, this is inline prose inside the one positive prompt string, not a second
+ * API parameter. Kept under the runner's own "Negative Prompt:" label rather than folded word by
+ * word into the SUBJECT paragraph, because that is the shape the source prompt used and there is
+ * nothing here that competes with an existing sentence.
+ *
+ * Static, not a token: unlike `{{focus}}`/`{{wardrobe}}` it is not an operator preference, so it
+ * is not part of `NINA_IMAGE_TEMPLATE_KEYS` and can never be dropped — it renders on every
+ * generation, the same way `NINA_SELFIE_STYLE_SUFFIX`'s "no text, no watermark" clause always
+ * has. Its arm clauses are the negative half of the SUBJECT paragraph's new "toned,
+ * normal-proportioned arms" clause below — a positive claim for a diffusion model to hold against
+ * rather than a bare negative with nothing to anchor it, the same pairing `NINA_HANDS_SENTENCE`
+ * and the calf/thigh ratio clause already use.
+ */
+const NINA_NEGATIVE_PROMPT_LINE = `Negative Prompt: skinny arms, bony arms, thin arms, emaciated, underweight, stick-thin limbs, anorexic, frail, muscular arms, biceps, veiny arms.`
+
 /* ============================================================================
  * THE EDITABLE PROMPT TEMPLATE (the 2026-09-10 ask, second revision: the template IS the prompt)
  * ==========================================================================*/
@@ -572,16 +591,26 @@ function ninaMoodBlock(mood: string | null | undefined): string {
  * rather than hand-copied, so the template cannot drift from the words the built-in assembly
  * uses — there is one home for each sentence.
  *
- * The body paragraph carries sentence 0's own enumeration (`NINA_BODY_FACTS`), then sentence 1
- * verbatim, then sentence 5 (the shoulder/collarbone clause, 2026-09-21) verbatim, then
- * `{{buttClause}}` standing in for sentence 2. The four facts are prose here, not a token:
- * `{{bodyFacts}}` was dropped because it could only ever expand to this one constant, which made
- * it a decoration on `{{focus}}`'s real job rather than a second control. `{{buttClause}}` is the
- * one exception, added 2026-09-18 for job `lUARJrfreQta`: unlike the enumeration, sentence 2
- * genuinely has more than one correct value — see `NINA_BODY_BUTT_SENTENCES`'s header for the
- * contradiction that forced it. `NINA_HANDS_SENTENCE` (2026-09-18, job `tyFdHavh_jmE`) closes the
- * paragraph unconditionally — see its own header in `persona/appearance.ts` for why hands needed
- * the same explicit treatment the calf/thigh ratio got.
+ * The body paragraph opens with an hourglass/waist/thigh framing sentence (2026-09-22, folded in
+ * from a runner-supplied prompt) that carries sentence 0's own enumeration (`NINA_BODY_FACTS`)
+ * inline rather than displacing it — the enumeration is PLAN INVARIANT 4's own test surface, so the
+ * new framing wraps it rather than replacing it. Sentence 1 (chest/waist) is dropped from this
+ * paragraph as of the same date: the new opening clause already states bust and waist, and a second,
+ * differently-worded chest/waist sentence right after it would be the two-competing-claims failure
+ * this file keeps fixing elsewhere. `{{buttClause}}` still stands in for sentence 2, then
+ * `NINA_HANDS_SENTENCE`, then sentence 5 (the shoulder/collarbone clause, 2026-09-21) verbatim, then
+ * one new inline clause naming her arms "toned, normal-proportioned" — the positive half of
+ * `NINA_NEGATIVE_PROMPT_LINE`'s arm negatives below, so neither reads as a bare claim with nothing
+ * to hold onto. The four facts are prose here, not a token: `{{bodyFacts}}` was dropped because it
+ * could only ever expand to this one constant, which made it a decoration on `{{focus}}`'s real job
+ * rather than a second control. `{{buttClause}}` is the one exception, added 2026-09-18 for job
+ * `lUARJrfreQta`: unlike the enumeration, sentence 2 genuinely has more than one correct value —
+ * see `NINA_BODY_BUTT_SENTENCES`'s header for the contradiction that forced it. `NINA_HANDS_SENTENCE`
+ * (2026-09-18, job `tyFdHavh_jmE`) needed the same explicit treatment the calf/thigh ratio got, for
+ * the reasons in its own header in `persona/appearance.ts`.
+ *
+ * `NINA_NEGATIVE_PROMPT_LINE` (2026-09-22) sits right after the `FOCUS:` line, static and
+ * unconditional — see its own header for why it is prose, not a second API parameter.
  *
  * The face paragraph IS a token, unlike the body: `NINA_FACE_TEMPLATE_LINE` (`lib/nina/persona/appearance.ts`)
  * carries the same fixed prose `NINA_FACE` always did, with `{{hairstyle}}` and `{{expression}}`
@@ -606,12 +635,16 @@ export const NINA_PROMPT_TEMPLATE_DEFAULT = [
   `${NINA_SELFIE_STYLE_PREFIX} {{angle}} ${NINA_SELFIE_STYLE_SUFFIX}`,
   '',
   'SUBJECT:',
-  `She has got an alluring body, ${NINA_BODY_FACTS}. This silhouette is the point of the photograph and it ` +
-    `must be visible in it. ${NINA_BODY_SENTENCES[1]} ${NINA_BODY_SENTENCES[5]} {{buttClause}} ${NINA_HANDS_SENTENCE}`,
+  `She has a highly curvaceous, hourglass figure — a full, heavy bust, a narrow defined waist, and ` +
+    `voluminous, curvaceous thighs — with ${NINA_BODY_FACTS}. This silhouette is the point of the ` +
+    `photograph and it must be visible in it. {{buttClause}} ${NINA_HANDS_SENTENCE} ${NINA_BODY_SENTENCES[5]} ` +
+    `She has toned, normal-proportioned arms.`,
   '',
   NINA_FACE_TEMPLATE_LINE,
   '',
   'FOCUS: Emphasise {{focus}} above everything else in this photograph.',
+  '',
+  NINA_NEGATIVE_PROMPT_LINE,
   '',
   '{{faceLock}}',
   '',
@@ -717,9 +750,12 @@ function renderNinaImagePrompt(template: string, blocks: Record<string, string>)
  *  3. **`FOCUS:`** — emphasis on the subject just described, so it sits immediately after the
  *     sentences it amplifies and BEFORE the pose: what to emphasise decides how she stands,
  *     rather than the other way round.
- *  3b. **the face lock** — immediately after `FOCUS:`, since it is conditional on the SAME Face
- *      tick and is the last word on who she is before the pose is decided. Empty unless Face is
- *      ticked AND a photo reference actually reached the payload (`NINA_FACE_LOCK_SENTENCE`).
+ *  3a. **the negative prompt (`NINA_NEGATIVE_PROMPT_LINE`, 2026-09-22)** — static, right after
+ *      `FOCUS:`, mirroring where the source prompt this template folded in put it. Unconditional
+ *      and not a block any pref can suppress — see that constant's own header.
+ *  3b. **the face lock** — immediately after the negative prompt, since it is conditional on the
+ *      SAME Face tick and is the last word on who she is before the pose is decided. Empty unless
+ *      Face is ticked AND a photo reference actually reached the payload (`NINA_FACE_LOCK_SENTENCE`).
  *  4. **`POSE AND PRESENCE:`** — before the scene, because it is a standing property of the
  *     subject the operator set once and not a per-photograph note. UNCHANGED reasoning, and the
  *     ordering assertion that has always been in `tests/nina.imagerecipe.test.ts`. As of
