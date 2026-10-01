@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -150,9 +150,13 @@ describe('MediaControls', () => {
     expect(removeButton()).toBeDisabled()
 
     resolveUpload({ url: 'https://blob.example/new.jpg' })
-    await screen.findByRole('button', { name: 'Replace this photo' })
-    expect(replaceButton()).toBeEnabled()
-    expect(removeButton()).toBeEnabled()
+    /*
+     * Wait on the re-enable itself. `findByRole('button', { name: 'Replace this photo' })` would
+     * gate on nothing — that `aria-label` is constant, so the button matches throughout the
+     * flight, and the `busy` this asserts is not what was awaited.
+     */
+    await waitFor(() => expect(replaceButton()).toBeEnabled())
+    expect(removeButton()).toBeEnabled() // same `busy`, so one wait covers both
   })
 
   it('does not fire a second remove while one is in flight', async () => {

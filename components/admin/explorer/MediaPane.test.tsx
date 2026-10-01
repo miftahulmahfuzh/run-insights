@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -188,7 +188,16 @@ describe('MediaPane', () => {
     await user.click(screen.getByRole('button', { name: 'Set as her profile picture' }))
 
     expect(await screen.findByText('already exists')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Set as her profile picture' })).toBeEnabled()
+    /*
+     * Gated, not asserted through: the adopt runs in a `useTransition`, whose settle React 19
+     * commits in TWO passes — `setError`'s text lands in the first, `isPending` flips back in the
+     * second. `findByText` above resolves on commit 1, so a synchronous read here can still see
+     * `aria-busy="true" disabled`. Polling the re-enable waits out both commits, and says the
+     * thing actually under test: a refusal must RELEASE the control.
+     */
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Set as her profile picture' })).toBeEnabled(),
+    )
   })
 
   it('sets the image-generation anchor for a generated photo, and shows a confirmation note', async () => {
