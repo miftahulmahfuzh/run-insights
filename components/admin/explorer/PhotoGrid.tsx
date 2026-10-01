@@ -1,9 +1,6 @@
 'use client'
 
-import Link from 'next/link'
-
-import { TOUCH_ICON } from '@/components/admin/touch'
-import { ButtonLink, EmptyState } from '@/components/ui'
+import { ButtonLink, EmptyState, Pagination } from '@/components/ui'
 import { cn } from '@/lib/cn'
 
 import type { ExplorerView } from '@/lib/admin/filetree'
@@ -58,6 +55,19 @@ import type { ExplorerPageInfo, ExplorerPhoto } from './model'
  * it would re-optimise finished files on a paid transform quota. `PhotoReferencePicker` makes the
  * same call. The derived thumbnail is this repo's answer to image optimisation for these blobs,
  * and it is written at upload time rather than bought per request.
+ *
+ * ── THE PAGER IS THE SHARED NUMBERED CONTROL ────────────────────────────────────────────────
+ * `components/ui/Pagination.tsx` draws it: one cell per page, every number, the active one a
+ * non-interactive `aria-current="page"` rather than a link. It replaced a `‹ Newer` / `Older ›`
+ * stepper this file wrote by hand and `app/admin/error-logs/page.tsx` then copied by hand — which
+ * is how five surfaces ended up with three copy grammars, and the runner's own reason for the
+ * change was that page 7 of an album was six taps from page 1.
+ *
+ * The 44 px tap floor comes from the control's own class string and NOT from
+ * `@/components/admin/touch`: the UI barrel is a client-safe bundle boundary and `ui` importing
+ * `admin` inverts the dependency, so the two modules carry the same utilities on purpose. What did
+ * NOT change is the count line under the sheet — a row of numbers says where you can go, not how
+ * many rows there are, and this grid has answered both questions since it was a file manager.
  */
 
 export function PhotoGrid({
@@ -70,7 +80,7 @@ export function PhotoGrid({
 }: {
   photos: readonly ExplorerPhoto[]
   page: ExplorerPageInfo
-  /** Phase 1's: which collection this grid is. Only the EMPTY copy branches on it. */
+  /** Phase 1's: which collection this grid is. The EMPTY copy and the pager label branch on it. */
   view: ExplorerView
   selectedId: string | null
   onSelect: (id: string) => void
@@ -78,7 +88,9 @@ export function PhotoGrid({
 }) {
   const first = (page.page - 1) * page.pageSize + 1
   const last = Math.min(page.page * page.pageSize, page.total)
-  const lastPage = Math.max(1, Math.ceil(page.total / page.pageSize))
+  /* The control's own definition of the word, verbatim: always >= 1, so an empty folder still has
+     a page 1 — and `Pagination` renders nothing at all when it is exactly 1. */
+  const pageCount = Math.max(1, Math.ceil(page.total / page.pageSize))
 
   if (photos.length === 0) {
     /* Phase 1's empty state, byte for byte — the media arm's copy is view-aware. */
@@ -177,40 +189,23 @@ export function PhotoGrid({
         })}
       </ul>
 
-      <div className="mt-4 flex items-center justify-between gap-2 border-t border-rule pt-3">
-        {page.page > 1 ? (
-          <Link
-            href={hrefForPage(page.page - 1)}
-            className={cn(TOUCH_ICON, 'px-2 text-[12px] font-semibold text-accent')}
-            rel="prev"
-          >
-            &lsaquo; Newer
-          </Link>
-        ) : (
-          /* The disabled end of the pager keeps the same box, so the row does not resize and the
-             live control does not move under a thumb when the page changes. */
-          <span className={cn(TOUCH_ICON, 'px-2 text-[12px] font-semibold text-ink-3')}>
-            &lsaquo; Newer
-          </span>
-        )}
-
+      {/*
+       * One pager, two arms: `Pagination` returns null at `pageCount <= 1`, so a single-page
+       * folder gets the count line and nothing under it, and the `gap-2` collapses with it.
+       * `hrefForPage` is handed straight through — `FileExplorer` already decides there whether
+       * a page link carries `?view=media` or `?folder=`, and this component has never known.
+       */}
+      <div className="mt-4 flex flex-col items-center gap-2 border-t border-rule pt-3">
         <span className="text-[12px] font-semibold text-ink-2 tabular-nums">
           {first}&ndash;{last} of {page.total}
         </span>
 
-        {page.page < lastPage ? (
-          <Link
-            href={hrefForPage(page.page + 1)}
-            className={cn(TOUCH_ICON, 'px-2 text-[12px] font-semibold text-accent')}
-            rel="next"
-          >
-            Older &rsaquo;
-          </Link>
-        ) : (
-          <span className={cn(TOUCH_ICON, 'px-2 text-[12px] font-semibold text-ink-3')}>
-            Older &rsaquo;
-          </span>
-        )}
+        <Pagination
+          page={page.page}
+          pageCount={pageCount}
+          hrefForPage={hrefForPage}
+          label={view === 'media' ? 'Media pages' : 'Folder pages'}
+        />
       </div>
     </div>
   )

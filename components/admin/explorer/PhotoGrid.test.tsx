@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -160,7 +160,7 @@ describe('PhotoGrid', () => {
     expect(link).toHaveAttribute('href', '/explorer?page=1')
   })
 
-  it('renders the Newer/Older pager range and disables the ends', () => {
+  it('renders every page as its own number, with the active page marked and not a link', () => {
     render(
       <PhotoGrid
         photos={[albumPhoto()]}
@@ -171,24 +171,63 @@ describe('PhotoGrid', () => {
         hrefForPage={(target) => `/explorer?page=${target}`}
       />,
     )
+    // The count line is NOT the pagination UI that went: it answers "how many rows are there",
+    // which a row of numbers cannot.
     expect(screen.getByText('1–60 of 120')).toBeInTheDocument()
-    // On page 1, Newer has no link (start of the range).
-    expect(screen.queryByRole('link', { name: /Newer/ })).not.toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /Older/ })).toHaveAttribute('href', '/explorer?page=2')
+
+    const pager = screen.getByRole('navigation', { name: 'Folder pages' })
+    // Page 1 is where we already are, so it is a marked span with nowhere to navigate to.
+    const current = within(pager).getByText('1')
+    expect(current).toHaveAttribute('aria-current', 'page')
+    expect(current.tagName).toBe('SPAN')
+    expect(within(pager).getByRole('link', { name: '2' })).toHaveAttribute(
+      'href',
+      '/explorer?page=2',
+    )
+    // No stepper survives anywhere on the surface, as a word or as a glyph.
+    expect(screen.queryByText(/Newer|Older/)).not.toBeInTheDocument()
   })
 
-  it('disables Older on the last page', () => {
+  it('reaches the last of five pages in one tap, with no window and no ellipsis', () => {
     render(
       <PhotoGrid
         photos={[albumPhoto()]}
-        page={page({ page: 2, pageSize: 60, total: 120 })}
+        page={page({ page: 1, pageSize: 60, total: 300 })}
         view="album"
         selectedId={null}
         onSelect={vi.fn()}
         hrefForPage={(target) => `/explorer?page=${target}`}
       />,
     )
-    expect(screen.getByRole('link', { name: /Newer/ })).toHaveAttribute('href', '/explorer?page=1')
-    expect(screen.queryByRole('link', { name: /Older/ })).not.toBeInTheDocument()
+    const pager = screen.getByRole('navigation', { name: 'Folder pages' })
+    // The ask, literally — `1 2 3 4 5`, all of them — and the reason for it: page 5 is one tap
+    // from page 1, where the stepper this replaced made it four.
+    expect(within(pager).getAllByRole('listitem')).toHaveLength(5)
+    expect(within(pager).getByRole('link', { name: '5' })).toHaveAttribute(
+      'href',
+      '/explorer?page=5',
+    )
+    expect(within(pager).queryByText('…')).not.toBeInTheDocument()
+  })
+
+  it('marks whichever page we are on, and names the Media arm as its own collection', () => {
+    render(
+      <PhotoGrid
+        photos={[albumPhoto()]}
+        page={page({ page: 2, pageSize: 60, total: 120 })}
+        view="media"
+        selectedId={null}
+        onSelect={vi.fn()}
+        hrefForPage={(target) => `/explorer?page=${target}`}
+      />,
+    )
+    // One grid draws both arms of /admin/nina, so the pager has to say which one it walks.
+    const pager = screen.getByRole('navigation', { name: 'Media pages' })
+    expect(within(pager).getByText('2')).toHaveAttribute('aria-current', 'page')
+    expect(within(pager).getByRole('link', { name: '1' })).toHaveAttribute(
+      'href',
+      '/explorer?page=1',
+    )
+    expect(within(pager).queryByRole('link', { name: '2' })).not.toBeInTheDocument()
   })
 })
