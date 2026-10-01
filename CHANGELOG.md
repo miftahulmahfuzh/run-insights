@@ -8,6 +8,24 @@ Feature codes (`F01`–`F33`) refer to the plan files in [`docs/plans/archive/`]
 (`R-nn`) refer to `RECONCILIATION_v0.1.0.md`, the v0.1.0 arbitration record — removed from the
 tree in September 2026, readable in git history.
 
+## [Unreleased]
+
+### Changed
+
+- **One numbered pager for every paginated surface** (`numbered-pagination`, 5 phases). Every
+  paginated surface now renders a single shared `components/ui/Pagination.tsx` — a row of
+  individually-clickable page numbers with the active page highlighted — replacing five
+  hand-written Previous/Next steppers that had drifted into three copy grammars. Migrated:
+  `/nina/about` (both tabs), `/admin/nina` (album and media grids), `/admin/image-generation` plus
+  the `/nina/jobs/[id]/anchor` picker, `/admin/photoshop`, and `/admin/error-logs`. Every page
+  number is always shown and wraps onto more lines rather than collapsing into an ellipsis, since
+  jumping straight to a page is the whole point of the control. No URL grammar changed — every
+  existing `?page=` bookmark still resolves — and every per-surface count line ("1–120 of 980",
+  "Halaman 2 dari 5 · 412 foto", "Showing 99 of 412") was kept; only the navigation control was
+  replaced. The `pageCount <= 1` guard is deliberately per surface rather than global: `/nina/about`
+  keeps its own, because that guard also withholds its count line, while the four admin surfaces
+  keep none, because their count lines are pinned as rendering at a single page.
+
 ## [v1.4.0] - 2026-09-19
 
 Photoshop jobs can now crop their source image to an exact aspect ratio before the edit runs —

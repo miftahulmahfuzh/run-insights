@@ -315,6 +315,29 @@ overview hub:
 - **`/admin/shortcuts`** — her emoji/macro shortcuts (`nina_shortcuts`, importable via
   `nina:shortcuts-import`).
 
+**Pagination — one control, five surfaces.** Every paginated surface in the app renders
+`components/ui/Pagination.tsx`: a row of individually-clickable page numbers, every number always
+shown, with the active cell a non-interactive `aria-current="page"` in `bg-ink text-card`. It
+replaced five hand-written Previous/Next steppers in three copy grammars, which had drifted far
+enough that `/admin/error-logs` carried a comment saying it had copied `PhotoGrid.tsx`'s pager by
+hand. The control is mechanism-agnostic by a discriminated union — `hrefForPage` for the four
+`<Link>`-navigating surfaces, `onPage` for `/nina/about`'s client fetch — so no surface changed how
+it navigates. Three things are deliberate and easy to "fix" wrongly:
+
+- **No ellipsis or windowing.** A large `pageCount` wraps onto more lines. The point of the control
+  is jumping straight to a page, and a window is the thing that was removed.
+- **The `pageCount <= 1` guard is per surface, not global.** `Pagination` returns `null` at one
+  page by itself, but `/nina/about` keeps its own outer guard because that guard also withholds its
+  `Halaman … dari … · … foto` count line; the four admin surfaces have none, because their count
+  lines are pinned as rendering at one page. Both behaviours are pinned by tests.
+- **The four `hrefForPage` grammars stay different on purpose.** `/admin/photoshop` is absolute,
+  `PhotoReferencePicker` bare (it mounts on two routes), `/admin/nina` spells page 1 as the
+  *absence* of `?page=`, `/admin/error-logs` goes through `errorLogHref`. No shared factory.
+
+Count lines ("1–120 of 980", "Showing 99 of 412") were kept everywhere — only the navigation
+control was replaced. `/admin/photoshop` and `/admin/error-logs` have no rendering suite, so their
+migration is proven by grep rather than by a committed test.
+
 ---
 
 ## 9. Sharing
