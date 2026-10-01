@@ -6,8 +6,8 @@
 **Worktree:** `/home/miftah/.worktrees/run-insights/copy-admin-media-link`
 **Branch:** `feature/copy-admin-media-link` (base: `origin/main` @ `5b51454`)
 **Phases:** 4
-**Status:** planned
-**Coordinator:** —
+**Status:** phase 1/4 complete
+**Coordinator:** `orch-copy-admin-media-link`
 
 ---
 
@@ -97,10 +97,10 @@ Post-reconciliation, and this is the table `create-task` reads — it matches ea
 
 | # | Title | Satisfies | Package | Files | Depends on | Difficulty | Plan | TaskID | Card |
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
-| 1 | The admin-link URL grammar | R1, R2 | `lib/admin` | 2 | — | EASY | `.workflows/plan/copy-admin-media-link/phase-1.md` | — | — |
-| 2 | `/admin/nina` honours a media deep link | R2 | `lib/nina/queries`, `app/admin`, `components/admin` | 6 | 1 | HARD | `.workflows/plan/copy-admin-media-link/phase-2.md` | — | — |
-| 3 | The icon-only copy button, and the handle it reads | R1 | `components/ui` | 4 | 1 | NORMAL | `.workflows/plan/copy-admin-media-link/phase-3.md` | — | — |
-| 4 | Every client entry point carries it, admin-only | R1, R3, R4 | `components/nina`, `components/photo`, `app/nina`, `app/photo`, `lib/nina`, `lib/admin` | 13 | 1, 3 | HARD | `.workflows/plan/copy-admin-media-link/phase-4.md` | — | — |
+| 1 ✅ | The admin-link URL grammar | R1, R2 | `lib/admin` | 2 | — | EASY | `.workflows/plan/copy-admin-media-link/phase-1.md` | `P1-ADM-A004` | — |
+| 2 | `/admin/nina` honours a media deep link | R2 | `lib/nina/queries`, `app/admin`, `components/admin` | 6 | 1 | HARD | `.workflows/plan/copy-admin-media-link/phase-2.md` | `P1-NIN-A057` | — |
+| 3 | The icon-only copy button, and the handle it reads | R1 | `components/ui` | 4 | 1 | NORMAL | `.workflows/plan/copy-admin-media-link/phase-3.md` | `P1-CU-A000` | — |
+| 4 | Every client entry point carries it, admin-only | R1, R3, R4 | `components/nina`, `components/photo`, `app/nina`, `app/photo`, `lib/nina`, `lib/admin` | 13 | 1, 3 | HARD | `.workflows/plan/copy-admin-media-link/phase-4.md` | `P1-CN-A008` | — |
 
 **The DAG, verified after reconciliation:** `1 → {2, 3}`, `3 → 4`. Every edge points backward.
 Phase 4 also consumes phase 1's minter, but only *through* phase 3's button — it imports

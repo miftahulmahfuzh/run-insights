@@ -6,20 +6,20 @@
   "phases": [
     {
       "card": null,
-      "commit": null,
+      "commit": "c3b495a7b6444ed9ea8d7c7f37f2c97c519a834a",
       "depends_on": [],
       "difficulty": "EASY",
       "n": 1,
-      "note": null,
+      "note": "URL grammar landed: NINA_MEDIA_PHOTO_PARAM='image', hrefForMediaPhoto, adminPhotoLink(kind,id,origin) refusing 'shot' with null. Phases 2 and 3 unblocked and share no file. Commit was amended+force-pushed once to fix the Co-Authored-By trailer: 26af0a9 is gone, c3b495a is the real base.",
       "package": "lib/admin",
       "plan": ".workflows/plan/copy-admin-media-link/phase-1.md",
-      "reported_at": null,
+      "reported_at": "2026-10-01T04:38:03+00:00",
       "satisfies": [
         "R1",
         "R2"
       ],
-      "status": "pending",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-ADM-A004",
       "title": "The admin-link URL grammar"
     },
     {
@@ -86,6 +86,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/copy-admin-media-link/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "copy-admin-media-link",
-  "updated": "2026-10-01T04:23:37+00:00",
+  "updated": "2026-10-01T04:38:03+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/copy-admin-media-link"
 }
