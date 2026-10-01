@@ -1,3 +1,5 @@
+import { sql, type AnyColumn, type SQL } from 'drizzle-orm'
+
 import { ninaAvatars, ninaChatSessions, ninaMessageImages, ninaMessages } from '@/lib/db/schema'
 
 /**
@@ -132,4 +134,34 @@ export const avatarColumns = {
    * `lib/db/schema/nina/avatars.ts`.
    */
   sourceImageId: ninaAvatars.sourceImageId,
+}
+
+/* ============================================================================
+ * §2b The correlated-subquery outer reference
+ * ==========================================================================*/
+
+/**
+ * A column reference that keeps its table qualification inside a `select()` projection.
+ *
+ * **Internal — shared with sibling query modules; never re-exported by the barrel.**
+ *
+ * Drizzle strips the table prefix from a bare `Column` rendered in the fields of a single-table
+ * select, which is right for an ordinary projection and WRONG inside a correlated subquery that
+ * has its own alias in scope — the unqualified name binds to the inner alias instead of the outer
+ * row and the correlation silently becomes a tautology. Wrapping the column in a nested `SQL`
+ * fragment takes it out of that rewrite.
+ *
+ * **Both measurements that put this here:** `locateNinaMediaPhoto` caught it before shipping
+ * (copy-admin-media-link phase 2), and `locateNinaAvatar` did NOT — it shipped
+ * `earlier.user_id = "user_id"` and returned offset 0 for every row, so `/admin/nina?avatar=<id>`
+ * landed on page 1 of the folder for the whole life of the feature (P2-NIN-A003). It was invisible
+ * because the fake test driver filters nothing: a behavioural test over either query passes over
+ * broken and fixed code alike. Pin the QUALIFIED SPELLING in a SQL-contract test — that is the only
+ * witness. See `tests/nina.avatarLocate.test.ts` and `tests/nina.mediaLocate.test.ts`.
+ *
+ * It lived module-private in `queries/images.ts` first; the second occurrence is what moved it
+ * here, because a second copy is how the next correlated subquery gets written without it.
+ */
+export function outerRef(column: AnyColumn): SQL {
+  return sql`${column}`
 }

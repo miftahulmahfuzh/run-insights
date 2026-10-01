@@ -33,7 +33,7 @@ import type {
   NinaAvatarRow,
   NinaFolderRenameResult,
 } from './shapes'
-import { avatarColumns } from './columns'
+import { avatarColumns, outerRef } from './columns'
 
 /**
  * Nina's avatar album — her face, and the album as a file manager.
@@ -667,9 +667,12 @@ export async function locateNinaAvatar(
       offset: sql<number>`(
         select count(*)
         from ${ninaAvatars} as earlier
-        where earlier.user_id = ${ninaAvatars.userId}
-          and earlier.folder = ${ninaAvatars.folder}
-          and (earlier.created_at, earlier.id) > (${ninaAvatars.createdAt}, ${ninaAvatars.id})
+        where earlier.user_id = ${outerRef(ninaAvatars.userId)}
+          and earlier.folder = ${outerRef(ninaAvatars.folder)}
+          and (earlier.created_at, earlier.id) > (
+            ${outerRef(ninaAvatars.createdAt)},
+            ${outerRef(ninaAvatars.id)}
+          )
       )`.mapWith(Number),
     })
     .from(ninaAvatars)
