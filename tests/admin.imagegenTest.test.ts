@@ -64,7 +64,6 @@ function job(over: Partial<NinaImageTestJobView> = {}): NinaImageTestJobView {
     attempts: 0,
     latencyMs: null,
     costMicroUsd: null,
-    prompt: 'SUBJECT: ...',
     createdAtMs: 1_760_000_000_000,
     ...over,
   }

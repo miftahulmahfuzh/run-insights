@@ -435,3 +435,50 @@ describe('ImageGenPanel — template and pipeline answers', () => {
     expect(screen.queryByText(/as saved/)).not.toBeInTheDocument()
   })
 })
+
+/*
+ * 2026-10-01. The copy control is `ImageGenTestPanel`'s old one, moved here when "Prompt as sent"
+ * was purged — *"using The assembled image prompt is enough"*. Its own behaviour (the tick, the
+ * revert, the refused clipboard) is `CopyPromptButton.test.tsx`'s; what is pinned HERE is the
+ * wiring and the placement, which belong to this file: the text it copies is the preview prop
+ * verbatim, and the button is NOT inside the `<summary>`, where a click would fold the disclosure
+ * shut on the very text it had just copied.
+ */
+describe('ImageGenPanel — the assembled prompt’s copy control', () => {
+  const writeText = vi.fn()
+
+  beforeEach(() => {
+    writeText.mockReset().mockResolvedValue(undefined)
+    Object.defineProperty(window.navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+    })
+  })
+
+  afterEach(() => {
+    delete (window.navigator as { clipboard?: unknown }).clipboard
+  })
+
+  it('copies the preview verbatim, and is an icon — the name lives on the control, not in it', async () => {
+    panel()
+    const copy = screen.getByRole('button', { name: 'Copy the assembled image prompt' })
+    expect(copy).toHaveTextContent('')
+
+    fireEvent.click(copy)
+    await advance(0)
+
+    expect(writeText).toHaveBeenCalledWith('THE ASSEMBLED IMAGE PROMPT')
+    expect(screen.getByRole('button', { name: 'Copied' })).toBeInTheDocument()
+  })
+
+  it('sits beside the disclosure, never inside its summary, and survives the collapsed state', () => {
+    panel()
+    const copy = screen.getByRole('button', { name: 'Copy the assembled image prompt' })
+    const details = copy.closest('div')?.querySelector('details')
+
+    expect(copy.closest('summary')).toBeNull()
+    // Nor an ordinary child of <details>, which the UA hides while collapsed — the shipped state.
+    expect(details?.contains(copy)).toBe(false)
+    expect(details?.hasAttribute('open')).toBe(false)
+  })
+})

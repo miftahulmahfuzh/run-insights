@@ -30,21 +30,16 @@ const JOB_ID = 'job123XYZ_-9'
 const requireAdmin = vi.fn()
 const revalidatePath = vi.fn()
 const writeNinaImagePrefs = vi.fn()
-const readNinaTuning = vi.fn()
 const readNinaImagePrefs = vi.fn()
-const resolveNinaPhotoReference = vi.fn()
 const ninaImageQuotaLeft = vi.fn()
 const getNinaImageJobDetail = vi.fn()
 const dispatchNinaImageTest = vi.fn()
-const assembleNinaImageTestPrompt = vi.fn()
 
 vi.mock('@/lib/admin/requireAdmin', () => ({ requireAdmin: () => requireAdmin() }))
 vi.mock('next/cache', () => ({ revalidatePath: (path: string) => revalidatePath(path) }))
 vi.mock('@/lib/nina/queries', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
-  readNinaTuning: (...args: unknown[]) => readNinaTuning(...args),
   readNinaImagePrefs: (...args: unknown[]) => readNinaImagePrefs(...args),
-  resolveNinaPhotoReference: (...args: unknown[]) => resolveNinaPhotoReference(...args),
   writeNinaImagePrefs: (...args: unknown[]) => writeNinaImagePrefs(...args),
 }))
 vi.mock('@/lib/nina/imagejobs', async (importOriginal) => ({
@@ -55,7 +50,6 @@ vi.mock('@/lib/nina/imagejobs', async (importOriginal) => ({
 vi.mock('@/lib/nina/imagetest', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   dispatchNinaImageTest: (...args: unknown[]) => dispatchNinaImageTest(...args),
-  assembleNinaImageTestPrompt: (...args: unknown[]) => assembleNinaImageTestPrompt(...args),
 }))
 
 type Actions = typeof import('@/lib/admin/imageGenActions')
@@ -96,20 +90,15 @@ function prefsInput(overrides: Partial<PrefsInput> = {}): PrefsInput {
   }
 }
 
-const TUNING = { relationship: 'girlfriend' } as never // opaque: the assembly is mocked
-
 beforeEach(async () => {
   vi.resetModules()
   requireAdmin.mockReset().mockResolvedValue({ userId: USER, email: 'ops@example.com' })
   revalidatePath.mockReset()
   writeNinaImagePrefs.mockReset().mockResolvedValue(STORED_PREFS)
-  readNinaTuning.mockReset().mockResolvedValue(TUNING)
   readNinaImagePrefs.mockReset().mockResolvedValue(STORED_PREFS)
-  resolveNinaPhotoReference.mockReset().mockResolvedValue(null)
   ninaImageQuotaLeft.mockReset().mockResolvedValue(3)
   getNinaImageJobDetail.mockReset().mockResolvedValue(null)
   dispatchNinaImageTest.mockReset()
-  assembleNinaImageTestPrompt.mockReset().mockReturnValue('THE PROMPT')
   actions = await import('@/lib/admin/imageGenActions')
 })
 
@@ -262,26 +251,17 @@ function jobDetail(overrides: Record<string, unknown> = {}): Record<string, unkn
 }
 
 describe('readNinaImageTestAction — the poll', () => {
-  it('answers the mount case: quota, preview and anchor, with no job and no revalidate', async () => {
+  it('answers the mount case: the quota alone, with no job and no revalidate', async () => {
     const result = await actions.readNinaImageTestAction(null)
 
-    expect(result).toEqual({
-      quotaLeft: 3,
-      promptPreview: 'THE PROMPT',
-      referenceUrl: null,
-      job: null,
-    })
+    /* `toEqual` and not a property check, deliberately: this poll runs on an escalating schedule
+     * for the length of a 78-235 s generation, and the 2026-10-01 purge of the "Prompt as sent"
+     * block took a prompt assembly and an owner-scoped reference resolve out of every tick. An
+     * extra key reappearing here is that work creeping back in to feed a reader that no longer
+     * exists. */
+    expect(result).toEqual({ quotaLeft: 3, job: null })
     expect(getNinaImageJobDetail).not.toHaveBeenCalled()
     expect(revalidatePath).not.toHaveBeenCalled()
-  })
-
-  it('resolves the anchor through the owner-scoped resolver, null for none and for deleted', async () => {
-    resolveNinaPhotoReference.mockResolvedValue({ blobUrl: 'https://store/x.jpg' })
-    expect((await actions.readNinaImageTestAction(null)).referenceUrl).toBe('https://store/x.jpg')
-    expect(resolveNinaPhotoReference).toHaveBeenCalledWith(USER, STORED_PREFS.reference)
-
-    resolveNinaPhotoReference.mockResolvedValue(null)
-    expect((await actions.readNinaImageTestAction(null)).referenceUrl).toBeNull()
   })
 
   it('a malformed job id never reaches the read — the claim is not a fact', async () => {
@@ -303,7 +283,6 @@ describe('readNinaImageTestAction — the poll', () => {
       attempts: 1,
       latencyMs: 95_000,
       costMicroUsd: 1200,
-      prompt: 'THE PROMPT',
       createdAtMs: Date.parse('2026-09-11T08:00:00Z'),
     })
     // R12's "automatically": the poll that first sees the photograph revalidates where it lands,

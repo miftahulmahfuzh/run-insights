@@ -66,8 +66,6 @@ export interface NinaImageTestJobView {
   attempts: number
   latencyMs: number | null
   costMicroUsd: number | null
-  /** The exact prompt as sent, off `args.prompt`. `null` only for a row with no args. */
-  prompt: string | null
   createdAtMs: number
 }
 

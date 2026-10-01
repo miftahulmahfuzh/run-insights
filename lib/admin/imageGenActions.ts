@@ -21,13 +21,11 @@ import {
   type NinaImagePrefsWrite,
 } from '@/lib/nina/imageprefs'
 import { ninaImageDailyCap } from '@/lib/nina/imagerecipe'
-import { assembleNinaImageTestPrompt, dispatchNinaImageTest } from '@/lib/nina/imagetest'
+import { dispatchNinaImageTest } from '@/lib/nina/imagetest'
 import {
   readNinaImagePrefs,
-  readNinaTuning,
   readRecentFieldValues,
   recordFieldValue,
-  resolveNinaPhotoReference,
   writeNinaImagePrefs,
 } from '@/lib/nina/queries'
 
@@ -221,13 +219,19 @@ export type NinaImageTestDispatchResult =
 export interface NinaImageTestReadResult {
   /** Live, because a chat selfie can spend it between renders. Shown BEFORE the click. */
   quotaLeft: number
-  /** The prompt the button would send right now, from the SAVED prefs. Pure assembly, no model. */
-  promptPreview: string
-  /** The saved photo reference, so the panel can say whether this test is anchored. */
-  referenceUrl: string | null
   /** `null` until a test has been dispatched, or when the id names nothing of ours. */
   job: NinaImageTestJobView | null
 }
+
+/*
+ * ── WHAT THIS RESULT NO LONGER CARRIES, AND WHY ──────────────────────────────────────────────
+ * `promptPreview` and `referenceUrl` were here until 2026-10-01, feeding a "Prompt as sent" block
+ * at the foot of `ImageGenTestPanel.tsx`. The runner purged that block — *"using The assembled
+ * image prompt is enough"* — so both fields lost their only reader, and `readNinaImagePrefs` +
+ * `resolveNinaPhotoReference` lost the reason they ran on EVERY poll of a 78-235 s job. A field
+ * nobody renders is not free here: this action is polled on an escalating schedule, and the
+ * reference resolve was a database read per tick to answer a sentence that is no longer on screen.
+ */
 
 /**
  * Spend one generation to find out whether the provider will draw the saved prompt.
@@ -267,11 +271,10 @@ export async function runNinaImageTestAction(): Promise<NinaImageTestDispatchRes
 }
 
 /**
- * The read behind the panel: the quota, the prompt as it would be sent, and — once a test has
- * been dispatched — the job's state.
+ * The read behind the panel: the quota and — once a test has been dispatched — the job's state.
  *
- * `jobId === null` is the mount case and is not an error: there is a quota to show and a prompt to
- * preview before anything has been spent.
+ * `jobId === null` is the mount case and is not an error: there is a quota to show before anything
+ * has been spent.
  *
  * ── THE `source !== 'admin'` FILTER ──────────────────────────────────────────────────────────
  * `getNinaImageJobDetail` already proves the job is this user's. This adds that it is one of HIS
@@ -279,41 +282,16 @@ export async function runNinaImageTestAction(): Promise<NinaImageTestDispatchRes
  * which is a true row described by a false sentence. `source: 'admin'` is stamped by
  * `dispatchNinaImageTest` and is the value `NinaImageJobArgs` already carries for this purpose.
  *
- * ── WHY THE PREVIEW MAY BE AWAITED HERE ──────────────────────────────────────────────────────
- * `assembleNinaImageTestPrompt` is a PURE string join over two indexed reads. No model call is
- * awaited, which is what `ci:llm-payload-guard` Rule 2 and plan invariant 5 forbid — the same
- * standing `buildNinaSystemPrompt` has on `/admin/personality`.
- *
- * ── AND WHY `referenceUrl` IS RESOLVED RATHER THAN READ ──────────────────────────────────────
- * **RECONCILED.** The prefs row stores `reference: { source, id }` and NOT a Blob URL — phase 1's
- * `NinaImagePrefs` has no `referenceUrl` member, by the same argument this phase's Step 1 makes:
- * `updateNinaChatPhotoBlob` changes a chat photograph's `blob_url` and keeps its `id`, so a stored
- * URL would point at a deleted object. `resolveNinaPhotoReference` is owner-scoped and returns
- * `null` both for "none selected" and for "the photograph was deleted", which are the same two
- * words on screen: this generation is unanchored.
+ * ── NO PROMPT ASSEMBLY, NO REFERENCE RESOLVE ─────────────────────────────────────────────────
+ * Both lived here until 2026-10-01 and are gone with the block that printed them; see the note on
+ * `NinaImageTestReadResult`. What is left is one quota read per tick.
  */
 export async function readNinaImageTestAction(
   jobId: string | null,
 ): Promise<NinaImageTestReadResult> {
   const { userId } = await requireAdmin()
 
-  const [quotaLeft, tuning, prefs] = await Promise.all([
-    ninaImageQuotaLeft(userId),
-    readNinaTuning(userId),
-    readNinaImagePrefs(userId),
-  ])
-
-  const referenceUrl = (await resolveNinaPhotoReference(userId, prefs.reference))?.blobUrl ?? null
-
-  const base = {
-    quotaLeft,
-    promptPreview: assembleNinaImageTestPrompt({
-      tuning,
-      prefs,
-      hasReference: referenceUrl != null,
-    }),
-    referenceUrl,
-  }
+  const base = { quotaLeft: await ninaImageQuotaLeft(userId) }
 
   if (!isValidId(jobId)) return { ...base, job: null }
 
@@ -327,7 +305,6 @@ export async function readNinaImageTestAction(
     attempts: detail.attempts,
     latencyMs: detail.latencyMs,
     costMicroUsd: detail.costMicroUsd,
-    prompt: detail.prompt,
     /* Epoch milliseconds, not a `Date`: the one shape a client and a server cannot disagree about.
      * `toNinaJobListItems` makes the same conversion for the same reason. */
     createdAtMs: detail.createdAt.getTime(),

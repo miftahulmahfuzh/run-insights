@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 
+import { CopyPromptButton } from '@/components/admin/CopyPromptButton'
 import { ImageGenTestPanel } from '@/components/admin/ImageGenTestPanel'
 import { SparklesIcon } from '@/components/admin/photoIcons'
 import { PhotoReferencePicker } from '@/components/admin/PhotoReferencePicker'
@@ -1181,24 +1182,45 @@ export function ImageGenPanel({
           </div>
         </details>
 
-        <details className="mb-6 rounded-card bg-paper-2 p-4">
-          <summary className="cursor-pointer list-none text-[12px] font-semibold text-ink [&::-webkit-details-marker]:hidden">
-            The assembled image prompt
-            {dirty && (
-              <span className="ml-2 font-medium text-ink-3">
-                (as saved — the edits above are not in it yet)
-              </span>
-            )}
-          </summary>
-          <p className="mt-3 max-w-[70ch] text-[11px] font-medium text-ink-3">
-            Assembled by the same function the camera is handed, so this is the prompt and not a
-            reconstruction of it. The <code>SCENE:</code> line is a stand-in —{' '}
-            <em>{ADMIN_IMAGE_PREVIEW_SCENE}</em> — because she chooses the scene per photograph.
-          </p>
-          <pre className="mt-3 max-h-[420px] overflow-auto text-[12px] leading-relaxed whitespace-pre-wrap text-ink-2">
-            {promptPreview}
-          </pre>
-        </details>
+        {/*
+         * 2026-10-01: the copy control, and the one prompt left on this page — *"purge Prompt as
+         * sent section. using The assembled image prompt is enough"*. `ImageGenTestPanel.tsx`
+         * printed the same string a second time and carried the only copy button; the block went,
+         * the button moved here.
+         *
+         * IT IS A SIBLING OF THE `<details>`, NOT A CHILD OF THE `<summary>`, and both halves of
+         * that matter. Inside the summary it would be a button nested in a `role="button"`, and a
+         * click on it would toggle the disclosure as well as copy — the glyph would fold the very
+         * text it just put on the clipboard. Placed as an ordinary child of `<details>` instead it
+         * would VANISH while collapsed, which is the state this section ships in: the UA hides
+         * every child but the summary. So it rides the wrapper, absolutely positioned over the
+         * header row, and `pr-10` on the summary keeps the heading out from under it.
+         */}
+        <div className="relative mb-6">
+          <details className="rounded-card bg-paper-2 p-4">
+            <summary className="cursor-pointer list-none pr-10 text-[12px] font-semibold text-ink [&::-webkit-details-marker]:hidden">
+              The assembled image prompt
+              {dirty && (
+                <span className="ml-2 font-medium text-ink-3">
+                  (as saved — the edits above are not in it yet)
+                </span>
+              )}
+            </summary>
+            <p className="mt-3 max-w-[70ch] text-[11px] font-medium text-ink-3">
+              Assembled by the same function the camera is handed, so this is the prompt and not a
+              reconstruction of it. The <code>SCENE:</code> line is a stand-in —{' '}
+              <em>{ADMIN_IMAGE_PREVIEW_SCENE}</em> — because she chooses the scene per photograph.
+            </p>
+            <pre className="mt-3 max-h-[420px] overflow-auto text-[12px] leading-relaxed whitespace-pre-wrap text-ink-2">
+              {promptPreview}
+            </pre>
+          </details>
+          <CopyPromptButton
+            text={promptPreview}
+            label="Copy the assembled image prompt"
+            className="absolute top-2.5 right-2.5"
+          />
+        </div>
 
         {/* R11 / R12, phase 4's seam filled. Propless on purpose: the panel reads the live
          * quota and the saved-prefs prompt preview through its own Server Action, so this line

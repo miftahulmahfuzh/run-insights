@@ -44,10 +44,17 @@ import { formatJobLatency, formatMicroUsd } from '@/lib/nina/jobview'
  * this component propless, so the one edit this phase makes to `ImageGenPanel.tsx` is a single
  * line that cannot conflict with phase 4's or phase 5's edits to the same file.
  *
- * ── THE PREVIEW IS THE SAVED PREFS, NOT THE DRAFT ────────────────────────────────────────────
- * `dispatchNinaImageTest` reads the row, so an unsaved field is not in the test. The label says
- * "saved settings" in as many words, and `dirty` — optional, so this file needs no change if
- * nobody passes it — turns that into a warning when phase 4 wires its own dirty flag.
+ * ── IT TESTS THE SAVED PREFS, NOT THE DRAFT ──────────────────────────────────────────────────
+ * `dispatchNinaImageTest` reads the row, so an unsaved field is not in the test. `dirty` —
+ * optional, so this file needs no change if nobody passes it — says so in as many words above the
+ * button.
+ *
+ * ── IT PRINTS NO PROMPT OF ITS OWN ───────────────────────────────────────────────────────────
+ * 2026-10-01, the runner's words: *"purge Prompt as sent section. using The assembled image prompt
+ * is enough"*. This panel used to end with the prompt it had sent, directly under the identical
+ * block `ImageGenPanel.tsx` already renders from the same saved row — two copies of one string,
+ * one of which was always the stale one to read. The copy button that lived on that block survives
+ * as `components/admin/CopyPromptButton.tsx` and now sits on the one remaining prompt.
  *
  * ── NO CONFIRMATION DIALOG ───────────────────────────────────────────────────────────────────
  * `lib/admin/chatPhotoActions.ts`'s header states the standing ruling for this whole surface:
@@ -173,7 +180,6 @@ export function ImageGenTestPanel({ dirty = false }: { dirty?: boolean }) {
   const capped = quotaLeft !== null && quotaLeft <= 0
   const job = view?.job ?? null
   const reason = job === null ? null : imageTestReason(job.errorCode)
-  const promptText = job?.prompt ?? view?.promptPreview ?? ''
 
   return (
     <section className="mb-8 rounded-card border border-rule bg-card px-5">
@@ -189,11 +195,11 @@ export function ImageGenTestPanel({ dirty = false }: { dirty?: boolean }) {
       </div>
 
       <p className="mb-6 max-w-[70ch] text-[13px] font-medium text-ink-2">
-        Sends the prompt below to the provider and reports whether it was allowed. It spends one
-        generation off today&rsquo;s cap, plus its caption, and the daily cap counts failures too. A
-        successful test lands in the Image collection&rsquo;s Media folder &mdash; along with a
-        caption bubble from Nina in the conversation, because a chat photo cannot exist without a
-        message to hang on.
+        Sends the assembled image prompt above &mdash; as saved, not as edited &mdash; to the
+        provider and reports whether it was allowed. It spends one generation off today&rsquo;s cap,
+        plus its caption, and the daily cap counts failures too. A successful test lands in the
+        Image collection&rsquo;s Media folder &mdash; along with a caption bubble from Nina in the
+        conversation, because a chat photo cannot exist without a message to hang on.
       </p>
 
       {dirty && (
@@ -260,108 +266,6 @@ export function ImageGenTestPanel({ dirty = false }: { dirty?: boolean }) {
           </p>
         )}
       </div>
-
-      {/* ── the prompt as sent ────────────────────────────────────────────────────────────── */}
-      <div className="pb-5">
-        <div className="flex items-center justify-between gap-2">
-          <h3 className="text-[13px] font-semibold text-ink">Prompt as sent</h3>
-          <CopyPromptButton text={promptText} />
-        </div>
-        <p className="mb-1 max-w-[70ch] text-[11px] font-medium text-ink-3">
-          Assembled from the <strong>saved</strong> settings by the same function the button uses.{' '}
-          {view?.referenceUrl == null
-            ? 'No photo reference is selected, so this generation is unanchored.'
-            : 'Anchored to the selected photo reference.'}
-        </p>
-        <pre className="mt-3 max-h-[420px] overflow-auto text-[12px] leading-relaxed whitespace-pre-wrap text-ink-2">
-          {promptText}
-        </pre>
-      </div>
     </section>
-  )
-}
-
-/** How long the checkmark stands in for the copy glyph, same hold `ShareButton.tsx` uses. */
-const COPY_HOLD_MS = 2000
-
-/**
- * Icon-only copy button for the "Prompt as sent" preview — `ShareButton.tsx`'s copy-and-revert
- * shape without the `navigator.share()` branch, since this text never leaves the clipboard.
- */
-function CopyPromptButton({ text }: { text: string }) {
-  const [status, setStatus] = React.useState<'idle' | 'copied' | 'failed'>('idle')
-
-  React.useEffect(() => {
-    if (status === 'idle') return
-    const timer = window.setTimeout(() => setStatus('idle'), COPY_HOLD_MS)
-    return () => window.clearTimeout(timer)
-  }, [status])
-
-  async function onClick() {
-    try {
-      await navigator.clipboard.writeText(text)
-      setStatus('copied')
-    } catch {
-      setStatus('failed')
-    }
-  }
-
-  const label = status === 'copied' ? 'Copied' : 'Copy the prompt as sent'
-
-  return (
-    <>
-      <button
-        type="button"
-        onClick={() => void onClick()}
-        disabled={text === ''}
-        aria-label={label}
-        title={label}
-        className="-m-1 inline-flex shrink-0 p-1 text-accent disabled:opacity-40"
-      >
-        {status === 'copied' ? <CheckIcon /> : <CopyIcon />}
-      </button>
-      <span role="status" aria-live="polite" className="sr-only">
-        {status === 'copied' ? 'Copied' : status === 'failed' ? 'Could not copy' : ''}
-      </span>
-    </>
-  )
-}
-
-/** Two overlapping rectangles — the standard "copy" glyph, same line weight as `ShareButton.tsx`. */
-function CopyIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="size-5" fill="none" aria-hidden="true">
-      <rect
-        x="8.5"
-        y="8.5"
-        width="11"
-        height="11"
-        rx="1.8"
-        stroke="currentColor"
-        strokeWidth="1.8"
-      />
-      <path
-        d="M15.5 8.5V6.3a1.8 1.8 0 0 0-1.8-1.8H6.3a1.8 1.8 0 0 0-1.8 1.8v7.4a1.8 1.8 0 0 0 1.8 1.8h2.2"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  )
-}
-
-/** The copied confirmation, for {@link COPY_HOLD_MS}. Same box as `CopyIcon`, so the row never shifts. */
-function CheckIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="size-5" fill="none" aria-hidden="true">
-      <path
-        d="m5 12.5 4.5 4.5L19 7"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
   )
 }
