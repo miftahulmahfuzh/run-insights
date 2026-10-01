@@ -9,16 +9,26 @@ numbers carry their measure date; re-measure before quoting them forward. The re
 in the middle of this document is the reason it exists: until now no file answered "who imports
 this primitive, and how".
 
+**Updated 2026-10-01** (`P1-CU-A000`, phase 3 of the copy-admin-media-link set) — the kit gained
+`CopyAdminLinkButton.tsx` and `ViewerPhoto` gained one optional field. The 2026-09-12 import-graph
+numbers below are **left at the values they were measured at** rather than silently bumped; where
+this addition changes one, the new number carries its own 2026-10-01 stamp beside it. The method
+for re-measuring is unchanged, and it is the only thing that should be trusted forward.
+
 ## Overview
 
-`components/ui` is the app's shared component kit: fifteen components (ScreenHeader shares
+`components/ui` is the app's shared component kit: sixteen components (ScreenHeader shares
 `AppShell.tsx`'s module), two client hooks, and one barrel. It is the base of the dependency graph's component half —
 **77 files outside this directory import from it** (72 production files across `app/` and
 `components/`, 5 test files; measured 2026-09-12), which makes every decision in here a
-decision everyone else inherits. The directory is 5,213 lines over 33 files (measured
-2026-09-12): 16 source modules, one `index.ts` barrel, and 16 colocated happy-dom suites —
-every source file has one, 203 tests, **green at `6759f26`** (`vitest components/ui`:
-203/203).
+decision everyone else inherits. (That 77 is still the 2026-09-12 figure and is still correct:
+2026-10-01's new module has **no importer outside this directory at all** yet — see the
+reverse-wiring map's standing exception.) The directory is **35 files, measured 2026-10-01**: 17
+source modules, one `index.ts` barrel, and 17 colocated happy-dom suites — every source file has
+one, **223 tests green** (`npx vitest run components/ui`: 17 files, 223/223, on the
+`feature/copy-admin-media-link` working tree). The 2026-09-12 reading of the same three numbers
+was 33 files / 16 modules / 203 tests at `6759f26`; the line count (5,213 lines, 2026-09-12) has
+not been re-measured.
 
 Two rules organise everything, and both are import-graph rules:
 
@@ -35,10 +45,10 @@ Two rules organise everything, and both are import-graph rules:
    `Card`, `Chip`, `EmptyState`, `RunDateLink`, `SplitsTable`, `ZoneBar`, `FlagList` and
    `ScreenHeader` carry no `'use client'`: no hooks, no effects, no event handlers beyond
    what markup allows. A server page renders them to HTML with no client JS shipped; a
-   client component gets interactivity for free. Only seven of the sixteen source modules
-   are genuinely client — `Field.tsx`, `Sheet.tsx`, `TabBar.tsx`, `PhotoViewer.tsx`,
-   `DetailPanel.tsx`, `useSavePhoto.ts`, `usePanelParam.ts` — and each carries its reason
-   in its header. (`AppShell.tsx` is the directive-free Server Component: no directive, and
+   client component gets interactivity for free. Only eight of the seventeen source modules
+   are genuinely client (measured 2026-10-01) — `Field.tsx`, `Sheet.tsx`, `TabBar.tsx`,
+   `PhotoViewer.tsx`, `DetailPanel.tsx`, `CopyAdminLinkButton.tsx`, `useSavePhoto.ts`,
+   `usePanelParam.ts` — and each carries its reason in its header. (`AppShell.tsx` is the directive-free Server Component: no directive, and
    no hooks either.)
 
 The kit implements the design brief (`docs/design-brief.md`) and the v2 tokens in
@@ -78,6 +88,7 @@ sits next to the code — and this readme should be corrected.
 | `RunDateLink.tsx` | **no directive** | `RunDateLink` | A day in a detail panel: link or plain text. `runId === null` is the ordinary case for period badges, and the text branch must not look tappable. |
 | `Sheet.tsx` | `'use client'` | `Sheet` | The bottom sheet — the app's one modal surface for *detours*. Body scroll-lock, focus in and out, 88 dvh cap with pinned header/footer, and the `onCloseRef` pattern (see its section). |
 | `PhotoViewer.tsx` | `'use client'` | `PhotoViewer`, `ViewerPhoto` | The one full-screen image overlay in the authenticated app. Zoom is the browser's (`touch-action: pinch-zoom`); swipe is read-only on the gesture; `actions` is a slot, absent renders nothing. |
+| `CopyAdminLinkButton.tsx` | `'use client'` | `CopyAdminLinkButton`, `COPY_ADMIN_LINK_LABEL`, `COPY_ADMIN_LINK_DONE`, `COPY_ADMIN_LINK_FAILED`, `COPY_ADMIN_LINK_FIELD` | The icon-only 44 px "copy this photograph's admin deep link" control for `PhotoViewer`'s `headerAction` slot. **Clipboard only — `navigator.share` is never called.** Takes `{ pointer, origin }`, both required; renders `null` for a kind the minter refuses (`'shot'`). Who may see it is a call-site question, not this file's. |
 | `DetailPanel.tsx` | `'use client'` | `DetailPanel`, `PanelArt` | `/me`'s native `<dialog>` detail panel: art band flush to three edges, scrolling body, `showModal()`'s UA-supplied focus trap. Deliberately NOT a `Sheet`, and deliberately not in the barrel. |
 | `TabBar.tsx` | `'use client'` | `TabBar`, `TAB_BAR_HEIGHT_PX`, `TAB_BAR_BORDER_PX`, `TAB_BAR_OUTER_HEIGHT_PX`, `TAB_BAR_CONTENT_DROP_CSS` | The five-tab bottom bar and its geometry constants. `'use client'` for exactly one `usePathname`. Hide transform is a plain `100%`; the axis of the content drop is spelled (`0 <y>`) because the single-value form is X. |
 | `AppShell.tsx` | **no directive** (Server Component) | `AppShell`, `ScreenHeader` | The frame every tabbed screen sits in: 470 px column, `screen: 'tabs' \| 'chat'` selecting both the chrome and the bottom gap (one prop, because they cannot be allowed to disagree). Owns the Nina provider nesting. NOT in the barrel — import `@/components/ui/AppShell`. |
@@ -107,7 +118,9 @@ state (2026-09-12, 77 external importing files):
      `Chip` (2 path consumers), `EmptySlot` (5, all `charts/`+`insights/`+`profile/`),
      `Input` (1, `SessionRow`), `TabBar` (1, `ChatChrome`).
   3. **Mount-site-specific surfaces** the barrel comment predates but the rule covers:
-     `Sheet`, `PhotoViewer`, `DetailPanel`, `RunDateLink`, `PanelArt`, `ViewerPhoto`.
+     `Sheet`, `PhotoViewer`, `DetailPanel`, `RunDateLink`, `PanelArt`, `ViewerPhoto`, and
+     (2026-10-01) `CopyAdminLinkButton` with its four `COPY_ADMIN_LINK_*` copy constants —
+     a control that mounts in exactly one slot has no business in a barrel every screen reads.
   4. **Hooks and their types**: `useSavePhoto`, `SaveNotice`, `SAVE_NOTICE_TEXT`,
      `usePanelParam` — imported where the behaviour lives, not where the styling does.
   Plus the four `TAB_BAR_*` constants, whose consumers are geometry-coupled files and one
@@ -125,6 +138,15 @@ directory** (measured 2026-09-12 at `6759f26`). Counts are files, not call sites
 counted once may import several names. This table is the map that did not exist before
 2026-09-12; when you add a consumer, move the count, and when a count surprises you,
 re-measure it before trusting either state.
+
+**The one standing exception, and why it is not dead code** (2026-10-01): `CopyAdminLinkButton`
+and its four `COPY_ADMIN_LINK_*` constants have **zero consumers outside this directory** — only
+their own suite imports them. That is the shape of the work, not an oversight: the control was
+written in one phase and mounted in the next, and the constants exist precisely so the mounting
+phase's suites assert the same strings the component renders instead of re-spelling them. A
+dead-export sweep that reaches this directory before the mount lands will flag all five; the
+answer is to check whether `PhotoViewer`'s `headerAction` has a caller passing it yet, **not** to
+delete them. Once mounted, give them a row in the table above and a measured count.
 
 | Symbol | Consumers | Who (by surface) |
 |---|---|---|
@@ -204,6 +226,16 @@ Two readings worth taking away from the map:
   so writer and reader cannot disagree.
 - `@/lib/extract/constants` — `SCREEN_KIND_LABEL`/`ScreenKind` (PhotoViewer's default
   naming).
+- `@/lib/photos/pointer` — `PhotoPointer`: which table and which row a photograph's bytes live
+  in. Type-only in `PhotoViewer` (erased at build), a real prop type in `CopyAdminLinkButton`.
+  Importable here because that module is pure by its own header's statement — no database, no
+  `server-only`, one import (`@/lib/id`).
+- `@/lib/admin/albumDeepLink` — `adminPhotoLink`, the `/admin/nina?…` URL grammar.
+  **An `admin`-named module imported by the shared kit, and that is allowed on one ground only:
+  it is a pure string builder** with two imports, both themselves pure, and it is read by a client
+  component and a Server Component alike. If it ever reaches a database or `server-only`, this
+  import is the thing that breaks, and the fix is to thread the minted link in as a prop — not to
+  loosen the rule.
 - `@/components/nina` — **the one backward arrow.** `AppShell` imports `ChatChrome`,
   `NinaBarProvider`, `NinaSidebarProvider` and `NinaUnreadBadgeSlot`. The frame depends on
   the chat surface's chrome because the providers must sit above BOTH the page body and the
@@ -358,6 +390,51 @@ Three modal surfaces, and the boundaries between them are the design:
 like (underline, offset); the caller owns size, weight and colour; and `runId: null` is the
 ordinary case for period badges, so the text branch must not invite a thumb to a dead end.
 
+### The viewer's admin link (`CopyAdminLinkButton`, `ViewerPhoto.rowPointer`)
+
+A header control for `PhotoViewer`'s `headerAction` slot: the operator is looking at a Nina
+photograph on a phone, wants it replaced, and needs the `/admin/nina` row link in a message so a
+desktop can do the Replace later. Four rules travel with it, and each one is a thing that breaks
+if it is "simplified":
+
+- **Clipboard only. `navigator.share` is never called, even where the platform has it.** This is
+  the runner's own ruling, and it is pinned by a named regression test
+  (`'NEVER calls navigator.share, even on a platform that has one'`) rather than left as an
+  accident of the current code. Note that this is the *opposite* of `useSavePhoto`'s ladder, which
+  prefers `share` — deliberately, because the two want different things: a download wants the
+  platform's Save Image sheet, and a copy is already finished by the time a sheet would open. On a
+  share-capable phone — which is the device this control was asked for — a share branch would mean
+  the plain copy the button is named after never runs at all.
+- **`origin` is a required prop, resolved server-side, and never `window.location`.** Invariant 9:
+  a preview deployment's hostname dies at the next push, with the link already sent. The component
+  imports nothing `server-only` and reads no env for exactly this reason.
+- **Who may see it is the call site's question, not this component's.** There is no admin check in
+  here and there must not be one: each mount holds a *nullable* admin origin resolved on the
+  server and renders no control when it is `null`, so a non-admin's page payload carries no origin
+  at all. Structural absence beats a render-time `if`.
+- **A refused kind renders `null`, not a dead button.** `adminPhotoLink` returns `null` for
+  `'shot'` (a `run_photos` row, which `/admin/nina` holds in neither collection), and the early
+  return sits *below every hook* so hook order is identical whichever photograph the overlay is
+  paged to.
+
+The clipboard's refusal has the kit's usual bottom rung: the URL goes on screen in a `readOnly`,
+selectable field — `ShareButton`'s pattern, and it matters more here, because a copy's only
+feedback is a tick and a silent failure sends the operator to a desktop to paste nothing. That
+field's `top-[calc(4.25rem+var(--safe-top))]` is arithmetic over `PhotoViewer`'s header padding
+(0.75 + 2.75 + 0.75), and **Tailwind cannot read a constant** — the same accepted duplication
+`TabBar`'s height and `AppShell`'s `BOTTOM_GAP` carry, with the same consequence: change the
+header's padding and this literal moves with it.
+
+`ViewerPhoto.rowPointer?: PhotoPointer` is the handle this control needs, and it is **deliberately
+not `id`**. On both Nina surfaces `id` already means the image-generation *turn* id and is handed
+to `ninaJobHref`; a photograph's own row is a different id in a different table, so overloading
+`id` would point two screens' job-detail links at a URL that does not exist — while compiling, and
+while still rendering a plausible button. It is a pointer rather than a bare string because
+`nina_avatars` and `nina_message_images` both key on the same nanoid(12) alphabet, so the string
+alone cannot say which collection to look in. `PhotoViewer` never reads the field; it travels to
+`headerAction` inside `photos[index]`, which is what that slot's argument is for, so the render is
+byte-identical and `ReviewPhoto` still assigns to `ViewerPhoto` with no adapter.
+
 ### Hooks (`useSavePhoto`, `usePanelParam`)
 
 `useSavePhoto` is the whole download ladder in one copy: `share` (phone: bytes → `File` →
@@ -398,7 +475,9 @@ No custom error types, no sentinel errors, no deliberate throws anywhere in the 
 Failures are either *absent* (components render what their props say) or *reported as
 words*: `Field`'s `error` paragraph wired into `aria-describedby`; `SaveNotice`'s two
 sentences (Indonesian, runner-facing, in `SAVE_NOTICE_TEXT` — the admin rails word their own
-English, which is why the words belong to the caller); `EmptyState`'s title/description.
+English, which is why the words belong to the caller); `EmptyState`'s title/description;
+`CopyAdminLinkButton`'s refused clipboard, which puts the link itself on screen in a selectable
+field (`COPY_ADMIN_LINK_FAILED`) rather than reporting an error nobody can act on.
 `useSavePhoto` swallows fetch failures into the ladder's bottom rung by design — offline, a
 reaped blob and a CORS surprise all mean "there are no bytes", and the anchor still gives
 the person their photograph. Console noise is not used as a surface.
@@ -487,6 +566,18 @@ have non-test consumers.
   `<dialog>` and a known screen-reader hazard.
 - **Do not make `PhotoViewer` a JS-pinch carousel or add `preventDefault` to its touch
   handlers.** The zoom is the platform's; the design follows from never needing that call.
+- **Do not add a `navigator.share` branch to `CopyAdminLinkButton`.** It is clipboard-only by
+  the runner's explicit ruling, and a named regression test holds it. On every share-capable
+  platform a share branch would be the *only* path taken, so the copy the control is named after
+  would never run.
+- **Do not read `window.location` for `CopyAdminLinkButton`'s `origin`, and do not give it a
+  default.** The origin is resolved on the server and threaded down as a prop; a preview
+  deployment's hostname is dead by the time the link is opened.
+- **Do not put an admin check inside `CopyAdminLinkButton`.** The gate is the call site's
+  nullable origin prop — absence of data, not a hidden element.
+- **Do not fold `ViewerPhoto.rowPointer` into `ViewerPhoto.id`.** `id` is the image-generation
+  turn id on both Nina surfaces and feeds `ninaJobHref`; merging them breaks two screens' job
+  links silently and still compiles.
 - **Do not pass `aria-selected` to `Chip`** — it is `aria-pressed`, and a screen reader that
   announces "selected" has told the user nothing about toggling.
 - **Do not change a `TabBar` literal without its constant and its test** — `h-[39px]`,
@@ -535,6 +626,17 @@ have non-test consumers.
 
 ## Documentation log
 
+- **2026-10-01** — surgical update for `P1-CU-A000` (phase 3 of the copy-admin-media-link set):
+  `CopyAdminLinkButton.tsx` added with its suite, and `ViewerPhoto` gained an optional
+  `rowPointer?: PhotoPointer`. Changed here: the module map row, the client-module count (8 of 17),
+  the file/suite/test counts (35 files, 17 source modules, 223/223 green — re-measured today), the
+  direct-path-only group, two new internal dependencies (`@/lib/photos/pointer`,
+  `@/lib/admin/albumDeepLink`), a component-notes subsection, four gotchas, and a standing
+  exception recorded on the reverse-wiring map because the five new exports have no consumer
+  outside this directory until the mounting phase lands. The 2026-09-12 import-graph counts
+  (77 external files, 35 exports, per-symbol lists) were **not** re-measured and are left stamped
+  as they were — nothing in this change moves them, since nothing outside the directory imports
+  the new module yet.
 - **2026-09-12** — created via `/update-readme` (worker session `pkg-readme-ui`, coordinator
   `tokenmax-orch-2026-09-12`). This file is the recorded follow-up to the same day's
   `ui-primitives-yagni` sweep, which deferred it ("the directory's readme is another

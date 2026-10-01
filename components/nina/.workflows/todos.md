@@ -11,7 +11,7 @@
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
-- Blocked: 1
+- Blocked: 0
 - Completed: 8
 - Archived: 6
 
@@ -27,7 +27,7 @@
   - **Difficulty**: HARD
   - **Type**: Feature
   - **Context**: Owns a new `lib/admin/adminLinkOrigin.ts` (`resolveAdminLinkOrigin()`, `server-only`) and `tests/admin.adminLinkOrigin.test.ts`; `lib/nina/chatphotos.ts` (`ChatSessionPhoto` gains `rowPointer`, populated from `attachId`) and its test; `components/nina/ChatScreen.tsx` (`headerAction` becomes a cluster) and `ChatScreen.test.tsx`; `components/nina/NinaAboutScreen.tsx` (both mappers stop dropping the row id; the album arm gains a `headerAction`) and `NinaAboutScreen.test.tsx`; `components/photo/PhotoDeepLinkScreen.tsx`, `app/photo/[kind]/[id]/page.tsx`, `tests/photo.deepLink.test.ts`; and the admin-origin threading in `app/nina/page.tsx` and `app/nina/about/page.tsx` — thirteen files. Exit: for the admin session the button is present and copies a working link in the chat overlay, `/nina/about` → Foto profil, `/nina/about` → Media and `/photo/[kind]/[id]`'s `'avatar'` and `'image'` arms, with the existing job-detail link still beside it on the two surfaces that have one; `/photo/shot/...` renders no button; for a non-admin session every one of those headers is byte-identical to what ships today, proven on at least the chat and about surfaces; no email literal appears in the diff; gates green.
-  - **Status**: blocked
+  - **Status**: open
   - **Plan Set**: `COPY_ADMIN_MEDIA_LINK_PLAN.md` (phase 4 of 4)
   - **Satisfies**: R1 — An icon-only copy-admin-link button in the full-view image overlay; tapping it puts an absolute admin link to that photograph on the clipboard, pasteable into WhatsApp; R3 — Every client-app entry point onto a full-view Nina photograph carries the button — the chat overlay and `/nina/about` → "Foto profil" named explicitly; R4 — The button is hidden for every signed-in user who is not the admin — only the account on `ADMIN_EMAILS` sees it
   - **Depends on**: `P1-ADM-A004`, `P1-CU-A000`
