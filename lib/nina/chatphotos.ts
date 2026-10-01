@@ -110,3 +110,137 @@ export function attachableIdAt(
   const id = ids?.[index]
   return typeof id === 'string' && id.length > 0 ? id : null
 }
+
+/**
+ * One photograph of the OPEN CONVERSATION, carrying where it came from.
+ *
+ * ── WHY THE OWNER TRAVELS WITH THE PHOTO ──────────────────────────────────────────────────────
+ * R1 pages the overlay across the whole session, so the flat position `PhotoViewer` hands back
+ * names a photograph and nothing else. Everything the chat surface then wants to do with that
+ * photograph is a question about its OWNER: re-aiming the overlay's `{ messageId, index }`
+ * identity (invariant 3), arming the attach slot, and scrolling the history to the bubble that
+ * sent it (R2). Deriving the owner from a flat index at each of those three call sites would be
+ * the same `find` written three times, and wrong in three different ways the first time a row
+ * vanished underneath it. Carrying it is one rule, computed in the one pass where the message is
+ * already in hand.
+ *
+ * ── INVARIANT 5 STILL HOLDS, BY CONSTRUCTION ──────────────────────────────────────────────────
+ * This extends `ChatViewerPhoto` and adds three fields about POSITION and OWNERSHIP. There is
+ * still no caption field and there must never be one: `glm-4.6v`'s image prose is private and
+ * `app/nina/page.tsx` deliberately drops it before any of this is reachable.
+ */
+export interface ChatSessionPhoto extends ChatViewerPhoto {
+  /** `ChatMessage.id` of the bubble that sent it. `#nina-msg-<id>` is its anchor in the document. */
+  messageId: string
+  /** Its position among THAT message's photos — the index `ChatImages`'s `onOpen` counts in. */
+  indexWithinMessage: number
+  /**
+   * The image row's id, or `null` when there is none — `attachableIdAt` for this photograph,
+   * resolved here because this is the one place the message's parallel `imageIds` array and the
+   * position into it are both in hand. `ChatScreen` renders the attach control only when it is
+   * non-null, which is unchanged: `null` is the optimistic row, whose rows are not written yet.
+   *
+   * Deliberately NOT `ChatViewerPhoto.id`, which is the TURN (job) id the header's job-detail link
+   * needs. Two different handles to two different tables; naming them apart is what stops a future
+   * edit arming the composer with a job id.
+   */
+  attachId: string | null
+}
+
+/**
+ * Every photograph the open conversation is showing, in conversation order, ready for
+ * `PhotoViewer` — R1's list.
+ *
+ * ── WHY IT REUSES `chatViewerPhotos` PER MESSAGE ──────────────────────────────────────────────
+ * Because the per-photo rules — `photoSideOf` for the label, the `'upload'` default for a missing
+ * kind, the job id only on a generated photo whose message carries a `turn_id` — are already
+ * stated there, at length and with their reasons. A second loop restating them would drift the
+ * first time one of them changed, and the one that matters most (a RE-ATTACHED selfie stays
+ * "Foto Nina" on a message whose role is `'user'`) is exactly the kind that drifts silently.
+ *
+ * ── WHAT "THAT CHAT SESSION" MEANS ────────────────────────────────────────────────────────────
+ * Whatever `messages` holds, which `app/nina/page.tsx:113` caps at `CHAT_HISTORY_LIMIT = 200`
+ * messages of the active session. A photograph older than that window is not in this list, has no
+ * `#nina-msg-` anchor, and could not be scrolled to — so it is both the honest and the only
+ * satisfiable reading of R1 (plan invariant 2).
+ *
+ * The parameter is spelled structurally, and with `ChatMessage`'s own field names, for the reason
+ * `chatViewerPhotos`'s header gives: a pure module under `lib/` states what it consumes rather
+ * than importing a type out of `components/`.
+ */
+export function chatSessionPhotos(
+  messages:
+    | readonly {
+        id: string
+        imageUrls?: readonly string[] | null
+        imageIds?: readonly string[] | null
+        imageKinds?: readonly string[] | null
+        turnId?: string | null
+      }[]
+    | null
+    | undefined,
+): ChatSessionPhoto[] {
+  if (messages == null) return []
+  const flat: ChatSessionPhoto[] = []
+  for (const message of messages) {
+    const photos = chatViewerPhotos(message)
+    for (let index = 0; index < photos.length; index += 1) {
+      flat.push({
+        ...photos[index]!,
+        messageId: message.id,
+        indexWithinMessage: index,
+        attachId: attachableIdAt(message.imageIds, index),
+      })
+    }
+  }
+  return flat
+}
+
+/**
+ * Where in the session list the overlay's `{ messageId, index }` identity currently points —
+ * `null` means there is nothing to show and the viewer must close.
+ *
+ * ── WHY THE OVERLAY DOES NOT JUST STORE THIS NUMBER ───────────────────────────────────────────
+ * Invariant 3, which is `usePhotoViewer`'s own recorded reasoning: `messages` changes underneath
+ * an open overlay — a service-worker push calls `router.refresh()`, R8's delete takes a bubble and
+ * its photo rows with it — and a stored flat position would then silently re-aim at a DIFFERENT
+ * photograph, one bubble's worth further along. A message id plus a position inside that message
+ * survives everything except its own message going away, and this function is where that survival
+ * is decided.
+ *
+ * ── THE THREE ANSWERS, AND WHY ────────────────────────────────────────────────────────────────
+ * Exact hit → that position. The message is still here but has FEWER photos than it did → clamp to
+ * its last one, `viewerIndex`'s "landing on the neighbour beats an overlay that blinks shut",
+ * applied inside the owning bubble so a clamp never silently crosses into somebody else's message.
+ * The message is gone entirely → `null`, and the caller closes.
+ *
+ * ── WHY THE EARLY `break` IS SAFE ─────────────────────────────────────────────────────────────
+ * `chatSessionPhotos` emits a message's photographs contiguously, so once the scan has left the
+ * owning message's run there is nothing further to find. Scanning on would only cost time.
+ */
+export function sessionPhotoIndex(
+  photos: readonly { messageId: string; indexWithinMessage: number }[],
+  messageId: string,
+  indexWithinMessage: number,
+): number | null {
+  /* Same defensiveness `viewerIndex` applies to its own index, and for the same reason: a
+   * non-finite position is a bug somewhere upstream, and landing on the message's first photo is
+   * a better answer than propagating NaN into `photos[index]!`. */
+  const wanted = Number.isFinite(indexWithinMessage) ? Math.trunc(indexWithinMessage) : 0
+  let first = -1
+  let last = -1
+  for (let position = 0; position < photos.length; position += 1) {
+    const photo = photos[position]!
+    if (photo.messageId !== messageId) {
+      if (first !== -1) break
+      continue
+    }
+    if (first === -1) first = position
+    last = position
+    if (photo.indexWithinMessage === wanted) return position
+  }
+  if (first === -1) return null
+  /* Reaching here means the owning message is present but `wanted` is outside its run — so it is
+   * either below the first photo or past the last one, and the clamp is whichever end it fell off. */
+  return wanted < 0 ? first : last
+}

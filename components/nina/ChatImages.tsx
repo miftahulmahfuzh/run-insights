@@ -34,10 +34,15 @@ import { NINA_SIDE_LABEL, photoSideOf } from '@/lib/nina/album'
  * `MessageList` now passes both props. What changed is only the caller: this file is unchanged
  * below the header, because phase 13 built the branch and phase 9 needed no more of it than that.
  *
- * `onOpen` opens `components/ui/PhotoViewer` through viewer state in `ChatScreen`, which pages
- * across THIS BUBBLE'S photos only — `NINA_MAX_CHAT_IMAGES` is 3 plus at most one re-attached
- * photo, so the dot row is 1-4 dots. The conversation-wide gallery is `/nina/about`'s Media
- * section and stays there.
+ * `onOpen` opens `components/ui/PhotoViewer` through viewer state in `ChatScreen`, and SINCE
+ * 2026-10-01 that overlay pages across every photograph the open conversation renders — not this
+ * bubble's alone. The repo owner authored the old "this bubble only" rule and then asked for its
+ * opposite in these words: *"when i full-view a photo, make it so we can swipe right / left for
+ * every other photos in that chat session"*. The widening landed on the HOOK's side of this call,
+ * not here: `onOpen(index)` is still bubble-local, because this grid genuinely only knows its own
+ * row, and `usePhotoViewer` resolves the `{messageId, index}` pair `MessageList` builds from it
+ * into a position in `chatSessionPhotos(messages)`. **Nothing in this file changed.**
+ * `/nina/about`'s Media section is still the album and is still its own surface.
  *
  * `kinds` now arrives too, from `ChatMessage.imageKinds`, so the `aria-label` below finally tells
  * the truth about one of her selfies instead of defaulting every photo to his.

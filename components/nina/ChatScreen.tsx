@@ -24,6 +24,7 @@ import { KeyboardOverlapPublisher } from './KeyboardOverlapPublisher'
 import { MessageActionsSheet } from './MessageActionsSheet'
 import { MessageList } from './MessageList'
 import type { ChatAvatar, ChatMessage } from './types'
+import { useChatPhotoFollow } from './useChatPhotoFollow'
 import { useChatScrollMark } from './useChatScroll'
 import { useMessageActions } from './useMessageActions'
 import { useNinaSend } from './useNinaSend'
@@ -287,7 +288,10 @@ export function ChatScreen({
    * `useSearchParams` itself — the jump parameter is read on the first render and held in the
    * hook's ref, one-shot by `useRef`'s keep-the-first-initialiser semantics.
    */
-  const { flashId, handleJumpToQuote, clearFlashId } = useQuoteLanding({ flashBlinks, setNotice })
+  const { flashId, handleJumpToQuote, clearFlashId, measureQuoteScroll } = useQuoteLanding({
+    flashBlinks,
+    setNotice,
+  })
 
   /*
    * The arrival loop, the staggered reveal and the typing indicator, in `useTurnArrival`. Seeded
@@ -465,18 +469,29 @@ export function ChatScreen({
   }
 
   /*
-   * R10's overlay state and its derivations, in `usePhotoViewer`. The attach action a photo's
-   * overlay offers stays below, in the render — it arms THIS screen's `photo` slot.
+   * R10's overlay state and its derivations, in `usePhotoViewer` — session-wide since 2026-10-01
+   * (R1), so `sessionPhotos` is every photograph this conversation renders and `shownIndex` is a
+   * position in THAT list. The attach action a photo's overlay offers stays below, in the render —
+   * it arms THIS screen's `photo` slot.
    */
   const {
-    viewer,
-    viewerPhotos,
+    sessionPhotos,
     shownIndex,
+    shownPhoto,
     viewerAttachId,
+    viewerMessageId,
     openViewer,
     setViewerIndex,
     closeViewer,
   } = usePhotoViewer(messages)
+
+  /*
+   * R2. The conversation behind the overlay follows the photograph on screen, so closing after a
+   * run of swipes lands on the bubble that sent the last photo with no close-time special case.
+   * `measureQuoteScroll` is handed in rather than re-derived: `planQuoteScroll` stays the one
+   * function that decides where a bubble has to sit under the composer (plan invariant 4).
+   */
+  useChatPhotoFollow({ messageId: viewerMessageId, planScroll: measureQuoteScroll })
 
   /** R10's open gesture. Clearing the notice travels with the gesture, not with the overlay. */
   const handleOpenImage = useCallback(
@@ -612,18 +627,31 @@ export function ChatScreen({
         the sheet above is: a full-screen overlay is the last thing in the tree, and the composer's
         `fixed` geometry and its `id="nina-composer"` measurement stay untouched by it.
       */}
-      {viewer !== null && shownIndex !== null && (
+      {shownPhoto !== null && shownIndex !== null && (
         <PhotoViewer
-          photos={viewerPhotos}
+          photos={sessionPhotos}
           index={shownIndex}
-          onIndex={(next) => setViewerIndex(viewer.messageId, next)}
+          /*
+           * R1. `PhotoViewer` pages in positions of the list it was handed, which is now the whole
+           * session — so this hands the flat position straight back and the hook resolves whose
+           * photograph it is. It used to be `(next) => setViewerIndex(viewer.messageId, next)`,
+           * and that one line WAS the bubble-scoping: it re-aimed every page turn at the message
+           * the overlay had been opened on, so `stepIndex` could only ever wrap inside it.
+           */
+          onIndex={setViewerIndex}
           onClose={closeViewer}
           /* `'foto'`, as the album passes — "upload screenshot" is not a thing. */
           subject="foto"
           actions={
             <ChatPhotoActions
-              url={viewerPhotos[shownIndex]!.url}
-              label={viewerPhotos[shownIndex]!.label}
+              /*
+               * The photograph ON SCREEN, not `sessionPhotos[shownIndex]` re-indexed and not the
+               * opened bubble's row: after a swipe across a bubble boundary those are different
+               * photographs, and the download and the attach must both act on the one being
+               * looked at.
+               */
+              url={shownPhoto.url}
+              label={shownPhoto.label}
               onAttach={
                 viewerAttachId === null
                   ? null
@@ -655,11 +683,7 @@ export function ChatScreen({
                        * effect of the tap. It replaces any photo already pinned, because there is
                        * one `photo` slot by design.
                        */
-                      setPhoto({
-                        kind: 'image',
-                        id: viewerAttachId,
-                        url: viewerPhotos[shownIndex]!.url,
-                      })
+                      setPhoto({ kind: 'image', id: viewerAttachId, url: shownPhoto.url })
                       setNotice(null)
                       closeViewer()
                     }
