@@ -6,19 +6,19 @@
   "phases": [
     {
       "card": null,
-      "commit": null,
+      "commit": "14afb71cb78d714278dccc0171ae54bb571c5c0b",
       "depends_on": [],
       "difficulty": "NORMAL",
       "n": 1,
-      "note": null,
+      "note": "Pagination control + 17 tests + barrel line; all gates green. Decided: exit criterion 2's 'grep -c components/admin == 0' yielded to INVARIANT 4 (rung 1) \u2014 the lone hit is the plan's own mandated comment naming touch.ts to explain why it is NOT imported; actual import list is react(type-only)/next-link/@lib/cn, so no inverted dependency. Contract unchanged for phases 2-5.",
       "package": "components/ui",
       "plan": ".workflows/plan/numbered-pagination/phase-1.md",
-      "reported_at": null,
+      "reported_at": "2026-10-01T06:24:40+00:00",
       "satisfies": [
         "R2"
       ],
-      "status": "pending",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P2-CU-A001",
       "title": "The shared numbered `Pagination` control"
     },
     {
@@ -29,10 +29,10 @@
       ],
       "difficulty": "NORMAL",
       "n": 2,
-      "note": null,
+      "note": "COORDINATOR: origin/main moved to ccbd7f6, which rewrote the headerAction slot of NinaAboutScreen.tsx (inline Link+JobDetailIcon -> <NinaJobDetailLink/>; 'next/link' and ninaJobHref imports REMOVED; NinaAboutScreen.test.tsx gained vi.mock('@/lib/nina/jobActions') + a ninaImageJobExists mockReset in beforeEach). Both files are phase 2's. Decision: merge origin/main into feature/numbered-pagination at the wave-0/wave-1 boundary, BEFORE spawning phase 2, so phase 2 edits the current file instead of a stale one. Rung 6, surrounding convention: the pager rewrite and the headerAction rewrite are disjoint regions, so merging early costs one clean merge and avoids hand-reconciling two rewrites of one file at landing. Phase 2 must not reintroduce the removed next/link or ninaJobHref imports.",
       "package": "components/nina",
       "plan": ".workflows/plan/numbered-pagination/phase-2.md",
-      "reported_at": null,
+      "reported_at": "2026-10-01T06:18:12+00:00",
       "satisfies": [
         "R1"
       ],
@@ -101,6 +101,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/numbered-pagination/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "numbered-pagination",
-  "updated": "2026-10-01T06:11:57+00:00",
+  "updated": "2026-10-01T06:24:40+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/numbered-pagination"
 }

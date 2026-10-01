@@ -233,11 +233,11 @@ repo-wide"*.
 
 | # | Title | Satisfies | Package | Files | Depends on | Difficulty | Plan | TaskID | Card |
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
-| 1 | The shared numbered `Pagination` control | R2 | `components/ui` | 3 | — | NORMAL | `.workflows/plan/numbered-pagination/phase-1.md` | — | — |
-| 2 | `/nina/about` — both tabs page by number | R1 | `components/nina` | 2 | 1 | NORMAL | `.workflows/plan/numbered-pagination/phase-2.md` | — | — |
-| 3 | `/admin/nina` — the album and media grids | R1 | `components/admin/explorer`, `tests` | 3 | 1 | EASY | `.workflows/plan/numbered-pagination/phase-3.md` | — | — |
-| 4 | `/admin/image-generation` + the job anchor picker | R1 | `components/admin` | 2 | 1 | NORMAL | `.workflows/plan/numbered-pagination/phase-4.md` | — | — |
-| 5 | `/admin/photoshop` and `/admin/error-logs` | R1 | `components/admin`, `app/admin` | 2 | 1 | EASY | `.workflows/plan/numbered-pagination/phase-5.md` | — | — |
+| 1 | The shared numbered `Pagination` control | R2 | `components/ui` | 3 | — | NORMAL | `.workflows/plan/numbered-pagination/phase-1.md` | `P2-CU-A001` | — |
+| 2 | `/nina/about` — both tabs page by number | R1 | `components/nina` | 2 | 1 | NORMAL | `.workflows/plan/numbered-pagination/phase-2.md` | `P2-CN-A009` | — |
+| 3 | `/admin/nina` — the album and media grids | R1 | `components/admin/explorer`, `tests` | 3 | 1 | EASY | `.workflows/plan/numbered-pagination/phase-3.md` | `P2-CAE-A000` | — |
+| 4 | `/admin/image-generation` + the job anchor picker | R1 | `components/admin` | 2 | 1 | NORMAL | `.workflows/plan/numbered-pagination/phase-4.md` | `P2-CA-A008` | — |
+| 5 | `/admin/photoshop` and `/admin/error-logs` | R1 | `components/admin`, `app/admin` | 2 | 1 | EASY | `.workflows/plan/numbered-pagination/phase-5.md` | `P2-CA-A009` | — |
 
 Phases 2, 3, 4 and 5 touch **disjoint file sets** and share no edge with each other. They run
 concurrently once phase 1 lands. **Re-verified after reconciliation** — the twelve files, one owner
