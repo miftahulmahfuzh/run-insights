@@ -30,34 +30,34 @@
       ],
       "difficulty": "HARD",
       "n": 2,
-      "note": null,
+      "note": "coordinator: live in tmux @53 as impl-copy-admin-media-link-p2, confirmed busy via ListAgents. verify --apply had downgraded this row spawned->pending (a live phase has no commit yet, so it derives as pending); restored to running so a resume does not re-spawn a session that is mid-write.",
       "package": "lib/nina/queries`, `app/admin`, `components/admin",
       "plan": ".workflows/plan/copy-admin-media-link/phase-2.md",
-      "reported_at": null,
+      "reported_at": "2026-10-01T04:53:28+00:00",
       "satisfies": [
         "R2"
       ],
-      "status": "pending",
+      "status": "running",
       "task_id": null,
       "title": "/admin/nina` honours a media deep link"
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "553bde938abb255148505c9edc74f79982c32bc6",
       "depends_on": [
         1
       ],
       "difficulty": "NORMAL",
       "n": 3,
-      "note": null,
+      "note": "CopyAdminLinkButton + ViewerPhoto.rowPointer landed; clipboard-only (no navigator.share), four copy constants exported for phase 4's suites; no ladder decisions needed, plan matched the tree exactly",
       "package": "components/ui",
       "plan": ".workflows/plan/copy-admin-media-link/phase-3.md",
-      "reported_at": null,
+      "reported_at": "2026-10-01T04:52:33+00:00",
       "satisfies": [
         "R1"
       ],
-      "status": "pending",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-CU-A000",
       "title": "The icon-only copy button, and the handle it reads"
     },
     {
@@ -86,6 +86,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/copy-admin-media-link/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "copy-admin-media-link",
-  "updated": "2026-10-01T04:38:03+00:00",
+  "updated": "2026-10-01T04:53:28+00:00",
+  "verified_at": "2026-10-01T04:53:11+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/copy-admin-media-link"
 }
