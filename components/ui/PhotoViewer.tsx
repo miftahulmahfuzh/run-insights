@@ -4,6 +4,7 @@ import * as React from 'react'
 
 import { SCREEN_KIND_LABEL, type ScreenKind } from '@/lib/extract/constants'
 import { decideSwipe, stepIndex, type SwipeGesture } from '@/lib/photos/gallery'
+import type { PhotoPointer } from '@/lib/photos/pointer'
 
 /**
  * The one full-screen image overlay in the authenticated app.
@@ -58,6 +59,33 @@ export interface ViewerPhoto {
    * this type with no adapter, which is the promise this interface's header makes.
    */
   id?: string
+  /**
+   * WHICH ROW this photograph's bytes live in: the table and the id, together.
+   *
+   * ── WHY THIS IS NOT `id` ABOVE, AND MUST NEVER BECOME IT ─────────────────────────────────────
+   * Because `id` is already spoken for, by something that breaks loudly and on two screens at once.
+   * On both Nina surfaces it carries the image-generation TURN id: `ChatScreen.tsx:703` and
+   * `NinaAboutScreen.tsx:757` hand it straight to `ninaJobHref` for the "Buka detail job foto ini"
+   * link, and `lib/nina/chatphotos.ts:26-32` documents it as such. A photograph's own row id is a
+   * different id in a different table, so overloading `id` would point both of those links at
+   * `/nina/jobs/<a nina_message_images id>` — a page that does not exist — while still compiling
+   * and still rendering a plausible-looking button.
+   *
+   * ── WHY A POINTER AND NOT A BARE STRING ──────────────────────────────────────────────────────
+   * Because "which row" is only an answer when it also says which TABLE. `nina_avatars` and
+   * `nina_message_images` both key on `lib/id.ts`'s nanoid(12), so nothing in the string itself
+   * distinguishes them, and the consumer has to pick a collection to look in. `PhotoPointer`
+   * (`lib/photos/pointer.ts`) is already this repo's vocabulary for exactly that question, and the
+   * module is pure — one import, no database, no `server-only` — so a `'use client'` overlay may
+   * hold it.
+   *
+   * **Absent renders NOTHING**, the same promise `label`, `meta`, `actions` and `headerAction` all
+   * make. This component never reads the field at all: it travels to `headerAction` inside
+   * `photos[index]`, which is what that slot's argument exists for. `ReviewPhoto` still assigns to
+   * this type with no adapter, so `ScreenshotStrip`, `SheetSource` and `PhotoInclusionList` are
+   * byte-identical — `components/ui/PhotoViewer.test.tsx` holds that half.
+   */
+  rowPointer?: PhotoPointer
   /**
    * What to call this photo, when `kind` is not a `ScreenKind`. F33's album and chat gallery pass
    * a human phrase here; the review surfaces pass nothing and keep `SCREEN_KIND_LABEL`.

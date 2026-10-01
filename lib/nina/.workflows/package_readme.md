@@ -67,7 +67,12 @@ prompt-length ladder in `imagegen.ts`, `NINA_FOCUS_EMPHASIS[key].sentence`,
 (`drizzle/0031_greedy_jocasta.sql`, committed and deliberately unapplied until this code ships).
 The operator never moved it off its shipped default of `50`, so the avatar path now permanently
 renders what that value's `mid` band always resolved to — see Images' *The prompt-length dial is
-gone*.
+gone*. Restated 2026-10-01 for P1-NIN-A057 (copy-admin-media-link phase 2 of 4):
+`locateNinaMediaPhoto` + `NinaMediaPhotoLocation` added to `queries/images.ts` — the server-side
+answer `/admin/nina?view=media&image=<id>` needs before a page can be rendered — and with it the
+module-private `outerRef()` helper, because drizzle renders a bare `Column` UNQUALIFIED inside a
+single-table `select()` projection and that silently turns a correlated subquery into a tautology
+— see Images' *Where a Media photograph sits* and Gotchas.
 **Documentation Created**: 2026-09-05 (`NINA_CHARACTER_TUNING_PLAN.md` phase 2)
 
 ## Overview
@@ -921,6 +926,36 @@ writer's side, and the Media/about absence asserted as an absence),
 `tests/nina.imageprefs.test.ts` (the scope's body must keep `notExists(` and the literal — the
 do-not-inline guard).
 
+**Where a Media photograph sits — `locateNinaMediaPhoto`** (`queries/images.ts`, since 2026-10-01,
+P1-NIN-A057). `/admin/nina` holds ONE page of the Media collection at a time and the explorer's
+selection is a `find(...)` over that array, so a link that carries only an id
+(`?view=media&image=<id>`) cannot be resolved in the client: which page holds a row in a
+recency-ordered collection is a database question. The read answers `{ id, offset }` — a 0-based
+ROW COUNT, never a page number, because the page SIZE is the caller's policy (`locateNinaAvatar`'s
+argument, one collection over). **Two statements on purpose.** An avatar id is always its own
+answer; a message-image id is not, because F37's `source_image_id` makes a re-share a second row
+naming the first and `isOriginalPhoto()` keeps that second row out of the collection entirely — so
+statement one resolves the asked id through `source_image_id` to the ORIGINAL (the row that owns
+the tile, and the row a Replace would rewrite) and statement two calls `mediaCollectionScope(userId)`
+VERBATIM. Folding the two into one self-join is the thing to refuse: `mediaCollectionScope` is
+written against the un-aliased `nina_message_images`, so a self-join would force this function to
+hand-spell a second opinion about what the Media view IS. **The offset mirrors both halves of
+`listNinaMediaPhotos`** — the predicate (`mediaCollectionScope`, called) and the sort key
+`coalesce(last_replaced_at, created_at) desc, id desc`. `created_at` alone computes the wrong page
+for exactly the rows the feature exists for: a replaced photograph has moved to the top while its
+`created_at` deliberately did not (`updateNinaChatPhotoBlob`). Under a descending order the position
+is how many rows compare GREATER as the tuple, which is one row-value comparison
+`(coalesce(…), id) > (coalesce(…), id)` and cannot drift from the `ORDER BY` the way a hand-expanded
+`OR` chain could. The correlated subquery hand-spells `earlier`'s columns — including
+`isOriginalPhoto()`'s two null checks as `earlier.source_avatar_id is null and
+earlier.source_image_id is null` — because a drizzle predicate built over `ninaMessageImages` names
+the OUTER table and cannot be re-pointed at an alias; **that pairing is a comment's responsibility
+and the two must change together**. Four cases answer `null` and say nothing (another user's row, no
+such row, a re-share whose original is gone, and a re-SHOW of an album avatar — `source_avatar_id`
+set, `source_image_id` null — which has no Media tile and no media original to stand in for it),
+per `queries.ts`' rule 1: distinguishing "deleted" from "not yours" would tell a stranger which ids
+exist. `tests/nina.mediaLocate.test.ts` is the guard.
+
 **The perceptual twin gate** (`perceptual.ts`, zero imports): signatures (64-bit dHash +
 16×16 grayscale mean-abs from `perceptualSign.ts`) see through re-encodes that `content_hash`
 cannot. Five constants — `PERCEPTUAL_MAX_DHASH` 1, `PERCEPTUAL_MAX_SIG16` 2,
@@ -1595,6 +1630,24 @@ and picks what she says — a failure is a message from Nina, never a stack trac
   in `queries/images.ts` carries it; this one is the deliberate exception and the predicate would
   make it a guaranteed no-op. Its `pathname = $n` guard is equally load-bearing — drop it and a
   concurrent admin Replace mints exactly the ghost signature the 2026-09-15 incident was about.
+- **An OUTER column referenced inside a CORRELATED SUBQUERY must go through `outerRef()`**
+  (`queries/images.ts`, module-private), never spelled as a bare `${table.column}`. Measured
+  2026-10-01: when a `select()` draws from a SINGLE table, drizzle rewrites every bare `Column` in
+  the PROJECTION into an unqualified identifier — `"user_id"`, not
+  `"nina_message_images"."user_id"` — which is right for an ordinary projection and catastrophic
+  inside a subquery that has its own alias in scope. Postgres resolves an unqualified name against
+  the innermost range table, so `earlier.user_id = "user_id"` reads as
+  `earlier.user_id = earlier.user_id`; every arm becomes a tautology, the tuple comparison becomes
+  `x > x`, and the counted offset is 0 for every row in the table. `outerRef()` wraps the column in
+  a nested `sql` fragment so it is no longer a bare `Column` at the top of the chunk list and
+  renders with its table qualification intact. **The fake test driver filters nothing, so no
+  behavioural test can catch this** — the guard has to be a SQL-shape test that pins the qualified
+  spelling of BOTH sides (`tests/nina.mediaLocate.test.ts`).
+- **KNOWN, UNREPAIRED (2026-10-01): `locateNinaAvatar` (`queries/avatars.ts`) has the identical
+  unqualified shape and therefore the identical always-zero offset**, so the album's `?avatar=`
+  deep link always resolves to page 1 — invisible whenever the folder fits on one page. Left alone
+  deliberately: that file was not in P1-NIN-A057's scope and no phase of that set owns it. Recorded
+  here rather than silently repaired; the fix is the same `outerRef()` wrap.
 - **A reference check that throws keeps the object.** `reapAvatarBlobs` answers "referenced" on a
   failed `isBlobPathnameReferenced`, the same direction `releaseBlobIfUnreferenced` errs in: an
   orphan is recoverable, a dead reference is not. And never collapse an original and its thumbnail
@@ -1681,7 +1734,9 @@ freezes the barrel's exact runtime value-export LIST and is not a (T): the barre
 module. **That list is the contract, not its length** — every landing that adds a query moves the
 number, so the rule is that the list is re-sorted and extended in the SAME commit as the new export,
 never weakened to a `toContain`. (It stood at 104 names on 2026-09-17, after the merged search
-renamed three and added eight; read the file, not that number.) A RENAME is two edits in that one
+renamed three and added eight, and at 111 on 2026-10-01 after `locateNinaMediaPhoto`; read the
+file, not that number.) `queries.ts` itself is `export *` lines and is almost never the file an
+added query touches — the COUPLED file is this frozen list. A RENAME is two edits in that one
 commit, not a `toContain` escape hatch. The guards that can actually catch a regression, by
 mechanism:
 
@@ -1744,6 +1799,14 @@ recursive — a new module under `queries/` does not automatically join the walk
   row; that the clamp happens AFTER the merge, with both origins still represented; that each
   `…AndEmbedding` writer touches exactly its two columns and no third; and that both batch reads are
   empty-safe (zero statements, not a round trip to say nothing).
+  `tests/nina.mediaLocate.test.ts` (2026-10-01) is the same technique over `locateNinaMediaPhoto`
+  and pins the one property no behaviour test can reach against a fake driver that filters nothing:
+  that BOTH sides of the correlated comparison render TABLE-QUALIFIED (`outerRef()` — see Gotchas;
+  unqualified, every behaviour test still passes and the offset is silently 0 forever). It also
+  pins that the ordering expression is `coalesce(last_replaced_at, created_at)` and not
+  `created_at`, and that `earlier.source_avatar_id is null and earlier.source_image_id is null`
+  appears in the same statement as `mediaCollectionScope`'s own predicate — the hand-spelled copy
+  of `isOriginalPhoto()` that has to move with it.
 - **The failure log is pinned at both ends**: `tests/db.schema.errorlogs.test.ts` holds the table
   to its promised shape (`user_id` nullable in the generated SQL too, exactly one index and not
   on the user, `category` text with no CHECK) and `tests/nina.errorlogs.test.ts` holds the writer

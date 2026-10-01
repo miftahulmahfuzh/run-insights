@@ -70,4 +70,28 @@ describe('the route the href names', () => {
     // The one overlay stays the one overlay: this is a caller, never a second definition.
     expect(readRepoCode(SCREEN)).not.toContain('function PhotoViewer')
   })
+
+  it('threads the admin link origin from the server, never from the window (R4)', () => {
+    const route = readRepoCode(ROUTE)
+    const screen = readRepoCode(SCREEN)
+    // The gate is the server's and the origin crosses as ONE nullable prop. A client-side admin
+    // test is impossible (`isAdminEmail` reads env, `getAdminIdentity` is `server-only`) and a
+    // `window.location.origin` would mint a preview hostname into a link pasted into WhatsApp
+    // (repo invariant 9).
+    expect(route).toContain('resolveAdminLinkOrigin()')
+    expect(route).toContain('adminLinkOrigin={adminLinkOrigin}')
+    expect(screen).not.toContain('window.location')
+    expect(screen).not.toContain('getAdminIdentity')
+    expect(screen).not.toContain('isAdminEmail')
+  })
+
+  it('gives the two Nina arms an admin handle and the run-photo arm none', () => {
+    // `/admin/nina` holds `nina_avatars` and `nina_message_images` and nothing else, so a `shot`
+    // has no destination to be selected at. The judgement lives on the server, beside the reads
+    // that already know which table each arm touches.
+    const route = readRepoCode(ROUTE)
+    expect(route).toContain("rowPointer: { kind: 'avatar'")
+    expect(route).toContain("rowPointer: { kind: 'image'")
+    expect(route).not.toContain("rowPointer: { kind: 'shot'")
+  })
 })

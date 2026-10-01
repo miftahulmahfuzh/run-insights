@@ -6,6 +6,8 @@ import { describe, expect, it, vi } from 'vitest'
 import type { ViewerPhoto } from './PhotoViewer'
 import { PHOTO_VIEWER_MAX_DOTS, PhotoViewer } from './PhotoViewer'
 
+import type { PhotoPointer } from '@/lib/photos/pointer'
+
 /**
  * The one full-screen image overlay, at DOM level. `tests/ui.photoViewer.test.ts` proves the
  * five structural claims as text scans; `lib/photos/gallery.test.ts` proves the gesture rule as
@@ -254,6 +256,85 @@ describe('PhotoViewer', () => {
       // One photo, so there is no dot row either: the close button is the only control in the DOM.
       renderViewer({ photos: [PHOTOS[0]!] })
 
+      expect(screen.getAllByRole('button')).toHaveLength(1)
+      expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument()
+    })
+
+    it('hands headerAction the row pointer — the table AND the id — of the photo on screen', () => {
+      const seen: (PhotoPointer | undefined)[] = []
+      renderViewer({
+        index: 1,
+        photos: [
+          {
+            url: 'blob:photo-a',
+            kind: 'avatar',
+            label: 'One',
+            rowPointer: { kind: 'avatar', id: 'row-a' },
+          },
+          {
+            url: 'blob:photo-b',
+            kind: 'generated',
+            label: 'Two',
+            rowPointer: { kind: 'image', id: 'row-b' },
+          },
+        ],
+        headerAction: (photo) => {
+          seen.push(photo.rowPointer)
+          return null
+        },
+      })
+
+      expect(seen).toContainEqual({ kind: 'image', id: 'row-b' })
+      expect(seen).not.toContainEqual({ kind: 'avatar', id: 'row-a' })
+    })
+
+    it('rowPointer is a SEPARATE handle from id, which still means the turn (job) id', () => {
+      // Invariant 3 of the plan set, as a test. On both Nina surfaces `id` is the image-generation
+      // turn id and goes to `ninaJobHref`; the photograph's own row lives in a different table
+      // under a different id. One field carrying both would point the job-detail link at
+      // /nina/jobs/<a nina_message_images id> — on two screens at once, and still compiling.
+      // An ARRAY and not a `let x: ViewerPhoto | null = null`: TypeScript's control-flow analysis
+      // cannot see that a callback ran, so it narrows such a binding to `null` and every property
+      // read after the assertion is a compile error. `npm test` would never notice — it does not
+      // typecheck — but `npm run typecheck` would.
+      const captured: ViewerPhoto[] = []
+      renderViewer({
+        photos: [
+          {
+            url: 'blob:photo-a',
+            kind: 'generated',
+            label: 'One',
+            id: 'turn-111',
+            rowPointer: { kind: 'image', id: 'row-222' },
+          },
+        ],
+        headerAction: (photo) => {
+          captured.push(photo)
+          return null
+        },
+      })
+
+      expect(captured).toHaveLength(1)
+      expect(captured[0]!.id).toBe('turn-111')
+      expect(captured[0]!.rowPointer).toEqual({ kind: 'image', id: 'row-222' })
+    })
+
+    it('a photo with no rowPointer hands undefined, and the header is the one the review surfaces ship', () => {
+      // `ReviewPhoto` is {url, kind, width, height} and assigns to ViewerPhoto with no adapter, so
+      // ScreenshotStrip, SheetSource and PhotoInclusionList never set this field. Absent must stay
+      // absent, and must stay silent.
+      const seen: (PhotoPointer | undefined)[] = []
+      renderViewer({
+        photos: [PHOTOS[0]!],
+        headerAction: (photo) => {
+          seen.push(photo.rowPointer)
+          return null
+        },
+      })
+
+      expect(seen).toEqual([undefined])
+      // The close button is still the only control in the DOM: one photo, so no dot row, and a
+      // headerAction returning null adds nothing.
       expect(screen.getAllByRole('button')).toHaveLength(1)
       expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument()
     })

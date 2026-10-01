@@ -2,7 +2,7 @@
 
 **Package Path**: `lib/nina`
 **Package Code**: NIN
-**Last Updated**: 2026-09-19
+**Last Updated**: 2026-10-01
 **Total Active Tasks**: 0
 
 ## Quick Stats
@@ -12,7 +12,7 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 59
+- Completed: 60
 - Archived: 36
 
 ---
@@ -34,6 +34,28 @@
 (all thirty-five completed tasks were archived on 2026-09-12 — see Archive; full
 per-task detail — Context, Drift, Decided, Files — survives in git history and in
 `.workflows/package_readme.md`)
+
+- [x] **P1-NIN-A057** Phase 2: `/admin/nina` honours a media deep link
+  - **Difficulty**: HARD
+  - **Type**: Feature
+  - **Context**: Owns `lib/nina/queries/images.ts` (`locateNinaMediaPhoto` + `NinaMediaPhotoLocation`), `lib/nina/queries.test.ts` (`BARREL_VALUE_EXPORTS` grows 110 → 111, sorted, in the same commit), a new `tests/nina.mediaLocate.test.ts`, `app/admin/nina/page.tsx`, `components/admin/FileExplorer.tsx` (the landing effect spends the parameter with the media href, and `:240`'s comment is rewritten) and `FileExplorer.test.tsx` — six files; `lib/nina/queries.ts` needs no edit and must not appear in the diff. Exit: `/admin/nina?view=media&image=<id>` lands on the page holding that photograph with it selected and the media selection pane mounted; the offset mirrors `mediaCollectionScope` and the `coalesce(last_replaced_at, created_at) DESC, id DESC` sort key; a re-share id resolves through `source_image_id` to its original; a foreign, malformed, deleted or non-original id changes nothing and says nothing; the album `?avatar=` path is unchanged; gates green.
+  - **Status**: completed
+  - **Plan Set**: `COPY_ADMIN_MEDIA_LINK_PLAN.md` (phase 2 of 4)
+  - **Satisfies**: R2 — The link opens `/admin/nina` with that image already selected, so the operator can Replace it immediately — `?view=media` for a conversation photograph
+  - **Depends on**: `P1-ADM-A004`
+  - **Plan**: `.workflows/plan/P1-NIN-A057.md`
+  - **Completed**: 2026-10-01 11:50
+  - **Method**: /do (plan set phase 2 of 4, run as a swarm session in a worktree shared with concurrent peer phases)
+  - **Files**: lib/nina/queries/images.ts, lib/nina/queries.test.ts, tests/nina.mediaLocate.test.ts, app/admin/nina/page.tsx, components/admin/FileExplorer.tsx, components/admin/FileExplorer.test.tsx
+  - **Drift**: Line numbers in the phase plan drifted by a few lines in every file (code itself matched verbatim); anchors were located by content instead. Stale cross-reference line numbers in the new comments were replaced with bare file references.
+    MEASURED DEFECT in the plan's Step 1 code block: drizzle rewrites a bare `Column` inside a single-table `select()` projection into an UNQUALIFIED identifier, so `earlier.user_id = ${ninaMessageImages.userId}` renders as `earlier.user_id = "user_id"`. Postgres resolves that against the innermost range table, i.e. the `earlier` alias itself, so every arm of the correlated subquery became a tautology and the tuple comparison became `x > x` — the offset would have been 0 for every row, landing every deep link on page 1. Invisible to a behavioural test because the fake driver filters nothing.
+    PRE-EXISTING, NOT REPAIRED: the shipped `locateNinaAvatar` (`lib/nina/queries/avatars.ts`) has the identical unqualified shape and the identical always-zero offset, so the album's `?avatar=` deep link always resolves to page 1 (invisible whenever the folder fits on one page). Left alone because that file is not in phase 2's Owns; documented in `locateNinaMediaPhoto`'s header so it is not re-discovered as a mystery.
+    `npm test` showed 2 timeouts on the first sweep (tests/nina.chatDedupe.test.ts, tests/review.commit.test.ts). Both pass in isolation and the full re-sweep was 376 files / 6738 tests green — known load flakes, neither suite imports anything this phase touched.
+  - **Decided**: The plan's Step 1 SQL renders an unqualified outer column reference, making the correlated count always 0 -> wrapped each outer column in a nested `sql` fragment behind a named module-private `outerRef()` helper, with the measurement written into the docstring. (Rung 2: the phase's exit criteria require the offset to mirror `mediaCollectionScope` AND the `coalesce(last_replaced_at, created_at) DESC, id DESC` sort key, which outranks the code block's literal spelling at rung 3.)
+    `locateNinaAvatar` has the same always-zero bug -> NOT fixed in this phase. (Tie-break: narrower blast radius / never widen scope to settle an ambiguity. `lib/nina/queries/avatars.ts` is not one of phase 2's six named Owns files and no phase in this set owns it. Recorded in code + handoff instead.)
+    The outer `coalesce(...)` is written on one source line rather than wrapped -> keeps the generated SQL's clause contiguous so the suite's contract assertion reads the real clause rather than a whitespace-normalised approximation. (Rung 3: the plan's own test code block spells the assertion that way.)
+  - **Verification**: `npm run typecheck`, `npm run lint`, `npx prettier --check` on all six files, all 7 CI guards, `npm test` (376 files / 6738 tests), `npm run build` — all green. `lib/nina/queries.ts` correctly absent from the diff (the barrel is `export *` lines); the coupled file was its frozen contract test, `BARREL_VALUE_EXPORTS` grown 110 -> 111 sorted.
+  - **Commit note**: committed by pathspec, never `git add -A` — this worktree is shared with the concurrent peer swarm session for phase 3 (`P1-CU-A000`), whose in-flight edits must not be swept into this phase's commit.
 
 - [x] **P1-NIN-A056** Phase 3: Server-side crop execution
   - **Difficulty**: HARD

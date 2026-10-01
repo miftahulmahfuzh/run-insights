@@ -12,7 +12,7 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 8
+- Completed: 9
 - Archived: 6
 
 ---
@@ -38,6 +38,23 @@
 (the prior six completed tasks were archived on 2026-09-11 — see Archive; full
 per-task detail — Context, Drift, Decided, Files — survives in git history and in
 `.workflows/package_readme.md`)
+
+- [x] **P1-CN-A008** Phase 4: Every client entry point carries it, admin-only
+  - **Difficulty**: HARD
+  - **Type**: Feature
+  - **Context**: Owns a new `lib/admin/adminLinkOrigin.ts` (`resolveAdminLinkOrigin()`, `server-only`) and `tests/admin.adminLinkOrigin.test.ts`; `lib/nina/chatphotos.ts` (`ChatSessionPhoto` gains `rowPointer`, populated from `attachId`) and its test; `components/nina/ChatScreen.tsx` (`headerAction` becomes a cluster) and `ChatScreen.test.tsx`; `components/nina/NinaAboutScreen.tsx` (both mappers stop dropping the row id; the album arm gains a `headerAction`) and `NinaAboutScreen.test.tsx`; `components/photo/PhotoDeepLinkScreen.tsx`, `app/photo/[kind]/[id]/page.tsx`, `tests/photo.deepLink.test.ts`; and the admin-origin threading in `app/nina/page.tsx` and `app/nina/about/page.tsx` — thirteen files. Exit: for the admin session the button is present and copies a working link in the chat overlay, `/nina/about` → Foto profil, `/nina/about` → Media and `/photo/[kind]/[id]`'s `'avatar'` and `'image'` arms, with the existing job-detail link still beside it on the two surfaces that have one; `/photo/shot/...` renders no button; for a non-admin session every one of those headers is byte-identical to what ships today, proven on at least the chat and about surfaces; no email literal appears in the diff; gates green.
+  - **Status**: completed
+  - **Plan Set**: `COPY_ADMIN_MEDIA_LINK_PLAN.md` (phase 4 of 4, set complete)
+  - **Satisfies**: R1 — An icon-only copy-admin-link button in the full-view image overlay; tapping it puts an absolute admin link to that photograph on the clipboard, pasteable into WhatsApp; R3 — Every client-app entry point onto a full-view Nina photograph carries the button — the chat overlay and `/nina/about` → "Foto profil" named explicitly; R4 — The button is hidden for every signed-in user who is not the admin — only the account on `ADMIN_EMAILS` sees it
+  - **Depends on**: `P1-ADM-A004`, `P1-CU-A000`
+  - **Plan**: `.workflows/plan/P1-CN-A008.md`
+  - **Completed**: 2026-10-01 12:03
+  - **Method**: /do (plan set phase 4 of 4)
+  - **Files**: lib/admin/adminLinkOrigin.ts (new), tests/admin.adminLinkOrigin.test.ts (new), lib/nina/chatphotos.ts, lib/nina/chatphotos.test.ts, components/nina/ChatScreen.tsx, components/nina/ChatScreen.test.tsx, components/nina/NinaAboutScreen.tsx, components/nina/NinaAboutScreen.test.tsx, components/photo/PhotoDeepLinkScreen.tsx, app/photo/[kind]/[id]/page.tsx, app/nina/page.tsx, app/nina/about/page.tsx, tests/photo.deepLink.test.ts
+  - **Drift**: The phase plan's new ChatScreen test fixture spelled `role: 'assistant'`; this repo's `ChatRole` (`components/nina/types.ts:15`) is `'user' | 'nina'`. Used `'nina'`. Caught by `npm run typecheck`, which vitest does not do.
+    The plan said to append the new `NinaAboutScreen` describe "after :509"; that file has further describes after that line, so it was appended at end of file instead. Equivalent placement, no behaviour difference.
+  - **Decided**: Plan fixture `role: 'assistant'` vs. the repo's `ChatRole` union -> used `'nina'` (rung 6: the surrounding code as measured, `components/nina/types.ts:15`).
+  - **Verified**: `npm run typecheck` clean; `npm test` 6758/6758 passed across 377 files; `npm run build` succeeded; `npm run lint` and `npm run format:check` clean; all seven CI guards PASS. Exit criteria: no email literal in the diff, no `adminPointer` in source, and `ScreenshotStrip.tsx` / `PhotoInclusionList.tsx` / `app/(public)/s/[token]/page.tsx` absent from the diff.
 
 - [x] **P1-CN-A006** Phase 1: Paste an image into the composer
   - **Difficulty**: NORMAL

@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation'
 import * as React from 'react'
 
+import { CopyAdminLinkButton } from '@/components/ui/CopyAdminLinkButton'
 import { PhotoViewer, type ViewerPhoto } from '@/components/ui/PhotoViewer'
 
 /**
@@ -29,6 +30,7 @@ export function PhotoDeepLinkScreen({
   photo,
   subject,
   closeHref,
+  adminLinkOrigin,
 }: {
   photo: ViewerPhoto
   /** The noun in the dialog's accessible name — `'foto'` for Nina's two tables, `'screenshot'`
@@ -50,6 +52,22 @@ export function PhotoDeepLinkScreen({
    * a back-swipe that re-opens it on top of the page the runner just asked to be taken to.
    */
   closeHref: string
+  /**
+   * **R4. The origin an admin may mint a `/admin/nina` link from, or `null` for everyone else.**
+   *
+   * Resolved on the server by `resolveAdminLinkOrigin()` and threaded as ONE nullable value, the
+   * same shape `ChatScreen` and `NinaAboutScreen` take. `null` renders no control at all, so a
+   * non-admin's payload carries nothing to hide.
+   *
+   * **Which photograph it points at is NOT decided here.** `photo.rowPointer` is set by the page
+   * on the `avatar` and `image` arms and deliberately left absent on the `shot` arm — `run_photos`
+   * has no collection under `/admin/nina`, so there is no destination to link to, and the overlay
+   * draws nothing. That keeps this screen free of any opinion about which tables are admin-visible.
+   *
+   * **Never `window.location.origin`** (repo invariant 9): the link is pasted into WhatsApp and
+   * opened on a desktop later.
+   */
+  adminLinkOrigin: string | null
 }) {
   const router = useRouter()
 
@@ -70,6 +88,21 @@ export function PhotoDeepLinkScreen({
       onIndex={() => undefined}
       onClose={close}
       subject={subject}
+      /*
+       * 2026-10-01, R1/R3/R4. The fourth and last client entry point onto a full-view Nina
+       * photograph. Both halves must be present: a `null` origin is every non-admin, and an absent
+       * `rowPointer` is the `shot` arm, which has no admin destination. Either way the header is
+       * the one this route has always drawn — `headerAction`'s own "absent renders nothing"
+       * promise, kept by construction rather than by a second code path.
+       *
+       * No `onClick` that closes: this control performs no navigation, and closing would replace
+       * the page out from under the tick that confirms the copy.
+       */
+      headerAction={(viewed) =>
+        adminLinkOrigin === null || viewed.rowPointer == null ? null : (
+          <CopyAdminLinkButton pointer={viewed.rowPointer} origin={adminLinkOrigin} />
+        )
+      }
     />
   )
 }

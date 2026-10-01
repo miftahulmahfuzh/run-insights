@@ -538,3 +538,84 @@ describe('FileExplorer — R1’s deep link (?avatar=<id>)', () => {
     expect(screen.queryByTestId('selection-pane')).not.toBeInTheDocument()
   })
 })
+
+/*
+ * copy-admin-media-link R2's landing. `app/admin/nina/page.tsx` resolves `?image=<id>` on the MEDIA
+ * arm into the page of the Media collection that holds the row and hands the id back as
+ * `deepLinkId` — the same prop, the other collection. What this component owes in return is the
+ * same three things, with one difference that is the whole reason this block exists: the URL it
+ * spends the parameter into must keep `?view=media`. Spent through `hrefForFolder` the operator
+ * would land on the photograph and be rewritten into the ALBUM in the same frame.
+ */
+describe('FileExplorer — the media arm’s deep link (?image=<id>)', () => {
+  beforeEach(() => {
+    window.history.replaceState(null, '', '/admin/nina?view=media&image=m1')
+  })
+
+  afterEach(() => {
+    window.history.replaceState(null, '', '/')
+  })
+
+  function mediaProps(pageNumber: number) {
+    return baseProps({
+      view: 'media' as const,
+      photos: [photo({ id: 'm1', origin: 'media' })],
+      page: page({ folder: '', page: pageNumber }),
+      deepLinkId: 'm1',
+    })
+  }
+
+  it('selects the resolved photograph on arrival, with no click', () => {
+    render(<FileExplorer {...mediaProps(1)} />)
+    expect(screen.getByTestId('selection-pane')).toHaveAttribute('data-photo', 'm1')
+  })
+
+  it('spends the parameter with the MEDIA href, so the collection survives the landing', () => {
+    render(<FileExplorer {...mediaProps(1)} />)
+    expect(window.location.search).toBe('?view=media')
+  })
+
+  it('keeps the page the row was found on', () => {
+    render(<FileExplorer {...mediaProps(4)} />)
+    expect(window.location.search).toBe('?view=media&page=4')
+  })
+
+  it('a spent media link stays spent — it does not re-open a pane the operator closed', async () => {
+    const user = userEvent.setup()
+    const { rerender } = render(<FileExplorer {...mediaProps(1)} />)
+    await user.click(screen.getByRole('button', { name: 'close-pane' }))
+    expect(screen.queryByTestId('selection-pane')).not.toBeInTheDocument()
+
+    // The re-render the `replaceState` above provokes, synchronously, for the same id.
+    rerender(<FileExplorer {...mediaProps(1)} />)
+    expect(screen.queryByTestId('selection-pane')).not.toBeInTheDocument()
+  })
+
+  it('a resolved id this page does not hold opens nothing, rather than throwing', () => {
+    render(
+      <FileExplorer
+        {...baseProps({
+          view: 'media' as const,
+          photos: [photo({ id: 'm1', origin: 'media' })],
+          deepLinkId: 'gone',
+        })}
+      />,
+    )
+    expect(screen.queryByTestId('selection-pane')).not.toBeInTheDocument()
+  })
+
+  it('the album arm still spends into the folder href, with no ?view=media', () => {
+    window.history.replaceState(null, '', '/admin/nina?avatar=p1')
+    render(
+      <FileExplorer
+        {...baseProps({
+          view: 'album' as const,
+          photos: [photo({ id: 'p1' })],
+          page: page({ folder: 'bali', page: 2 }),
+          deepLinkId: 'p1',
+        })}
+      />,
+    )
+    expect(window.location.search).toBe('?folder=bali&page=2')
+  })
+})

@@ -6,10 +6,11 @@ import type {
   ExplorerPhoto,
   MediaExplorerPhoto,
 } from '@/components/admin/explorer/model'
-import { NINA_AVATAR_PARAM } from '@/lib/admin/albumDeepLink'
+import { NINA_AVATAR_PARAM, NINA_MEDIA_PHOTO_PARAM } from '@/lib/admin/albumDeepLink'
 import { ADMIN_AVATAR_ID_RE } from '@/lib/admin/avatars'
 import { NINA_FOLDER_ROOT, readExplorerView, validateFolderPath } from '@/lib/admin/filetree'
 import { requireAdmin } from '@/lib/admin/requireAdmin'
+import { isValidId } from '@/lib/id'
 import {
   NINA_ADMIN_PAGE_SIZE,
   NINA_AVATAR_FALLBACK_SRC,
@@ -22,6 +23,7 @@ import {
   listNinaAvatarsInFolder,
   listNinaMediaPhotos,
   locateNinaAvatar,
+  locateNinaMediaPhoto,
   resolveNinaAvatarLinkedText,
   type NinaAvatarFolderCount,
 } from '@/lib/nina/queries'
@@ -129,34 +131,85 @@ export default async function AdminNinaPage(props: PageProps<'/admin/nina'>) {
   const requested = validateFolderPath(readOne(params.folder) ?? NINA_FOLDER_ROOT)
 
   /*
-   * ── R1's DEEP LINK ──────────────────────────────────────────────────────────────────────────
+   * ── THE DEEP LINK, NOW ON BOTH ARMS ──────────────────────────────────────────────────────────
    * `?avatar=<id>` says "open whichever folder and page this photograph is on, and select it", and
    * only the server can answer it: the album search ranks across every folder
    * (`lib/nina/queries/avatarsearch.ts`) while the explorer holds one folder and one page, so the
    * id has to become a folder and an offset before the client has a row to select at all
-   * (`components/admin/FileExplorer.tsx:196`'s `photos.find(...)`).
+   * (`components/admin/FileExplorer.tsx`'s `photos.find(...)`).
    *
-   * Validated, not trusted, exactly like the two parameters above it: a value that is not the shape
-   * `newId()` mints is not an id, and is dropped rather than handed to a query. Ignored on the
-   * MEDIA arm by construction, for the reason that arm ignores `?folder=`: a message image is not
-   * an album row and has no folder to open.
+   * `?image=<id>` is its MEDIA twin — copy-admin-media-link R2. The client app's full-view overlay
+   * mints it for a conversation photograph, and the operator pastes it into WhatsApp and opens it
+   * on a desktop to Replace the photo. The Media collection is not a folder, so there is no folder
+   * to derive: `locateNinaMediaPhoto` answers an offset alone, under the same
+   * `coalesce(last_replaced_at, created_at) desc, id desc` key the grid is listed with.
+   *
+   * ── TWO KEYS, TWO ARMS, NO CROSSOVER ─────────────────────────────────────────────────────────
+   * Each arm reads ONE parameter and ignores the other, by construction rather than by precedence.
+   * `?avatar=` on a media URL would name an album row the media grid does not hold; `?image=` on an
+   * album URL would name a message image that is filed in no folder. Neither is a destination the
+   * other arm can honour, so neither is consulted there — the same rule the media arm already
+   * applies to `?folder=`.
+   *
+   * ── SHAPE, NEVER EXISTENCE, AND TWO DIFFERENT SPELLINGS OF THE SAME SHAPE ────────────────────
+   * Both are validated exactly like `?folder=` and `?page=` above: a value that is not the shape
+   * `newId()` mints is not an id and is dropped rather than handed to a query. Whether the row
+   * exists, and whether it is this user's, is the locate query's answer and nobody else's.
+   *
+   * The album arm keeps `ADMIN_AVATAR_ID_RE` and the media arm uses `isValidId` (`lib/id.ts`), and
+   * that is deliberate rather than untidy. The two regexes are the same twelve-symbol alphabet, but
+   * they are not the same CLAIM: `ADMIN_AVATAR_ID_RE` lives in `lib/admin/avatars.ts` beside the
+   * avatar upload's byte caps and pathname builder, and a `nina_message_images` id is not an avatar
+   * id. `isValidId` is `newId()`'s own module's shape check, table-agnostic and already the
+   * predicate every `/r/[id]`-style route segment uses — so the media arm borrows nothing from a
+   * module about avatars, and `lib/admin/avatars.ts` does not quietly become the shape authority
+   * for a table it knows nothing about. It is also a type guard, which is why the helper below
+   * needs no cast.
    */
   const wantedAvatarId = view === 'media' ? null : readAvatarId(readOne(params[NINA_AVATAR_PARAM]))
-  const located = wantedAvatarId === null ? null : await locateNinaAvatar(userId, wantedAvatarId)
+  const wantedMediaId =
+    view === 'media' ? readMediaPhotoId(readOne(params[NINA_MEDIA_PHOTO_PARAM])) : null
 
   /*
-   * A RESOLVED deep link wins over `?folder=` and `?page=`; a failed one changes nothing.
+   * At most one of these is ever non-null — `view` decides which — so the second `await` is never
+   * reached with work to do, and the sequential spelling costs nothing a `Promise.all` would save.
+   */
+  const located = wantedAvatarId === null ? null : await locateNinaAvatar(userId, wantedAvatarId)
+  const locatedMedia =
+    wantedMediaId === null ? null : await locateNinaMediaPhoto(userId, wantedMediaId)
+
+  /*
+   * A RESOLVED deep link wins over `?folder=` and `?page=`; a failed one changes nothing. Both arms
+   * behave identically here, which is the point.
    *
-   * The link carries only an id — where the row is filed is DERIVED — so any folder or page
-   * travelling beside it is a leftover from wherever the operator happened to be, and honouring it
-   * would open the wrong folder and then fail to find the photograph in it. `locateNinaAvatar`
-   * answering `null` means "not yours, or gone" (that module's rule 1): the ordinary parameters
-   * take over, nothing is selected, and the operator lands on the folder the URL names — which is
-   * what an id naming no row should look like. Silent, deliberately: a page that distinguished
-   * "deleted" from "not yours" would be telling a stranger which ids exist.
+   * The link carries only an id — where the row sits is DERIVED — so any folder or page travelling
+   * beside it is a leftover from wherever the operator happened to be, and honouring it would open
+   * the wrong page and then fail to find the photograph on it. A locate answering `null` means
+   * "not yours, or gone" (`lib/nina/queries.ts`'s rule 1): the ordinary parameters take over,
+   * nothing is selected, and the operator lands where the URL says. Silent, deliberately: a page
+   * that distinguished "deleted" from "not yours" would be telling a stranger which ids exist.
+   *
+   * `folder` is the album arm's alone. The media arm never consults it (see the `view` comment
+   * above), so `locatedMedia` has nothing to say about it and says nothing.
+   *
+   * The two page sizes are NOT interchangeable and that is why `pageOfOffset` takes one: the album
+   * arm lists `NINA_ADMIN_PAGE_SIZE` rows and the media arm `NINA_CHAT_PHOTO_PAGE_SIZE`, and each
+   * offset must be divided by the size of the page it was counted for. The page size is this
+   * file's policy — it is the `limit` each arm spends below — which is exactly why both locate
+   * queries return a row count and the division happens here.
    */
   const folder = located?.folder ?? (requested.ok ? requested.path : NINA_FOLDER_ROOT)
-  const page = located != null ? pageOfOffset(located.offset) : readPage(readOne(params.page))
+  const deepLinkPage =
+    located != null
+      ? pageOfOffset(located.offset, NINA_ADMIN_PAGE_SIZE)
+      : locatedMedia != null
+        ? pageOfOffset(locatedMedia.offset, NINA_CHAT_PHOTO_PAGE_SIZE)
+        : null
+  const page = deepLinkPage ?? readPage(readOne(params.page))
+
+  /* Either arm's resolved id, handed to the client as the row to select. Exactly one can be
+   * non-null, so there is no precedence to argue about. */
+  const deepLinkId = located?.id ?? locatedMedia?.id ?? null
 
   /*
    * The two arms fill the same four slots and fall through to ONE render, because the header, the
@@ -417,7 +470,7 @@ export default async function AdminNinaPage(props: PageProps<'/admin/nina'>) {
         userId={userId}
         folders={folderList}
         photos={photos}
-        deepLinkId={located?.id ?? null}
+        deepLinkId={deepLinkId}
         page={pageInfo}
         view={view}
         mediaCount={mediaTotal}
@@ -457,13 +510,28 @@ function readAvatarId(raw: string | null): string | null {
 }
 
 /**
- * Which 1-based page of `listNinaAvatarsInFolder` holds the row at `offset` inside its folder.
+ * The `?image=` value if it is the SHAPE an id has, and `null` otherwise.
  *
- * The page SIZE is this file's policy — it is the `limit` the album arm spends below — which is
- * exactly why `locateNinaAvatar` returns a row count and this division happens here rather than in
- * the query layer. Capped at `PAGE_CEILING` for `readPage`'s reason, so the two ways a page number
- * can arrive cannot disagree about how deep a page may be.
+ * `isValidId` (`lib/id.ts`) rather than `ADMIN_AVATAR_ID_RE`: see the deep-link block above for why
+ * the two arms deliberately spell the same twelve-symbol alphabet through two different modules. A
+ * shape check and never an existence check — whether the row exists, whether it is this user's, and
+ * whether it is an original or a re-share is `locateNinaMediaPhoto`'s answer and nobody else's.
  */
-function pageOfOffset(offset: number): number {
-  return Math.min(Math.floor(offset / NINA_ADMIN_PAGE_SIZE) + 1, PAGE_CEILING)
+function readMediaPhotoId(raw: string | null): string | null {
+  return isValidId(raw) ? raw : null
+}
+
+/**
+ * Which 1-based page holds the row at `offset`, given the size of the pages being listed.
+ *
+ * The page SIZE is this file's policy — it is the `limit` each arm spends above — which is exactly
+ * why `locateNinaAvatar` and `locateNinaMediaPhoto` both return a row count and this division
+ * happens here rather than in the query layer. It is a PARAMETER and not a constant because the two
+ * arms page differently: `NINA_ADMIN_PAGE_SIZE` for the album, `NINA_CHAT_PHOTO_PAGE_SIZE` for
+ * Media (`lib/nina/album.ts` argues why the two numbers differ). Capped at `PAGE_CEILING` for
+ * `readPage`'s reason, so the two ways a page number can arrive cannot disagree about how deep a
+ * page may be.
+ */
+function pageOfOffset(offset: number, pageSize: number): number {
+  return Math.min(Math.floor(offset / pageSize) + 1, PAGE_CEILING)
 }

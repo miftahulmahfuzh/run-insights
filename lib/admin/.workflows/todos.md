@@ -2,7 +2,7 @@
 
 **Package Path**: `lib/admin`
 **Package Code**: ADM
-**Last Updated**: 2026-09-19
+**Last Updated**: 2026-10-01
 **Total Active Tasks**: 0
 
 ## Quick Stats
@@ -12,7 +12,7 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 11
+- Completed: 12
 - Archived: 4
 
 ---
@@ -38,6 +38,21 @@
 (all four completed tasks were archived on 2026-09-12 — see Archive; full
 per-task detail — Context, Drift, Decided, Files — survives in git history and
 in `.workflows/package_readme.md`)
+
+- [x] **P1-ADM-A004** Phase 1: The admin-link URL grammar
+  - **Difficulty**: EASY
+  - **Type**: Feature
+  - **Context**: Owns `lib/admin/albumDeepLink.ts` and its test — the media-photo parameter key, a path builder for a media photograph, and one absolute-link minter taking a `PhotoPointerKind` + id + origin (album arm → the existing `?avatar=`, media arm → the new key); rewrites the module header paragraph this set makes false. Exit: the minter is exported and unit-tested over both kinds — including that an unknown/`'shot'` kind is refused rather than silently producing a media link — and `npm run typecheck` + `npm test` are green. Nothing imports it yet.
+  - **Status**: completed
+  - **Plan Set**: `COPY_ADMIN_MEDIA_LINK_PLAN.md` (phase 1 of 4)
+  - **Satisfies**: R1 — An icon-only copy-admin-link button in the full-view image overlay; tapping it puts an absolute admin link to that photograph on the clipboard, pasteable into WhatsApp; R2 — The link opens `/admin/nina` with that image already selected, so the operator can Replace it immediately — `?view=media` for a conversation photograph
+  - **Plan**: `.workflows/plan/P1-ADM-A004.md`
+  - **Completed**: 2026-10-01 11:30
+  - **Method**: /do
+  - **Files**: lib/admin/albumDeepLink.ts, lib/admin/albumDeepLink.test.ts
+  - **Decided**: Which artefacts enter the commit -> the two source files, the four adopted plan copies and four todos.md, and the tracked `.workflows/plan/copy-admin-media-link/` phase files; the root-level `COPY_ADMIN_MEDIA_LINK_PLAN.md` and `20261001-104938-K7P2_code_analyzer.md` stay UNTRACKED (rung 6, surrounding convention: `git ls-files` shows slug subdirs under `.workflows/plan/` are tracked, while commits 5b51454 and 2cfac78 deliberately swept root-level plan/analyzer md files).
+  - **Verified**: `npx vitest run lib/admin/albumDeepLink.test.ts` 17 passed (4 existing + 13 new); `npm run typecheck` green; full `npm test` 374 files / 6711 tests passed; `npm run lint` clean; `npm run format:check` clean; `npm run ci:client-secret-guard` and `ci:data-layer-guard` OK; `grep -c "there is no such read" lib/admin/albumDeepLink.ts` -> 0 (plan invariant 11 satisfied).
+  - **Note**: Additive only — `NINA_MEDIA_PHOTO_PARAM`, `hrefForMediaPhoto()` and `adminPhotoLink()` are exported but imported nowhere yet, which is this set's expected intermediate state (plan Reconciliation Log #11). `hrefForAvatar` and `hrefForMediaView` are byte-identical in body; only the module header and `hrefForMediaView`'s docblock were rewritten.
 
 - [x] **P1-ADM-N8QW** Phase 4: Server Action + page wiring
   - **Difficulty**: NORMAL

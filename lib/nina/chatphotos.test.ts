@@ -177,6 +177,9 @@ describe('chatSessionPhotos', () => {
 
   it('carries no caption field at all (invariant 5)', () => {
     const [photo] = chatSessionPhotos(SESSION)
+    // Sorted, and `rowPointer` sorts between `messageId` and `url` — NOT first. The assertion is
+    // `.sort()` against a literal, so the literal has to be in real lexicographic order or the case
+    // fails on the ordering rather than on the key set.
     expect(Object.keys(photo ?? {}).sort()).toEqual([
       'attachId',
       'id',
@@ -184,8 +187,32 @@ describe('chatSessionPhotos', () => {
       'kind',
       'label',
       'messageId',
+      'rowPointer',
       'url',
     ])
+  })
+
+  it('spells the admin handle as a pointer at the IMAGE table, not at the job', () => {
+    // Two handles to two tables on one object: `id` is the turn (job) id the header's job-detail
+    // link needs, `rowPointer` is the nina_message_images row the admin link selects. Asserting
+    // them together is what stops a future edit collapsing them (plan invariant 3).
+    const photos = chatSessionPhotos(SESSION)
+    expect(photos.map((photo) => photo.rowPointer)).toEqual([
+      { kind: 'image', id: 'img-a' },
+      { kind: 'image', id: 'img-b' },
+      { kind: 'image', id: 'img-s' },
+    ])
+    expect(photos[2]?.id).toBe('jobAAAAAAAAA')
+  })
+
+  it('omits the admin handle entirely on the optimistic row — absent, not undefined', () => {
+    // `Object.keys` counts a key set to `undefined`, and "absent renders nothing" is a claim about
+    // the key. The optimistic bubble describes rows that have not been written, so there is no row
+    // to link to and the header must draw no button at all.
+    const [photo] = chatSessionPhotos([
+      { id: 'tmp', imageUrls: ['blob:local'], imageKinds: ['upload'] },
+    ])
+    expect(Object.keys(photo ?? {})).not.toContain('rowPointer')
   })
 
   it('is empty for an empty window, and for no window at all', () => {

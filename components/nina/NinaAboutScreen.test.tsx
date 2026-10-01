@@ -45,13 +45,16 @@ vi.mock('@/components/ui/useSavePhoto', async (importOriginal) => ({
 }))
 
 // PhotoViewer is its own covered surface (swipe rules, wrap, keys). Here it is a probe: what this
-// screen owes it is the right LIST per section, the right index, and a close that lands.
+// screen owes it is the right LIST per section, the right index, a close that lands, and — since
+// 2026-10-01 — the right header CLUSTER for the photograph on screen. `rowPointer` is phase 3's
+// `ViewerPhoto` field; the real overlay hands the slot `photos[index]` and so does this.
+type ProbePhoto = { id?: string; rowPointer?: { kind: string; id: string } }
 vi.mock('@/components/ui/PhotoViewer', () => ({
   PhotoViewer: (props: {
-    photos: { id?: string }[]
+    photos: ProbePhoto[]
     index: number
     onClose: () => void
-    headerAction?: (photo: { id?: string }) => ReactNode
+    headerAction?: (photo: ProbePhoto) => ReactNode
   }) => (
     <div data-testid="viewer" data-count={props.photos.length} data-index={props.index}>
       {props.headerAction?.(props.photos[props.index]!)}
@@ -63,6 +66,7 @@ vi.mock('@/components/ui/PhotoViewer', () => ({
 }))
 
 // Real everything else: the codec, `aboutViewerLists`, the grids, the avatar.
+import { COPY_ADMIN_LINK_LABEL } from '@/components/ui/CopyAdminLinkButton'
 import { NinaAboutScreen } from './NinaAboutScreen'
 import {
   NINA_ABOUT_PAGE_SIZE,
@@ -115,6 +119,10 @@ function props(overrides?: Partial<Props>): Props {
     gallery: [galleryPhoto('c1', 'his'), galleryPhoto('c2', 'hers')],
     resolvedPhoto: null,
     returnTo: null,
+    /* R4's default is the one that must be safe: a signed-in NON-admin. Every pre-existing case in
+     * this file therefore asserts the header a stranger sees — including the job-link race case in
+     * `NinaAboutScreen — the viewer`, which must keep passing unchanged. */
+    adminLinkOrigin: null,
     ...overrides,
   }
 }
@@ -633,5 +641,81 @@ describe('NinaAboutScreen — the attach strip', () => {
     await user.click(screen.getByRole('button', { name: 'Hapus foto' }))
 
     expect(await screen.findByRole('status')).toHaveTextContent('Gagal menghapus foto. Coba lagi.')
+  })
+})
+
+describe('NinaAboutScreen — the copy-admin-link control (R1/R3/R4)', () => {
+  const ORIGIN = 'https://runins.site'
+  const copyButton = () => screen.queryByRole('button', { name: COPY_ADMIN_LINK_LABEL })
+
+  // happy-dom provides no `navigator.clipboard`, and the control is CLIPBOARD-ONLY — phase 3's
+  // component calls `navigator.clipboard.writeText` and never `navigator.share`. Without this the
+  // component falls to its selectable-field rung, which would not fail the case but would leave a
+  // stray input in the tree. Deleted in `afterEach` so the own-property does not leak into every
+  // later file in the same worker.
+  beforeEach(() => {
+    Object.defineProperty(window.navigator, 'clipboard', {
+      value: { writeText: vi.fn().mockResolvedValue(undefined) },
+      configurable: true,
+    })
+  })
+
+  afterEach(() => {
+    delete (window.navigator as { clipboard?: unknown }).clipboard
+  })
+
+  it('rides the Foto profil (album) overlay, which had no header control at all before', () => {
+    // The entry point the user named by hand: "/nina/about - Foto profil, click one image, and it
+    // can do the copy-admin-link button as well". This arm passed `headerAction={undefined}`.
+    at('album', 'a1')
+    renderScreen({ adminLinkOrigin: ORIGIN })
+
+    expect(viewer()).not.toBeNull()
+    expect(copyButton()).toBeInTheDocument()
+    // An avatar has no job behind it, so the album arm still draws exactly one control.
+    expect(screen.queryByRole('link', { name: 'Buka detail job foto ini' })).not.toBeInTheDocument()
+  })
+
+  it('rides the Media overlay BESIDE the job link, not instead of it', () => {
+    at('chat', 'c1')
+    renderScreen({
+      adminLinkOrigin: ORIGIN,
+      gallery: [{ ...galleryPhoto('c1', 'his'), turnId: 'job-1' }, galleryPhoto('c2', 'hers')],
+    })
+
+    expect(copyButton()).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Buka detail job foto ini' })).toBeInTheDocument()
+  })
+
+  it('renders NOTHING extra for a signed-in non-admin, on either section', () => {
+    // R4's half that matters, and the one the exit criteria call byte-identical: a stranger's
+    // header is the header that shipped. A null origin means the payload carries nothing to hide.
+    at('album', 'a1')
+    const utils = renderScreen()
+    expect(copyButton()).not.toBeInTheDocument()
+    utils.unmount()
+
+    at('chat', 'c1')
+    renderScreen({
+      gallery: [{ ...galleryPhoto('c1', 'his'), turnId: 'job-1' }, galleryPhoto('c2', 'hers')],
+    })
+    expect(copyButton()).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Buka detail job foto ini' })).toBeInTheDocument()
+  })
+
+  it('copying does not close the viewer or touch the pushed ?photo= entry', () => {
+    // The measured 2026-09-08 race, stated for the new control: `close` fires
+    // `window.history.back()` when this session pushed the `?photo=` entry, and this button
+    // performs no navigation at all, so it must leave both the overlay and the URL exactly as they
+    // were. Asserted on the URL because that is a direct history write, observable with no
+    // rerender.
+    at('chat', 'c1')
+    renderScreen({ adminLinkOrigin: ORIGIN })
+
+    fireEvent.click(screen.getByRole('button', { name: COPY_ADMIN_LINK_LABEL }))
+
+    expect(window.location.search).toBe(`?${NINA_ABOUT_PHOTO_PARAM}=chat.c1`)
+    expect(viewer()).not.toBeNull()
+    expect(routerPush).not.toHaveBeenCalled()
   })
 })

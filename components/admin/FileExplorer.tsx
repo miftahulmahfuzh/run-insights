@@ -209,13 +209,17 @@ export function FileExplorer({
   const selected = photos.find((photo) => photo.id === selectedId) ?? null
 
   /*
-   * ── R1: THE DEEP LINK LANDS HERE ────────────────────────────────────────────────────────────
-   * The viewer over a search result links to `/admin/nina?avatar=<id>`; the page resolved that id
-   * to the folder and page this render is already showing, and handed the id back as `deepLinkId`.
-   * Three things happen on arrival and all three are needed:
+   * ── THE DEEP LINK LANDS HERE ─────────────────────────────────────────────────────────────────
+   * Two links arrive here now. The album's `?avatar=<id>` — minted by the viewer over a search
+   * result — and, since copy-admin-media-link (R2), the media arm's `?image=<id>`, minted by the
+   * copy-admin-link button in the CLIENT app's full-view overlay so the operator can paste a
+   * photograph's admin address into WhatsApp and open it on a desktop. Either way the page has
+   * already resolved the id to the page this render is showing and handed the id back as
+   * `deepLinkId`. Three things happen on arrival and all three are needed:
    *
-   *   1. **The photograph is selected**, which is what mounts `SelectionPane` and its description
-   *      editor — the requirement, in one line.
+   *   1. **The photograph is selected**, which is what mounts `SelectionPane` — the album rail on
+   *      an album row, `MediaPane` and its Replace control on a media row. The requirement, in one
+   *      line, on both arms.
    *   2. **The search is cleared.** A landed search is what the content pane draws (`activeSearch`
    *      above), so leaving it up would put the operator's ranked sheet over the folder the link
    *      just opened, and would break this file's standing pairing that a selection and a result
@@ -224,12 +228,12 @@ export function FileExplorer({
    *      preserved this component's state across the navigation — a soft navigation to the same
    *      route keeps it, a remount does not, and a feature must not depend on which.
    *   3. **The parameter is spent**, replaced with the canonical URL of where we actually are, so a
-   *      reload, a copied link and the back button all describe this folder and this page rather
-   *      than re-running a resolution that has already happened. `history.replaceState` and not
-   *      `router.replace` for `components/ui/usePanelParam.ts`'s measured reason: the page is two
-   *      database reads, and rewriting its own URL must not re-run them. REPLACE and never push —
-   *      a spent parameter that became a history entry would cost the operator a back press to get
-   *      past a URL that no longer means anything.
+   *      reload, a copied link and the back button all describe this collection and this page
+   *      rather than re-running a resolution that has already happened. `history.replaceState` and
+   *      not `router.replace` for `components/ui/usePanelParam.ts`'s measured reason: the page is
+   *      two database reads, and rewriting its own URL must not re-run them. REPLACE and never push
+   *      — a spent parameter that became a history entry would cost the operator a back press to
+   *      get past a URL that no longer means anything.
    *
    * The ref is what makes this idempotent, and that is load-bearing rather than tidy: a
    * `history.replaceState` re-runs parameter watchers synchronously, so this effect can be entered
@@ -237,8 +241,16 @@ export function FileExplorer({
    * since closed. For the same reason there is **no cleanup here that undoes anything**: a cleanup
    * that cleared the selection would cancel the landing on that second pass.
    *
-   * `hrefForFolder` and not `hrefForMediaView`: the page resolves `?avatar=` on the ALBUM arm only
-   * (a message image is not an album row), so `deepLinkId` is never non-null under `?view=media`.
+   * ── WHICH CANONICAL URL, AND WHY THE BRANCH REPLACED A SENTENCE ──────────────────────────────
+   * This comment used to end: *"`hrefForFolder` and not `hrefForMediaView`: the page resolves
+   * `?avatar=` on the ALBUM arm only (a message image is not an album row), so `deepLinkId` is
+   * never non-null under `?view=media`."* copy-admin-media-link phase 2 made that false —
+   * `app/admin/nina/page.tsx` now resolves `?image=` on the media arm and `deepLinkId` is routinely
+   * non-null there. So the href follows the VIEW, and it has to: `hrefForFolder` spells no
+   * `?view=`, so spending a media link through it would rewrite the URL to the ALBUM's canonical
+   * address and drop the operator out of the collection the link named, one frame after landing on
+   * it. `hrefForMediaView(page.page)` keeps `?view=media` and the page we are on, and page 1 is the
+   * absence of `?page=` on both arms alike.
    */
   const spentDeepLink = useRef<string | null>(null)
   useEffect(() => {
@@ -247,8 +259,12 @@ export function FileExplorer({
     spentDeepLink.current = deepLinkId
     setSelectedId(deepLinkId)
     setSearch(null)
-    window.history.replaceState(null, '', hrefForFolder(page.folder, page.page))
-  }, [deepLinkId, page.folder, page.page])
+    window.history.replaceState(
+      null,
+      '',
+      isMediaView ? hrefForMediaView(page.page) : hrefForFolder(page.folder, page.page),
+    )
+  }, [deepLinkId, isMediaView, page.folder, page.page])
 
   /*
    * Focus restoration for the details pane (the 2026-09-12 a11y pass). Every close — the pane's
