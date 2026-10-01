@@ -225,36 +225,50 @@ describe('NinaAboutScreen — the page', () => {
 })
 
 describe('NinaAboutScreen — pagination', () => {
-  it('a single-page collection shows no Previous/Next row', () => {
+  it('a single-page collection shows no pager at all — no numbers, no count line', () => {
     renderScreen()
     expect(screen.queryByText(/Halaman/)).not.toBeInTheDocument()
+    // `Pagination` would return null here on its own; `NinaAboutPager`'s own guard is what also
+    // keeps the count line away. Both are asserted, because they are two different decisions.
+    expect(screen.queryByRole('navigation')).not.toBeInTheDocument()
   })
 
-  it('a multi-page collection shows the page line and the two controls', () => {
+  it('a multi-page collection draws one control per page, with the active one marked', () => {
     renderScreen({ albumTotal: NINA_ABOUT_PAGE_SIZE + 15 })
+
+    const nav = screen.getByRole('navigation', { name: 'Halaman foto profil' })
+    const active = nav.querySelector('[aria-current="page"]') as HTMLElement
+    // Page 1 is where we are: marked, and NOT a control — there is nowhere to go.
+    expect(active.textContent).toBe('1')
+    expect(active.tagName).toBe('SPAN')
+    expect(screen.queryByRole('button', { name: '1' })).not.toBeInTheDocument()
+    // Every other page is its own button. Two pages here, so exactly one.
+    expect(screen.getByRole('button', { name: '2' })).toBeEnabled()
+    expect(nav.querySelectorAll('li')).toHaveLength(2)
+    // The count line stays: a row of numbers cannot say how many photographs there are.
     expect(screen.getByText(/Halaman 1 dari 2/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Sebelumnya' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Berikutnya' })).toBeEnabled()
   })
 
-  it('the controls are icon-only — the accessible name carries the word, not visible text', () => {
+  it('no Sebelumnya / Berikutnya control survives, as a word or as a glyph', () => {
     renderScreen({ albumTotal: NINA_ABOUT_PAGE_SIZE + 15 })
-    const prev = screen.getByRole('button', { name: 'Sebelumnya' })
-    const next = screen.getByRole('button', { name: 'Berikutnya' })
-    expect(prev.textContent?.trim()).toBe('')
-    expect(next.textContent?.trim()).toBe('')
-    expect(prev.querySelector('svg')).toBeInTheDocument()
-    expect(next.querySelector('svg')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Sebelumnya' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Berikutnya' })).not.toBeInTheDocument()
+    // Every control in the pager is a number and nothing but a number.
+    const nav = screen.getByRole('navigation', { name: 'Halaman foto profil' })
+    expect(nav.querySelector('svg')).not.toBeInTheDocument()
+    for (const cell of nav.querySelectorAll('li')) {
+      expect(cell.textContent).toMatch(/^\d+$/)
+    }
   })
 
-  it('the pager row is centered, not pinned to one edge', () => {
+  it('the pager block is centered, not pinned to one edge', () => {
     renderScreen({ albumTotal: NINA_ABOUT_PAGE_SIZE + 15 })
-    const row = screen.getByRole('button', { name: 'Sebelumnya' }).parentElement as HTMLElement
-    expect(row.className).toContain('justify-center')
-    expect(row.className).not.toContain('justify-between')
+    const block = screen.getByText(/Halaman 1 dari 2/).parentElement as HTMLElement
+    expect(block.className).toContain('items-center')
+    expect(block.className).not.toContain('justify-between')
   })
 
-  it('Berikutnya fetches the next page from the server and renders it — no navigation', async () => {
+  it('tapping a number fetches that page from the server and renders it — no navigation', async () => {
     fetchNinaAlbumPage.mockResolvedValue({
       items: [albumPhoto('a3'), albumPhoto('a4')],
       total: NINA_ABOUT_PAGE_SIZE + 15,
@@ -262,14 +276,38 @@ describe('NinaAboutScreen — pagination', () => {
     })
     renderScreen({ albumTotal: NINA_ABOUT_PAGE_SIZE + 15 })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Berikutnya' }))
+    fireEvent.click(screen.getByRole('button', { name: '2' }))
     expect(fetchNinaAlbumPage).toHaveBeenCalledWith(2)
 
     await waitFor(() => expect(screen.getByText(/Halaman 2 dari 2/)).toBeInTheDocument())
-    expect(screen.getByRole('button', { name: 'Sebelumnya' })).toBeEnabled()
-    expect(screen.getByRole('button', { name: 'Berikutnya' })).toBeDisabled()
+    const nav = screen.getByRole('navigation', { name: 'Halaman foto profil' })
+    expect(nav.querySelector('[aria-current="page"]')?.textContent).toBe('2')
+    expect(screen.getByRole('button', { name: '1' })).toBeEnabled()
     expect(routerPush).not.toHaveBeenCalled()
     expect(routerReplace).not.toHaveBeenCalled()
+  })
+
+  it('jumps from page 1 straight to page 3 in ONE tap — the whole reason the stepper went', async () => {
+    fetchNinaAlbumPage.mockResolvedValue({
+      items: [albumPhoto('a-p3')],
+      total: NINA_ABOUT_PAGE_SIZE * 2 + 1,
+      page: 3,
+    })
+    renderScreen({ albumTotal: NINA_ABOUT_PAGE_SIZE * 2 + 1 })
+    expect(screen.getByText(/Halaman 1 dari 3/)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '3' }))
+
+    // One call, straight to 3. The old pair could only ever have asked for 2 here.
+    expect(fetchNinaAlbumPage).toHaveBeenCalledTimes(1)
+    expect(fetchNinaAlbumPage).toHaveBeenCalledWith(3)
+    await waitFor(() =>
+      expect(
+        document.querySelector('img[src="https://blob.example/album-a-p3.jpg"]'),
+      ).toBeInTheDocument(),
+    )
+    expect(screen.getByText(/Halaman 3 dari 3/)).toBeInTheDocument()
+    expect(routerPush).not.toHaveBeenCalled()
   })
 
   it('a page already fetched this mount is served from cache — no second server call', async () => {
@@ -280,10 +318,10 @@ describe('NinaAboutScreen — pagination', () => {
     })
     renderScreen({ albumTotal: NINA_ABOUT_PAGE_SIZE + 15 })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Berikutnya' }))
-    await waitFor(() => expect(fetchNinaAlbumPage).toHaveBeenCalledTimes(1))
+    fireEvent.click(screen.getByRole('button', { name: '2' }))
+    await waitFor(() => expect(screen.getByText(/Halaman 2 dari 2/)).toBeInTheDocument())
 
-    fireEvent.click(screen.getByRole('button', { name: 'Sebelumnya' }))
+    fireEvent.click(screen.getByRole('button', { name: '1' }))
     await waitFor(() => expect(screen.getByText(/Halaman 1 dari 2/)).toBeInTheDocument())
     // Page 1 was the server's own initial props — never re-fetched.
     expect(fetchNinaAlbumPage).toHaveBeenCalledTimes(1)
@@ -298,7 +336,9 @@ describe('NinaAboutScreen — pagination', () => {
     renderScreen({ galleryTotal: NINA_ABOUT_PAGE_SIZE * 2 })
     fireEvent.click(screen.getByRole('tab', { name: 'Media' }))
 
-    fireEvent.click(screen.getByRole('button', { name: 'Berikutnya' }))
+    // Its own landmark, naming its own collection.
+    expect(screen.getByRole('navigation', { name: 'Halaman media' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '2' }))
     expect(fetchNinaMediaPage).toHaveBeenCalledWith(2)
     expect(fetchNinaAlbumPage).not.toHaveBeenCalled()
   })
@@ -345,15 +385,15 @@ describe('NinaAboutScreen — a fresh server render must actually reach the grid
     ).toBeInTheDocument()
   })
 
-  it('a Previous/Next page already cached is dropped, not trusted, once a fresh render lands', async () => {
-    fetchNinaAlbumPage.mockResolvedValue({
-      items: [albumPhoto('a-page2')],
+  it('a page already cached is dropped, not trusted, once a fresh render lands', async () => {
+    fetchNinaAlbumPage.mockImplementation(async (page: number) => ({
+      items: [albumPhoto(`a-p${page}`)],
       total: NINA_ABOUT_PAGE_SIZE + 15,
-      page: 2,
-    })
+      page,
+    }))
     const { rerender } = renderScreen({ albumTotal: NINA_ABOUT_PAGE_SIZE + 15 })
-    fireEvent.click(screen.getByRole('button', { name: 'Berikutnya' }))
-    await waitFor(() => expect(fetchNinaAlbumPage).toHaveBeenCalledTimes(1))
+    fireEvent.click(screen.getByRole('button', { name: '2' }))
+    await waitFor(() => expect(screen.getByText(/Halaman 2 dari 2/)).toBeInTheDocument())
 
     // A fresh server render lands while the runner is sitting on page 2 — the cookie already
     // named page 2, so the server's own `albumPage` prop matches where they are.
@@ -370,10 +410,11 @@ describe('NinaAboutScreen — a fresh server render must actually reach the grid
       document.querySelector('img[src="https://blob.example/album-a-page2-edited.jpg"]'),
     ).toBeInTheDocument()
 
-    // Paging away and back must re-fetch page 2 rather than serve the pre-refresh cache entry.
-    fireEvent.click(screen.getByRole('button', { name: 'Sebelumnya' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Berikutnya' }))
+    // The cache now holds ONLY the fresh page 2. Page 1's pre-refresh entry is gone, so jumping
+    // back to it has to go to the server rather than serve a stale array.
+    fireEvent.click(screen.getByRole('button', { name: '1' }))
     await waitFor(() => expect(fetchNinaAlbumPage).toHaveBeenCalledTimes(2))
+    expect(fetchNinaAlbumPage).toHaveBeenLastCalledWith(1)
   })
 })
 

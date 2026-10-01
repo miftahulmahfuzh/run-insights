@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 
 import { Button } from '@/components/ui/Button'
 import { CopyAdminLinkButton } from '@/components/ui/CopyAdminLinkButton'
+import { Pagination } from '@/components/ui/Pagination'
 import { PhotoViewer, type ViewerPhoto } from '@/components/ui/PhotoViewer'
 import { SAVE_NOTICE_TEXT, useSavePhoto } from '@/components/ui/useSavePhoto'
 import { cn } from '@/lib/cn'
@@ -706,6 +707,7 @@ export function NinaAboutScreen({
             page={albumPage}
             pageCount={albumPageCount}
             total={albumTotal}
+            label="Halaman foto profil"
             busy={albumPaging}
             onPage={goToAlbumPage}
           />
@@ -731,6 +733,7 @@ export function NinaAboutScreen({
                 page={galleryPage}
                 pageCount={galleryPageCount}
                 total={galleryTotal}
+                label="Halaman media"
                 busy={galleryPaging}
                 onPage={goToMediaPage}
               />
@@ -984,74 +987,66 @@ function toCell(photo: NinaAlbumPhoto | NinaGalleryPhoto): NinaGridCell {
 }
 
 /**
- * The Previous/Next row under each grid — one page of `NINA_ABOUT_PAGE_SIZE`, so every photograph
+ * The numbered page row under each grid — one page of `NINA_ABOUT_PAGE_SIZE`, so every photograph
  * in the collection is reachable rather than only the render-capped newest batch. Renders nothing
  * for a single-page collection, the common case: most albums and most conversations do not yet
  * hold 30 photographs.
  *
  * `onPage` is `goToAlbumPage`/`goToMediaPage` — a client fetch, never a navigation (the runner's
  * own choice over a `?page=` link): the page shell never remounts and `busy` is this tap's own
- * flight, not the attach strip's.
+ * flight, not the attach strip's. Those two callbacks already took an arbitrary page number, so
+ * a jump to page 5 is one call with `5` and neither of them needed a line changed for this.
  *
- * ── ICON-ONLY, CENTERED, ARROWS FLANKING THE PAGE LINE ───────────────────────────────────────
- * The two controls used to be labelled `Button`s pinned to the row's right edge — the runner's
- * own ask was to drop the words for a plain `<-` `->` and centre the whole row instead of leaving
- * it hugging one side. The page/total line sits BETWEEN the two arrows rather than beside them:
- * it is the one row on this screen that answers "where am I", and a centred trio reads as one
- * control rather than two unrelated ones sharing a line. `aria-label` carries the word the glyph
- * dropped, unchanged from before.
+ * ── EVERY NUMBER, THEN THE COUNT LINE ────────────────────────────────────────────────────────
+ * The two chevron `Button`s are gone. A `Sebelumnya`/`Berikutnya` pair makes page 5 four taps from
+ * page 1, and the runner's ask was a row of numbers precisely so that it is one:
+ * *"i can jump directly to specific page whenever i want"*. `components/ui/Pagination.tsx` is that
+ * row — the one implementation, shared with the four admin surfaces — and it marks the active page
+ * itself, so the line below is no longer the only thing saying where you are. The line stays
+ * anyway, for the half a row of numbers cannot express: how many photographs there are.
+ *
+ * The `pageCount <= 1` guard is kept even though `Pagination` already returns `null` in that case.
+ * It is not redundant here: it is what also keeps the count line off a single-page collection,
+ * which is what this screen has always done and what its test pins.
  */
 function NinaAboutPager({
   page,
   pageCount,
   total,
+  label,
   busy,
   onPage,
 }: {
   page: number
   pageCount: number
   total: number
+  label: string
   busy: boolean
   onPage: (page: number) => void
 }) {
   if (pageCount <= 1) return null
   return (
-    <div className="mt-2 flex items-center justify-center gap-3">
-      <Button
-        type="button"
-        size="md"
-        variant="secondary"
-        aria-label="Sebelumnya"
-        disabled={busy || page <= 1}
-        onClick={() => onPage(page - 1)}
-      >
-        <ChevronLeftIcon />
-      </Button>
+    <div className="mt-2 flex flex-col items-center gap-2">
+      <Pagination page={page} pageCount={pageCount} label={label} busy={busy} onPage={onPage} />
       <p className="text-[11px] font-medium text-ink-3 tabular-nums">
         Halaman {page} dari {pageCount} &middot; {total} foto
       </p>
-      <Button
-        type="button"
-        size="md"
-        variant="secondary"
-        aria-label="Berikutnya"
-        disabled={busy || page >= pageCount}
-        onClick={() => onPage(page + 1)}
-      >
-        <ChevronRightIcon />
-      </Button>
     </div>
   )
 }
 
 /*
- * Six glyphs, inlined rather than imported — `SessionRow`'s collection note and `AdminNav`'s
- * before it. All are **Lucide** (lucide-static 1.42.0, ISC), fetched 2026-09-09 (the pager's pair,
- * 2026-09-18) from `unpkg.com/lucide-static@1.42.0/icons/<name>.svg` and copied verbatim — the
- * paths and the root's presentation attributes exactly as published; the only adaptations are JSX
- * spelling (`stroke-width` -> `strokeWidth`) and dropping lucide's own `class`, `width` and
- * `height` for our `className` and the 18px size. Every glyph is 18px in `currentColor` and
- * `aria-hidden` — the accessible name is the `aria-label` on the button, never the picture.
+ * Four glyphs, inlined rather than imported — `SessionRow`'s collection note and `AdminNav`'s
+ * before it. All are **Lucide** (lucide-static 1.42.0, ISC), fetched 2026-09-09 from
+ * `unpkg.com/lucide-static@1.42.0/icons/<name>.svg` and copied verbatim — the paths and the root's
+ * presentation attributes exactly as published; the only adaptations are JSX spelling
+ * (`stroke-width` -> `strokeWidth`) and dropping lucide's own `class`, `width` and `height` for our
+ * `className` and the 18px size. Every glyph is 18px in `currentColor` and `aria-hidden` — the
+ * accessible name is the `aria-label` on the button, never the picture.
+ *
+ * (There were six until 2026-10-01. `chevron-left`/`chevron-right` drew `NinaAboutPager`'s
+ * Previous/Next pair, which the numbered `Pagination` row replaced — a stepper is the one control
+ * a row of page numbers makes strictly worse, so both glyphs left with it.)
  *
  * `send-horizontal` is the paper plane every chat app uses for "send", lying sideways so it reads
  * at 18px on the row that fires it (lucide's `send` is the same arrow at 45 degrees; the
@@ -1064,11 +1059,6 @@ function NinaAboutPager({
  * arrow into the tray — the one save glyph every platform's own UI already speaks, and the same
  * picture `components/admin/photoIcons.tsx` draws for the admin rails; it is inlined here rather
  * than imported from there because that module is the admin pages' home, not this one's.
- *
- * `chevron-left`/`chevron-right` (`NinaAboutPager`) are the plain "step one page" arrows the
- * runner asked for over the words "Sebelumnya"/"Berikutnya" — `chevron`, not `arrow-left-right`:
- * a full arrow is the platform's idiom for "leave this screen", where a chevron reads as "one
- * step within the same list", which is the whole of what Previous/Next do here.
  */
 
 /** "Kirim ke chat" — his most recent conversation. Lucide's `send-horizontal`, verbatim. */
@@ -1148,42 +1138,6 @@ function DownloadIcon() {
       <path d="M12 15V3" />
       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
       <path d="m7 10 5 5 5-5" />
-    </svg>
-  )
-}
-
-/** "Sebelumnya" — one page back. Lucide's `chevron-left`, verbatim. */
-function ChevronLeftIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      className="size-[18px]"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="m15 18-6-6 6-6" />
-    </svg>
-  )
-}
-
-/** "Berikutnya" — one page forward. Lucide's `chevron-right`, verbatim. */
-function ChevronRightIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      className="size-[18px]"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="m9 18 6-6-6-6" />
     </svg>
   )
 }
