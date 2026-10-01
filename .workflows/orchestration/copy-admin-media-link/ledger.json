@@ -24,21 +24,21 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "6e8e7a1",
       "depends_on": [
         1
       ],
       "difficulty": "HARD",
       "n": 2,
-      "note": "coordinator: live in tmux @53 as impl-copy-admin-media-link-p2, confirmed busy via ListAgents. verify --apply had downgraded this row spawned->pending (a live phase has no commit yet, so it derives as pending); restored to running so a resume does not re-spawn a session that is mid-write.",
+      "note": "Plan Step 1 SQL was wrong: drizzle unqualifies a bare Column in a single-table select() projection, so earlier.user_id = \"user_id\" bound to the inner alias and the correlated offset was always 0 (every deep link -> page 1, green against the fake driver). Fixed via nested-sql outerRef() helper, rung 2 per exit criteria. NOT FIXED and live on main: locateNinaAvatar (lib/nina/queries/avatars.ts) has the identical always-zero offset, so the album ?avatar= deep link always lands on page 1 - no phase owns that file; needs its own task.",
       "package": "lib/nina/queries`, `app/admin`, `components/admin",
       "plan": ".workflows/plan/copy-admin-media-link/phase-2.md",
-      "reported_at": "2026-10-01T04:53:28+00:00",
+      "reported_at": "2026-10-01T04:56:43+00:00",
       "satisfies": [
         "R2"
       ],
-      "status": "running",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-NIN-A057",
       "title": "/admin/nina` honours a media deep link"
     },
     {
@@ -69,16 +69,16 @@
       ],
       "difficulty": "HARD",
       "n": 4,
-      "note": null,
+      "note": "coordinator: live in tmux @55 as impl-copy-admin-media-link-p4, confirmed busy via ListAgents. verify --apply derives a live phase as pending for want of a commit; restored to running so nothing re-spawns on top of it.",
       "package": "components/nina`, `components/photo`, `app/nina`, `app/photo`, `lib/nina`, `lib/admin",
       "plan": ".workflows/plan/copy-admin-media-link/phase-4.md",
-      "reported_at": null,
+      "reported_at": "2026-10-01T04:57:36+00:00",
       "satisfies": [
         "R1",
         "R3",
         "R4"
       ],
-      "status": "pending",
+      "status": "running",
       "task_id": null,
       "title": "Every client entry point carries it, admin-only"
     }
@@ -86,7 +86,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/copy-admin-media-link/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "copy-admin-media-link",
-  "updated": "2026-10-01T04:53:28+00:00",
-  "verified_at": "2026-10-01T04:53:11+00:00",
+  "updated": "2026-10-01T04:57:36+00:00",
+  "verified_at": "2026-10-01T04:57:29+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/copy-admin-media-link"
 }
