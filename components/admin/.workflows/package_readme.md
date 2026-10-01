@@ -8,6 +8,11 @@ Anchor and Edit mode. New `PhotoshopCropStudio.tsx` — the rectangle, ratio-awa
 new suites (`PhotoshopCropStudio.test.tsx` 22 cases, `PhotoshopDetail.test.tsx` 6). Skipping the
 step leaves the job payload byte-identical to before, which the detail suite asserts.)
 
+**Doc correction, 2026-10-01** (no code in this package changed): `lib/admin/albumDeepLink`'s
+exported surface grew from two names to five in `copy-admin-media-link` phase 1 of 4, so the
+*Dependencies* entry for it and the `?avatar=` deep-link narrative were brought back in line. No
+component here imports the three new names; `SearchResultsGrid`'s media link is unchanged.
+
 **Previously**: 2026-09-17 (`media-album-unified-search` phase 3/4, `P2-CA-A006`: the UI half of
 unified Album+Media search — the Media arm's keyword boxes, a ranked sheet that mixes both
 collections and labels a media hit `in Media`, and the pointer-row sentence in
@@ -264,13 +269,22 @@ branch is `hits[viewerIndex].origin` — the overlay's own index, which is alrea
 for the picture on screen, so it is the source of truth for the link beside it. An ALBUM hit keeps
 everything below. A MEDIA hit gets `hrefForMediaView()`: the COLLECTION, page one, nothing
 pre-selected. Resolving a `nina_message_images` id into a page of `listNinaMediaPhotos` needs a
-`locateNinaMediaPhoto` that does not exist, and minting one is a query-layer change — so the trim is
+`locateNinaMediaPhoto`, and minting one is a query-layer change — so the trim is
 a slightly less precise destination for half the result set, taken over the alternative of an
 overlay with no way out of it for that half. The accessible name moves with it ("Open Media, where
 this photo lives" rather than "Open this photo's description"), because a control whose name
-overstates where it goes is worse than one that says plainly what it opens. The precise twin, if it
-is ever wanted, is the album's shape exactly: a `NINA_MEDIA_PHOTO_PARAM` beside `NINA_AVATAR_PARAM`,
-the locate call beside `locateNinaAvatar` in the page, and `deepLinkId` reused on the media arm.
+overstates where it goes is worse than one that says plainly what it opens.
+
+**The precise twin was half-built on 2026-10-01** (`copy-admin-media-link` phase 1 of 4): the URL
+half exists — `NINA_MEDIA_PHOTO_PARAM` beside `NINA_AVATAR_PARAM`, and `hrefForMediaPhoto(id)`
+minting `/admin/nina?view=media&image=<id>`. The other two thirds do NOT: there is still no
+`locateNinaMediaPhoto` in the query layer and no `deepLinkId` landing on the media arm
+(both are phase 2 of this set), so a link minted from it would today resolve to the
+collection with nothing selected.
+**Nothing in this package imports it, and this control is unchanged** — `SearchResultsGrid` still
+calls `hrefForMediaView()` for a media hit. Even once the landing lands, swapping this control's
+destination is a separate decision, not a consequence: the search sheet's honest promise to an
+operator paging their own ranked results is the collection rather than a row.
 
 The album path, unchanged:
 
@@ -1081,16 +1095,28 @@ counts stay MEMORY counts: still true of the account, just not of this page.
 - `@/lib/admin/folderOps` — **not imported, deliberately.** It holds every folder refusal and
   the Zod schemas behind them; the components call actions and render sentences. (There is no
   `lib/admin/folderPath.ts`; reconciliation deleted it.)
-- `@/lib/admin/albumDeepLink` — `NINA_AVATAR_PARAM` + `hrefForAvatar(id)`, the `?avatar=` grammar,
-  and since 2026-09-17 `hrefForMediaView()` (`/admin/nina?view=media`, page one implied by the
-  ABSENCE of `?page=`); both imported by `SearchResultsGrid` (the writer) while
-  `app/admin/nina/page.tsx` imports the reader
-  half. A grammar and not a validator: the id's SHAPE is checked by the page against
-  `ADMIN_AVATAR_ID_RE`. It is a module of its own rather
-  than a 36th name in `lib/admin/filetree`, whose barrel surface is frozen by a test. No longer
-  zero-import — `hrefForMediaView` takes `NINA_MEDIA_VIEW_PARAM`/`_VALUE` from that same
-  import-pure `filetree` module rather than re-spelling the parameter a client writes and a Server
-  Component reads, which is what the purity rule is FOR.
+- `@/lib/admin/albumDeepLink` — `/admin/nina`'s whole URL grammar. **Five exports since
+  2026-10-01**, where this entry used to name two:
+  - `NINA_AVATAR_PARAM` + `hrefForAvatar(id)` — the `?avatar=` grammar.
+  - `hrefForMediaView()` (2026-09-17) — `/admin/nina?view=media`, page one implied by the ABSENCE
+    of `?page=`.
+  - `NINA_MEDIA_PHOTO_PARAM` (`'image'`) + `hrefForMediaPhoto(id)` (2026-10-01) —
+    `/admin/nina?view=media&image=<id>`, the row-level twin of `hrefForAvatar`. The view is NOT
+    optional in it: it is the first thing the page reads and it decides which table is read at all.
+  - `adminPhotoLink(kind, id, origin)` (2026-10-01) — the one place a photograph becomes an
+    ABSOLUTE admin URL, for a link that is copied and leaves the device. `'avatar'` and `'image'`
+    route to the two path builders; `'shot'` returns `null`, because `run_photos` is in neither
+    `/admin/nina` collection, so a component handed a run screenshot must render no control at all.
+
+  As of 2026-10-01 only the first three are imported from this package —
+  `SearchResultsGrid` is the writer, `app/admin/nina/page.tsx` the reader half; the last three
+  names landed with no callers (phase 1 of 4 of `copy-admin-media-link`). A grammar and not a
+  validator: the id's SHAPE is checked by the page against `ADMIN_AVATAR_ID_RE`. It is a module of
+  its own rather than a 36th name in `lib/admin/filetree`, whose barrel surface is frozen by a
+  test. No longer zero-import, and both its imports are safe for a client file: the two
+  `?view=media` constants come from that same import-pure `filetree` module rather than being
+  re-spelled where a client writes what a Server Component reads (which is what the purity rule is
+  FOR), and `PhotoPointerKind` from `@/lib/photos/pointer` is **type-only**, erased at build.
 - `@/lib/admin/shareToNina` — `ninaPhotoShareUrl(origin, avatarId)`, the only writer of the
   `/nina?photo=avatar:<id>` link. Near-zero-import, so client files may import it.
 - `@/lib/admin/avatars` — `adminAvatarPathname`, `adminAvatarThumbPathname`, `extForContentType`,

@@ -1,7 +1,12 @@
 # Package: admin
 
 **Location**: `lib/admin`
-**Last Updated**: 2026-09-19 (the photoshop crop step's boundary — `runPhotoshopJobAction`'s four
+**Last Updated**: 2026-10-01 (`albumDeepLink.ts` stops being an album-only grammar —
+`NINA_MEDIA_PHOTO_PARAM`, `hrefForMediaPhoto(id)` and `adminPhotoLink(kind, id, origin)`, the one
+place a photograph becomes an ABSOLUTE admin URL; P1-ADM-A004, phase 1 of 4 of
+`.workflows/plan/copy-admin-media-link/`. Additive only, and **nothing imports the three new names
+yet** — the callers are phases 2–4).
+Previously: 2026-09-19 (the photoshop crop step's boundary — `runPhotoshopJobAction`'s four
 optional crop fields, checked inline and coerced to "no crop" rather than trusted or refused,
 P1-ADM-N8QW, phase 4 of 5 of `PHOTOSHOP_ASPECT_RATIO_CROP_PLAN.md`).
 Previously: 2026-09-17 (the media collection joins the search — merged album+media ranking,
@@ -104,6 +109,7 @@ exactly one definition — `schema.ts` imports every bound it enforces rather th
 |---|---|---|
 | `requireAdmin.ts` | `server-only` | The boundary. Page/action flavour, Route Handler flavour, canonical refusal body. |
 | `avatars.ts` | pure | Album blob pathname shapes, content types, size caps, id regex, TTLs — original and thumbnail — and the hand-written keyword field's character cap. |
+| `albumDeepLink.ts` | pure (one value import, one type-only) | `/admin/nina`'s deep-link grammar, and the one place a photograph id becomes an absolute admin URL. |
 | `filetree.ts` + `filetree/` | pure, **import-pure** (`./` siblings only) | Folder-path grammar (`pathGrammar`), file classification (`classify`), dedupe key (`sourceKey`), `planFolderUpload` (`uploadPlan`), tree building (`folderTree`), the explorer's album/Media view switch (`mediaView`), the limits (`bounds`). `filetree.ts` is the re-export barrel. |
 | `folderOps.ts` | pure (zod) | Folder *maintenance*: the six operations' schemas and the planners that refuse without a database. |
 | `schema.ts` | pure | Every Zod schema `/admin/**` accepts. Imports every bound; declares none. |
@@ -195,6 +201,97 @@ never be the half that gets cut. It is deliberately NOT
 `ADMIN_CHAT_PHOTO_MAX_DESCRIPTION_CHARS`: that constant is shared with the media table because both
 tables' descriptions are one kind of sentence reaching one prompt, and `nina_message_images` has no
 keywords column at all, so sharing a bound would assert a kinship that does not exist.
+
+### `albumDeepLink.ts` — `/admin/nina`'s deep links, and the one absolute admin URL
+
+```ts
+export const NINA_AVATAR_PARAM = 'avatar'
+export const NINA_MEDIA_PHOTO_PARAM = 'image'
+export function hrefForAvatar(id: string): string          // /admin/nina?avatar=<id>
+export function hrefForMediaView(): string                 // /admin/nina?view=media
+export function hrefForMediaPhoto(id: string): string      // /admin/nina?view=media&image=<id>
+export function adminPhotoLink(                            // https://host/admin/nina?… | null
+  kind: PhotoPointerKind,
+  id: string,
+  origin: string,
+): string | null
+```
+
+**Five names, one grammar, and the module exists because a URL parameter has two ends.** The MINTERS
+are client components; the READER is `app/admin/nina/page.tsx`, a Server Component that turns an id
+into the folder and page it is on. A key spelled in both places is a key that will one day be spelled
+two ways, so every spelling lives here and the page imports rather than retypes — the same split
+`NINA_MEDIA_VIEW_PARAM` / `readExplorerView` already keeps in `filetree/mediaView.ts`.
+
+**It is a module of its own rather than a 36th name in `filetree`** because that barrel's runtime
+surface is FROZEN by `tests/admin.filetreeBarrel.test.ts` at the 35 names the pre-split single file
+had — a barrel allowed to grow lazily would undo the 2026-09-11 dead-export audit through the back
+door.
+
+**Both imports obey the purity rule rather than bending it.** A client component and a Server
+Component both import this file, so it may reach nothing server-only. The value import is
+`NINA_MEDIA_VIEW_PARAM` / `NINA_MEDIA_VIEW_VALUE` from the import-pure `filetree` barrel — taking
+them from there is what the rule is FOR, since re-spelling the key the reader reads is exactly the
+drift the module exists to prevent. The second is `PhotoPointerKind` from `@/lib/photos/pointer`
+and is **type-only**: erased at build, so it cannot reach either bundle even in principle.
+
+**A grammar, never a validator.** No export here checks an id's shape; `ADMIN_AVATAR_ID_RE`
+(`avatars.ts`) is applied by the page, beside the `?folder=` and `?page=` validation already there.
+The builders do call `encodeURIComponent` / `URLSearchParams` on the id anyway — `newId()` is
+nanoid(12) over `A-Za-z0-9_-` and needs no escaping today, but a builder that trusts its argument's
+alphabet is one refactor away from being wrong.
+
+**No `?folder=` and no `?page=` ever travels beside an id.** Both are DERIVED server-side; a pair
+riding along would be a second opinion about where the row is, and the one that loses is the id —
+the operator lands in the wrong place with nothing selected. The media arm makes that worse than the
+album does, because `listNinaMediaPhotos` orders by `coalesce(last_replaced_at, created_at) DESC`: a
+REPLACED row is exactly the one whose page moves, and replacing one is exactly what the link is
+minted for. Same reason `hrefForMediaView()` omits `?page=`: page one is the ABSENCE of the
+parameter, so the canonical URL and a navigated-back first page are one string rather than two.
+
+**`?image=` may not travel without `?view=media`.** The view is the FIRST thing the page reads and
+it decides which table is read at all; an `?image=<id>` landing on the album arm would be dropped in
+silence. `hrefForMediaPhoto` therefore writes the pair, through the imported constants.
+
+**`'image'` is the key, not `'media'`, `'photo'` or `'id'`** — it is already this repo's word for
+`nina_message_images` whenever an id must say which table it addresses (`PhotoPointerKind` is
+`'shot' | 'avatar' | 'image'`, and `lib/nina/attach.ts`'s `?photo=<kind>:<id>` spells the two Nina
+tables the same two ways), so the minter needs no translation table between the kind it is handed
+and the key it writes. It also collides with none of the four keys `/admin/nina` already reads
+(`view`, `folder`, `page`, `avatar`).
+
+**The collection link and the row link are both kept, because they answer different questions.**
+`hrefForMediaView()` is "where does this photograph live?" — the honest promise when the caller is
+paging a ranked search result. `hrefForMediaPhoto(id)` is "open THIS one, selected". Returning the
+row link from the collection builder would silently re-point an existing caller at a selection
+nobody asked for.
+
+**`adminPhotoLink` is the only export that returns an ABSOLUTE URL**, because its link's whole job is
+to leave the device it was minted on — copied, pasted into a chat app, opened on a desktop later; a
+path would paste as text nothing can open. The `origin` is an ARGUMENT and not a `shareOrigin()`
+call, since that module is `server-only` and a `NEXT_PUBLIC_` is forbidden: the origin is resolved on
+the server and threaded down as a prop, never read from `window.location`, whose per-deployment
+preview hostname dies at the next push with the link already sent. A trailing slash on the argument
+is stripped here rather than trusted to the caller, so the join never doubles. An EMPTY origin is
+deliberately **not** a second refusal — `null` means exactly one thing.
+
+**`'shot'` is refused and not mapped.** `/admin/nina` holds `nina_avatars` and
+`nina_message_images`; `run_photos` is in neither, so there is no row to select and no page to land
+on. Folding it into the media arm would mint a URL resolving to nothing — the worst failure for a
+link whose only feedback is a clipboard tick. `null` makes the caller decide what an absent link
+looks like, which is what keeps "Nina photographs only" structural instead of remembered. The
+`switch` is exhaustive over `PhotoPointerKind` with a declared `string | null` return, so a fourth
+kind fails `tsc` here rather than falling through to `undefined` — that is the point of importing
+the union instead of taking a `string`.
+
+Covered by the co-located `lib/admin/albumDeepLink.test.ts`, which pins the parameter names, the
+absence of `folder`/`page`, the escaping, the trailing-slash join, the argument ORDER (a
+transposition is a broken link, not a type error), agreement between `adminPhotoLink` and the two
+path builders, and exhaustiveness over the union.
+
+**As of 2026-10-01 nothing in the repo imports `NINA_MEDIA_PHOTO_PARAM`, `hrefForMediaPhoto` or
+`adminPhotoLink`** — phase 1 of 4 landed the grammar alone; the query, the page wiring and the copy
+control are phases 2–4. `hrefForAvatar` and `hrefForMediaView` keep their existing importers.
 
 ### `filetree.ts` (barrel) + `filetree/` — the file manager's decisions, before anything touches the network
 
@@ -1616,7 +1713,11 @@ backfill route to finish. The other describes are in-band (the two describe acti
   (`textModelActions.ts` only).
 - `@/lib/photos/{contentHash,globalDuplicate,pointer}` — the dedupe hash and its format gate
   (`chatPhotoActions.ts`, `ninaAlbumUploadActions.ts`), phase 1's cross-table finder
-  `findGlobalDuplicatePhoto`, and the `ResolvedPhotoPointer` a hit is expressed as.
+  `findGlobalDuplicatePhoto`, and the `ResolvedPhotoPointer` a hit is expressed as. Since
+  2026-10-01 `albumDeepLink.ts` also takes `PhotoPointerKind` from `pointer` — **type-only**, so it
+  is erased at build and the client-safe module stays client-safe; imported rather than re-declared
+  because `'shot' | 'avatar' | 'image'` is already the repo's vocabulary for "which image table
+  this id addresses".
 - `@/lib/push/duplicateImage` — `notifyDuplicateImagePush`, the second push seam here
   (2026-09-15): the media add (where it REPLACES the generic push), the media replace, and the
   album folder batch's `after()` scan.
@@ -1633,6 +1734,10 @@ backfill route to finish. The other describes are in-band (the two describe acti
 `errorLogModel.ts` imports **nothing** — not even a type, which is why `ErrorLogSource` is
 declared structurally (see its section). `filetree/`'s modules import only their `./` siblings;
 the directory stays import-pure, enforced by `tests/admin.filetreeBarrel.test.ts`.
+`albumDeepLink.ts` has exactly two imports and both are deliberate: the two `?view=media`
+constants from the import-pure `filetree` barrel (one value import, intra-package), and the
+type-only `PhotoPointerKind`. Nothing else may be added — a client component and a Server
+Component both import that file.
 
 ## Reverse Dependencies
 
@@ -1657,6 +1762,12 @@ Named primary consumers:
 - `components/admin/FileExplorer.tsx` + `explorer/{FolderTree,UploadQueue,useFolderUpload,dropWalk,model,PhotoGrid,SelectionPane,MediaPane,MediaAdd,MediaControls,PhotoDescription,chatPhotoUpload,thumbnail}` — the client half: `filetree`'s pure surface, the `avatars`/`chatPhotos` bounds, and the six media actions.
 - `components/admin/{FolderMenu,PhotoMoveBar,ShareToNinaItem}.tsx` — folder maintenance, bulk
   move/remove, and the share link (`shareToNina.ts`).
+- `albumDeepLink.ts`'s two ends: `components/admin/explorer/SearchResultsGrid.tsx` mints
+  (`hrefForAvatar`, `hrefForMediaView`) and `app/admin/nina/page.tsx` reads (`NINA_AVATAR_PARAM`);
+  `tests/admin.photoSearch.test.ts` is the third importer, beside the co-located
+  `albumDeepLink.test.ts`. The three names added 2026-10-01 have **no importers yet** — check with
+  `grep -rn "hrefForMediaPhoto\|adminPhotoLink" app components lib` before assuming otherwise,
+  since phases 2–4 of the set add them.
 - `app/api/admin/nina/upload/route.ts` — the whole `avatars.ts` surface plus `requireAdminApi`,
   `forbiddenJson`, `AdminIdentity`, and the `chatPhotos` pathname/ceiling vocabulary.
 - `app/api/admin/nina/backfill-descriptions/route.ts` (new 2026-09-15) — `requireAdminApi`,
@@ -1799,6 +1910,18 @@ export default async function Page() {
 
 - **Do not add an import to `filetree.ts`.** Not even for the byte cap — that is what the
   `maxBytes` parameter is for. One server-side import and the client explorer stops compiling.
+- **Do not hand-build an `/admin/nina` URL, and do not hand-build an absolute one at all.** Every
+  path goes through `albumDeepLink.ts`'s four builders; every absolute admin link goes through
+  `adminPhotoLink(kind, id, origin)`, which is also where `'shot'` is refused. A template string
+  in a component re-spells a key the Server Component reads, and a second place that joins an
+  origin to a path is a second place to get the trailing slash wrong.
+- **Do not call `shareOrigin()` from `albumDeepLink.ts`** to spare a caller the third argument.
+  That module is `server-only`, and this one is imported by client components — the origin is
+  resolved on the server and threaded down as a prop. `window.location.origin` is worse still: on
+  a preview deployment it bakes a hostname that dies at the next push, with the link already sent.
+- **Do not make `adminPhotoLink` return `''` or throw for an empty origin.** `null` means exactly
+  one thing here — "this kind has no admin destination" — and a caller that conflated it with "no
+  origin configured" would have two reasons and no way to tell them apart.
 - **Do not make `folderPathSchema` normalise.** It validates a canonical path; a server-side
   rewrite is the invisible-corruption failure the identity check exists to prevent.
 - **Do not re-spell a bound in `schema.ts`.** Every one is imported.
@@ -1975,6 +2098,22 @@ the browser and so never survive an upload; the orphaned-blob window (blob PUT a
 registered) is real and belongs to the reaper, not to this package.
 
 ## Recent Changes
+
+- **2026-10-01** — `copy-admin-media-link` phase 1 of 4 (P1-ADM-A004): `albumDeepLink.ts` stops
+  being an album-only grammar. Three additions, all additive — `NINA_MEDIA_PHOTO_PARAM` (`'image'`,
+  the key addressing one `nina_message_images` row), `hrefForMediaPhoto(id)`
+  (`/admin/nina?view=media&image=<id>`, the view carried through the imported `filetree` constants
+  because it decides which table the page reads at all), and `adminPhotoLink(kind, id, origin)` —
+  the one place a photograph becomes an ABSOLUTE admin URL, routing `'avatar'` and `'image'` to the
+  two path builders and REFUSING `'shot'` with `null`, since `run_photos` is in neither
+  `/admin/nina` collection. `hrefForAvatar` and `hrefForMediaView` are byte-identical in body; the
+  module header and `hrefForMediaView`'s docblock were rewritten, the latter because its old prose
+  argued the collection link existed only for want of a `locateNinaMediaPhoto`, which is no longer
+  the reason it exists (the honest promise to a search-result caller is the collection). The file
+  gained a second import, the **type-only** `PhotoPointerKind`, which is what makes the `switch`
+  exhaustive under `tsc`. Covered by the co-located `lib/admin/albumDeepLink.test.ts`. **Nothing
+  imports the three new names yet** — the query (`locateNinaMediaPhoto`), the page's `?image=`
+  landing and the copy-link control are phases 2, 3 and 4.
 
 - **2026-09-19** — `photoshop-aspect-ratio-crop` phase 4 of 5 (P1-ADM-N8QW): the crop step's
   boundary. `runPhotoshopJobAction` gained four OPTIONAL fields — `cropRatioLabel`, `cropScale`,

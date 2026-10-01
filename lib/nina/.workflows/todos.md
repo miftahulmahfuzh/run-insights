@@ -2,12 +2,12 @@
 
 **Package Path**: `lib/nina`
 **Package Code**: NIN
-**Last Updated**: 2026-09-19
-**Total Active Tasks**: 0
+**Last Updated**: 2026-10-01
+**Total Active Tasks**: 1
 
 ## Quick Stats
 - P0 Critical: 0
-- P1 High: 0
+- P1 High: 1
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
@@ -20,6 +20,16 @@
 ## Active Tasks
 
 ### [P1] High
+
+- [ ] **P1-NIN-A057** Phase 2: `/admin/nina` honours a media deep link
+  - **Difficulty**: HARD
+  - **Type**: Feature
+  - **Context**: Owns `lib/nina/queries/images.ts` (`locateNinaMediaPhoto` + `NinaMediaPhotoLocation`), `lib/nina/queries.test.ts` (`BARREL_VALUE_EXPORTS` grows 110 → 111, sorted, in the same commit), a new `tests/nina.mediaLocate.test.ts`, `app/admin/nina/page.tsx`, `components/admin/FileExplorer.tsx` (the landing effect spends the parameter with the media href, and `:240`'s comment is rewritten) and `FileExplorer.test.tsx` — six files; `lib/nina/queries.ts` needs no edit and must not appear in the diff. Exit: `/admin/nina?view=media&image=<id>` lands on the page holding that photograph with it selected and the media selection pane mounted; the offset mirrors `mediaCollectionScope` and the `coalesce(last_replaced_at, created_at) DESC, id DESC` sort key; a re-share id resolves through `source_image_id` to its original; a foreign, malformed, deleted or non-original id changes nothing and says nothing; the album `?avatar=` path is unchanged; gates green.
+  - **Status**: open
+  - **Plan Set**: `COPY_ADMIN_MEDIA_LINK_PLAN.md` (phase 2 of 4)
+  - **Satisfies**: R2 — The link opens `/admin/nina` with that image already selected, so the operator can Replace it immediately — `?view=media` for a conversation photograph
+  - **Depends on**: `P1-ADM-A004`
+  - **Plan**: `.workflows/plan/P1-NIN-A057.md`
 
 ### [P2] Medium
 
