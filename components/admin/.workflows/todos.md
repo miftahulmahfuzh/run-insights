@@ -2,13 +2,13 @@
 
 **Package Path**: `components/admin`
 **Package Code**: CA
-**Last Updated**: 2026-09-19
-**Total Active Tasks**: 0
+**Last Updated**: 2026-10-01
+**Total Active Tasks**: 2
 
 ## Quick Stats
 - P0 Critical: 0
 - P1 High: 0
-- P2 Medium: 0
+- P2 Medium: 2
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
@@ -24,6 +24,26 @@
 ### [P1] High
 
 ### [P2] Medium
+
+- [ ] **P2-CA-A008** Phase 4: `/admin/image-generation` + the job anchor picker
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns `components/admin/PhotoReferencePicker.tsx` and `components/admin/PhotoReferencePicker.test.tsx`; `tests/admin.photoReference.test.ts` is re-read and left byte-for-byte unchanged, as are `ImageGenPanel.tsx`, `NinaJobAnchorPicker.tsx`, both route pages, `photoReferenceModel.ts` and `NINA_PHOTO_REF_PAGE_SIZE`. Exit: the `Previous` / `Next` `ButtonLink`s at `:353-362` (inside the footer row at `:347-374`) become `<Pagination hrefForPage={(n) => \`?page=${n}\`} scroll={false} label="Photo reference pages" className="mt-2" />` with **no** outer `pageCount <= 1` guard, so `page 1 of 1` keeps rendering; the `Clear reference` button and the `selected #… · Showing … of … · page … of …` paragraph stay put; the `scrollIntoView` effect keyed on `page` and the `preloadUrls` prefetch links are untouched; both mounts still render; the four `Previous`/`Next` tests assert the numbered row.
+  - **Status**: open
+  - **Plan Set**: `NUMBERED_PAGINATION_PLAN.md` (phase 4 of 5)
+  - **Satisfies**: R1 — Change **every** pagination system in the app — `/nina/about`, `/admin/nina` (the "Image collection" nav label), and every other paginated surface — so each one uses the new control, and the current Previous/Next pagination UI is gone from all of them
+  - **Depends on**: `P2-CU-A001`
+  - **Plan**: `.workflows/plan/P2-CA-A008.md`
+
+- [ ] **P2-CA-A009** Phase 5: `/admin/photoshop` and `/admin/error-logs`
+  - **Difficulty**: EASY
+  - **Type**: Feature
+  - **Context**: Owns `components/admin/PhotoshopPickerGrid.tsx` and `app/admin/error-logs/page.tsx`; `app/admin/photoshop/page.tsx`, `lib/admin/errorLogModel.ts`, `ErrorLogList.tsx`, `errorLogHref`'s body, the `TabStrip` and both `EmptyState` branches are untouched. Exit: the picker's two hand-rolled `<Link>`s become `<Pagination hrefForPage={(n) => \`/admin/photoshop?page=${n}\`} label="Photo pages" />` and the error-logs `‹ Newer` / `Older ›` row becomes `<Pagination hrefForPage={(n) => errorLogHref(category, n)} label="Error log pages" className="mt-2" />`, both count lines kept and neither surface gaining an outer `pageCount <= 1` guard; `TOUCH_ICON` leaves the error-logs imports while `cn`, `Link`, `TOUCH_TARGET`, `ButtonLink` and `EmptyState` stay; the stale `PhotoGrid.tsx:177-211` citation at `:116` is dropped. Neither file is read by any suite, so `grep -n 'Newer\|Older\|Previous\|Next\|Sebelumnya\|Berikutnya'` over both is invariant 9's **only** check here — load-bearing, not skippable.
+  - **Status**: open
+  - **Plan Set**: `NUMBERED_PAGINATION_PLAN.md` (phase 5 of 5)
+  - **Satisfies**: R1 — Change **every** pagination system in the app — `/nina/about`, `/admin/nina` (the "Image collection" nav label), and every other paginated surface — so each one uses the new control, and the current Previous/Next pagination UI is gone from all of them
+  - **Depends on**: `P2-CU-A001`
+  - **Plan**: `.workflows/plan/P2-CA-A009.md`
 
 ### [P3] Low
 

@@ -15,25 +15,32 @@ numbers below are **left at the values they were measured at** rather than silen
 this addition changes one, the new number carries its own 2026-10-01 stamp beside it. The method
 for re-measuring is unchanged, and it is the only thing that should be trusted forward.
 
+**Updated 2026-10-01** (`P2-CU-A001`, phase 1 of 5 of the numbered-pagination set) — the kit gained
+`Pagination.tsx`, the one numbered pager, and the barrel re-exports it. Phase 1 writes the control
+only; phases 2-5 adopt it at `/nina/about`, `/admin/nina`, `/admin/image-generation`,
+`/admin/photoshop` and `/admin/error-logs`. The 2026-09-12 import-graph numbers are again left at
+their measured values — nothing outside this directory imports `Pagination` yet — while the
+directory's own file/module/test counts were re-measured today and carry today's stamp.
+
 ## Overview
 
-`components/ui` is the app's shared component kit: sixteen components (ScreenHeader shares
+`components/ui` is the app's shared component kit: seventeen components (ScreenHeader shares
 `AppShell.tsx`'s module), two client hooks, and one barrel. It is the base of the dependency graph's component half —
 **77 files outside this directory import from it** (72 production files across `app/` and
 `components/`, 5 test files; measured 2026-09-12), which makes every decision in here a
 decision everyone else inherits. (That 77 is still the 2026-09-12 figure and is still correct:
-2026-10-01's new module has **no importer outside this directory at all** yet — see the
-reverse-wiring map's standing exception.) The directory is **35 files, measured 2026-10-01**: 17
-source modules, one `index.ts` barrel, and 17 colocated happy-dom suites — every source file has
-one, **223 tests green** (`npx vitest run components/ui`: 17 files, 223/223, on the
-`feature/copy-admin-media-link` working tree). The 2026-09-12 reading of the same three numbers
-was 33 files / 16 modules / 203 tests at `6759f26`; the line count (5,213 lines, 2026-09-12) has
-not been re-measured.
+both modules added on 2026-10-01 have **no importer outside this directory at all** yet — see the
+reverse-wiring map's standing exceptions.) The directory is **37 files, measured 2026-10-01**: 18
+source modules, one `index.ts` barrel, and 18 colocated happy-dom suites — every source file has
+one, **240 tests green** (`npx vitest run components/ui`: 18 files, 240/240, on the
+`feature/numbered-pagination` working tree). Earlier readings of the same three numbers: 35 files /
+17 modules / 223 tests (2026-10-01, `feature/copy-admin-media-link`), 33 / 16 / 203 at `6759f26`
+(2026-09-12). The line count (5,213 lines, 2026-09-12) has not been re-measured.
 
 Two rules organise everything, and both are import-graph rules:
 
 1. **The barrel is client-safe, and stays that way by audit.** `index.ts` re-exports exactly
-   15 names, every one reachable from a browser bundle. `AppShell` and `ScreenHeader` are
+   16 names (measured 2026-10-01), every one reachable from a browser bundle. `AppShell` and `ScreenHeader` are
    deliberately NOT re-exported: `AppShell` became a Server Component in F33 phase 10 (it
    renders Nina's unread badge through `NinaUnreadBadgeSlot`, which reaches `auth.ts` and
    `lib/env.ts`), and a Server Component in the barrel would turn every
@@ -42,10 +49,14 @@ Two rules organise everything, and both are import-graph rules:
    neither `components/ui/index.ts` nor `AppShell.tsx` nor `TabBar.tsx` — the audit that
    keeps the rule from eroding.
 2. **Directive-free primitives compile into whichever graph imports them.** `Button`,
-   `Card`, `Chip`, `EmptyState`, `RunDateLink`, `SplitsTable`, `ZoneBar`, `FlagList` and
+   `Card`, `Chip`, `EmptyState`, `Pagination`, `RunDateLink`, `SplitsTable`, `ZoneBar`,
+   `FlagList` and
    `ScreenHeader` carry no `'use client'`: no hooks, no effects, no event handlers beyond
    what markup allows. A server page renders them to HTML with no client JS shipped; a
-   client component gets interactivity for free. Only eight of the seventeen source modules
+   client component gets interactivity for free. `Pagination` is the clearest case of why the
+   rule pays: the same module gives `/nina/about` (a client screen) interactive `<button>`s and
+   `app/admin/error-logs/page.tsx` (a Server Component) plain anchors with no React shipped for
+   them. Only eight of the eighteen source modules
    are genuinely client (measured 2026-10-01) — `Field.tsx`, `Sheet.tsx`, `TabBar.tsx`,
    `PhotoViewer.tsx`, `DetailPanel.tsx`, `CopyAdminLinkButton.tsx`, `useSavePhoto.ts`,
    `usePanelParam.ts` — and each carries its reason in its header. (`AppShell.tsx` is the directive-free Server Component: no directive, and
@@ -62,7 +73,8 @@ sits next to the code — and this readme should be corrected.
 - Provide the one `<button>`, the one surface (`Card`), the one form-control shell
   (`Field` + `CONTROL_CLASS`), the one pill (`Chip`), the one absence (`EmptyState` /
   `EmptySlot`), the one bottom sheet (`Sheet`), the one full-screen image overlay
-  (`PhotoViewer`) and the one detail dialog (`DetailPanel`) — "one" is the point; a second
+  (`PhotoViewer`), the one numbered pager (`Pagination`) and the one detail dialog
+  (`DetailPanel`) — "one" is the point; a second
   of any of these is a second way for two screens to disagree.
 - Own the run-domain presentations (read-only): `SplitsTable`, `ZoneBar`, `FlagList` —
   deliberately separate from `components/review`'s editable twins.
@@ -76,12 +88,13 @@ sits next to the code — and this readme should be corrected.
 
 | File | Kind | Exports | Purpose |
 |---|---|---|---|
-| `index.ts` | barrel | 15 names | The client-safe surface. Screens import from `@/components/ui`; only components inside the directory import each other by path. Re-exports a name only once a screen pulls it through. |
+| `index.ts` | barrel | 16 names | The client-safe surface. Screens import from `@/components/ui`; only components inside the directory import each other by path. Re-exports a name only once a screen pulls it through. |
 | `Button.tsx` | **no directive** | `Button`, `ButtonLink`, `buttonClasses`, `LoadingDots` | The app's one button, its link twin, the borrowed look, and the three-dot loading state. `bg-ink text-card` primary for WCAG contrast; `type="button"` by default; `loading` keeps the label's box and swaps in dots. |
 | `Card.tsx` | **no directive** | `Card`, `Eyebrow`, `Stat` | The one surface (white, `rounded-card`, soft shadow, no border), the small accent label, and the label-over-value tile (`tabular-nums`, three sizes). |
 | `Field.tsx` | `'use client'` | `Field`, `CONTROL_CLASS`, `Input`, `NumberInput` | The label/hint/error/`aria-describedby`/`id` wiring via context, the 52 px control shell class, and the two inputs that read it. `text-base` is the iOS focus-zoom floor, not taste. |
 | `Chip.tsx` | **no directive** | `Chip`, `CHIP_CLASS` | The filter/fact pill. `aria-pressed`, 44 px floor, selected = the ink slab (same pair as Button's primary/secondary). |
 | `EmptyState.tsx` | **no directive** | `EmptyState`, `EmptySlot` | The one shape absence takes: dashed outline (the outline of a card that has nothing in it yet), and the one-line slot twin. Zero client JS, zero chart imports. |
+| `Pagination.tsx` | **no directive** | `Pagination`, `PaginationProps` | The one numbered pager — every page, no window. `hrefForPage` XOR `onPage`; `null` below 2 pages; the active cell is an `aria-current` span. |
 | `Flag.tsx` | **no directive** | `FlagList` | The fired coaching flags. Copy lives in `lib/flags/copy.ts`; severity on three channels (glyph, tint, sr-only name). `Flag` itself is module-private. |
 | `SplitsTable.tsx` | **no directive** | `SplitsTable` | §3.3's read-only splits table — the pace/HR chart's accessible twin. Partial row on four channels; numeric columns carry their own `pl-3` (see Gotchas). |
 | `ZoneBar.tsx` | **no directive** | `ZoneBar` | §3.2's five-zone bar: five divs, **zero Recharts**, 3 px minimum segment, surface-coloured gaps, a `<details>` table twin. No data renders `EmptySlot`, never five 0% segments. |
@@ -95,9 +108,10 @@ sits next to the code — and this readme should be corrected.
 | `useSavePhoto.ts` | `'use client'` | `useSavePhoto`, `SaveNotice`, `SAVE_NOTICE_TEXT` | The machinery behind every "download this photograph" control: the share → object-URL anchor → open ladder, warmed on `pointerdown` to survive Safari's transient-activation window. |
 | `usePanelParam.ts` | `'use client'` | `usePanelParam` | `/me`'s open panel held in the URL via `window.history` (`pushState` on open, `back()` only when we pushed, `replaceState` otherwise and for the date list). |
 
-The sixteen colocated suites (`*.test.tsx`, `// @vitest-environment happy-dom`) are not
-listed above; they are one per source file, 203 tests, and they are why the YAGNI sweeps of
-2026-09-11/12 could prune this directory on evidence rather than nerve.
+The colocated suites (`*.test.tsx`, `// @vitest-environment happy-dom`) are not
+listed above; they are one per source file — **18 suites, 240 tests, measured 2026-10-01** — and
+they are why the YAGNI sweeps of 2026-09-11/12 could prune this directory on evidence rather than
+nerve. The invariant to hold is the one-per-source-file rule, not the count.
 
 ## The two import grammars
 
@@ -111,7 +125,9 @@ state (2026-09-12, 77 external importing files):
   barrel primitive *and* a path-only one (`MediaPane`: `Button` via the barrel,
   `useSavePhoto` by path).
 - **20 of the 35 exported names are direct-path-only** — not re-exported by the barrel —
-  falling into four deliberate groups:
+  falling into four deliberate groups (2026-09-12 measurement; `Pagination`, added
+  2026-10-01, went straight into the barrel and is not one of them — see the note under
+  Importing for why that is a same-set exception, not a loosening of the rule):
   1. **Server-bound or bundle-audited**: `AppShell`, `ScreenHeader` (Server Component;
      test-audited out of the share graph).
   2. **Not yet pulled through** ("Re-add one only when a screen imports it from here"):
@@ -139,7 +155,14 @@ counted once may import several names. This table is the map that did not exist 
 2026-09-12; when you add a consumer, move the count, and when a count surprises you,
 re-measure it before trusting either state.
 
-**The one standing exception, and why it is not dead code** (2026-10-01): `CopyAdminLinkButton`
+**The standing exceptions, and why they are not dead code.** The general rule first, because it
+recurs every time a plan set writes a shared thing in one phase and mounts it in the next: **a
+module whose only importer is its own suite is not evidence of dead code until you have checked
+whether its mounting phase has landed.** Grep for the slot or the call the mounting phase is
+supposed to fill before deleting anything, and when it lands, give the export a row in the table
+above with a measured count.
+
+Exception 1 (2026-10-01, `P1-CU-A000`): `CopyAdminLinkButton`
 and its four `COPY_ADMIN_LINK_*` constants have **zero consumers outside this directory** — only
 their own suite imports them. That is the shape of the work, not an oversight: the control was
 written in one phase and mounted in the next, and the constants exist precisely so the mounting
@@ -147,6 +170,14 @@ phase's suites assert the same strings the component renders instead of re-spell
 dead-export sweep that reaches this directory before the mount lands will flag all five; the
 answer is to check whether `PhotoViewer`'s `headerAction` has a caller passing it yet, **not** to
 delete them. Once mounted, give them a row in the table above and a measured count.
+
+Exception 2 (2026-10-01, `P2-CU-A001`): `Pagination` and `PaginationProps` have **zero consumers
+outside this directory** — only `Pagination.test.tsx` imports them. Same shape, larger fan-out:
+this is phase 1 of 5, and phases 2-5 adopt the control at `/nina/about`, `/admin/nina`,
+`/admin/image-generation`, `/admin/photoshop` and `/admin/error-logs`. The check before calling it
+dead is whether those five surfaces still roll their own prev/next pagers. Unlike exception 1 this
+one **is** in the barrel, deliberately, so the adopting phases can import it by name without each
+of them also editing `index.ts`.
 
 | Symbol | Consumers | Who (by surface) |
 |---|---|---|
@@ -202,7 +233,7 @@ Two readings worth taking away from the map:
 - `react` — the only runtime dependency of the client halves; hooks in six modules, and
   `React.ComponentProps<'button'>`-style prop derivation in `Button` (React 19: a ref is an
   ordinary prop, and `...rest` forwards it).
-- `next/link` — `ButtonLink`, `RunDateLink`, `TabBar`'s tabs.
+- `next/link` — `ButtonLink`, `RunDateLink`, `TabBar`'s tabs, `Pagination`'s `hrefForPage` arm.
 - `next/navigation` — `usePathname` (TabBar, once), `useSearchParams` (usePanelParam).
 - `next/image` — `DetailPanel`'s art band only, `unoptimized` (the masters are already
   sized and content-hashed for the box; the optimizer would bill a transform for nothing).
@@ -315,6 +346,42 @@ the instruction that failed to prevent it.
 the ink slab and unselected the page tint — the same pair as Button, so a chip and a button
 never disagree about what "chosen" looks like. The 44 px floor wins over the design's nicer
 32 px pill.
+
+### Paging (`Pagination`)
+
+The one numbered pager, and the rules a call site inherits:
+
+- **Two mechanisms, one control, and the union makes them exclusive.** `hrefForPage(n) => string`
+  renders one `next/link` `<Link>` per inactive page — for a surface that pages by URL.
+  `onPage(n)` renders `<button>`s — for a surface that pages by client fetch with no navigation.
+  Each arm declares the other key as optional `never`, so passing both is a type error and a call
+  site can never be ambiguous about whether paging navigates or fetches.
+- **`pageCount <= 1` renders `null`.** Do not wrap a mount in a caller-side `pageCount > 1` guard;
+  the control already owns that decision, and a second copy of it is a second thing to get wrong.
+  `pageCount` is `Math.max(1, Math.ceil(total / pageSize))` and is always >= 1.
+- **Every number, always — no ellipsis, no window, no truncation.** A long range wraps onto more
+  lines (`flex-wrap`); it does not collapse and does not scroll sideways. The point of the control
+  is that page 7 is one tap from page 1, so a window is the thing being removed. If a future range
+  feels too long, the fix is the page size, not an ellipsis.
+- **The active cell is a `<span aria-current="page">`** — not a link, not a disabled button. There
+  is nowhere to go, and a disabled button would still be announced as a control.
+- **`busy` belongs to the `onPage` arm only.** It disables every button; the `hrefForPage` arm has
+  no buttons, so it ignores `busy` rather than quietly half-working. A link-paged surface that must
+  block input should not render the pager at all.
+- **`label` is required** — every mount says which collection it walks, because a screen can carry
+  more than one pager and "Navigation" twice is no navigation at all.
+- The active cell is `bg-ink text-card`, not `bg-accent`: the same measured contrast ruling as
+  `Button`'s primary (white-on-cyan near 2:1, ink-on-card ~14:1, and it inverts in dark mode).
+  Cells are `min-h-11 min-w-11`, not `h-11 w-11` — a minimum cannot fight a wrapped row's line
+  height, and a four-digit page number must be allowed to be wider than it is tall.
+- **No `'use client'`, no hook, no effect, and that is load-bearing.** It is what lets the same
+  module serve a client screen and a Server Component, and it is what keeps the barrel inside the
+  client-safe claim `tests/share.bundle.test.ts` audits. Adding a hook here would be a barrel-wide
+  change, not a local one.
+- **It must not import `components/admin/*`.** `ui` importing `admin` is an inverted dependency;
+  the 44 px tap floor is spelled locally in `CELL` instead of borrowing `admin/touch.ts`'s
+  constant, and that duplication is the cheaper of the two. The whole import list is a type-only
+  `react` import, `next/link` and `@/lib/cn` — keep it that short.
 
 ### Absence (`EmptyState`, `EmptySlot`)
 
@@ -516,8 +583,12 @@ import { useSavePhoto, SAVE_NOTICE_TEXT } from '@/components/ui/useSavePhoto'
 ```
 
 Re-add a name to the barrel only when a screen actually imports it from there — the barrel
-re-exports exactly what is pulled through, and the 2026-09-12 sweep verified all 15 names
-have non-test consumers.
+re-exports exactly what is pulled through, and the 2026-09-12 sweep verified that all 15 names of
+that day had non-test consumers. `Pagination` is the 16th (2026-10-01) and the one re-export that
+is deliberately ahead of its callers: it was added to the barrel by the phase that wrote it so the
+four adopting phases of the same set could import it by name without each of them editing
+`index.ts` and colliding there. That is a same-set exception with a named expiry — if those phases
+do not land, the right move is to remove the re-export, not to keep it on spec.
 
 ### The patterns the kit expects
 
@@ -626,6 +697,18 @@ have non-test consumers.
 
 ## Documentation log
 
+- **2026-10-01** — surgical update for `P2-CU-A001` (phase 1 of 5 of the numbered-pagination set):
+  `Pagination.tsx` added with its suite, and `index.ts` re-exports it. Changed here: the module map
+  row and the barrel's name count (15 → 16), the directive-free roster and the client-module
+  denominator (8 of 18), the directory counts re-measured today (37 files, 18 source modules,
+  240/240 green via `npx vitest run components/ui`), a `next/link` consumer, a `Paging` subsection
+  in the component notes, a second standing exception on the reverse-wiring map generalised into a
+  rule, and a note under Importing explaining why this one re-export precedes its callers. The
+  2026-09-12 import-graph counts (77 external files, 35 exports, the per-symbol and by-package
+  tables) were **not** re-measured and are left stamped as they were: no file outside this
+  directory imports `Pagination` yet, so nothing in this change moves them. Phases 2-5 adopt the
+  control at `/nina/about`, `/admin/nina`, `/admin/image-generation`, `/admin/photoshop` and
+  `/admin/error-logs`; the per-symbol table gets a measured `Pagination` row once they land.
 - **2026-10-01** — surgical update for `P1-CU-A000` (phase 3 of the copy-admin-media-link set):
   `CopyAdminLinkButton.tsx` added with its suite, and `ViewerPhoto` gained an optional
   `rowPointer?: PhotoPointer`. Changed here: the module map row, the client-module count (8 of 17),

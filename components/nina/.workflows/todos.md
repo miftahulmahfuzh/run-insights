@@ -3,12 +3,12 @@
 **Package Path**: `components/nina`
 **Package Code**: CN
 **Last Updated**: 2026-10-01
-**Total Active Tasks**: 0
+**Total Active Tasks**: 1
 
 ## Quick Stats
 - P0 Critical: 0
 - P1 High: 0
-- P2 Medium: 0
+- P2 Medium: 1
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
@@ -24,6 +24,16 @@
 ### [P1] High
 
 ### [P2] Medium
+
+- [ ] **P2-CN-A009** Phase 2: `/nina/about` — both tabs page by number
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns `components/nina/NinaAboutScreen.tsx` and `components/nina/NinaAboutScreen.test.tsx`; no action, page-size constant, page cookie or route page is touched. Exit: `NinaAboutPager` renders `<Pagination onPage={…} busy={…} label={…} />` under each grid and nothing else of its old self, **keeping** its own `if (pageCount <= 1) return null` guard and the `Halaman … dari … · … foto` count line while both chevron `Button`s go; the two mounts pass `label="Halaman foto profil"` and `label="Halaman media"` verbatim; `ChevronLeftIcon` / `ChevronRightIcon` and their docblock paragraph go if nothing else calls them; the test file pins the numbered row, a multi-page jump and the existing cache/reset behaviour; `grep -rn "Sebelumnya\|Berikutnya\|Chevron" components/nina/` returns nothing.
+  - **Status**: open
+  - **Plan Set**: `NUMBERED_PAGINATION_PLAN.md` (phase 2 of 5)
+  - **Satisfies**: R1 — Change **every** pagination system in the app — `/nina/about`, `/admin/nina` (the "Image collection" nav label), and every other paginated surface — so each one uses the new control, and the current Previous/Next pagination UI is gone from all of them
+  - **Depends on**: `P2-CU-A001`
+  - **Plan**: `.workflows/plan/P2-CN-A009.md`
 
 ### [P3] Low
 
