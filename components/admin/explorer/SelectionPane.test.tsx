@@ -248,8 +248,14 @@ describe('AlbumSelectionPane (via SelectionPane)', () => {
     await user.click(screen.getByRole('button', { name: 'Save framing' }))
 
     await waitFor(() => expect(screen.getByText('crop rejected')).toBeInTheDocument())
-    // Still dirty: the Save button is still enabled.
-    expect(screen.getByRole('button', { name: 'Save framing' })).toBeEnabled()
+    /*
+     * Still dirty: the Save button comes back. Gated rather than read straight through — the save
+     * runs in a `useTransition`, and React 19 settles it over TWO commits: `setError`'s sentence
+     * lands in the first, `pending` flips back in the second. The `waitFor` above returns on
+     * commit 1, so a synchronous read here sees `aria-busy="true" disabled` whenever the gap
+     * widens. Measured red 5 runs in 10 of the parallel suite before this wait was added.
+     */
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save framing' })).toBeEnabled())
   })
 
   it('resets framing to identity on Reset', async () => {
