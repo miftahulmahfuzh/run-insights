@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -257,8 +257,12 @@ describe('PhotoDescription', () => {
     await user.click(saveButton())
     expect(textarea()).toBeDisabled()
     saveGate.resolve(OK)
-    await screen.findByRole('button', { name: /save the description/i })
-    expect(textarea()).toBeEnabled()
+    /*
+     * Wait on the unlock itself: that button's label tracks `willClear`, not `busy`, so a
+     * `findByRole` on it gates on an element that was never absent and leaves the `busy` this
+     * asserts unwaited-for.
+     */
+    await waitFor(() => expect(textarea()).toBeEnabled())
 
     await user.click(describeButton())
     expect(textarea()).toBeEnabled()

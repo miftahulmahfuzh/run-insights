@@ -6,6 +6,7 @@ import { requireUserId } from '@/lib/auth/requireUserId'
 import { isValidId } from '@/lib/id'
 
 import {
+  ninaImageJobIsVisible,
   reopenNinaImageJob,
   setNinaImageJobPrompt,
   setNinaImageJobReference,
@@ -235,4 +236,50 @@ export async function updateNinaImageJobReference(input: {
 
   revalidatePath(ninaJobHref(input.jobId))
   return { ok: true, reason: null }
+}
+
+/**
+ * **The one READ in this file: "is there still a page behind this job id?"**
+ *
+ * ── THE BUG IT EXISTS FOR ────────────────────────────────────────────────────────────────────
+ * The runner's words: *"right now, if the job page does not exist, we still redirect it to a 404
+ * page"*. The full-view overlay's "Buka detail job foto ini" control is minted from
+ * `ViewerPhoto.id` — the caption bubble's `turn_id`, which is a fact about the PHOTOGRAPH and
+ * survives everything that can happen to the job row beside it. Soft-delete a job from
+ * `/nina/jobs` (`deleteNinaImageJob`, two functions up) and the photograph stays in the chat with
+ * its button still drawn, pointing at a page that now `notFound()`s. Tapping it threw the runner
+ * out of a photograph he was looking at and onto a 404, with nothing but Back to get him home.
+ *
+ * So the control asks first, and a `false` keeps him exactly where he is — see
+ * `components/nina/NinaJobDetailLink.tsx`, the only caller.
+ *
+ * ── WHY A `'use server'` READ, IN A FILE WHOSE HEADER SAYS "MUTATIONS" ───────────────────────
+ * Because the question is "would `/nina/jobs/[id]` render for me", and every other function that
+ * knows how to ask it owner-scoped already lives here. The alternative — a `GET` route under
+ * `app/api/nina/` — would be the first one in the whole feature (`/nina` is server actions
+ * end to end) and would need its own auth, its own shape check and its own anti-oracle argument,
+ * all three of which are already written and tested in this module. The header's "mutations" line
+ * is a statement about what the SCREEN does, and it now has one exception with a reason.
+ *
+ * It takes no `revalidatePath`: it writes nothing and invalidates nothing.
+ *
+ * ── IT ANSWERS THE PAGE'S QUESTION, NOT A WEAKER ONE ─────────────────────────────────────────
+ * `ninaImageJobIsVisible` is spelled with `app/nina/jobs/[id]/page.tsx`'s own four predicates, and
+ * `isValidId` here is that page's own first line (`if (!isValidId(id)) notFound()`). A `false`
+ * therefore means "that page would 404", not "that row is missing" — the two differ for a
+ * malformed id, and it is the first one the button needs.
+ *
+ * **The answer is a snapshot, not a guarantee.** A job deleted in the millisecond between this
+ * read and the push still lands on the 404 it always did. That race is unfixable from a client
+ * and worth nothing: the case the runner hit is a job deleted minutes or days ago, with the chat
+ * still open behind it.
+ */
+export async function ninaImageJobExists(input: { jobId: string }): Promise<{ exists: boolean }> {
+  const userId = await requireUserId()
+  /* Line one is the auth call, ABOVE the shape check — this file's rule, stated on
+   * `deleteNinaImageJob`. An id that cannot be one of ours is refused without a query, which is
+   * the same answer `/nina/jobs/[id]` gives it. */
+  if (!isValidId(input?.jobId)) return { exists: false }
+
+  return { exists: await ninaImageJobIsVisible(userId, input.jobId) }
 }

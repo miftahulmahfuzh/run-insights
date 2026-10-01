@@ -1,0 +1,106 @@
+{
+  "branch": "feature/numbered-pagination",
+  "coordinator": "orch-numbered-pagination",
+  "coordinator_session_id": "57c7c49d-5e97-4448-a03e-a5d5e7a9fd6e",
+  "created": "2026-10-01T06:11:57+00:00",
+  "phases": [
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [],
+      "difficulty": "NORMAL",
+      "n": 1,
+      "note": null,
+      "package": "components/ui",
+      "plan": ".workflows/plan/numbered-pagination/phase-1.md",
+      "reported_at": null,
+      "satisfies": [
+        "R2"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "The shared numbered `Pagination` control"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [
+        1
+      ],
+      "difficulty": "NORMAL",
+      "n": 2,
+      "note": null,
+      "package": "components/nina",
+      "plan": ".workflows/plan/numbered-pagination/phase-2.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "/nina/about` \u2014 both tabs page by number"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [
+        1
+      ],
+      "difficulty": "EASY",
+      "n": 3,
+      "note": null,
+      "package": "components/admin/explorer`, `tests",
+      "plan": ".workflows/plan/numbered-pagination/phase-3.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "/admin/nina` \u2014 the album and media grids"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [
+        1
+      ],
+      "difficulty": "NORMAL",
+      "n": 4,
+      "note": null,
+      "package": "components/admin",
+      "plan": ".workflows/plan/numbered-pagination/phase-4.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "/admin/image-generation` + the job anchor picker"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [
+        1
+      ],
+      "difficulty": "EASY",
+      "n": 5,
+      "note": null,
+      "package": "components/admin`, `app/admin",
+      "plan": ".workflows/plan/numbered-pagination/phase-5.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "/admin/photoshop` and `/admin/error-logs"
+    }
+  ],
+  "plan": "/home/miftah/run-insights/.workflows/orchestration/numbered-pagination/PLAN.md",
+  "repo": "/home/miftah/run-insights",
+  "slug": "numbered-pagination",
+  "updated": "2026-10-01T06:11:57+00:00",
+  "worktree": "/home/miftah/.worktrees/run-insights/numbered-pagination"
+}

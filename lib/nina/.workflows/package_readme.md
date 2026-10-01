@@ -72,7 +72,14 @@ gone*. Restated 2026-10-01 for P1-NIN-A057 (copy-admin-media-link phase 2 of 4):
 answer `/admin/nina?view=media&image=<id>` needs before a page can be rendered — and with it the
 module-private `outerRef()` helper, because drizzle renders a bare `Column` UNQUALIFIED inside a
 single-table `select()` projection and that silently turns a correlated subquery into a tautology
-— see Images' *Where a Media photograph sits* and Gotchas.
+— see Images' *Where a Media photograph sits* and Gotchas. Restated a second time that day for
+P2-NIN-A003: `outerRef()` is no longer module-private to `images.ts` — it MOVED to
+`queries/columns.ts` (§2b) as the ONE shared home for correlated-subquery outer references, and
+`locateNinaAvatar` (`queries/avatars.ts`), which carried the same unqualified shape and had been
+resolving `/admin/nina?avatar=<id>` to page 1 of the folder for the whole life of the feature, now
+routes all four of its outer references through it. The Gotchas entry that recorded that defect as
+KNOWN, UNREPAIRED is gone, because the defect is; what stands in its place is the TESTING TRAP that
+hid it — see Gotchas and Tests.
 **Documentation Created**: 2026-09-05 (`NINA_CHARACTER_TUNING_PLAN.md` phase 2)
 
 ## Overview
@@ -931,8 +938,11 @@ P1-NIN-A057). `/admin/nina` holds ONE page of the Media collection at a time and
 selection is a `find(...)` over that array, so a link that carries only an id
 (`?view=media&image=<id>`) cannot be resolved in the client: which page holds a row in a
 recency-ordered collection is a database question. The read answers `{ id, offset }` — a 0-based
-ROW COUNT, never a page number, because the page SIZE is the caller's policy (`locateNinaAvatar`'s
-argument, one collection over). **Two statements on purpose.** An avatar id is always its own
+ROW COUNT, never a page number, because the page SIZE is the caller's policy and NOT an argument
+either locate takes: `app/admin/nina/page.tsx` pages the two arms with different constants
+(`NINA_ADMIN_PAGE_SIZE` for the album, `NINA_CHAT_PHOTO_PAGE_SIZE` for Media), so the division
+lives at that one call site and a row count is the only answer that survives both.
+**Two statements on purpose.** An avatar id is always its own
 answer; a message-image id is not, because F37's `source_image_id` makes a re-share a second row
 naming the first and `isOriginalPhoto()` keeps that second row out of the collection entirely — so
 statement one resolves the asked id through `source_image_id` to the ORIGINAL (the row that owns
@@ -955,6 +965,19 @@ such row, a re-share whose original is gone, and a re-SHOW of an album avatar �
 set, `source_image_id` null — which has no Media tile and no media original to stand in for it),
 per `queries.ts`' rule 1: distinguishing "deleted" from "not yours" would tell a stranger which ids
 exist. `tests/nina.mediaLocate.test.ts` is the guard.
+
+**`locateNinaAvatar`** (`queries/avatars.ts`) is the same read one collection over, and the elder
+of the two: ONE statement, because an avatar id is always its own answer, and a correlated
+`count(*)` over `(earlier.created_at, earlier.id) > (…)` mirroring `listNinaAvatarsInFolder`'s
+`(created_at desc, id desc)` — no `coalesce`, because an album row is not replaced in place the way
+a Media row is. It counts within the row's own `folder`, so the answer is `{ id, folder, offset }`:
+the deep link has to move the explorer to a folder before it can move it to a page. **It was
+BROKEN from the day it shipped until 2026-10-01** — its four outer references were bare `Column`s,
+so the correlation was a tautology, `count(*)` was 0 for every row, and `/admin/nina?avatar=<id>`
+landed on page 1 of the folder for every photograph; invisible whenever a folder fits on one page.
+It routes all four through `outerRef()` now (P2-NIN-A003, see Gotchas) and
+`tests/nina.avatarLocate.test.ts` is the guard — the suite this function did not have while it was
+wrong.
 
 **The perceptual twin gate** (`perceptual.ts`, zero imports): signatures (64-bit dHash +
 16×16 grayscale mean-abs from `perceptualSign.ts`) see through re-encodes that `content_hash`
@@ -1356,7 +1379,7 @@ it: the album row shows the `nina_message_images` row's bytes and names it in `s
 | Embeddings | `embedding.ts`*(T) (one `fetch` to `OPENROUTER_EMBEDDINGS_URL`, no fallback ladder, no retry; the width guard gates the return against `NINA_EMBEDDING_DIMENSIONS`) |
 | Album/attachments | `album.ts`(T), `albumActions.ts`, `attach.ts`(T) |
 | Chat UI logic | `chatview.ts`(T), `reply.ts`(T), `reveal.ts`(T), `scroll.ts`(T), `live.ts`(T), `edit.ts`(T), `chrome.ts`(T) |
-| Persistence | `queries/` — one module per domain area + module-internal `columns.ts` behind the `queries.ts` barrel (`export *` per module, zero imports; every `nina_*` access; `queries/avatarsearch.ts` (§9d) is the MERGED ranked read over both photo tables and the only module that hand-writes a pgvector operator — and the only one that imports a sibling DOMAIN module, `./images`' `isOriginalPhoto`, deliberately, so the media arm's "not a re-share" rule is the same predicate every other collection read uses; `queries/avatarEmbeddings.ts` (§9c) and `queries/imageEmbeddings.ts` (§5c, 2026-09-17) are the two `description_embedding` write sides, one per table, same shape; `queries/avatarPointer.ts` (§9e, 2026-09-17) is where a LINKED album row's prose actually lives; `tuningFromRow`/`tuningToColumns` in `queries/tuning.ts` are the one place the flat row and the nested model meet), `errorlogs.ts` (`nina_error_logs` write/read — the deliberate unscoped exception, server-side db-touching; its writers are `vision.ts`'s fallback orchestrator, category `multimodal`, `imagerun.ts`'s `recordImageCallFailure`, category `image_generation`, and `llmFallbackText.ts`'s `ninaFallbackTextClient`, category `text` — all three 2026-09-12) |
+| Persistence | `queries/` — one module per domain area + module-internal `columns.ts` (§2's four shared drizzle column lists AND, since 2026-10-01, §2b's `outerRef()` — the one home for a correlated subquery's outer column references; it is foundation-ward of every sibling query module and deliberately NOT re-exported by the barrel, so nothing it gains touches the frozen `BARREL_VALUE_EXPORTS` surface) behind the `queries.ts` barrel (`export *` per module, zero imports; every `nina_*` access; `queries/avatarsearch.ts` (§9d) is the MERGED ranked read over both photo tables and the only module that hand-writes a pgvector operator — and the only one that imports a sibling DOMAIN module, `./images`' `isOriginalPhoto`, deliberately, so the media arm's "not a re-share" rule is the same predicate every other collection read uses; `queries/avatarEmbeddings.ts` (§9c) and `queries/imageEmbeddings.ts` (§5c, 2026-09-17) are the two `description_embedding` write sides, one per table, same shape; `queries/avatarPointer.ts` (§9e, 2026-09-17) is where a LINKED album row's prose actually lives; `tuningFromRow`/`tuningToColumns` in `queries/tuning.ts` are the one place the flat row and the nested model meet), `errorlogs.ts` (`nina_error_logs` write/read — the deliberate unscoped exception, server-side db-touching; its writers are `vision.ts`'s fallback orchestrator, category `multimodal`, `imagerun.ts`'s `recordImageCallFailure`, category `image_generation`, and `llmFallbackText.ts`'s `ninaFallbackTextClient`, category `text` — all three 2026-09-12) |
 
 \* server-only, not Server Actions. (T) = colocated `*.test.ts` (29 as of 2026-09-15 —
 `embedding.test.ts` is the newest and the one exception to "all over the pure modules": the module
@@ -1635,7 +1658,9 @@ and picks what she says — a failure is a message from Nina, never a stack trac
   make it a guaranteed no-op. Its `pathname = $n` guard is equally load-bearing — drop it and a
   concurrent admin Replace mints exactly the ghost signature the 2026-09-15 incident was about.
 - **An OUTER column referenced inside a CORRELATED SUBQUERY must go through `outerRef()`**
-  (`queries/images.ts`, module-private), never spelled as a bare `${table.column}`. Measured
+  (`queries/columns.ts` §2b since 2026-10-01 — module-internal, imported by sibling query modules,
+  and deliberately NOT re-exported by the `queries.ts` barrel, so it adds no name to the frozen
+  `BARREL_VALUE_EXPORTS` surface), never spelled as a bare `${table.column}`. Measured
   2026-10-01: when a `select()` draws from a SINGLE table, drizzle rewrites every bare `Column` in
   the PROJECTION into an unqualified identifier — `"user_id"`, not
   `"nina_message_images"."user_id"` — which is right for an ordinary projection and catastrophic
@@ -1646,12 +1671,22 @@ and picks what she says — a failure is a message from Nina, never a stack trac
   a nested `sql` fragment so it is no longer a bare `Column` at the top of the chunk list and
   renders with its table qualification intact. **The fake test driver filters nothing, so no
   behavioural test can catch this** — the guard has to be a SQL-shape test that pins the qualified
-  spelling of BOTH sides (`tests/nina.mediaLocate.test.ts`).
-- **KNOWN, UNREPAIRED (2026-10-01): `locateNinaAvatar` (`queries/avatars.ts`) has the identical
-  unqualified shape and therefore the identical always-zero offset**, so the album's `?avatar=`
-  deep link always resolves to page 1 — invisible whenever the folder fits on one page. Left alone
-  deliberately: that file was not in P1-NIN-A057's scope and no phase of that set owns it. Recorded
-  here rather than silently repaired; the fix is the same `outerRef()` wrap.
+  spelling of BOTH sides (`tests/nina.mediaLocate.test.ts`, `tests/nina.avatarLocate.test.ts`).
+  **It lives in ONE place on purpose.** It was module-private to `images.ts` for as long as there
+  was one correlated subquery; the SECOND one is what moved it to `columns.ts`, which is
+  foundation-ward of every query module and is where a sibling can reach it. Re-declaring a local
+  copy rather than importing this one is not a style question: a second copy is how the next
+  correlated subquery gets written without it, which is exactly how the first one went wrong.
+- **The defect this rule is made of shipped, and lived in production undetected.**
+  `locateNinaAvatar` (`queries/avatars.ts`) carried the identical unqualified shape from the day
+  the album deep link shipped until it was repaired on 2026-10-01 (P2-NIN-A003): every arm of the
+  correlation was a tautology, the tuple comparison was `(x, y) > (x, y)`, `count(*)` was 0 for
+  every row, and `/admin/nina?avatar=<id>` resolved to page 1 of the folder for every photograph —
+  invisible whenever a folder fits on one page, which is why nobody reported it. The earlier
+  occurrence (`locateNinaMediaPhoto`) was caught before shipping only because someone was looking
+  at the generated SQL. Neither the code review nor the suite was the thing that caught it, and
+  that is the generalisable part: see Tests for why a behavioural test over either read is worth
+  nothing here.
 - **A reference check that throws keeps the object.** `reapAvatarBlobs` answers "referenced" on a
   failed `isBlobPathnameReferenced`, the same direction `releaseBlobIfUnreferenced` errs in: an
   orphan is recoverable, a dead reference is not. And never collapse an original and its thumbnail
@@ -1741,8 +1776,28 @@ never weakened to a `toContain`. (It stood at 104 names on 2026-09-17, after the
 renamed three and added eight, and at 111 on 2026-10-01 after `locateNinaMediaPhoto`; read the
 file, not that number.) `queries.ts` itself is `export *` lines and is almost never the file an
 added query touches — the COUPLED file is this frozen list. A RENAME is two edits in that one
-commit, not a `toContain` escape hatch. The guards that can actually catch a regression, by
-mechanism:
+commit, not a `toContain` escape hatch. `queries/columns.ts` is the standing exception on the other
+side: it is module-internal and the barrel does not re-export it, so an export added there (`§2b`'s
+`outerRef`, 2026-10-01) moves no number and touches no frozen list — which is also why it is the
+safe home for something every query module needs.
+
+**THE TRAP THAT MATTERS MOST IN THIS PACKAGE: the fake DB driver FILTERS NOTHING.**
+`tests/support/fakeDb` records the statements a function emits and hands back whatever rows the
+case queued; it does not execute a `WHERE`, a `count(*)` or an `ORDER BY`. So a test that calls a
+read and asserts on the ROWS is asserting on its own fixture. For anything whose whole content is
+the predicate — a scope, a soft-delete arm, a sort key, a counted offset — **a behavioural test
+passes identically over correct and broken code, and passing it is not evidence of anything.**
+That is not hypothetical: `locateNinaAvatar` returned a silently always-zero offset for the entire
+life of the album deep link (see Gotchas), and a behavioural test over it would have been green
+every single day of that. **The only witness is an assertion on the GENERATED SQL TEXT**, read off
+the driver with `fake.sqlAt(i)` (`tests/support/fakeDb.ts:118-122`) and whitespace-normalised
+before matching, so a reflow of the template literal cannot break a test and a changed predicate
+cannot slip past one. `tests/nina.avatarLocate.test.ts` makes the point standing furniture: it
+KEEPS two behavioural cases that passed over the broken query, next to the SQL-text cases that
+failed over it, precisely so the next reader can see which kind of assertion did the work.
+**Anyone who "verified" a fix of this shape by exercising the behaviour has verified nothing.**
+
+The guards that can actually catch a regression, by mechanism:
 
 `tests/admin.memory.test.ts` asserts admin-memory isolation with a ONE-LEVEL
 `readdirSync('lib/nina')` walk: since 2026-09-12's queries split, `lib/nina/queries/` is a
@@ -1806,8 +1861,17 @@ recursive — a new module under `queries/` does not automatically join the walk
   `tests/nina.mediaLocate.test.ts` (2026-10-01) is the same technique over `locateNinaMediaPhoto`
   and pins the one property no behaviour test can reach against a fake driver that filters nothing:
   that BOTH sides of the correlated comparison render TABLE-QUALIFIED (`outerRef()` — see Gotchas;
-  unqualified, every behaviour test still passes and the offset is silently 0 forever). It also
-  pins that the ordering expression is `coalesce(last_replaced_at, created_at)` and not
+  unqualified, every behaviour test still passes and the offset is silently 0 forever).
+  `tests/nina.avatarLocate.test.ts` (2026-10-01, P2-NIN-A003) is its twin over `locateNinaAvatar`,
+  and is the one suite in the package written as a demonstration as much as a guard: it was written
+  FIRST and watched fail against the shipped query, with the tautology legible in the assertion
+  output, and its three SQL-text cases all went red while its two behavioural cases passed over the
+  same broken code. Both kinds are kept, deliberately, side by side. It pins that no outer reference
+  renders unqualified, that the count is scoped to the same user AND the same folder, and that the
+  comparison carries the FULL sort key `listNinaAvatarsInFolder` orders by — asserted against that
+  listing's own emitted SQL rather than against a re-spelling of it, so the two cannot drift apart
+  silently. `mediaLocate` also pins that the ordering expression is
+  `coalesce(last_replaced_at, created_at)` and not
   `created_at`, and that `earlier.source_avatar_id is null and earlier.source_image_id is null`
   appears in the same statement as `mediaCollectionScope`'s own predicate — the hand-spelled copy
   of `isOriginalPhoto()` that has to move with it.

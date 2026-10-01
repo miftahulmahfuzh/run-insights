@@ -6,6 +6,7 @@ import * as React from 'react'
 
 import { deleteNinaImageJob, type NinaJobActionResult } from '@/lib/nina/jobActions'
 import {
+  NINA_JOB_GONE_NOTE,
   ninaJobTitle,
   pickJobListScrollAnchor,
   withJobListScrollMark,
@@ -73,7 +74,10 @@ import { readJobAnchorRows } from './useJobListScroll'
  * the redo refusals it still needs, rather than a second copy that can drift.
  */
 export const NOTE: Record<NinaJobRefusal, string> = {
-  'not-found': 'Job ini sudah nggak ada.',
+  /* The sentence itself lives in `lib/nina/jobview.ts` since 2026-10-01 — the full-view overlay's
+   * job-detail control says the identical thing when its pre-flight comes back `false`, and two
+   * surfaces saying one fact must not drift into two sentences. */
+  'not-found': NINA_JOB_GONE_NOTE,
   'in-progress': 'Job ini masih jalan, tungguin dulu ya.',
   'no-args': 'Job lama ini nggak nyimpan prompt-nya, jadi nggak bisa diulang.',
   capped: 'Jatah foto hari ini sudah habis. Coba lagi besok ya.',

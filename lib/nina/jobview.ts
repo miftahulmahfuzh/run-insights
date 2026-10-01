@@ -217,6 +217,27 @@ export function jobCanRedo(stage: NinaJobStage): boolean {
 export type NinaJobRefusal = 'not-found' | 'in-progress' | 'no-args' | 'capped'
 
 /**
+ * **"This job is gone" in one line — the sentence two different surfaces say about the same fact,
+ * now stated once.**
+ *
+ * It is `NinaJobActions.tsx`'s `NOTE['not-found']`, lifted here because a second surface started
+ * needing the identical sentence: the full-view overlay's "Buka detail job foto ini" control,
+ * which since 2026-10-01 asks `ninaImageJobExists` BEFORE it navigates and says this instead of
+ * dropping the runner on a 404 (`components/nina/NinaJobDetailLink.tsx`).
+ *
+ * The two surfaces reach it for different reasons — one deleted the job a moment ago from its own
+ * trash icon, the other is looking at a photograph whose job was hidden days back — and those two
+ * must not drift into two different ways of saying one thing. Here rather than in either
+ * component for this file's stated reason: it is the only module a `server-only` reader, a
+ * `'use server'` action and a `'use client'` button can all import.
+ *
+ * Deliberately NOT a `Record<NinaJobRefusal, string>` entry of its own. The overlay's control has
+ * no refusal vocabulary at all — it has one bit — and importing a four-case map to read one case
+ * of it would pull the job list's whole word-list into the chat bundle.
+ */
+export const NINA_JOB_GONE_NOTE = 'Job ini sudah nggak ada.'
+
+/**
  * The edit-prompt control's own, smaller refusal vocabulary — kept separate from
  * `NinaJobRefusal` so adding it does not force `components/nina/NinaJobActions.tsx`'s
  * `Record<NinaJobRefusal, string>` to grow a case that button can never produce.
