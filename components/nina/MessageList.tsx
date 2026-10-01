@@ -97,9 +97,12 @@ export function MessageList({
    * Phase 9 (R10). A tap on a photograph inside a bubble.
    *
    * The MESSAGE ID as well as the index, because `ChatImages`'s `onOpen` is bubble-local: its
-   * index counts photos in that one bubble, which is also what the overlay pages across (this
-   * phase's plan, D-3). `ChatScreen` holds the viewer state, because it is the component that also
-   * holds the `photo` state the attach control arms.
+   * index counts photos in that one bubble. Since 2026-10-01 the overlay pages across the whole
+   * SESSION (R1), and this pair is exactly the input that widening needed — `usePhotoViewer` maps
+   * `{messageId, index}` onto a position in `chatSessionPhotos(messages)` and back again, so this
+   * component never has to know how many photographs the conversation holds. `ChatScreen` holds
+   * the viewer state, because it is the component that also holds the `photo` state the attach
+   * control arms.
    *
    * Optional, and passed to `ChatImages` only when present — `ChatImages`'s contract is that an
    * absent `onOpen` means the grid is NOT interactive, and an unconditional inline arrow here

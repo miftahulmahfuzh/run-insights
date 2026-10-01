@@ -77,6 +77,28 @@ export interface ViewerPhoto {
   meta?: string
 }
 
+/**
+ * The most photographs the pager will draw a dot for.
+ *
+ * ── WHY THE ROW NEEDS A BOUND AT ALL ──────────────────────────────────────────────────────────
+ * The dot row below is a `flex` with no `wrap`: one 6 px dot plus an 8 px gap per photograph. At a
+ * chat bubble's 1-4 or a review's 3 screens that is a pager. F35's 2026-10-01 widening pages the
+ * chat overlay across every photograph in the open conversation, and `/nina/about`'s Media section
+ * already pages across up to 200 — at those lengths the row is dozens of slivers squeezed below a
+ * pixel each, which identifies nothing and cannot be tapped.
+ *
+ * Above the bound the row is simply not drawn, and the header's `index + 1 / photos.length`
+ * counter carries the position on its own. It is already rendered for every multi-photo list, so
+ * nothing had to be added for this to be true.
+ *
+ * 12 sits above every caller that had a usable row before it: `ScreenshotStrip` and `SheetSource`
+ * page a run's screens, `PhotoInclusionList` the same, `ErrorLogList` the distinct photographs of
+ * one error page, `PhotoDeepLinkScreen` exactly one. None of them reaches it, so all five render
+ * exactly what they shipped. The album and the search grid are the surfaces that cross it, and for
+ * them losing the row is the fix, not the regression.
+ */
+export const PHOTO_VIEWER_MAX_DOTS = 12
+
 export function PhotoViewer({
   photos,
   index,
@@ -306,7 +328,8 @@ export function PhotoViewer({
         air is 52 px, which is 3.25rem. **Tailwind cannot read a constant**, so changing the pager's
         padding below means changing this literal — the same coupling `AppShell` states out loud for
         `TAB_BAR_HEIGHT_PX`. With a single photo there is no pager and the cluster simply floats
-        52 px above the safe area, which is where one photo's controls belong anyway.
+        52 px above the safe area, which is where one photo's controls belong anyway — and the same
+        is true above `PHOTO_VIEWER_MAX_DOTS`, where the row is deliberately not drawn.
 
         `items-end` so a notice from `ChatPhotoActions` grows leftwards from the buttons rather than
         pushing them off the right edge.
@@ -317,7 +340,7 @@ export function PhotoViewer({
         </div>
       )}
 
-      {photos.length > 1 && (
+      {photos.length > 1 && photos.length <= PHOTO_VIEWER_MAX_DOTS && (
         <div className="flex justify-center gap-2 px-4 pt-3 pb-[calc(1rem+var(--safe-bottom))]">
           {photos.map((p, i) => (
             <button

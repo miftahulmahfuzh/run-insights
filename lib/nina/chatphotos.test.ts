@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
-import { attachableIdAt, chatViewerPhotos, viewerIndex } from './chatphotos'
+import {
+  attachableIdAt,
+  chatSessionPhotos,
+  chatViewerPhotos,
+  sessionPhotoIndex,
+  viewerIndex,
+} from './chatphotos'
 
 describe('chatViewerPhotos', () => {
   it('names his photograph and hers, so the dot row never says "generated"', () => {
@@ -111,5 +117,116 @@ describe('attachableIdAt', () => {
     expect(attachableIdAt([], 0)).toBeNull()
     expect(attachableIdAt(['a1'], 3)).toBeNull()
     expect(attachableIdAt([''], 0)).toBeNull()
+  })
+})
+
+describe('chatSessionPhotos', () => {
+  /* A conversation: a two-photo bubble of his, a text-only bubble, then one of her selfies with a
+   * job behind it. The middle row is there on purpose — a message with no photos must not shift
+   * the flat positions by one. */
+  const SESSION = [
+    {
+      id: 'm1',
+      imageUrls: ['https://x.example/a.jpg', 'https://x.example/b.jpg'],
+      imageKinds: ['upload', 'upload'],
+      imageIds: ['img-a', 'img-b'],
+    },
+    { id: 'm2', body: 'no photos here' },
+    {
+      id: 'm3',
+      imageUrls: ['https://x.example/s.jpg'],
+      imageKinds: ['generated'],
+      imageIds: ['img-s'],
+      turnId: 'jobAAAAAAAAA',
+    },
+  ]
+
+  it('flattens the whole window in conversation order, carrying each photo its owner', () => {
+    const photos = chatSessionPhotos(SESSION)
+    expect(photos.map((photo) => [photo.messageId, photo.indexWithinMessage])).toEqual([
+      ['m1', 0],
+      ['m1', 1],
+      ['m3', 0],
+    ])
+  })
+
+  it('states the label and the job id ONCE, by reusing chatViewerPhotos', () => {
+    // The rule that drifts silently if it is ever written twice: a `kind: 'generated'` row is hers
+    // whatever the message's role, and only a generated photo gets the turn id.
+    const photos = chatSessionPhotos(SESSION)
+    expect(photos.map((photo) => photo.label)).toEqual(['Foto kamu', 'Foto kamu', 'Foto Nina'])
+    expect(photos.map((photo) => photo.id)).toEqual([undefined, undefined, 'jobAAAAAAAAA'])
+  })
+
+  it('resolves the attach handle from the owning message, position by position', () => {
+    expect(chatSessionPhotos(SESSION).map((photo) => photo.attachId)).toEqual([
+      'img-a',
+      'img-b',
+      'img-s',
+    ])
+  })
+
+  it('leaves the attach handle null on the optimistic row, which has no ids yet', () => {
+    // ChatScreen's optimistic bubble describes rows that have not been written, so there is
+    // nothing to attach until the next full load — and the control simply does not render.
+    const [photo] = chatSessionPhotos([
+      { id: 'tmp', imageUrls: ['blob:local'], imageKinds: ['upload'] },
+    ])
+    expect(photo?.attachId).toBeNull()
+  })
+
+  it('carries no caption field at all (invariant 5)', () => {
+    const [photo] = chatSessionPhotos(SESSION)
+    expect(Object.keys(photo ?? {}).sort()).toEqual([
+      'attachId',
+      'id',
+      'indexWithinMessage',
+      'kind',
+      'label',
+      'messageId',
+      'url',
+    ])
+  })
+
+  it('is empty for an empty window, and for no window at all', () => {
+    expect(chatSessionPhotos(null)).toEqual([])
+    expect(chatSessionPhotos(undefined)).toEqual([])
+    expect(chatSessionPhotos([])).toEqual([])
+    expect(chatSessionPhotos([{ id: 'm2' }, { id: 'm4', imageUrls: [] }])).toEqual([])
+  })
+})
+
+describe('sessionPhotoIndex', () => {
+  const PHOTOS = [
+    { messageId: 'm1', indexWithinMessage: 0 },
+    { messageId: 'm1', indexWithinMessage: 1 },
+    { messageId: 'm3', indexWithinMessage: 0 },
+    { messageId: 'm3', indexWithinMessage: 1 },
+  ]
+
+  it('finds the photo the overlay is aimed at', () => {
+    expect(sessionPhotoIndex(PHOTOS, 'm1', 1)).toBe(1)
+  })
+
+  it('answers with the OWNING message, not the first match on the index', () => {
+    // The whole of R1's correctness: index 0 exists in both bubbles, and the overlay means m3's.
+    expect(sessionPhotoIndex(PHOTOS, 'm3', 0)).toBe(2)
+  })
+
+  it('clamps inside the owning bubble when that message lost photos', () => {
+    // A refresh dropped m3's second photo. Landing on its remaining one beats blinking shut, and
+    // clamping INSIDE m3 is what stops a shrink from silently showing a neighbour's photograph.
+    expect(sessionPhotoIndex(PHOTOS.slice(0, 3), 'm3', 1)).toBe(2)
+  })
+
+  it('is defensive about a nonsense position, without leaving the bubble', () => {
+    expect(sessionPhotoIndex(PHOTOS, 'm3', -4)).toBe(2)
+    expect(sessionPhotoIndex(PHOTOS, 'm3', Number.NaN)).toBe(2)
+    expect(sessionPhotoIndex(PHOTOS, 'm1', 1.7)).toBe(1)
+  })
+
+  it('closes when the message itself is gone — a delete, or a refreshed window', () => {
+    expect(sessionPhotoIndex(PHOTOS, 'm2', 0)).toBeNull()
+    expect(sessionPhotoIndex([], 'm1', 0)).toBeNull()
   })
 })

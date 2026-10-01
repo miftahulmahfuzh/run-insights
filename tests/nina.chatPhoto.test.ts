@@ -28,6 +28,8 @@ const ABOUT = 'components/nina/NinaAboutScreen.tsx'
 const STRIP = 'components/review/ScreenshotStrip.tsx'
 const INCLUSION = 'components/share/PhotoInclusionList.tsx'
 const PUBLIC_PAGE = 'app/(public)/s/[token]/page.tsx'
+/* R2's follow, 2026-10-01: the effect that scrolls the conversation behind the open overlay. */
+const FOLLOW = 'components/nina/useChatPhotoFollow.ts'
 
 describe('a chat photo is a tap target that opens the one overlay', () => {
   it('passes ChatImages both of the props it has accepted since F33 phase 13', () => {
@@ -50,12 +52,40 @@ describe('a chat photo is a tap target that opens the one overlay', () => {
     expect(source).not.toContain('function PhotoViewer')
   })
 
-  it('derives the overlay from the message rather than snapshotting its photos', () => {
-    // A snapshot would keep showing a photo whose row a delete or a refresh has removed, and
-    // PhotoViewer's `photos[index]!` would then call nameOf(undefined).
+  it('derives the overlay from the whole session rather than snapshotting one bubble', () => {
+    // R1. The list is every photograph the open conversation renders, in order — and it is still
+    // DERIVED, so a delete or a refresh clamps or closes rather than leaving PhotoViewer's
+    // `photos[index]!` calling nameOf(undefined).
     const source = readRepoCode(VIEWER_HOOK)
-    expect(source).toContain('chatViewerPhotos(viewerMessage)')
-    expect(source).toContain('viewerIndex(viewer.index, viewerPhotos.length)')
+    expect(source).toContain('chatSessionPhotos(messages)')
+    expect(source).toContain('sessionPhotoIndex(sessionPhotos, viewer.messageId, viewer.index)')
+    // Invariant 3: the identity is STILL a message id and a position inside it. A stored flat
+    // position would re-aim at a different photograph whenever a bubble above it went away.
+    expect(source).toContain('useState<{ messageId: string; index: number } | null>(null)')
+  })
+
+  it('maps the overlay\u2019s flat position back to the photo that owns it', () => {
+    // `onIndex={(next) => setViewerIndex(viewer.messageId, next)}` WAS the bubble-scoping: it
+    // re-aimed every page turn at the opened message, so stepIndex could only wrap inside it.
+    const hook = readRepoCode(VIEWER_HOOK)
+    expect(hook).toContain('photo.indexWithinMessage')
+    // The bubble-local derivation is gone: no per-message lookup, no one-bubble photo list. Spelled
+    // as the two constructs that WERE it, because `viewerMessage` is now a prefix of the
+    // `viewerMessageId` R2's follow is wired from.
+    expect(hook).not.toContain('messages.find(')
+    expect(hook).not.toContain('chatViewerPhotos')
+    const screenSource = readRepoCode(SCREEN)
+    expect(screenSource).toContain('onIndex={setViewerIndex}')
+    expect(screenSource).not.toContain('setViewerIndex(viewer.messageId')
+  })
+
+  it('acts on the photograph on screen, not on the bubble the overlay was opened in', () => {
+    // The attach handle travels with the photo (`ChatSessionPhoto.attachId`), so crossing into
+    // another bubble cannot arm the composer with a neighbour's image row.
+    expect(readRepoCode(VIEWER_HOOK)).toContain('shownPhoto?.attachId')
+    const screenSource = readRepoCode(SCREEN)
+    expect(screenSource).toContain('url={shownPhoto.url}')
+    expect(screenSource).not.toContain('viewerPhotos[shownIndex]')
   })
 })
 
@@ -118,12 +148,17 @@ describe('the four pre-existing PhotoViewer callers are byte-identical', () => {
     }
   })
 
-  it('leaves the dot pager row exactly as it shipped', () => {
+  it('leaves the dot pager row exactly as it shipped, and bounds how long it gets', () => {
     // The mechanical form of the promise. R10's controls are an absolutely-positioned sibling, so
     // the pager's own classes — and therefore every existing caller's geometry — do not move.
-    expect(readRepoCode(VIEWER)).toContain(
+    const source = readRepoCode(VIEWER)
+    expect(source).toContain(
       'flex justify-center gap-2 px-4 pt-3 pb-[calc(1rem+var(--safe-bottom))]',
     )
+    // R1 made the chat's list session-long and the album's was already 200. Above the bound the
+    // row is not drawn at all and the header counter carries the position; at or below it — which
+    // is every pre-existing caller — the markup above is what they have always drawn.
+    expect(source).toContain('photos.length <= PHOTO_VIEWER_MAX_DOTS')
   })
 
   it('still renders nothing at all when actions is absent', () => {
@@ -132,6 +167,35 @@ describe('the four pre-existing PhotoViewer callers are byte-identical', () => {
 
   it('still keeps the public shared page out of the client overlay', () => {
     expect(readRepoCode(PUBLIC_PAGE)).not.toContain('PhotoViewer')
+  })
+})
+
+describe('the history follows the photograph on screen (R2)', () => {
+  it('routes through the ONE scroll decision function instead of inventing a second', () => {
+    // `measureQuoteScroll` → `planQuoteScroll` is the only rule about the band the composer leaves
+    // over, and R12's quote tap and both `?jump=` landings already route through it. The follow
+    // takes that measurement as an argument and owns no geometry at all.
+    expect(repoFileExists(FOLLOW)).toBe(true)
+    const follow = readRepoCode(FOLLOW)
+    expect(follow).toContain('planScroll(messageId)')
+    expect(follow).not.toContain('getBoundingClientRect')
+    expect(follow).not.toContain('planQuoteScroll')
+    expect(readRepoCode(QUOTE_LANDING)).toContain('clearFlashId, measureQuoteScroll }')
+    expect(readRepoCode(SCREEN)).toContain('planScroll: measureQuoteScroll')
+  })
+
+  it('moves the document and adds no writer of the query string (invariant 7)', () => {
+    const follow = readRepoCode(FOLLOW)
+    expect(follow).toContain("behavior: 'instant'")
+    expect(follow).not.toContain('replaceState')
+    expect(follow).not.toContain('router.push')
+  })
+
+  it('does not fire the landing flash on every page turn', () => {
+    // `flashMessage`'s blink train is useQuoteLanding's vocabulary for an ARRIVAL from elsewhere.
+    // Restarting its timer on each swipe would burn it out long before the overlay closed, and
+    // the user asked to SEE the bubble, not to have it highlighted.
+    expect(readRepoCode(FOLLOW)).not.toContain('flash')
   })
 })
 

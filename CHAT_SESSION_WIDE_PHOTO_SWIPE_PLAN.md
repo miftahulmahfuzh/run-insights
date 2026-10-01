@@ -6,7 +6,7 @@
 **Worktree:** `/home/miftah/.worktrees/run-insights/chat-session-wide-photo-swipe`
 **Branch:** `feature/chat-session-wide-photo-swipe` (base: `origin/main` @ `7f5e0ff`)
 **Phases:** 1
-**Status:** planned
+**Status:** complete (phase 1/1)
 **Coordinator:** —
 
 ---
@@ -89,9 +89,11 @@ section is untouched and stays what it is.
 
 | # | Title | Satisfies | Package | Files | Depends on | Difficulty | Plan | TaskID | Card |
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
-| 1 | Page the chat overlay across the session's photos, and follow them in the history | R1, R2 | `components/nina` · `lib/nina` · `components/ui` | 12 | — | HARD | `.workflows/plan/chat-session-wide-photo-swipe/phase-1.md` | — | — |
+| 1 ✅ | Page the chat overlay across the session's photos, and follow them in the history | R1, R2 | `components/nina` · `lib/nina` · `components/ui` | 12 | — | HARD | `.workflows/plan/chat-session-wide-photo-swipe/phase-1.md` | P1-CN-A007 | — |
 
 ### Phase 1 — Page the chat overlay across the session's photos, and follow them in the history
+
+**Status:** ✅ complete — 2026-10-01 (P1-CN-A007)
 
 **Satisfies:** R1, R2
 

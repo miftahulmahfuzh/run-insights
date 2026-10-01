@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { ViewerPhoto } from './PhotoViewer'
-import { PhotoViewer } from './PhotoViewer'
+import { PHOTO_VIEWER_MAX_DOTS, PhotoViewer } from './PhotoViewer'
 
 /**
  * The one full-screen image overlay, at DOM level. `tests/ui.photoViewer.test.ts` proves the
@@ -104,6 +104,28 @@ describe('PhotoViewer', () => {
 
     expect(screen.queryByText(/\/ 1/)).not.toBeInTheDocument()
     expect(screen.queryAllByRole('button', { name: /^Show the / })).toHaveLength(0)
+  })
+
+  it('past PHOTO_VIEWER_MAX_DOTS there is no dot row, and the counter carries the position', () => {
+    // F35's session-wide chat overlay and /nina/about's Media section both page across lists far
+    // longer than a pager can draw: the row is `flex` with no wrap, so each extra photo shaves the
+    // dots thinner until none of them is a tap target.
+    const many: ViewerPhoto[] = Array.from({ length: PHOTO_VIEWER_MAX_DOTS + 1 }, (_, i) => ({
+      url: `blob:photo-${i}`,
+      kind: 'splits',
+    }))
+
+    renderViewer({ photos: many, index: 6 })
+    expect(screen.queryAllByRole('button', { name: /^Show the / })).toHaveLength(0)
+    expect(screen.getByText(`7 / ${many.length}`)).toBeInTheDocument()
+
+    // And exactly AT the bound it is still the row every existing caller draws — which is the
+    // mechanical half of invariant 6, since none of them comes anywhere near 12.
+    cleanup()
+    renderViewer({ photos: many.slice(0, PHOTO_VIEWER_MAX_DOTS), index: 0 })
+    expect(screen.getAllByRole('button', { name: /^Show the / })).toHaveLength(
+      PHOTO_VIEWER_MAX_DOTS,
+    )
   })
 
   it('✕ closes', async () => {

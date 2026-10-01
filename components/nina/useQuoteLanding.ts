@@ -120,6 +120,17 @@ export function useQuoteLanding({
    *
    * **Extracted from `handleJumpToQuote` so R1's deep link reuses the same arithmetic rather than
    * inventing a second scroll-and-flash.** `planQuoteScroll` stays the one decision function.
+   *
+   * ── 2026-10-01: R2 TAKES IT TOO, AND THAT IS WHY IT IS RETURNED ──────────────────────────────
+   * `useChatPhotoFollow` scrolls the conversation to the bubble owning the photograph in the open
+   * overlay. It takes this callback as an argument rather than measuring anything itself, for the
+   * reason this extraction already states one paragraph up: `planQuoteScroll` stays the ONE
+   * decision function about the band the composer leaves over, and a second set of rules would
+   * drift the first time that geometry changed. A `null` from here is that hook's degradation
+   * path, not an error — the bubble is outside `CHAT_HISTORY_LIMIT`'s window, there is nothing to
+   * scroll to, and the follow simply does nothing. It does NOT raise `'quote-missing'`: nobody
+   * asked to go anywhere, the overlay is still showing the photograph, and a notice behind a
+   * full-screen overlay is a notice nobody can read.
    */
   const measureQuoteScroll = useCallback((targetId: string): QuoteScroll | null => {
     const element = document.getElementById(`nina-msg-${targetId}`)
@@ -347,5 +358,5 @@ export function useQuoteLanding({
     setFlashId((current) => (current === targetId ? null : current))
   }, [])
 
-  return { flashId, handleJumpToQuote, clearFlashId }
+  return { flashId, handleJumpToQuote, clearFlashId, measureQuoteScroll }
 }

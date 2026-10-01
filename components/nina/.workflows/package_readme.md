@@ -1,7 +1,9 @@
 # Package: components/nina
 
 **Location**: `components/nina`
-**Last Updated**: 2026-09-12 — compacted from 1017 lines and re-verified claim-by-claim against the
+**Last Updated**: 2026-10-01 — the chat photo overlay went session-wide (P1-CN-A007); the sections
+it touches are corrected in place. Last full compaction + claim-by-claim re-verification:
+2026-09-12 — compacted from 1017 lines and re-verified against the
 tree; the 2026-09-11 changes this file predated are folded in. Per-task record under
 [Recent changes](#recent-changes).
 
@@ -52,7 +54,9 @@ blink) both live in `app/globals.css` and are both redefined under `prefers-redu
   four-clause "something to send" rule (whose image clause covers both draft kinds — a `deduped`
   tile is still an image).
 - Draw the conversation: day-divided list, bubbles with quote stubs and photo grids and run cards,
-  two swipe gestures plus a tap, and the actions sheet — every gate decided in `lib/`.
+  two swipe gestures plus a tap, and the actions sheet — every gate decided in `lib/`. A tap on a
+  photograph opens one overlay that pages across EVERY photograph the open conversation renders,
+  and scrolls the history behind it to follow (the overlay section).
 - Host the sidebar overlay: URL-held open state, the pinned four-icon rail whose `up` is the chat
   page's bar toggle (one shared bar state, `NinaBarProvider`), the session list with its three row
   actions, search with its persisted semantic toggle, and the keyboard-overlap channel's consumer
@@ -74,13 +78,13 @@ blink) both live in `app/globals.css` and are both redefined under `prefers-redu
 | File | Kind | Purpose |
 |---|---|---|
 | `types.ts` | types only | `ChatMessage`, `ChatAvatar` — the client shape of the conversation, mapped from `lib/nina/queries`'s rows on the server so no component knows a column name. `ChatRole`/`ChatMessageState` are `ChatMessage`'s own field types, un-exported (2026-09-13) once knip showed no importer named them directly — they are read only through `ChatMessage.role`/`.state`. No runtime export. |
-| `ChatScreen.tsx` | `'use client'` | The interactive half of `/nina`. One turn: optimistic send → action returns → poll → idempotent staggered reveal — the turn section is its contract. Mounts `KeyboardOverlapPublisher` and keeps only the numeric mirror; owns the deep-link landings (`?jump=`), the photo viewer state, and every notice sentence. |
+| `ChatScreen.tsx` | `'use client'` | The interactive half of `/nina`. One turn: optimistic send → action returns → poll → idempotent staggered reveal — the turn section is its contract. Mounts `KeyboardOverlapPublisher` and keeps only the numeric mirror; owns the deep-link landings (`?jump=`), the photo overlay's state (through `usePhotoViewer` + `useChatPhotoFollow`), and every notice sentence. |
 | `KeyboardOverlapPublisher.tsx` | `'use client'` | The ONE `visualViewport` subscription in the app and the keyboard's ONE broadcast — empty-deps, `--nina-kb-overlap` on `:root` (removed, not zeroed, at rest), optional `onOverlap` mirror. Renders null. A component, not a hook: its consumers are two ROUTES, and `rg KeyboardOverlapPublisher` must answer "who measures the keyboard". |
 | `MessageList.tsx` | `'use client'` | The conversation, grouped by day. The page scrolls — no `overflow-y-auto` panel — and `decideAutoScroll` is fed by a passive scroll *sample*. Honours R14's `?at=` scroll mark with a `useLayoutEffect` restore; sets `--nina-flash-count` from the server-resolved `flashBlinks` prop. |
 | `MessageBubble.tsx` | `'use client'` | One message. Two sides, two extension slots (`quote`, `above`), two `sr-only`-until-focused openers, three gestures decided in `lib/`. Carries the landing flash: the `flash` prop attaches `nina-flash-blink` (`data-flash=true` for the probe) and recolours the ring per side — hers keep the keyframe's `--accent` default, his take the bubble's own fill (`[--nina-flash-ring-color:var(--ink)]`; the 09-09 white lasted a night, invisible against light paper exactly where a jobs deep link lands). |
 | `MessageActionsSheet.tsx` | `'use client'` | Edit / delete / resend / retry in one `Sheet`. Owns its own draft (the `Sheet.tsx` focus-loss lesson, twice); `key={acting?.id}` upstream resets it. Delete is immediate — the owner removed the confirm step. |
 | `Composer.tsx` | `'use client'` | The fixed bar: auto-growing textarea, photo tiles, reply strip, run chip, photo chip, send. Owns its own text; takes `bottomCss`/`padBottomCss` as precomputed strings and computes no geometry. The tile pipeline (compress → `contentHashOf` → `findNinaDuplicateChatImage` → `planNinaPickUpload`, with the `checking` state) is the dedup section's, and so is the textarea's `onPaste` — the pipeline's second entry point, which intercepts nothing but an image on the clipboard. |
-| `ChatImages.tsx` | no directive | The photos inside a bubble, through `MessageBubble`'s `above` slot. `onOpen` absent means not interactive; `kinds` parallel array names the tap target honestly (`photoSideOf`). |
+| `ChatImages.tsx` | no directive | The photos inside a bubble, through `MessageBubble`'s `above` slot. `onOpen` absent means not interactive; `kinds` parallel array names the tap target honestly (`photoSideOf`). Its `onOpen(index)` is bubble-local and stays so — the grid knows only its own row; the overlay it opens pages session-wide (the overlay section). |
 | `ChatPhotoActions.tsx` | `'use client'` | Save/attach controls in `PhotoViewer`'s `actions` slot — two floating `bg-ink/70` discs over the shared `components/ui/useSavePhoto` ladder (import the hook; never re-grow the machinery here). `onAttach: (() => void) \| null` — `null` means the control does not render (an optimistic row has no `imageIds` yet). |
 | `AttachmentChip.tsx` | no directive | The run pinned to the next message. Compiles into `Composer`'s graph. Not a link: a tap must not throw the runner out of a draft. |
 | `PhotoAttachmentChip.tsx` | no directive | The album photo pinned to the next message. Deliberately not `AttachmentChip` with a union prop — they can be pinned together, and one renders text the other cannot. |
@@ -105,6 +109,9 @@ blink) both live in `app/globals.css` and are both redefined under `prefers-redu
 | `NinaUnreadBadge.tsx` | async Server Component | The unread dot, counted from `lib/nina/queries` on the partial unread index, global across sessions (mark-read is the session-scoped half). `getUserId`, not `requireUserId` — it renders inside `AppShell` where there may be no session. `NinaUnreadBadgeSlot` is its `Suspense` wrapper with `fallback={null}`. |
 | `NinaUnreadSync.tsx` | `'use client'` | The dot the runner just read himself out of existence, actually going away: exactly one `router.refresh()` when `hadUnread` flips, no timer; the rule and its termination argument in `lib/nina/unread.ts`. |
 | `useChatScroll.ts` | `'use client'` | R14's DOM half: read `[id^="nina-msg-"]` rows in document order, write the scroll mark by `replaceState` against `window.location.search` (never the possibly-stale hook snapshot). Zero arithmetic — `lib/nina/scroll.ts` decides. |
+| `usePhotoViewer.ts` | `'use client'` | The chat overlay's state: `{ messageId, index }` held, everything else DERIVED each render from `chatSessionPhotos(messages)` / `sessionPhotoIndex`. Returns `sessionPhotos`, `shownIndex`, `shownPhoto`, `viewerAttachId`, `viewerMessageId` and the three gestures; `setViewerIndex` takes `PhotoViewer`'s FLAT position and maps it back to an owner. A vanished message closes the overlay during render. |
+| `useChatPhotoFollow.ts` | `'use client'` | R2: scrolls the conversation behind the open overlay to the bubble owning the photograph on screen, so the close needs no special case. Owns no geometry — it takes `measureQuoteScroll` as an argument so `planQuoteScroll` stays the one scroll rule. Skips the bubble the overlay was opened on; `'instant'`, no flash, no URL write. |
+| `useQuoteLanding.ts` | `'use client'` | R12's quote tap and both `?jump=` landings, plus the sanctioned soft-nav `replaceState`. Exports `measureQuoteScroll` (`#nina-msg-<id>` + composer → `planQuoteScroll`) because R2's follow reuses that one arithmetic rather than inventing a second. |
 
 ## The turn: how a send becomes her reply
 
@@ -262,6 +269,48 @@ still a send. At insert, one indexed `(user_id, content_hash)` lookup per DISTIN
 the composer's question: a DB keeper wins over everything; same-send twins split first-fresh,
 later-reference. Originals insert first, references second, and only then is a blob release
 REGISTERED under `after()` — the rows always exist before the bytes they orphaned can vanish.
+
+## The chat photo overlay: one list per session, and a history that follows it
+
+A tap on a photograph in a bubble opens `components/ui/PhotoViewer` over **every photograph the
+open conversation renders**, in conversation order — not that bubble's one to four. Until
+2026-10-01 it was bubble-local and three files said so in their headers; the owner authored that
+constraint and then asked for its opposite ("swipe right / left for every other photos in that
+chat session"). Any older note claiming the chat overlay pages across one bubble is stale.
+`/nina/about`'s Media section is a different surface and is untouched.
+
+"That chat session" means whatever `messages` holds — `app/nina/page.tsx`'s `CHAT_HISTORY_LIMIT`
+window. A photograph outside it has no `#nina-msg-` anchor and could not be followed to, so it is
+not in the list.
+
+- **The grid never learned about it.** `ChatImages`'s `onOpen(index)` and `MessageList`'s
+  `onOpenImage(messageId, index)` are unchanged and still bubble-local — the grid genuinely knows
+  only its own row. The widening lives in `usePhotoViewer`, which resolves that pair into a
+  position in `chatSessionPhotos(messages)` and back again. Keep it that way: a grid that had to
+  know the conversation's photo count would need the conversation passed to it.
+- **The stored identity is still `{ messageId, index }`, never a flat position.** `messages`
+  changes underneath an open overlay (a push's `router.refresh()`, R8's delete). A flat position
+  would silently re-aim at a different photograph when a bubble above it went away; the pair plus
+  `sessionPhotoIndex` clamps INSIDE the owning bubble, and answers `null` — close — only when that
+  message is gone. The close happens during render, not in an effect.
+- **Act on `shownPhoto`, never on `sessionPhotos[shownIndex]` re-indexed.** The header name, the
+  download and the attach must all name the photograph being looked at, which stops being the
+  opened bubble's as soon as a swipe crosses a boundary. The attach handle travels with the photo
+  (`ChatSessionPhoto.attachId`, resolved where the message's parallel `imageIds` is in hand), so
+  the composer can never be armed with a neighbour's image row — and `attachId` is deliberately
+  not `ChatViewerPhoto.id`, which is the turn/job id.
+- **The history follows, live.** `useChatPhotoFollow` scrolls the page to the bubble owning the
+  photograph on screen on every page turn, so closing after a run of swipes already lands on the
+  right bubble with no close-time branch. It moves nothing for the bubble the overlay was opened
+  on (already on screen), scrolls `'instant'` behind the opaque overlay, raises no flash, writes
+  no URL, and routes through `useQuoteLanding`'s `measureQuoteScroll` → `planQuoteScroll` so there
+  is exactly ONE rule about the band the composer leaves over. Programmatic scrolling works under
+  `PhotoViewer`'s `body { overflow: hidden }`; `clip` would forbid it and nothing sets that.
+- **The dot row is bounded.** `PHOTO_VIEWER_MAX_DOTS` (12, exported from
+  `components/ui/PhotoViewer.tsx`) — above it the row is not drawn at all and the header's
+  `n / total` counter carries the position; at or below it the markup is byte-identical to what
+  every pre-existing caller has always drawn. A no-wrap flex of dozens of sub-pixel slivers
+  identifies nothing and cannot be tapped.
 
 ## `/nina/about`: the viewer, the strip, the return leg
 
@@ -456,6 +505,10 @@ The package has no barrel; consumers import per file. What crosses its boundary:
 - `@/lib/nina/album` — the about codec (`encodeAboutPhoto` / `decodeAboutPhoto` /
   `aboutViewerLists` / `aboutPhotoHref` / `decodeAboutReturnTo` / `aboutPhotoIdOutsideGallery`),
   the gallery limits, `photoSideOf`, `ninaAvatarView`, `NINA_AVATAR_FALLBACK_SRC`.
+- `@/lib/nina/chatphotos` — the chat overlay's list and its position rule: `chatSessionPhotos`
+  (every photograph the open conversation renders, each carrying `messageId`,
+  `indexWithinMessage` and `attachId`) and `sessionPhotoIndex` (exact hit → clamp inside the
+  owning bubble → `null`). `usePhotoViewer` is the only importer in this package.
 - `@/lib/nina/sidebar`, `sessions`, `active`, `search`, `edit`, `reply`, `scroll`, `reveal`, `live`,
   `turnflight`, `jobview`, `unread`, `queries` — every decision listed in the Overview lives in one
   of these; the component imports the function, measures, and renders the answer.
@@ -497,7 +550,10 @@ to make it, and every type that erases at compile time is imported freely.
 
 ### Test consumers
 
-The component suites live CO-LOCATED (31 files, one per module except `types.ts`), each opting
+The component suites live CO-LOCATED — the rule is that a module with behaviour gets a suite next
+to it, and `types.ts` (no runtime) gets none (33 suites over 44 modules, measured 2026-10-01; the
+untested remainder are the `ChatScreen`/`Composer` hooks exercised through their screens' suites).
+Each opts
 into `happy-dom` with a `@vitest-environment` docblock against the global `node` default, driving
 the real component through `@testing-library/react` with the `lib/nina` collaborators mocked
 (e.g. `ChatScreen.test.tsx` mocks `sendNinaMessage`/`resendNinaMessage`/`pollNinaReply`). They pin
@@ -508,7 +564,10 @@ Five `tests/` suites still read this package's files **as text** via `readRepoCo
 properties no render can carry: `nina.attachTargets.test.ts` (the strip's wiring — aria-labels,
 both targets, one shared flight, `router.push(result.next)`, no bare `/nina` push; its action half
 composes both send paths through the real `attachNinaPhotoToChat`),
-`nina.chatPhoto.test.ts`, `nina.chatAvatar.test.ts` (the avatar prop is required at every hop
+`nina.chatPhoto.test.ts` (the overlay's structure: the list is derived from the whole session, the
+stored identity is still `{ messageId, index }`, the screen acts on `shownPhoto`, R2's follow owns
+no geometry, and the four pre-existing `PhotoViewer` callers stay byte-identical),
+`nina.chatAvatar.test.ts` (the avatar prop is required at every hop
 above the optional leaf), `nina.sidebarProvider.test.ts` (both providers' mount shape in
 `AppShell`, the nullable hooks, no second provider in a page — the failure mode that is invisible
 to every other gate), and `tabbar.geometry.test.ts` (the clearance constants agree). The docstrings
@@ -644,6 +703,13 @@ return screen === 'chat' ? (
   triggers and window pin live inside it for the same reason.
 - **Do not call a close callback beside a `<Link>` push.** A back and a forward raced on one entry
   in production. Let the navigation close the panel.
+- **Do not re-scope the chat overlay to one bubble, and do not store its flat position.** The list
+  is the whole session (R1, 2026-10-01); the state is `{ messageId, index }` and the position is
+  derived every render (invariant 3). `onIndex={setViewerIndex}` hands the flat position back —
+  re-aiming it at the opened message is exactly what the bubble-scoping was.
+- **Do not give the photo follow its own scroll arithmetic.** `measureQuoteScroll` →
+  `planQuoteScroll` is the one rule about the band the composer leaves over; `useChatPhotoFollow`
+  takes the measurement as an argument, and a `null` from it is "do nothing", not a notice.
 - **Do not push a URL the server should spell.** The strip pushes `result.next`; `SessionRow`
   replaces the removal's `next`; `NewChatButton` replaces the create's `next`. A screen that
   spells `/nina?s=…` itself is a second grammar that can drift from `lib/nina/active.ts`.
@@ -689,10 +755,26 @@ two sends (P2-CN-A000) and extracted the keyboard channel (P1-CN-A001); `search-
 pinned the window (P1-CN-A005) and made the rail's `up` the bar toggle through the shared
 `NinaBarProvider` (P1-CN-A002); `media-dedupe` (4/4, 2026-09-10/11) put the hash before the bytes;
 `job-photo-link` pointed the detail card at the earliest bubble and the photograph;
-`composer-clipboard-image-paste` (1/1, 2026-09-16) gave the textarea its own way in (P1-CN-A006).
+`composer-clipboard-image-paste` (1/1, 2026-09-16) gave the textarea its own way in (P1-CN-A006);
+`chat-session-wide-photo-swipe` (P1-CN-A007, 2026-10-01) widened the chat overlay to the whole
+session and made the history follow it.
 
 ## Recent changes
 
+- **2026-10-01 — session-wide photo swipe + a following history (P1-CN-A007,
+  `chat-session-wide-photo-swipe`).** The chat overlay now pages across every photograph the open
+  conversation renders (R1), overturning the F35-phase-9 "this bubble's photos only" rule the
+  owner himself wrote and then asked to reverse; `/nina/about`'s Media section is untouched. New
+  pure `chatSessionPhotos` / `sessionPhotoIndex` in `lib/nina/chatphotos.ts` carry the owner
+  (`messageId`, `indexWithinMessage`, `attachId`) with each photo, so `usePhotoViewer` keeps its
+  `{ messageId, index }` identity and derives the flat position every render — `setViewerIndex`
+  now takes `PhotoViewer`'s flat position instead of re-aiming at the opened bubble, and the
+  screen reads `shownPhoto` rather than re-indexing. New `useChatPhotoFollow` (R2) scrolls the
+  history to the bubble on screen through `useQuoteLanding`'s newly exported `measureQuoteScroll`,
+  so `planQuoteScroll` stays the one scroll rule and the close needs no special case.
+  `PHOTO_VIEWER_MAX_DOTS = 12` bounds the dot row — above it no dots, the `n / total` counter
+  carries the position; at or below it the pager is byte-identical. `ChatImages` and `MessageList`
+  changed by comment only: `onOpenImage(messageId, index)` is still bubble-local.
 - **2026-09-16 — clipboard image paste (P1-CN-A006, `composer-clipboard-image-paste` 1/1).** The
   composer's `<textarea>` took an `onPaste` handler, and `useComposerPhotos` grew one shared
   `handleFiles(files: File[])` core that both `onPick` and `onPaste` feed — the dedup section's
