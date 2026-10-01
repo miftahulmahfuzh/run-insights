@@ -407,10 +407,12 @@ export async function updateNinaMessage(
  *      `ON DELETE SET NULL`. `resolveQuote` already documents a null pointer as "render it as a
  *      plain message", so a quote degrades instead of throwing.
  *   2. **`nina_message_images.message_id` would be nulled** — which is exactly what the first
- *      statement below pre-empts. The Blob bytes are NOT deleted and nothing in this tree reaps
- *      them; `lib/nina/messageActions.ts` logs the orphaned pathnames on the way out so they are at
- *      least findable, and it reads them BEFORE calling this function, which is still the only
- *      order that works.
+ *      statement below pre-empts. The Blob bytes are not this function's to delete and it still
+ *      deletes none: `removeNinaMessage` (`lib/nina/messageActions.ts`) owns that half, promoting
+ *      the dependents before calling this and then releasing each object through
+ *      `releaseBlobIfUnreferenced` — which keeps any object another row still names (card #94). It
+ *      reads the image rows BEFORE calling this function, which is still the only order that works,
+ *      and is now the order the release depends on rather than only the log.
  *   3. **`nina_memory_slots.source_message_id` and `nina_memory_facts.source_message_id` are left
  *      DANGLING**, because neither is a foreign key and nothing cascades. The only readers collapse
  *      the column to a boolean, and the fact-permission rule uses it to keep in-place editing of a

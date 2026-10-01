@@ -3,7 +3,9 @@
 import { requireUserId } from '@/lib/auth/requireUserId'
 import { isValidId } from '@/lib/id'
 
+import { releaseBlobIfUnreferenced } from './blobRelease'
 import { planMessageEdit, type EditTarget } from './edit'
+import { promoteNinaImageDependents } from './provenancePromotion'
 import {
   deleteNinaMessage,
   getNinaMessageImagesForMessages,
@@ -147,11 +149,44 @@ export async function editNinaMessage(input: {
  * used to be `message_id`'s cascade; R1 made the column `ON DELETE SET NULL` so a deleted SESSION
  * stops taking the photographs, and that function's header argues the split). Either way, after
  * the delete those rows do not exist and their `pathname`s — the reaper's future handle, per that
- * column's own note — are unrecoverable. The
- * Blob bytes are left behind (assumption A5, accepted and out of scope: `reap-orphaned-blobs` does
- * not cover `nina/` yet, and extending it is its own card). Logging the pathnames costs one indexed
- * read on a rare destructive action and turns silent orphans into findable ones. It is not a
- * cleanup and does not pretend to be.
+ * column's own note — are unrecoverable. So the read happens first, and it is the handle for both
+ * steps below. This is the one order that works, and it is forced rather than chosen:
+ * `deleteNinaMessage` deliberately does not surface the image delete's rows (*"a return value
+ * nothing consumes is a promise this set has not made"*), so unlike `deleteNinaChatPhoto` the
+ * release here cannot be fed from the DELETE's own return value.
+ *
+ * ── PROMOTE, THEN DELETE, THEN RELEASE — THIS TABLE'S THREE-STEP RULE (card #94) ──────────────
+ * The sequence is `deleteNinaChatPhoto`'s (`lib/nina/albumActions.ts`) and
+ * `removeChatPhotoAction`'s (`lib/admin/chatPhotoActions.ts`), not a fourth spelling of it. This
+ * path used to do neither half and log the pathnames instead — written when the two helpers did
+ * not exist and `reap-orphaned-blobs` did not know the `nina/` prefix. Both are now false, so the
+ * log has been replaced by the rule it was standing in for.
+ *
+ *   1. **Promote.** Another chat row can re-show one of these photographs via `source_image_id`,
+ *      and that FK is `ON DELETE SET NULL`: without this the dependent survives as an unmeasured
+ *      "original" that neither dedup mechanism can ever match — the ghost-photo bug
+ *      `lib/nina/provenancePromotion.ts` exists to bury, whose docstring names THIS caller in
+ *      advance (*"or before the `deleteNinaMessage` that takes the row with it"*). Best effort by
+ *      construction: it cannot throw and cannot refuse the delete.
+ *   2. **Delete.** The statement inside which both `ON DELETE SET NULL`s fire.
+ *   3. **Release**, per distinct object and only once the rows naming it are gone — which is the
+ *      only moment `releaseBlobIfUnreferenced` can be asked honestly. It answers `'shared'` and
+ *      keeps the bytes whenever another chat row or her album still points at them, which is the
+ *      whole of the card's hazard: `resolveAttachment` copies `blob_url`/`pathname` onto a new row
+ *      without copying bytes, so one object can sit behind this bubble AND her current profile
+ *      picture.
+ *
+ * Grouped by `pathname` because a bubble can show the same photograph more than once (the
+ * promotion pass groups for the same reason); without it the second release would ask about bytes
+ * the first just deleted. Every object is asked about, a pointer row's included — it owns no bytes,
+ * its keeper still names the pathname, and the answer is `'shared'`. `deleteNinaAvatarAction` skips
+ * that question as a measured optimisation over hundreds of album objects; a bubble holds a
+ * handful, and `deleteNinaChatPhoto`'s unconditional ask is the closer sibling.
+ *
+ * None of step 3 can fail the delete. `releaseBlobIfUnreferenced` catches both its reference check
+ * and its `del`, logging `'shared'` and `'failed'` itself, so no path through it rejects — and the
+ * message is already gone by then. Reporting `'failed'` for a message that WAS deleted is the one
+ * genuinely wrong outcome available here.
  */
 export async function removeNinaMessage(input: {
   messageId: string
@@ -165,15 +200,24 @@ export async function removeNinaMessage(input: {
   const images = await getNinaMessageImagesForMessages(userId, [input.messageId])
 
   try {
+    /* STEP 1 — while the rows below still link their dependents. Never throws; see the header. */
+    if (images.length > 0) {
+      await promoteNinaImageDependents(
+        userId,
+        images.map((image) => image.id),
+      )
+    }
+
+    /* STEP 2 — the message, and its image rows with it, in one transaction. */
     const removed = await deleteNinaMessage(userId, input.messageId)
     if (removed === null) return { ok: false, deletedId: null, reason: 'not-found' }
 
-    if (images.length > 0) {
-      console.warn('[nina] a deleted message left blobs with no row pointing at them', {
-        messageId: removed.id,
-        count: images.length,
-        pathnames: images.map((image) => image.pathname),
-      })
+    /* STEP 3 — the bytes, one question per object, and only where nothing else names them. The
+     * rows that pointed at these objects are gone as of the statement above, which is what makes
+     * the question answerable; two rows naming one pathname are one object and one question. */
+    const objects = new Map(images.map((image) => [image.pathname, image.blobUrl]))
+    for (const [pathname, blobUrl] of objects) {
+      await releaseBlobIfUnreferenced(userId, { blobUrl, pathname })
     }
 
     return { ok: true, deletedId: removed.id, reason: null }

@@ -172,15 +172,19 @@ export async function setNinaChatSessionPinned(input: {
 /**
  * **Remove a session (R11), and the two edge cases that are the whole difficulty.**
  *
- * A HARD DELETE (assumption A8). `nina_messages.session_id` cascades, and through
- * `nina_message_images.message_id`'s existing cascade the photos' rows go with it. Not an archive
- * flag: the runner's stated reason for the neighbouring requirement is that stale history pollutes
- * Nina's context, and an archived session that still answered `getNinaMessageWindow` would defeat
- * R11 exactly the way it would defeat R8.
+ * A HARD DELETE (assumption A8). `nina_messages.session_id` cascades. The photographs do NOT go
+ * with it: `nina_message_images.message_id` is `ON DELETE SET NULL` (R1 of the orphans set, which
+ * changed it from the cascade this paragraph used to describe), precisely so a deleted
+ * conversation leaves its photographs standing in the collection. The deleting behaviour lives on
+ * `deleteNinaMessage`'s own second statement, where only the BUBBLE delete wants it. Not an
+ * archive flag: the runner's stated reason for the neighbouring requirement is that stale history
+ * pollutes Nina's context, and an archived session that still answered `getNinaMessageWindow`
+ * would defeat R11 exactly the way it would defeat R8.
  *
  * **What is deliberately NOT cleaned up, stated rather than discovered later.** The Vercel Blob
- * objects behind those image rows stay — nothing dereferences them and the `reap-orphaned-blobs`
- * skill does not cover `nina/` yet (the plan's scope section says so and gives it its own card).
+ * objects stay, and here that is not even an orphan class: their image rows survive the session,
+ * so the bytes are still referenced and `releaseBlobIfUnreferenced` would correctly refuse to
+ * delete them. This is why card #94's release belongs on `removeNinaMessage` and not here.
  * `nina_turns` stays too: it is the audit trail and the money ledger, and a removed conversation
  * does not un-spend its tokens.
  *
