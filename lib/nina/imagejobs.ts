@@ -1478,6 +1478,40 @@ export async function getNinaImageJobDetail(
 }
 
 /**
+ * **Does `/nina/jobs/[id]` have a page to show for this id?** — the pre-flight behind the
+ * "Buka detail job foto ini" control on the full-view overlay.
+ *
+ * ── WHY A SECOND FUNCTION AND NOT A CALL TO `getNinaImageJobDetail` ──────────────────────────
+ * The caller wants one bit, and the detail read spends `JOB_COLUMNS` plus a `toJobRecord` to
+ * produce a record nobody looks at. This selects the id and stops. The two WHEREs are deliberately
+ * IDENTICAL — same four predicates, same order — because the whole value of this function is that
+ * it answers the question the page is about to ask itself. **If one `where` ever changes, the
+ * other must change with it**, or the button starts promising a page that 404s (or refusing one
+ * that would have rendered). `lib/nina/jobActions.ts`'s `ninaImageJobExists` is the only caller.
+ *
+ * ── IT IS NOT AN ORACLE, FOR `getNinaImageJobDetail`'S REASON ────────────────────────────────
+ * `false` means "not yours OR never existed OR not an image row OR hidden", exactly as `null`
+ * there does. Four causes, one answer: a signed-in runner cannot use this to probe which job ids
+ * another runner owns, and the control it feeds says the same sentence for all four.
+ */
+export async function ninaImageJobIsVisible(userId: string, jobId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: ninaTurns.id })
+    .from(ninaTurns)
+    .where(
+      and(
+        eq(ninaTurns.userId, userId),
+        eq(ninaTurns.id, jobId),
+        eq(ninaTurns.kind, 'image'),
+        isNull(ninaTurns.deletedAt),
+      ),
+    )
+    .limit(1)
+
+  return row != null
+}
+
+/**
  * **R2's only write, and it is a flag.** The runner tapped the trash icon on `/nina/jobs`; this
  * stamps `deleted_at` and returns whether a row was actually flagged.
  *

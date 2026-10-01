@@ -1,7 +1,6 @@
 'use client'
 
 import { useCallback, useEffect, useLayoutEffect, useState } from 'react'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 
 import { CopyAdminLinkButton } from '@/components/ui/CopyAdminLinkButton'
@@ -15,7 +14,7 @@ import {
 } from '@/lib/nina/attach'
 import { composerBottomCss, composerPadBottomCss } from '@/lib/nina/chatview'
 import { SW_MESSAGE_TYPE, mergeServerMessages } from '@/lib/nina/live'
-import { JOB_JUMP_PARAM, ninaJobHref } from '@/lib/nina/jobview'
+import { JOB_JUMP_PARAM } from '@/lib/nina/jobview'
 import { buildQuote, type QuoteView } from '@/lib/nina/reply'
 import { type NinaFlightView } from '@/lib/nina/turnflight'
 import { ChatPhotoActions } from './ChatPhotoActions'
@@ -24,6 +23,7 @@ import { NOTICE_TEXT, type Notice } from './chatScreenCopy'
 import { KeyboardOverlapPublisher } from './KeyboardOverlapPublisher'
 import { MessageActionsSheet } from './MessageActionsSheet'
 import { MessageList } from './MessageList'
+import { NinaJobDetailLink } from './NinaJobDetailLink'
 import type { ChatAvatar, ChatMessage } from './types'
 import { useChatPhotoFollow } from './useChatPhotoFollow'
 import { useChatScrollMark } from './useChatScroll'
@@ -730,6 +730,13 @@ export function ChatScreen({
            * bubble carries a `turn_id` — see `chatViewerPhotos`. Two different handles to two
            * different tables, deliberately never collapsed into one (plan invariant 3).
            *
+           * Since 2026-10-01 it is `NinaJobDetailLink`, shared with `/nina/about` — a `turn_id`
+           * proves a photograph was generated, never that the job row is still visible, so the tap
+           * asks the server before it navigates and says one line for 2 s instead of landing on a
+           * 404 when the job has been deleted. `closeViewer` travels in as `onNavigate` and so
+           * fires only on the branch that actually goes somewhere; a refused tap leaves the runner
+           * on the photograph. See that component's header.
+           *
            * Either half absent renders nothing, and both absent renders an empty fragment — zero
            * DOM nodes, which is the header this screen has always drawn.
            */
@@ -738,44 +745,11 @@ export function ChatScreen({
               {adminLinkOrigin !== null && photo.rowPointer != null && (
                 <CopyAdminLinkButton pointer={photo.rowPointer} origin={adminLinkOrigin} />
               )}
-              {photo.id != null && (
-                <Link
-                  href={ninaJobHref(photo.id)}
-                  onClick={closeViewer}
-                  aria-label="Buka detail job foto ini"
-                  title="Buka detail job foto ini"
-                  className="grid size-11 place-items-center rounded-pill text-card"
-                >
-                  <JobDetailIcon className="size-5" />
-                </Link>
-              )}
+              {photo.id != null && <NinaJobDetailLink jobId={photo.id} onNavigate={closeViewer} />}
             </>
           )}
         />
       )}
     </>
-  )
-}
-
-/** "Buka detail job foto ini". Lucide's `receipt-text`, verbatim — the job detail page is
- * literally her "Catatan foto" (photo notes) card. `aria-hidden`: the link already carries the
- * accessible name. */
-function JobDetailIcon({ className }: { className: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      className={className}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z" />
-      <path d="M8 7h8" />
-      <path d="M8 11h8" />
-      <path d="M8 15h5" />
-    </svg>
   )
 }
