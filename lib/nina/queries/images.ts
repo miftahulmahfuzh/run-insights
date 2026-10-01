@@ -3,6 +3,7 @@ import {
   asc,
   desc,
   eq,
+  type AnyColumn,
   inArray,
   isNotNull,
   isNull,
@@ -37,8 +38,9 @@ import { imageColumns } from './columns'
  *     sibling query modules (phase 7's imageprefs module needs `generatedChatPhotoScope`
  *     across the boundary; the plan index's Decisions export both helpers for it). They
  *     surface through the barrel's `export *` — accepted and documented there.
- *   - §5a-2 The Media view — `countNinaMediaPhotos`, `listNinaMediaPhotos`, plus the
- *     module-private `mediaCollectionScope`
+ *   - §5a-2 The Media view — `countNinaMediaPhotos`, `listNinaMediaPhotos`,
+ *     `locateNinaMediaPhoto` (+ `NinaMediaPhotoLocation`), plus the module-private
+ *     `mediaCollectionScope`
  *   - §5b Conversation photographs — the admin write side: `NinaChatPhotoBlobPatch`,
  *     `updateNinaChatPhotoBlob`, `deleteNinaMessageImage`, `isBlobPathnameReferenced`,
  *     `setNinaMessageImageDescription`, `updateNinaChatPhotoDescription`
@@ -753,6 +755,158 @@ export async function countNinaMediaPhotos(userId: string): Promise<number> {
     .from(ninaMessageImages)
     .where(mediaCollectionScope(userId))
   return counted[0]?.total ?? 0
+}
+
+/**
+ * A column reference that keeps its table qualification inside a `select()` projection.
+ *
+ * Drizzle strips the table prefix from a bare `Column` rendered in the fields of a single-table
+ * select, which is right for an ordinary projection and WRONG inside a correlated subquery that
+ * has its own alias in scope — the unqualified name binds to the inner alias instead of the outer
+ * row and the correlation silently becomes a tautology. Wrapping the column in a nested `SQL`
+ * fragment takes it out of that rewrite. See `locateNinaMediaPhoto`'s header for the measurement.
+ */
+function outerRef(column: AnyColumn): SQL {
+  return sql`${column}`
+}
+
+/**
+ * Where one conversation photograph sits in the Media collection — the answer
+ * `/admin/nina?view=media&image=<id>` needs before a page can be rendered. See
+ * `locateNinaMediaPhoto`. `NinaAvatarLocation`'s twin, minus `folder`: Media is not a folder, has
+ * no path, and the media arm never consults one (`app/admin/nina/page.tsx`'s `view` comment).
+ */
+export interface NinaMediaPhotoLocation {
+  /**
+   * The ORIGINAL's id, which is not necessarily the id that was asked for: a re-share resolves
+   * through `source_image_id` to the row it re-shows. The caller selects THIS id, because this is
+   * the row the grid holds a tile for and the row a Replace would rewrite.
+   */
+  id: string
+  /**
+   * 0-based position in the Media collection under
+   * `coalesce(last_replaced_at, created_at) desc, id desc`. A row count, not a page — the page
+   * SIZE is the caller's policy, exactly as `locateNinaAvatar` argues for its own offset.
+   */
+  offset: number
+}
+
+/**
+ * Which page of the Media collection holds a photograph, and which row the operator meant.
+ *
+ * ── WHY THIS READ HAS TO EXIST AT ALL ───────────────────────────────────────────────────────
+ * `locateNinaAvatar`'s argument, one collection over: `/admin/nina` holds ONE page at a time and
+ * the explorer's selection is a `photos.find(...)` over that array
+ * (`components/admin/FileExplorer.tsx`). A link minted in the client app carries an id and
+ * nothing else — where that row sits in a recency-ordered collection is a database question, and
+ * only the server can answer it. `lib/admin/albumDeepLink.ts`'s header used to say that adding
+ * this read was "a query-layer change rather than a URL grammar"; this is that change.
+ *
+ * ── TWO STATEMENTS, AND THE SECOND ONE IS WHY ───────────────────────────────────────────────
+ * `locateNinaAvatar` is one statement because an avatar id is always its own answer. A message
+ * image's id is not: F37's `source_image_id` makes a re-show a SECOND row naming the first, and
+ * `isOriginalPhoto()` keeps that second row out of the collection entirely — so the id a chat
+ * overlay holds can legitimately name a row with no tile. Resolving it needs the asked row's
+ * `source_image_id` before the scope can be applied at all.
+ *
+ * It could be folded into one self-joined statement, and is not, for a correctness reason rather
+ * than a style one: `mediaCollectionScope` is written against the UN-ALIASED `nina_message_images`,
+ * so a self-join would force this function to hand-spell the collection predicate on an alias — a
+ * second opinion about what the Media view IS, and the one thing the brief for this read forbids.
+ * Statement two calls `mediaCollectionScope(userId)` verbatim instead. Statement one is a primary
+ * key lookup with a `user_id` equality beside it; it costs one index probe on a page that already
+ * issues several.
+ *
+ * ── THE OFFSET MIRRORS BOTH HALVES OF `listNinaMediaPhotos`, AND BOTH HALVES MATTER ─────────
+ * The PREDICATE is `mediaCollectionScope`, called. The SORT KEY is
+ * `coalesce(last_replaced_at, created_at) desc, id desc` — media-recency-sort, 2026-09-19 — and
+ * `created_at` alone would compute the wrong page for precisely the rows this feature is for: a
+ * photograph the operator already replaced once has moved to the top of the collection while its
+ * `created_at` deliberately did not move (`updateNinaChatPhotoBlob`'s header).
+ *
+ * Under a DESCENDING order a row's position is how many rows sort BEFORE it, which is how many
+ * compare GREATER as the tuple. Postgres compares row values left to right, so
+ * `(coalesce(…), id) > (coalesce(…), id)` is that predicate in one expression and cannot drift
+ * from the `ORDER BY` the way a hand-expanded `OR` chain could — `locateNinaAvatar`'s reasoning,
+ * applied to a two-column key whose first column is an expression.
+ *
+ * **The correlated subquery hand-spells `earlier`'s columns**, including `isOriginalPhoto()`'s two
+ * null checks, because a drizzle predicate built over `ninaMessageImages` names the OUTER table and
+ * cannot be re-pointed at an alias. That is `locateNinaAvatar`'s shape too (it spells
+ * `earlier.user_id` and `earlier.folder` by hand). The pairing is therefore a comment's
+ * responsibility and this is the comment: **`earlier.source_avatar_id is null and
+ * earlier.source_image_id is null` IS `isOriginalPhoto()`, and the two must be changed together.**
+ * `tests/nina.mediaLocate.test.ts` asserts both spellings appear in one statement.
+ *
+ * ── AND WHY THE OUTER COLUMNS GO THROUGH `outerRef()` ───────────────────────────────────────
+ * MEASURED, 2026-10-01, and the reason this function does not spell `${ninaMessageImages.userId}`
+ * directly the way the WHERE clause above it does. When a `select()` draws from a SINGLE table,
+ * drizzle rewrites every bare `Column` inside a projection into an UNQUALIFIED identifier —
+ * `"user_id"` rather than `"nina_message_images"."user_id"` — because for an ordinary projection
+ * the prefix is noise. Inside this correlated subquery it is not noise, it is the whole
+ * correlation: `earlier` is in scope there, Postgres resolves an unqualified name against the
+ * INNERMOST range table first, and so `earlier.user_id = "user_id"` reads as
+ * `earlier.user_id = earlier.user_id`. Every arm becomes a tautology, the tuple comparison becomes
+ * `x > x`, and the count is 0 for every row in the table — a deep link that always lands on page 1
+ * while every test that only checks behaviour against a fake driver stays green.
+ *
+ * `outerRef()` wraps the column in a nested `SQL` fragment, which is no longer a bare `Column` at
+ * the top level of the projection's chunk list, so drizzle leaves it alone and it renders with its
+ * table qualification intact. `tests/nina.mediaLocate.test.ts` pins the qualified spelling of both
+ * sides, which is the only thing standing between this and a silently-zero offset.
+ *
+ * **`locateNinaAvatar` (`lib/nina/queries/avatars.ts`) has the identical unqualified shape and the
+ * identical always-zero offset.** It is not fixed here because it is not this phase's file; the
+ * album's `?avatar=` deep link consequently always resolves to page 1, which is invisible whenever
+ * the folder fits on one page. Recorded rather than silently repaired — see this phase's handoffs.
+ *
+ * ── WHAT ANSWERS `null`, AND WHY IT IS SILENT ───────────────────────────────────────────────
+ * Not this user's row; no such row; a re-share whose original has gone; and a row that is not an
+ * original and names no image either — a re-SHOW of an album avatar (`source_avatar_id` set,
+ * `source_image_id` null) has no Media tile and no media original to stand in for it, so it
+ * resolves to nothing rather than to a guess. All four are one answer, per `lib/nina/queries.ts`'s
+ * rule 1: a page that distinguished "deleted" from "not yours" would be telling a stranger which
+ * ids exist.
+ */
+export async function locateNinaMediaPhoto(
+  userId: string,
+  id: string,
+): Promise<NinaMediaPhotoLocation | null> {
+  const asked = await db
+    .select({ id: ninaMessageImages.id, sourceImageId: ninaMessageImages.sourceImageId })
+    .from(ninaMessageImages)
+    .where(and(eq(ninaMessageImages.userId, userId), eq(ninaMessageImages.id, id)))
+    .limit(1)
+
+  const row = asked[0]
+  if (row === undefined) return null
+
+  /* A re-share IS the photograph it re-shows, so the original is what gets located and selected. */
+  const originalId = row.sourceImageId ?? row.id
+
+  const located = await db
+    .select({
+      id: ninaMessageImages.id,
+      offset: sql<number>`(
+        select count(*)
+        from ${ninaMessageImages} as earlier
+        where earlier.user_id = ${outerRef(ninaMessageImages.userId)}
+          and earlier.source_avatar_id is null
+          and earlier.source_image_id is null
+          and (
+            coalesce(earlier.last_replaced_at, earlier.created_at),
+            earlier.id
+          ) > (
+            coalesce(${outerRef(ninaMessageImages.lastReplacedAt)}, ${outerRef(ninaMessageImages.createdAt)}),
+            ${outerRef(ninaMessageImages.id)}
+          )
+      )`.mapWith(Number),
+    })
+    .from(ninaMessageImages)
+    .where(and(mediaCollectionScope(userId), eq(ninaMessageImages.id, originalId)))
+    .limit(1)
+
+  return located[0] ?? null
 }
 
 /* ============================================================================

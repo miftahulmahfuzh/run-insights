@@ -82,6 +82,14 @@ import * as barrel from '@/lib/nina/queries'
  * The 2026-09-21 "full-view link replaces redo" follow-up takes it 109 → 110: adds
  * `listNinaJobPhotoIds`, `getNinaJobPhoto` batched over every row `/nina/jobs`'s list renders, so
  * the new per-row link costs the screen one query total rather than one per row.
+ *
+ * copy-admin-media-link phase 2 takes it 110 → 111: `locateNinaMediaPhoto`, the MEDIA twin of
+ * `locateNinaAvatar`. `/admin/nina?view=media&image=<id>` is the destination of the client
+ * overlay's new copy-admin-link button (R2), and the media arm had no id → page read at all —
+ * `lib/admin/albumDeepLink.ts`'s header said so in as many words until this set. It resolves a
+ * re-share through `source_image_id` to its original, because `isOriginalPhoto()` keeps a re-show
+ * out of the collection and the original is the row a Replace would rewrite. Documented growth,
+ * one name; see the plan set's Phase 2 Interface Contract.
  */
 const BARREL_VALUE_EXPORTS = [
   'adoptNinaMessageImage',
@@ -195,6 +203,10 @@ const BARREL_VALUE_EXPORTS = [
   // nina-album-search-relevance-tools phase 1 (R1): the id -> folder(+offset) read the album's
   // `?avatar=` deep link resolves through. Documented growth, one name.
   'locateNinaAvatar',
+  // copy-admin-media-link phase 2 (R2): its MEDIA twin — the id -> offset read
+  // `?view=media&image=<id>` resolves through, mirroring `mediaCollectionScope` and the
+  // `coalesce(last_replaced_at, created_at) desc, id desc` sort key. Documented growth, one name.
+  'locateNinaMediaPhoto',
   'markNinaAvatarAnnounced',
   'markNinaMessagesRead',
   'moveNinaAvatarsToFolder',
