@@ -14,6 +14,7 @@ import {
 } from '@/lib/nina/tools'
 
 import { NINA_IMAGE_CAPPED_NOTE } from './imagefail'
+import { ninaPhotoStallSteer } from './imagestall'
 import { hasNinaImageJobForMessage, NINA_IMAGE_DUPLICATE_NOTE } from './imagejobs'
 import { generateNinaSelfie } from './selfiegen'
 
@@ -147,9 +148,26 @@ const handleGenerateImage: NinaToolHandler = async (
     answer: {
       taken: true,
       instruction:
-        'The camera is running. Say — in one short message, in your own voice — that you are ' +
-        'taking the photo right now and it is coming in a moment. Do NOT describe the photo: you ' +
-        'have not seen it yet. Do not mention systems, jobs, queues or waiting times.',
+        'The camera is running. Say — in one short message, in your own voice — that the photo is ' +
+        'coming in a moment. Do NOT describe the photo: you have not seen it yet. Do not mention ' +
+        'systems, jobs, queues or waiting times. ' +
+        /*
+         * **R4 (task #76). The one varying clause, and it varies on an AXIS rather than in
+         * wording.**
+         *
+         * The sentence above used to end `that you are taking the photo right now`, which is one
+         * story with one shape, and she wrote one bubble for it every time. The runner's own three
+         * examples on the card are three different stories — the photo is in my album, the photo
+         * is lost, the photo does not exist yet — and that is the difference a paraphrase cannot
+         * produce. `ninaPhotoStallSteer` picks one deterministically by job id, so the same job
+         * read twice (a revive, a retry of a sweep) says the same thing twice; see
+         * `lib/nina/imagestall.ts`.
+         *
+         * It is appended rather than interpolated into the sentence above, because that sentence
+         * carries the three prohibitions and a steer must never be able to land inside one of
+         * them.
+         */
+        ninaPhotoStallSteer(result.jobId),
     },
     isError: false,
   }

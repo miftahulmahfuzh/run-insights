@@ -157,6 +157,143 @@ export async function hasNinaImageJobForMessage(
 }
 
 /**
+ * **Task #76's stop condition 1: the job this turn opened, while it is still going.**
+ *
+ * `hasNinaImageJobForMessage` directly above answers "did a camera already fire for this message",
+ * which is a different question and deliberately a WIDER one — it counts a finished job, because a
+ * finished job is exactly what must not be fired twice. This one counts only a job still in
+ * flight, because the photo stall exists to cover a wait and a wait that is over needs no cover.
+ *
+ * Same `NINA_IMAGE_STALE_MS` bound and the same `args ->> 'sourceMessageId'` predicate as the
+ * guard, for the same reason: `sourceMessageId` is not indexed, and every job this read needs to
+ * see was opened seconds ago. `status = 'pending'` plus the phase check is the in-flight test
+ * `listOpenNinaImageJobs` uses; `deletedAt IS NULL` matches it too, so an operator who hid the row
+ * on `/admin` ends the stall as well as the strip — which is the honest reading of hiding it.
+ */
+export async function openNinaImageJobForMessage(
+  userId: string,
+  sourceMessageId: string,
+  now: Date = new Date(),
+): Promise<{ id: string } | null> {
+  const since = new Date(now.getTime() - NINA_IMAGE_STALE_MS)
+  const [row] = await db
+    .select({ id: ninaTurns.id, phase: ninaTurns.errorCode })
+    .from(ninaTurns)
+    .where(
+      and(
+        eq(ninaTurns.userId, userId),
+        eq(ninaTurns.kind, 'image'),
+        eq(ninaTurns.status, 'pending'),
+        isNull(ninaTurns.deletedAt),
+        gte(ninaTurns.createdAt, since),
+        sql`${ninaTurns.args} ->> 'sourceMessageId' = ${sourceMessageId}`,
+      ),
+    )
+    .orderBy(desc(ninaTurns.createdAt))
+    .limit(1)
+
+  if (row == null) return null
+  if (row.phase == null || !PENDING_PHASES.includes(row.phase)) return null
+  return { id: row.id }
+}
+
+/**
+ * **Is this job still generating?** The stall's per-iteration re-check, by id.
+ *
+ * Separate from `openNinaImageJobForMessage` above rather than a re-run of it, because after the
+ * first iteration the stall HAS the id and asking by `args ->> 'sourceMessageId'` again would be a
+ * jsonb predicate where a primary-key read will do.
+ */
+export async function isNinaImageJobOpen(userId: string, jobId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ phase: ninaTurns.errorCode })
+    .from(ninaTurns)
+    .where(
+      and(
+        eq(ninaTurns.userId, userId),
+        eq(ninaTurns.id, jobId),
+        eq(ninaTurns.kind, 'image'),
+        eq(ninaTurns.status, 'pending'),
+        isNull(ninaTurns.deletedAt),
+      ),
+    )
+    .limit(1)
+
+  return row != null && row.phase != null && PENDING_PHASES.includes(row.phase)
+}
+
+/**
+ * **Task #76 / R2: re-point a dispatched photograph at HER PROMISE instead of at the message that
+ * asked.**
+ *
+ * ── WHY THIS IS A PATCH AND NOT AN ARGUMENT TO `openNinaImageJob` ─────────────────────────────
+ * The bubble it points at does not exist when the job is opened. `handleGenerateImage` runs
+ * *inside* the chat turn's model call, and the only id in scope there is `ctx.sourceMessageId` —
+ * the runner's message. Her `nih sebentar, gw foto kondisi sekarang deh` is written by
+ * `insertNinaMessages` afterwards, in `lib/nina/turnrun.ts`, which is therefore the only place
+ * that can know what the photograph should quote. Measured on production (card #76): the test
+ * photograph's `reply_to_id` pointed at `"ini foto dmn"`, four bubbles up.
+ *
+ * ── `sourceMessageId` IS DELIBERATELY NOT TOUCHED ─────────────────────────────────────────────
+ * It is a different field for a different reader — see `NinaImageJobArgs.sourceMessageId`'s own
+ * header. `hasNinaImageJobForMessage` is its only consumer and it is the duplicate guard, so
+ * moving it here would make a revived turn fire a second camera for the same ask. Only the QUOTE
+ * moves.
+ *
+ * ── IT IS BEST-EFFORT AND SAYS SO IN ITS RETURN TYPE ──────────────────────────────────────────
+ * `false` means the job was already finished, already swept, or never there — all of which are
+ * ordinary. Nothing on the caller's path may fail over a quote header, so the caller logs and
+ * carries on. `setNinaImageJobPrompt` is the precedent for editing `nina_turns.args` in place, and
+ * the read-modify-write shape is copied from it rather than invented: jsonb has no partial update
+ * in Drizzle, and spreading a `Partial<NinaImageJobArgs>` is what keeps an old row's absent keys
+ * absent instead of writing `undefined` over them.
+ *
+ * The WHERE re-states the in-flight test rather than trusting the read above it, so a job that
+ * completed in the milliseconds between the two is not re-pointed after `finishSelfie` has already
+ * read its quote target.
+ */
+export async function setNinaImageJobReplyTo(
+  userId: string,
+  jobId: string,
+  replyToId: string,
+): Promise<boolean> {
+  const [row] = await db
+    .select({ args: ninaTurns.args })
+    .from(ninaTurns)
+    .where(
+      and(
+        eq(ninaTurns.userId, userId),
+        eq(ninaTurns.id, jobId),
+        eq(ninaTurns.kind, 'image'),
+        eq(ninaTurns.status, 'pending'),
+        isNull(ninaTurns.deletedAt),
+      ),
+    )
+    .limit(1)
+
+  if (row == null || row.args == null || typeof row.args !== 'object') return false
+
+  const args = row.args as Partial<NinaImageJobArgs>
+  const nextArgs = { ...args, replyToId } as NinaImageJobArgs
+
+  const updated = await db
+    .update(ninaTurns)
+    .set({ args: nextArgs })
+    .where(
+      and(
+        eq(ninaTurns.userId, userId),
+        eq(ninaTurns.id, jobId),
+        eq(ninaTurns.kind, 'image'),
+        eq(ninaTurns.status, 'pending'),
+        isNull(ninaTurns.deletedAt),
+      ),
+    )
+    .returning({ id: ninaTurns.id })
+
+  return updated.length > 0
+}
+
+/**
  * What she is told when the guard above refuses her. Written for a MODEL, never rendered — the
  * same contract as `SET_AVATAR_ANSWERS`/`SET_AVATAR_FROM_PHOTO_ANSWERS` in `./avatartools.ts`. It
  * names no mechanism: she just knows the camera already ran for this and does not try again.

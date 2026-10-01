@@ -17,6 +17,8 @@ import type { NinaContext } from './context'
 import { runTurnDistillation } from './distill'
 import { dbNinaSourceGateway, dbNinaToolGateway } from './gateway'
 import { loadNinaContext } from './load'
+import { openNinaImageJobForMessage, setNinaImageJobReplyTo } from './imagejobs'
+import { runNinaPhotoStall } from './photostall'
 import { NINA_DESCRIPTION_UNAVAILABLE } from './prompts/describe'
 import {
   bumpNinaShortcutUses,
@@ -563,15 +565,80 @@ export async function runNinaBackgroundTurn(
     bubbles = rows.map((row) => ({ id: row.id, body: row.body, replyToId: row.replyToId }))
 
     /*
+     * ── TASK #76: DID THIS TURN REACH FOR THE CAMERA, AND IS IT STILL GOING? ─────────────────
+     * One indexed read, and it decides two things below: whether the photograph's quote target
+     * gets re-pointed at her promise (R2) and whether the claim is held open for the stall (R1).
+     * Asked HERE, immediately after her rows are committed, because both answers need the bubbles
+     * to exist and neither may wait behind the distillation.
+     *
+     * `null` on every ordinary turn, which is almost all of them — and the cost of asking is one
+     * range scan on `nina_turns_user_created_idx` bounded to `NINA_IMAGE_STALE_MS`. It cannot
+     * throw into the turn: a photograph nobody re-pointed still arrives, and a wait nobody filled
+     * is the behaviour that shipped before this card.
+     */
+    let photoJobId: string | null = null
+    try {
+      photoJobId = (await openNinaImageJobForMessage(userId, runnerMessageId))?.id ?? null
+    } catch (cause) {
+      console.warn('[nina] could not look for this turn\u2019s image job', {
+        turnId,
+        error: String(cause),
+      })
+    }
+
+    /*
+     * ── TASK #76 / R2: THE PHOTOGRAPH QUOTES HER PROMISE, NOT THE ASK ───────────────────────
+     * `handleGenerateImage` could only pass `ctx.sourceMessageId` — it runs INSIDE the model call
+     * above, and her `nih sebentar, gw foto kondisi sekarang deh` did not exist until the insert
+     * twenty lines up. Measured on production (card #76): the photograph's `reply_to_id` pointed
+     * at `"ini foto dmn"`, which is the message that asked and not the message being answered.
+     *
+     * **The LAST bubble**, because a four-bubble reply that ends by reaching for the camera has
+     * the promise at the end; the first bubble is whatever she was saying before.
+     * `setNinaImageJobReplyTo` leaves `args.sourceMessageId` alone, so the duplicate guard keyed
+     * on it keeps working.
+     *
+     * Best-effort in its own `try`: a quote header is not worth a turn, and `finishSelfie` already
+     * degrades a dead quote target to a plain message.
+     */
+    const promise = bubbles.at(-1) ?? null
+    if (photoJobId !== null && promise !== null) {
+      try {
+        await setNinaImageJobReplyTo(userId, photoJobId, promise.id)
+      } catch (cause) {
+        console.warn('[nina] could not re-point the photograph at her promise', {
+          turnId,
+          error: String(cause),
+        })
+      }
+    }
+
+    /*
      * The claim drops HERE — after her rows are committed and not one statement earlier. The poll
      * asks two questions of the server ("is a turn in flight" and "is there anything after my
      * cursor"), and closing the claim before the rows exist would let a poll land in the gap and
      * read a true "no" to both, raising 'no-reply' for a reply that was mid-insert. See
      * `ninaChatTurnStore`'s header.
+     *
+     * ── TASK #76 / R1: UNLESS A CAMERA IS STILL RUNNING, IN WHICH CASE IT IS HELD ────────────
+     * This is the one ordering in this function that is conditional, and the condition is the
+     * whole of how the stall reaches the screen. `pollNinaReply`'s first `awaiting` disjunct is
+     * "a fresh chat claim exists for this session"; close it now and the tab stops polling, and
+     * every filler bubble `runNinaPhotoStall` writes below lands unobserved until a page load.
+     * So the close moves to just after the stall, and `closed` stays false until then.
+     *
+     * The push below is NOT moved with it. Its own note argues it must sit below the close
+     * because a push that wakes him to a typing indicator for a reply already in the database is
+     * a lie — and during a stall that indicator is TRUE: she is about to speak again, which is
+     * the entire point. The reasoning that pins the ordering on an ordinary turn does not reach
+     * this one, and delaying his buzz by the length of the wait would give back exactly the
+     * latency the offline-reply design bought.
      */
     failure = undefined
-    await closeNinaChatTurn(userId, turnId, source)
-    closed = true
+    if (photoJobId === null) {
+      await closeNinaChatTurn(userId, turnId, source)
+      closed = true
+    }
 
     /*
      * ── R1: THE PUSH. The reply is committed and the claim is closed; now tell the phone. ───────
@@ -648,6 +715,61 @@ export async function runNinaBackgroundTurn(
     })
 
     /*
+     * ── TASK #76 / R1: THE STALL. She keeps talking while the camera is still going. ──────────
+     *
+     * **Position: after the push and the reminders, BEFORE the distillation.** The distillation is
+     * a second 10-20 s model call and the auto-title under it is a third, and a filler that waits
+     * for both arrives half a minute after her promise — by which point the 57-60 s generation is
+     * most of the way done and the silence this card is about has already happened. The reminders
+     * above it are a primary-key read plus at most one upsert, so they cost the filler nothing;
+     * the push above it is the one thing that must not wait for anything.
+     *
+     * Everything else about it — why the claim is still open, why there is no push, why the tool
+     * set has no camera in it, and why the deadline is derived from `NINA_TURN_STALE_MS` — is in
+     * `lib/nina/photostall.ts`'s own header. It never throws, so there is no `try` here and
+     * nothing to swallow, exactly like `runNinaDistillation` below it.
+     *
+     * The chain at the bottom of this function is the stall's continuation and not its rival: the
+     * stall stops the moment the newest row in the conversation is HIS, which is the case the
+     * chain exists for and also the stall's success case — she asked him something and he
+     * answered.
+     *
+     * ── THE COST, NAMED: A SEND DURING THE WAIT IS NOW ANSWERED BY THE CHAIN ────────────────
+     * Before this card, the claim was closed by the time the photograph was generating, so a
+     * message he sent mid-wait opened its own turn immediately. Now it finds a live claim and
+     * `openNinaChatTurn` refuses it, so it waits for the chain below — which costs the rest of an
+     * in-flight filler turn (up to ~16 s) plus the distillation (~10-20 s) before his turn even
+     * starts. It cannot be superseded away either: `supersedeNinaChatTurn` refuses any claim past
+     * `'running'`, and `ninaChatTurnStore` advanced this one to `'persisting'` the moment the
+     * model answered.
+     *
+     * Accepted, and the alternative was measured against the card rather than against the clock.
+     * Moving the stall below the distillation would remove the 10-20 s — and on a 45 s turn would
+     * push the stall's start past `NINA_PHOTO_STALL_DEADLINE_MS` and emit no filler at all, which
+     * is exactly the slow turn whose silence is longest and whose cover matters most. The card is
+     * about the filler. If the mid-wait lag turns out to bite, the fix is to let the stall itself
+     * answer him rather than to move it.
+     */
+    if (photoJobId !== null) {
+      const fillers = await runNinaPhotoStall({
+        userId,
+        sessionId,
+        turnId,
+        jobId: photoJobId,
+        startedAtMs: input.startedAtMs,
+        tuning,
+        history,
+      })
+      console.info('[nina] photo stall finished', { turnId, jobId: photoJobId, fillers })
+
+      /* The deferred close from above, and the last statement the claim can honestly survive.
+       * `closeNinaChatTurn`'s own `WHERE status = 'pending'` makes it a no-op if the 90 s sweep
+       * got here first, which is the only way a stall can overrun. */
+      await closeNinaChatTurn(userId, turnId, source)
+      closed = true
+    }
+
+    /*
      * STEP 6 — the distillation (R4). AWAITED here rather than scheduled in a nested `after()`,
      * and the change is a simplification rather than a reversal. The original reason for `after()`
      * was that awaiting a 10-20 s model call would leave him "watching an idle screen after the
@@ -685,10 +807,22 @@ export async function runNinaBackgroundTurn(
      * spends that whole time showing a typing indicator for a turn that is already dead.
      * `closeNinaChatTurn`'s own `WHERE status = 'pending'` makes this a no-op when the happy path
      * already closed it, so the `closed` flag is belt to that brace rather than the guard itself.
+     *
+     * ── `failure` IS PASSED THROUGH, AND IT USED TO BE `failure ?? 'crashed'` (task #76) ───────
+     * `failure` is initialised to `'crashed'` and is cleared to `undefined` by exactly one kind of
+     * path: one where her answer is already committed. So the coalesce could only ever fire for a
+     * turn that SUCCEEDED and then threw on the way out, and for that turn `'crashed'` is a lie —
+     * the bubbles are in the conversation and the push has gone out. The push block above spends a
+     * paragraph worrying about precisely this ("would still log this turn as failed"); this is
+     * that worry fixed rather than restated.
+     *
+     * It was unreachable before this card, because every success path set `closed = true` in the
+     * same breath as clearing `failure`. The photo stall is the first thing to hold the claim open
+     * across other work, so the window is now real and so is the lie it would write.
      */
     if (!closed) {
       try {
-        await closeNinaChatTurn(userId, turnId, source, failure ?? 'crashed')
+        await closeNinaChatTurn(userId, turnId, source, failure)
       } catch (cause) {
         console.warn('[nina] could not close a chat turn', { turnId, error: String(cause) })
       }
