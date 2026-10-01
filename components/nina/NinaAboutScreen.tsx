@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 
 import { Button } from '@/components/ui/Button'
+import { CopyAdminLinkButton } from '@/components/ui/CopyAdminLinkButton'
 import { PhotoViewer, type ViewerPhoto } from '@/components/ui/PhotoViewer'
 import { SAVE_NOTICE_TEXT, useSavePhoto } from '@/components/ui/useSavePhoto'
 import { cn } from '@/lib/cn'
@@ -87,6 +88,7 @@ export function NinaAboutScreen({
   resolvedAlbumPhoto = null,
   returnTo,
   initialTab,
+  adminLinkOrigin,
 }: {
   avatar: NinaAvatarView
   /** The Foto profil tab's LOADED page — 30 at a time (`NINA_ABOUT_PAGE_SIZE`), not the album. */
@@ -149,6 +151,23 @@ export function NinaAboutScreen({
   returnTo?: string | null
   /** Which tab the server's `?tab=` decoded to. Defaults to Foto profil, same as the URL codec. */
   initialTab?: NinaAboutTab
+  /**
+   * **R4. The origin an admin may mint a `/admin/nina` link from, or `null` for everyone else.**
+   *
+   * Resolved on the server by `resolveAdminLinkOrigin()` and threaded down as ONE nullable value:
+   * the viewer's copy-admin-link control needs an absolute origin AND an admin verdict, and
+   * collapsing them means there is no state in which the origin shipped to somebody who may not use
+   * it. `null` renders no control at all, on BOTH sections.
+   *
+   * **Never `window.location.origin`** (repo invariant 9): this link is pasted into WhatsApp and
+   * opened on a desktop later, and a preview deployment's hostname dies at the next push.
+   *
+   * REQUIRED rather than optional, unlike the four resolver props above it: those are genuinely
+   * sometimes-absent facts about a deep link, while this is a fact about the SESSION that
+   * `app/nina/about/page.tsx` always knows. An optional prop defaulting to `null` would turn a
+   * broken page into a screen that silently never showed the admin his own control.
+   */
+  adminLinkOrigin: string | null
 }) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -365,18 +384,32 @@ export function NinaAboutScreen({
 
   const albumViewer: ViewerPhoto[] = React.useMemo(
     () =>
-      viewerLists.album.map((photo) => ({ url: photo.url, kind: photo.kind, label: photo.label })),
+      viewerLists.album.map((photo): ViewerPhoto => ({
+        url: photo.url,
+        kind: photo.kind,
+        label: photo.label,
+        /* 2026-10-01, R1/R3. The `nina_avatars` row id this tile came from — the handle the
+         * header's copy-admin-link control mints its URL from. It was being DROPPED here; the
+         * type has always carried it (`NinaAlbumPhoto.id`). Note it is NOT spelled `id`: that
+         * field means the TURN (job) id on the chat arm below, and overloading it would point
+         * `ninaJobHref` at the wrong table (plan invariant 3). */
+        rowPointer: { kind: 'avatar', id: photo.id },
+      })),
     [viewerLists],
   )
   const galleryViewer: ViewerPhoto[] = React.useMemo(
     () =>
-      viewerLists.chat.map((photo) => ({
+      viewerLists.chat.map((photo): ViewerPhoto => ({
         url: photo.url,
         kind: photo.kind,
         label: photo.label,
         /* The 2026-09-18 fullscreen-to-job-detail link — the handle `headerAction` below needs.
          * NULL for an upload, an avatar-purpose generation, or a photo predating this column. */
         id: photo.turnId ?? undefined,
+        /* 2026-10-01, R1/R3. The `nina_message_images` row id, which this mapper was dropping.
+         * `'image'` is the TABLE, not the photograph's own `kind` column — one of her selfies
+         * reads `'generated'` there and is still a `nina_message_images` row. */
+        rowPointer: { kind: 'image', id: photo.id },
       })),
     [viewerLists],
   )
@@ -734,37 +767,57 @@ export function NinaAboutScreen({
             onClose={close}
             subject="foto"
             /*
-             * The 2026-09-18 fullscreen-to-job-detail link, Media tab only — `open.section ===
-             * 'album'` is her avatar photos, which have no job to link to at all (no `turn_id` join
-             * — `/pull-image-gen-job`'s own recorded gap). `photo.id` is the job id `galleryViewer`
-             * set above; absent (an upload, or a photo predating this column) renders nothing.
+             * ── THE HEADER'S CLUSTER: UP TO TWO CONTROLS, ON BOTH SECTIONS ──────────────────────
+             * It used to be `open.section === 'album' ? undefined : …`, because the only control
+             * was the job link and an avatar has no job to point at. The 2026-10-01 copy-admin-link
+             * control (R1/R3/R4) applies to BOTH sections — her album photographs are
+             * `nina_avatars` rows and reachable through `/admin/nina`'s album arm — so the slot is
+             * now one function and the SECTION gate moved onto the job link alone.
+             *
+             * LEFT: the copy-admin-link button. `photo.rowPointer` is set by both mappers above
+             * and names the row's own table; `adminLinkOrigin` is `null` for every non-admin, so
+             * for them this half does not exist rather than existing and being hidden (R4).
+             *
+             * RIGHT, MEDIA ONLY: the 2026-09-18 fullscreen-to-job-detail link. `open.section ===
+             * 'album'` is her avatar photos, which have no job to link to at all (no `turn_id`
+             * join — `/pull-image-gen-job`'s own recorded gap). `photo.id` is the job id
+             * `galleryViewer` set above; absent (an upload, or a photo predating this column)
+             * renders nothing.
              *
              * ── A PLAIN `<Link>`, AND IT DELIBERATELY DOES NOT CALL `close` ──────────────────────
              * The exact bug `NinaSidebar.tsx`'s wand and `NinaSearchField.tsx`'s hits both carry a
-             * header about (measured in production, 2026-09-08): `close` calls `window.history.back()`
-             * when this session pushed the `?photo=` entry, which it always has here (any grid tap
-             * that opened the viewer went through `openAt`). Firing that in the SAME TICK as this
-             * Link's own push to `/nina/jobs/<id>` puts a back and a forward on one entry and races
-             * them — the tap looked like it did nothing because the back won.
+             * header about (measured in production, 2026-09-08): `close` calls
+             * `window.history.back()` when this session pushed the `?photo=` entry, which it always
+             * has here (any grid tap that opened the viewer went through `openAt`). Firing that in
+             * the SAME TICK as this Link's own push to `/nina/jobs/<id>` puts a back and a forward
+             * on one entry and races them — the tap looked like it did nothing because the back
+             * won.
              *
              * It does not need to. `/nina/jobs/<id>` is a DIFFERENT ROUTE, so the navigation itself
              * already leaves the `?photo=` overlay behind — no separate close call required.
+             *
+             * **The copy button must not close the viewer either, and for a stronger reason: it
+             * performs NO navigation at all.** It writes the clipboard and shows a tick in place.
+             * Closing on it would both destroy the confirmation the operator needs to see and
+             * re-enter the same `history.back()` race for no benefit whatsoever.
              */
-            headerAction={
-              open.section === 'album'
-                ? undefined
-                : (photo) =>
-                    photo.id == null ? null : (
-                      <Link
-                        href={ninaJobHref(photo.id)}
-                        aria-label="Buka detail job foto ini"
-                        title="Buka detail job foto ini"
-                        className="grid size-11 place-items-center rounded-pill text-card"
-                      >
-                        <JobDetailIcon className="size-5" />
-                      </Link>
-                    )
-            }
+            headerAction={(photo) => (
+              <>
+                {adminLinkOrigin !== null && photo.rowPointer != null && (
+                  <CopyAdminLinkButton pointer={photo.rowPointer} origin={adminLinkOrigin} />
+                )}
+                {open.section !== 'album' && photo.id != null && (
+                  <Link
+                    href={ninaJobHref(photo.id)}
+                    aria-label="Buka detail job foto ini"
+                    title="Buka detail job foto ini"
+                    className="grid size-11 place-items-center rounded-pill text-card"
+                  >
+                    <JobDetailIcon className="size-5" />
+                  </Link>
+                )}
+              </>
+            )}
           />
           {/*
             The attach control sits ABOVE the overlay (z-70 against its z-60) rather than inside

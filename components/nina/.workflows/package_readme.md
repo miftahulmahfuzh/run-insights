@@ -1,8 +1,9 @@
 # Package: components/nina
 
 **Location**: `components/nina`
-**Last Updated**: 2026-10-01 — the chat photo overlay went session-wide (P1-CN-A007); the sections
-it touches are corrected in place. Last full compaction + claim-by-claim re-verification:
+**Last Updated**: 2026-10-01 — the chat photo overlay went session-wide (P1-CN-A007) and then grew
+an admin-only copy-link control in its header (P1-CN-A008); the sections they touch are corrected
+in place. Last full compaction + claim-by-claim re-verification:
 2026-09-12 — compacted from 1017 lines and re-verified against the
 tree; the 2026-09-11 changes this file predated are folded in. Per-task record under
 [Recent changes](#recent-changes).
@@ -78,7 +79,7 @@ blink) both live in `app/globals.css` and are both redefined under `prefers-redu
 | File | Kind | Purpose |
 |---|---|---|
 | `types.ts` | types only | `ChatMessage`, `ChatAvatar` — the client shape of the conversation, mapped from `lib/nina/queries`'s rows on the server so no component knows a column name. `ChatRole`/`ChatMessageState` are `ChatMessage`'s own field types, un-exported (2026-09-13) once knip showed no importer named them directly — they are read only through `ChatMessage.role`/`.state`. No runtime export. |
-| `ChatScreen.tsx` | `'use client'` | The interactive half of `/nina`. One turn: optimistic send → action returns → poll → idempotent staggered reveal — the turn section is its contract. Mounts `KeyboardOverlapPublisher` and keeps only the numeric mirror; owns the deep-link landings (`?jump=`), the photo overlay's state (through `usePhotoViewer` + `useChatPhotoFollow`), and every notice sentence. |
+| `ChatScreen.tsx` | `'use client'` | The interactive half of `/nina`. One turn: optimistic send → action returns → poll → idempotent staggered reveal — the turn section is its contract. Mounts `KeyboardOverlapPublisher` and keeps only the numeric mirror; owns the deep-link landings (`?jump=`), the photo overlay's state (through `usePhotoViewer` + `useChatPhotoFollow`), and every notice sentence. Takes `adminLinkOrigin: string \| null` and renders the viewer header's copy-admin-link half from it — it never decides admin-ness itself. |
 | `KeyboardOverlapPublisher.tsx` | `'use client'` | The ONE `visualViewport` subscription in the app and the keyboard's ONE broadcast — empty-deps, `--nina-kb-overlap` on `:root` (removed, not zeroed, at rest), optional `onOverlap` mirror. Renders null. A component, not a hook: its consumers are two ROUTES, and `rg KeyboardOverlapPublisher` must answer "who measures the keyboard". |
 | `MessageList.tsx` | `'use client'` | The conversation, grouped by day. The page scrolls — no `overflow-y-auto` panel — and `decideAutoScroll` is fed by a passive scroll *sample*. Honours R14's `?at=` scroll mark with a `useLayoutEffect` restore; sets `--nina-flash-count` from the server-resolved `flashBlinks` prop. |
 | `MessageBubble.tsx` | `'use client'` | One message. Two sides, two extension slots (`quote`, `above`), two `sr-only`-until-focused openers, three gestures decided in `lib/`. Carries the landing flash: the `flash` prop attaches `nina-flash-blink` (`data-flash=true` for the probe) and recolours the ring per side — hers keep the keyframe's `--accent` default, his take the bubble's own fill (`[--nina-flash-ring-color:var(--ink)]`; the 09-09 white lasted a night, invisible against light paper exactly where a jobs deep link lands). |
@@ -98,7 +99,7 @@ blink) both live in `app/globals.css` and are both redefined under `prefers-redu
 | `NinaSearchField.tsx` | `'use client'` | Sidebar search + the semantic toggle. Measures; `lib/nina/search.ts` decides. Its hit `<Link>`s fire no close callback — the measured production race — and take no props at all, so the seam cannot be re-armed. |
 | `useSemanticPref.ts` | `'use client'` | The toggle's persistence — one of the codebase's two `localStorage` keys (the `ri:` prefix convention `lib/nina/search.ts` documents), via `useSyncExternalStore`, with a module-level listener set and a `storage` listener so two tabs agree; degrades to tab-lifetime when the store refuses. |
 | `NewChatButton.tsx` | `'use client'` | The rail's `+`. A `<button>` and not a `<Link>` because the id does not exist until the action runs; `replace`, not `push`; never mints a second empty session (the action reuses the newest empty one). |
-| `NinaAboutScreen.tsx` | `'use client'` | `/nina/about`. One `PhotoViewer` over two sections, open state derived from `?photo=album.<id>` / `?photo=chat.<id>` — never mirrored into state; the codec lives in `lib/nina/album.ts`. Optional `resolvedPhoto` (the server's answer for a `chat.<id>` the 200-newest window dropped) and `returnTo` (the deep link's decoded origin page). The strip — two icon-only sends on one flight, a `useSavePhoto` download, ending at the keyboard var — is the about section. |
+| `NinaAboutScreen.tsx` | `'use client'` | `/nina/about`. One `PhotoViewer` over two sections, open state derived from `?photo=album.<id>` / `?photo=chat.<id>` — never mirrored into state; the codec lives in `lib/nina/album.ts`. Optional `resolvedPhoto` (the server's answer for a `chat.<id>` the 200-newest window dropped) and `returnTo` (the deep link's decoded origin page). Required `adminLinkOrigin: string \| null` drives the viewer header's copy-admin-link half on BOTH sections. The strip — two icon-only sends on one flight, a `useSavePhoto` download, ending at the keyboard var — is the about section. |
 | `NinaPhotoGrid.tsx` | `'use client'` | One square grid for both sections — they differ in exactly two ways (the current-photo ring; the gallery's two parties). `alt=""` on every cell; the `<button>` carries the accessible name. |
 | `NinaAvatar.tsx` | no directive | Her face in a circle at three sizes (28 / 44 / 128 px). The only `next/image` call site among Nina's images — the committed fallback PNG is a build asset; an album Blob URL gets a plain `<img>` under `ninaCropStyle`. Imports `NINA_AVATAR_FALLBACK_SRC` from `lib/nina/album` directly — the `NINA_AVATAR_SRC` re-export kept here "so phase 4's importers do not change" outlived every importer and was removed 2026-09-13 once knip showed it unused. |
 | `NinaJobList.tsx` | `'use client'` | The job list, rendered by `/nina/jobs` **and** summarised under `/nina/about`'s Media. Every prop serializable; `actions?: boolean` (not a render-prop — a Server Component caller cannot receive one) draws the per-row mutations on the console surface alone. |
@@ -311,6 +312,58 @@ not in the list.
   `n / total` counter carries the position; at or below it the markup is byte-identical to what
   every pre-existing caller has always drawn. A no-wrap flex of dozens of sub-pixel slivers
   identifies nothing and cannot be tapped.
+- **The header slot holds up to TWO controls, and they address two different tables.**
+  `headerAction` returns a fragment: the copy-admin-link button (keyed off `photo.rowPointer`, the
+  `nina_message_images` row) on the left, the fullscreen-to-job-detail `<Link>` (keyed off
+  `photo.id`, the TURN/job id) on the right. Either absent renders nothing and both absent renders
+  an empty fragment — zero DOM nodes, the header this screen has always drawn. The next section is
+  the contract; the two handles are deliberately never collapsed into one.
+
+## The viewer header's copy-admin-link control (admin only)
+
+Every client entry point onto a full-view Nina photograph — `/nina`, `/nina/about`, and
+`components/photo`'s `/photo/[kind]/[id]` — carries one icon-only `CopyAdminLinkButton` in the
+`PhotoViewer` header. It writes a `/admin/nina?view=…` URL to the clipboard and shows a tick in
+place. The rules, in the order they are easiest to break:
+
+- **Admin-ness is decided on the SERVER and arrives as ONE nullable prop.** The server pages call
+  `resolveAdminLinkOrigin()` (`lib/admin/adminLinkOrigin.ts`, `server-only`) and thread the
+  `string | null` down as `adminLinkOrigin`. `null` means the control is not rendered at all, so a
+  non-admin's RSC payload carries no admin origin — the hiding is structural, not a render-time
+  `if` over a value that shipped anyway. **Never an `isAdmin` boolean beside an always-sent
+  origin**: two props that must agree are two props that will one day disagree, and the collapsed
+  form has no state in which the origin is present and the verdict says no.
+- **No component in this package may decide admin-ness, and no email literal appears in source.**
+  `lib/env.ts` stays the only parser of `ADMIN_EMAILS` and `isAdminEmail` its only predicate.
+- **`ADMIN_EMAILS` unconfigured must degrade to `null`, never throw.** `getAdminIdentity` →
+  `isAdminEmail` reaches a lazy env group that `fail()`s when the variable is missing, and the
+  variable is Production-scope only in Vercel and absent from this repo's `.env.local`. An
+  unguarded call would 500 these screens for every signed-in runner on every preview deployment
+  and in every plain local run. The resolver's presence probe runs BEFORE the identity call, and
+  it is a probe and not a `try`/`catch` — a catch would also swallow an `auth()` failure and
+  answer "not an admin" to a question that was never about admin-ness.
+- **The origin is `shareOrigin()`, never `window.location.origin`** (repo invariant 9). The link is
+  pasted into WhatsApp and opened on a desktop later; a preview deployment's hostname dies at the
+  next push.
+- **The handle is spelled `rowPointer`, everywhere, and `adminPointer` must not appear in source.**
+  It is a `PhotoPointer` (`lib/photos/pointer.ts`) — `{ kind, id }`, the kind naming the TABLE:
+  `'image'` for a `nina_message_images` row, `'avatar'` for a `nina_avatars` row. `'image'` is the
+  table, not the photograph's own `kind` column — one of her selfies reads `'generated'` there and
+  is still a `nina_message_images` row.
+- **`rowPointer` is ABSENT, not `undefined`, when there is no row.** The optimistic bubble's rows
+  are not written yet — the same condition that already hides the attach control. `Object.keys`
+  counts a key whose value is `undefined`, and "absent renders nothing" is a claim about the KEY,
+  so `chatSessionPhotos` spreads the field in conditionally rather than assigning `undefined`.
+- **The copy button must not close the viewer.** It performs no navigation at all; closing would
+  destroy the confirmation the operator needs to see and re-enter the `history.back()` race the
+  job link's own header documents.
+- **`chatphotos.test.ts`'s `Object.keys(photo).sort()` case is a frozen key list and ORDER
+  MATTERS.** It asserts a sorted array against a literal, so a new field has to be inserted at its
+  real lexicographic position (`rowPointer` sorts between `messageId` and `url`) or the case fails
+  on the ordering rather than on the key set it exists to guard.
+
+For a non-admin session every affected viewer header is byte-identical to what shipped before
+2026-10-01.
 
 ## `/nina/about`: the viewer, the strip, the return leg
 
@@ -349,6 +402,14 @@ chat photos.
   its two outcomes merged into the notice line the sends and delete share.
 - **The delete** exists for HIS photographs only (the album is an avatar — no delete, never was);
   the hidden control is not the authorization — the action refuses a `generated` id on its own.
+- **`adminLinkOrigin`** (REQUIRED, nullable — unlike the four resolver props above it, which are
+  genuinely sometimes-absent facts about a deep link; this is a fact about the SESSION the server
+  page always knows). Both `ViewerPhoto` mappers carry `rowPointer`: the album arm sets
+  `{ kind: 'avatar', id: photo.id }` and the Media arm `{ kind: 'image', id: photo.id }` — both
+  were previously DROPPING a handle the underlying type always had. The header slot is now ONE
+  function for both sections (it used to be `open.section === 'album' ? undefined : …`), because
+  the copy control applies to her album photographs too; the section gate moved onto the job link
+  alone, which still exists on Media only — an avatar has no job to point at.
 
 `tests/nina.attachTargets.test.ts` is the strip's wiring guard. Its `'new'`-target test expects
 `result.sessionId` to be the id the mocked send LANDED in, not the id the mocked create returned —
@@ -442,7 +503,7 @@ The package has no barrel; consumers import per file. What crosses its boundary:
 
 | Export | From | Notes |
 |---|---|---|
-| `ChatScreen` | `ChatScreen.tsx` | Props all REQUIRED (`initial`, `todayISO`, `userId`, `sessionId`, `pending`, `pendingPhoto`, `flight`, `avatar`, `flashBlinks`) on the RULING E2b habit: one caller, and `tsc` should notice a missing prop — an optional default here turned a broken route into a chat that silently wrote into the wrong session. `flashBlinks` is `flashBlinkCount(process.env.NINA_FLASH_BLINKS)`, resolved on the server. |
+| `ChatScreen` | `ChatScreen.tsx` | Props all REQUIRED (`initial`, `todayISO`, `userId`, `sessionId`, `pending`, `pendingPhoto`, `flight`, `avatar`, `flashBlinks`, `adminLinkOrigin`) on the RULING E2b habit: one caller, and `tsc` should notice a missing prop — an optional default here turned a broken route into a chat that silently wrote into the wrong session. `flashBlinks` is `flashBlinkCount(process.env.NINA_FLASH_BLINKS)`, resolved on the server; `adminLinkOrigin` is `resolveAdminLinkOrigin()`'s `string \| null`, likewise server-resolved — `null` for every non-admin and wherever `ADMIN_EMAILS` is unconfigured. |
 | `KeyboardOverlapPublisher` | `KeyboardOverlapPublisher.tsx` | `{ onOverlap?: (overlapPx: number) => void }` — optional because the `:root` var needs no consumer; renders null. Mount it; never subscribe to `visualViewport` yourself. |
 | `NinaBarProvider`, `useNinaBar` | `NinaBarProvider.tsx` | `{ children }`. `useNinaBar()` returns `{ bar, dispatch } \| null` — null outside a provider. `dispatch` has stable identity; `nextBarState` decides, the provider only forwards. |
 | `NinaSidebar`, `NinaSidebarProvider`, `NinaSidebarTrigger`, `useNinaSidebar`, `NinaSidebarAvatar` | `NinaSidebar.tsx` | `useNinaSidebar()` returns `null` outside a provider, on purpose — a `ChatChrome` with no sidebar draws no `>`. |
@@ -451,7 +512,7 @@ The package has no barrel; consumers import per file. What crosses its boundary:
 | `SessionList` | `SessionList.tsx` | `{ list: SidebarList, activeSessionId, onClose }` — decides nothing. |
 | `SessionRow` | `SessionRow.tsx` | `{ session, active, activeSessionId, onClose }` — the server decides where a removal lands (`planSessionRemoval`). |
 | `NewChatButton` | `NewChatButton.tsx` | `{ onNavigate, className? }` — the refusal path closes the panel; success `router.replace`s the action's `next`. |
-| `NinaAboutScreen` | `NinaAboutScreen.tsx` | `{ avatar, album, gallery, jobs, jobsNowMs, resolvedPhoto?, returnTo? }` — all mapped server-side; `jobs` arrives as `NinaJobListItem[]`. |
+| `NinaAboutScreen` | `NinaAboutScreen.tsx` | `{ avatar, album, gallery, jobs, jobsNowMs, resolvedPhoto?, returnTo?, adminLinkOrigin }` — all mapped server-side; `jobs` arrives as `NinaJobListItem[]`. `adminLinkOrigin` is REQUIRED and nullable (a session fact, not a deep-link fact). |
 | `NinaPhotoGrid`, `NinaGridCell` | `NinaPhotoGrid.tsx` | `{ cells, onOpen }`; `isCurrent` draws the ring (the album sets it; the gallery never does). |
 | `NinaJobList` | `NinaJobList.tsx` | `{ items, nowMs, emptyText, actions?, className? }` — `actions` set by `/nina/jobs` alone. |
 | `NinaJobActions`, `NinaJobDetail`, `NinaJobElapsed` | `NinaJob*.tsx` | All props serializable; the jump, the stage and the photograph fact arrive already decided. |
@@ -507,8 +568,12 @@ The package has no barrel; consumers import per file. What crosses its boundary:
   the gallery limits, `photoSideOf`, `ninaAvatarView`, `NINA_AVATAR_FALLBACK_SRC`.
 - `@/lib/nina/chatphotos` — the chat overlay's list and its position rule: `chatSessionPhotos`
   (every photograph the open conversation renders, each carrying `messageId`,
-  `indexWithinMessage` and `attachId`) and `sessionPhotoIndex` (exact hit → clamp inside the
-  owning bubble → `null`). `usePhotoViewer` is the only importer in this package.
+  `indexWithinMessage`, `attachId` and — on a written row only — `rowPointer`) and
+  `sessionPhotoIndex` (exact hit → clamp inside the owning bubble → `null`). `usePhotoViewer` is
+  the only importer in this package. `rowPointer` is the same id as `attachId` in `PhotoPointer`
+  shape; it exists separately because the header control sees only the narrower `ViewerPhoto`,
+  and deriving it in that module keeps the "this is a `nina_message_images` row" claim in the one
+  file allowed to make it.
 - `@/lib/nina/sidebar`, `sessions`, `active`, `search`, `edit`, `reply`, `scroll`, `reveal`, `live`,
   `turnflight`, `jobview`, `unread`, `queries` — every decision listed in the Overview lives in one
   of these; the component imports the function, measures, and renders the answer.
@@ -520,7 +585,10 @@ The package has no barrel; consumers import per file. What crosses its boundary:
 - `@/components/ui` — `Button` (`loading`/`variant` carry the mis-tap and 44 px guarantees),
   `ButtonLink`, `Card`, `Field`/`Input`, `CONTROL_CLASS`, `Sheet`, `TabBar` +
   `TAB_BAR_OUTER_HEIGHT_PX`, `EmptyState`, `PhotoViewer` + `ViewerPhoto`, `LoadingDots`,
-  `useSavePhoto` + `SAVE_NOTICE_TEXT` (the shared download ladder).
+  `useSavePhoto` + `SAVE_NOTICE_TEXT` (the shared download ladder), `CopyAdminLinkButton` (the
+  viewer header's admin half — `{ pointer, origin }`, both non-null or it is not rendered).
+- `@/lib/photos/pointer` — `PhotoPointer`, type-only, through `lib/nina/chatphotos`'s
+  `ChatSessionPhoto.rowPointer` and `components/ui`'s `ViewerPhoto.rowPointer`.
 
 **No file in this directory imports `zod`, `server-only`, or the database client** — the one
 database read (`countUnreadNinaMessages`) sits behind the async Server Component that is allowed
@@ -707,6 +775,20 @@ return screen === 'chat' ? (
   is the whole session (R1, 2026-10-01); the state is `{ messageId, index }` and the position is
   derived every render (invariant 3). `onIndex={setViewerIndex}` hands the flat position back —
   re-aiming it at the opened message is exactly what the bubble-scoping was.
+- **Do not decide admin-ness in a component, and do not mint a link origin from the browser.**
+  `adminLinkOrigin` arrives already resolved as `string | null`; `null` renders no control.
+  No `isAdmin` boolean, no email literal anywhere in source, and never
+  `window.location.origin` — the link outlives the preview hostname it was copied on.
+- **Do not call `getAdminIdentity()` unguarded from a page that a non-admin can reach.**
+  `isAdminEmail` throws when `ADMIN_EMAILS` is unset, which is every preview deployment and every
+  plain local run. Go through `resolveAdminLinkOrigin()`, which probes for the variable first; and
+  do not "fix" that probe into a `try`/`catch`, which would also swallow an `auth()` failure.
+- **Do not rename `rowPointer`, and do not collapse it into `id`.** `id` on a chat viewer photo is
+  the TURN/job id the job-detail link needs; `rowPointer` is the image/avatar row the admin link
+  selects. Two handles, two tables. `adminPointer` is a name that must not appear in source.
+- **Do not set `rowPointer: undefined` for a row that has none — omit the key.** `Object.keys`
+  counts an `undefined` value, and `lib/nina/chatphotos.test.ts` asserts the exact key set with a
+  sorted literal; a new field belongs at its real lexicographic position in that literal.
 - **Do not give the photo follow its own scroll arithmetic.** `measureQuoteScroll` →
   `planQuoteScroll` is the one rule about the band the composer leaves over; `useChatPhotoFollow`
   takes the measurement as an argument, and a `null` from it is "do nothing", not a notice.
@@ -757,10 +839,28 @@ pinned the window (P1-CN-A005) and made the rail's `up` the bar toggle through t
 `job-photo-link` pointed the detail card at the earliest bubble and the photograph;
 `composer-clipboard-image-paste` (1/1, 2026-09-16) gave the textarea its own way in (P1-CN-A006);
 `chat-session-wide-photo-swipe` (P1-CN-A007, 2026-10-01) widened the chat overlay to the whole
-session and made the history follow it.
+session and made the history follow it; `copy-admin-media-link` (P1-CN-A008, 4/4, 2026-10-01) put
+an admin-only copy-link control in every full-view photograph's header.
 
 ## Recent changes
 
+- **2026-10-01 — the viewer header's admin copy-link control (P1-CN-A008,
+  `copy-admin-media-link` 4/4).** Every client entry point onto a full-view Nina photograph —
+  `/nina`, `/nina/about`, and `components/photo`'s `/photo/[kind]/[id]` — now renders phase 3's
+  icon-only `CopyAdminLinkButton` in the `PhotoViewer` header, gated to the admin. New
+  `server-only` `resolveAdminLinkOrigin()` (`lib/admin/adminLinkOrigin.ts`) answers
+  `shareOrigin()` for the admin and `null` both for every other signed-in runner AND where
+  `ADMIN_EMAILS` is unconfigured — the measured preview/local 500 hazard, guarded by a presence
+  probe rather than a `try`/`catch`. The three server pages thread it down as ONE nullable
+  `adminLinkOrigin` prop (no `isAdmin` boolean beside an always-sent origin), so a non-admin's
+  payload carries no origin at all. `ChatSessionPhoto` gained `rowPointer?: PhotoPointer`,
+  populated from `attachId` and OMITTED (not `undefined`) on the optimistic row; both
+  `NinaAboutScreen` mappers now carry `rowPointer` too — `'avatar'` on the album arm, `'image'` on
+  Media — where they had been dropping a handle their source types always had. The about screen's
+  header slot became one function for both sections and the `open.section === 'album'` gate moved
+  onto the job link alone. `headerAction` on both screens now returns a fragment of up to two
+  controls; both absent still renders zero DOM nodes. No email literal appears in the diff, and
+  for a non-admin session every affected header is byte-identical to what shipped before.
 - **2026-10-01 — session-wide photo swipe + a following history (P1-CN-A007,
   `chat-session-wide-photo-swipe`).** The chat overlay now pages across every photograph the open
   conversation renders (R1), overturning the F35-phase-9 "this bubble's photos only" rule the

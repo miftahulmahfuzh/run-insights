@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 
 import { PhotoDeepLinkScreen } from '@/components/photo/PhotoDeepLinkScreen'
 import type { ViewerPhoto } from '@/components/ui/PhotoViewer'
+import { resolveAdminLinkOrigin } from '@/lib/admin/adminLinkOrigin'
 import { requireUserId } from '@/lib/auth/requireUserId'
 import { getRunPhoto } from '@/lib/db/queries'
 import { NINA_ABOUT_HREF, albumPhotos, galleryPhotos } from '@/lib/nina/album'
@@ -69,11 +70,21 @@ export default async function PhotoDeepLinkPage({ params }: PageProps<'/photo/[k
   const resolved = await resolveDeepLinkPhoto(userId, pointer.kind, pointer.id)
   if (resolved === null) redirect(DEEP_LINK_MISS_HREF)
 
+  /*
+   * R4. AFTER the miss, so a stale notification costs nothing extra, and never before the read it
+   * has no bearing on. `resolveAdminLinkOrigin` answers `null` both for a non-admin and where
+   * `ADMIN_EMAILS` is unconfigured — which is every preview deployment and every plain local run,
+   * and is why this is not a bare `getAdminIdentity()` (plan invariant 7). A `null` reaches the
+   * screen as "no control at all"; see `lib/admin/adminLinkOrigin.ts`.
+   */
+  const adminLinkOrigin = await resolveAdminLinkOrigin()
+
   return (
     <PhotoDeepLinkScreen
       photo={resolved.photo}
       subject={resolved.subject}
       closeHref={resolved.closeHref}
+      adminLinkOrigin={adminLinkOrigin}
     />
   )
 }
@@ -101,6 +112,14 @@ export default async function PhotoDeepLinkPage({ params }: PageProps<'/photo/[k
  * onto the runs list when it has not — an uncommitted screenshot's only other home is
  * `/x/<extractionId>`, which is a review screen this page has no business dropping someone into.
  * Both Nina arms close onto `/nina/about`, where her album and the Media gallery live.
+ *
+ * ── THE ADMIN POINTER IS THE ROUTE'S OWN TWO SEGMENTS ────────────────────────────────────────
+ * 2026-10-01, R1/R3. `/admin/nina` holds exactly two collections — `nina_avatars` (the album arm)
+ * and `nina_message_images` (`?view=media`) — so the two Nina arms below carry an admin handle and
+ * the `shot` arm carries none: `run_photos` has no tile under `/admin/nina` in either collection,
+ * and a link to a row no screen can select is worse than no link. Setting it HERE rather than in
+ * the client screen keeps the "which tables are admin-visible" judgement on the server, beside the
+ * reads that already encode which table each arm touches.
  */
 async function resolveDeepLinkPhoto(
   userId: string,
@@ -111,6 +130,7 @@ async function resolveDeepLinkPhoto(
     const row = await getRunPhoto(userId, id)
     if (row === null) return null
     return {
+      /* No admin handle: `run_photos` is in neither of `/admin/nina`'s collections. */
       photo: { url: row.blobUrl, kind: row.kind },
       subject: 'screenshot',
       closeHref: row.runId === null ? DEEP_LINK_MISS_HREF : `/r/${row.runId}`,
@@ -123,7 +143,12 @@ async function resolveDeepLinkPhoto(
     const mapped = albumPhotos([row])[0] ?? null
     if (mapped === null) return null
     return {
-      photo: { url: mapped.url, kind: mapped.kind, label: mapped.label },
+      photo: {
+        url: mapped.url,
+        kind: mapped.kind,
+        label: mapped.label,
+        rowPointer: { kind: 'avatar', id: mapped.id },
+      },
       subject: 'foto',
       closeHref: NINA_ABOUT_HREF,
     }
@@ -134,7 +159,12 @@ async function resolveDeepLinkPhoto(
   const mapped = galleryPhotos([row])[0] ?? null
   if (mapped === null) return null
   return {
-    photo: { url: mapped.url, kind: mapped.kind, label: mapped.label },
+    photo: {
+      url: mapped.url,
+      kind: mapped.kind,
+      label: mapped.label,
+      rowPointer: { kind: 'image', id: mapped.id },
+    },
     subject: 'foto',
     closeHref: NINA_ABOUT_HREF,
   }

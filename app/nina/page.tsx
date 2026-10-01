@@ -5,6 +5,7 @@ import { NinaSidebar } from '@/components/nina/NinaSidebar'
 import { NinaUnreadSync } from '@/components/nina/NinaUnreadSync'
 import type { ChatMessage } from '@/components/nina/types'
 import { AppShell } from '@/components/ui/AppShell'
+import { resolveAdminLinkOrigin } from '@/lib/admin/adminLinkOrigin'
 import { requireUserId } from '@/lib/auth/requireUserId'
 import { jakartaDayOf, todayInJakarta } from '@/lib/date/ranges'
 import { listRunAttachments } from '@/lib/db/queries'
@@ -526,6 +527,19 @@ export default async function NinaPage({ searchParams }: PageProps<'/nina'>) {
     after(() => markNinaMessagesRead(userId, { sessionId: activeSessionId }))
   }
 
+  /*
+   * R4. The origin the chat overlay's copy-admin-link control may mint from, or `null` for every
+   * other signed-in runner — ONE nullable value rather than an `isAdmin` boolean beside an
+   * always-sent origin, so a non-admin's payload carries nothing to hide.
+   *
+   * `resolveAdminLinkOrigin` and NOT a bare `getAdminIdentity()`: `isAdminEmail` reaches a lazy env
+   * group that THROWS when `ADMIN_EMAILS` is missing, and that variable is Production-scope only in
+   * Vercel and absent from this repo's `.env.local` — so the bare call would 500 this screen for
+   * every signed-in runner on every preview deployment and in every plain local run (plan
+   * invariant 7). The resolver answers "not an admin" there instead.
+   */
+  const adminLinkOrigin = await resolveAdminLinkOrigin()
+
   return (
     <AppShell screen="chat">
       {/* R9. Renders nothing. It exists so the tab bar's dot agrees with what he just read: this
@@ -587,6 +601,7 @@ export default async function NinaPage({ searchParams }: PageProps<'/nina'>) {
           flight={flight}
           avatar={{ src: avatar.src, natural: avatar.natural, crop: avatar.crop }}
           flashBlinks={flashBlinks}
+          adminLinkOrigin={adminLinkOrigin}
         />
 
         {/*

@@ -2,6 +2,7 @@ import { cookies } from 'next/headers'
 
 import { AppShell } from '@/components/ui/AppShell'
 import { NinaAboutScreen } from '@/components/nina/NinaAboutScreen'
+import { resolveAdminLinkOrigin } from '@/lib/admin/adminLinkOrigin'
 import { requireUserId } from '@/lib/auth/requireUserId'
 import {
   NINA_ABOUT_MEDIA_PAGE_COOKIE,
@@ -144,6 +145,15 @@ export default async function NinaAboutPage({ searchParams }: PageProps<'/nina/a
    */
   const returnTo = decodeAboutReturnTo(returnParam)
 
+  /*
+   * R4. The origin the viewer's copy-admin-link control may mint from, or `null` for every other
+   * signed-in runner. ONE nullable value, resolved here beside every other fact this page decides,
+   * and `resolveAdminLinkOrigin` rather than a bare `getAdminIdentity()` because `isAdminEmail`
+   * reaches a lazy env group that throws when `ADMIN_EMAILS` is unset — Production-scope only in
+   * Vercel, absent from this repo's `.env.local` (plan invariant 7).
+   */
+  const adminLinkOrigin = await resolveAdminLinkOrigin()
+
   return (
     <AppShell>
       {/*
@@ -164,6 +174,7 @@ export default async function NinaAboutPage({ searchParams }: PageProps<'/nina/a
         resolvedCurrentAvatar={resolvedCurrentAvatar}
         resolvedAlbumPhoto={resolvedAlbumPhoto}
         returnTo={returnTo}
+        adminLinkOrigin={adminLinkOrigin}
       />
     </AppShell>
   )

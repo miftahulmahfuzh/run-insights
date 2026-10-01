@@ -4,6 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 
+import { CopyAdminLinkButton } from '@/components/ui/CopyAdminLinkButton'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { PhotoViewer } from '@/components/ui/PhotoViewer'
 import {
@@ -132,6 +133,7 @@ export function ChatScreen({
   flight,
   avatar,
   flashBlinks,
+  adminLinkOrigin,
 }: {
   /** The stored conversation, oldest first, mapped on the server. */
   initial: readonly ChatMessage[]
@@ -248,6 +250,26 @@ export function ChatScreen({
    * for a CSS var that stopped arriving, never for a caller that did not send the number.
    */
   flashBlinks: number
+  /**
+   * **R4. The origin an admin may mint a `/admin/nina` link from, or `null` for everyone else.**
+   *
+   * Resolved on the server by `resolveAdminLinkOrigin()` (`lib/admin/adminLinkOrigin.ts`) and
+   * threaded down as ONE nullable value, because the viewer's copy-admin-link control needs both an
+   * absolute origin and an admin verdict and two props that must agree are two props that will one
+   * day disagree. `null` renders no control at all, so a non-admin's payload carries nothing to
+   * hide — the hiding is structural, not a render-time `if`.
+   *
+   * **Never `window.location.origin`** (repo invariant 9). The link is pasted into WhatsApp and
+   * opened on a desktop later; a preview deployment's hostname dies at the next push.
+   * `app/admin/nina/page.tsx` is the shipped precedent for threading `shareOrigin()` this way.
+   *
+   * REQUIRED rather than optional, on RULING E2b's habit and for the reason `sessionId`,
+   * `pendingPhoto`, `flight`, `avatar` and `flashBlinks` all are: `app/nina/page.tsx` is the one
+   * caller and `tsc` should be what notices if it stops passing it. An optional prop defaulting to
+   * `null` would turn a broken page into a chat that silently never showed the admin his own
+   * control.
+   */
+  adminLinkOrigin: string | null
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>(() => [...initial])
   /*
@@ -691,25 +713,44 @@ export function ChatScreen({
             />
           }
           /*
-           * The 2026-09-18 fullscreen-to-job-detail link — the OTHER direction of
+           * ── THE HEADER'S CLUSTER: UP TO TWO CONTROLS, LEFT OF THE CLOSE ✕ ────────────────────
+           * `PhotoViewer` renders this slot bare into a `flex shrink-0 items-center` row beside the
+           * close button, so a fragment of two 44 px controls needs no change over there — see the
+           * comment in `PhotoViewer.tsx`'s header row, which this relies on and does not touch.
+           *
+           * LEFT: the 2026-10-01 copy-admin-link button (R1/R3/R4). `photo.rowPointer` is the
+           * `nina_message_images` row — `chatSessionPhotos` sets it, and it is ABSENT exactly for
+           * the optimistic bubble whose rows are not written yet, the same condition that already
+           * hides the attach control. `adminLinkOrigin` is `null` for every non-admin, so for them
+           * this half does not exist at all rather than existing and being hidden (R4).
+           *
+           * RIGHT: the 2026-09-18 fullscreen-to-job-detail link — the OTHER direction of
            * `NinaJobDetail`'s "open this job's photograph full-screen" button (`Maximize2Icon`).
-           * `photo.id` is `ChatViewerPhoto`'s job id, set only on a generated photo whose caption
-           * bubble carries a `turn_id` — see `chatViewerPhotos`. Absent renders nothing, the same
-           * promise every other `headerAction` caller keeps.
+           * `photo.id` is `ChatViewerPhoto`'s JOB id, set only on a generated photo whose caption
+           * bubble carries a `turn_id` — see `chatViewerPhotos`. Two different handles to two
+           * different tables, deliberately never collapsed into one (plan invariant 3).
+           *
+           * Either half absent renders nothing, and both absent renders an empty fragment — zero
+           * DOM nodes, which is the header this screen has always drawn.
            */
-          headerAction={(photo) =>
-            photo.id == null ? null : (
-              <Link
-                href={ninaJobHref(photo.id)}
-                onClick={closeViewer}
-                aria-label="Buka detail job foto ini"
-                title="Buka detail job foto ini"
-                className="grid size-11 place-items-center rounded-pill text-card"
-              >
-                <JobDetailIcon className="size-5" />
-              </Link>
-            )
-          }
+          headerAction={(photo) => (
+            <>
+              {adminLinkOrigin !== null && photo.rowPointer != null && (
+                <CopyAdminLinkButton pointer={photo.rowPointer} origin={adminLinkOrigin} />
+              )}
+              {photo.id != null && (
+                <Link
+                  href={ninaJobHref(photo.id)}
+                  onClick={closeViewer}
+                  aria-label="Buka detail job foto ini"
+                  title="Buka detail job foto ini"
+                  className="grid size-11 place-items-center rounded-pill text-card"
+                >
+                  <JobDetailIcon className="size-5" />
+                </Link>
+              )}
+            </>
+          )}
         />
       )}
     </>

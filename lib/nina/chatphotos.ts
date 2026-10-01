@@ -1,4 +1,5 @@
 import { NINA_SIDE_LABEL, photoSideOf } from './album'
+import type { PhotoPointer } from '@/lib/photos/pointer'
 
 /**
  * R10's three rules, as pure functions — `lib/photos/gallery.ts`'s carve-out applied to the chat
@@ -145,6 +146,26 @@ export interface ChatSessionPhoto extends ChatViewerPhoto {
    * edit arming the composer with a job id.
    */
   attachId: string | null
+  /**
+   * **The same row, spelled as a `PhotoPointer`** — `ViewerPhoto`'s admin handle, which is what
+   * the copy-admin-link button in the viewer header mints its URL from (2026-10-01, R1/R3).
+   *
+   * ── WHY A THIRD FIELD, WHEN `attachId` IS THE SAME STRING ────────────────────────────────────
+   * Because the two consumers want different shapes and sit on different sides of a prop boundary.
+   * `attachId` is read by `usePhotoViewer` and `ChatScreen`, which hold the full `ChatSessionPhoto`.
+   * The header control is handed a `ViewerPhoto` by `PhotoViewer` and can see only what that
+   * narrower type declares — so the handle has to live there, under the name the overlay's own
+   * contract gives it, carrying the TABLE as well as the id. Deriving it here rather than at the
+   * call site keeps the "this is a `nina_message_images` row" claim in the one module that is
+   * allowed to make it.
+   *
+   * **ABSENT, not `null`, when there is no row** — the optimistic bubble whose rows have not been
+   * written yet, the same condition that already hides the attach control. `headerAction` then
+   * renders no button for it, which is the promise every optional `ViewerPhoto` field makes.
+   *
+   * Invariant 5 is untouched: this is an id, never prose.
+   */
+  rowPointer?: PhotoPointer
 }
 
 /**
@@ -185,11 +206,17 @@ export function chatSessionPhotos(
   for (const message of messages) {
     const photos = chatViewerPhotos(message)
     for (let index = 0; index < photos.length; index += 1) {
+      const attachId = attachableIdAt(message.imageIds, index)
       flat.push({
         ...photos[index]!,
         messageId: message.id,
         indexWithinMessage: index,
-        attachId: attachableIdAt(message.imageIds, index),
+        attachId,
+        /* Spread rather than `rowPointer: attachId === null ? undefined : …`, because
+         * `Object.keys` counts a key whose value is `undefined` and the optimistic row must carry
+         * no handle at all — "absent renders nothing" is a claim about the KEY, and
+         * `chatphotos.test.ts` asserts the exact key set. */
+        ...(attachId === null ? {} : { rowPointer: { kind: 'image' as const, id: attachId } }),
       })
     }
   }

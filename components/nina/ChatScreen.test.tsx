@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { sendNinaMessage, resendNinaMessage, pollNinaReply } = vi.hoisted(() => ({
@@ -31,12 +32,17 @@ vi.mock('./MessageList', () => ({
     messages: ReadonlyArray<{ id: string; body: string; state: string }>
     typing: boolean
     onRequestActions?: (message: { id: string; body: string; state: string }) => void
+    onOpenImage?: (messageId: string, index: number) => void
   }) => (
     <div data-testid="message-list" data-typing={props.typing}>
       {props.messages.map((m) => (
         <div key={m.id} data-testid="message" data-state={m.state}>
           <span>{m.body}</span>
           <button onClick={() => props.onRequestActions?.(m)}>{`actions:${m.id}`}</button>
+          {/* The overlay's open gesture. `ChatImages` is bubble-local and hands back
+              `(messageId, indexWithinMessage)`; that is exactly the pair `handleOpenImage` takes,
+              so this stub can stand in for the grid without knowing anything about it. */}
+          <button onClick={() => props.onOpenImage?.(m.id, 0)}>{`open-photo:${m.id}`}</button>
         </div>
       ))}
     </div>
@@ -76,12 +82,28 @@ vi.mock('./MessageActionsSheet', () => ({
 }))
 
 vi.mock('./KeyboardOverlapPublisher', () => ({ KeyboardOverlapPublisher: () => null }))
-vi.mock('@/components/ui/PhotoViewer', () => ({ PhotoViewer: () => null }))
+// A probe, not a render: PhotoViewer's own behaviour (swipe, wrap, keys, the header row's
+// geometry) is covered in `components/ui/PhotoViewer.test.tsx`. What this screen owes it is the
+// right LIST and the right header CLUSTER for the photograph on screen, so the stub renders the
+// slot and nothing else. `rowPointer` is phase 3's `ViewerPhoto` field; the real overlay passes
+// `photos[index]` to the slot and so does this.
+vi.mock('@/components/ui/PhotoViewer', () => ({
+  PhotoViewer: (props: {
+    photos: { id?: string; rowPointer?: { kind: string; id: string } }[]
+    index: number
+    headerAction?: (photo: { id?: string; rowPointer?: { kind: string; id: string } }) => ReactNode
+  }) => (
+    <div data-testid="viewer" data-count={props.photos.length}>
+      {props.headerAction?.(props.photos[props.index]!)}
+    </div>
+  ),
+}))
 vi.mock('./ChatPhotoActions', () => ({ ChatPhotoActions: () => null }))
 
 // Below every vi.mock() above: harmless in source order (Vitest hoists vi.mock calls above every
 // import in this file regardless of where they are written), but keeping the real imports after
 // the mocks they depend on reads correctly too.
+import { COPY_ADMIN_LINK_LABEL } from '@/components/ui/CopyAdminLinkButton'
 import { ChatScreen } from './ChatScreen'
 import type { ChatAvatar, ChatMessage } from './types'
 
@@ -100,6 +122,7 @@ const MSG_ID = 'msg000000001'
 function baseProps(overrides?: {
   initial?: readonly ChatMessage[]
   flight?: { awaiting: boolean; cursor: number }
+  adminLinkOrigin?: string | null
 }) {
   return {
     initial: overrides?.initial ?? [],
@@ -111,6 +134,27 @@ function baseProps(overrides?: {
     flight: overrides?.flight ?? NOT_AWAITING,
     avatar: AVATAR,
     flashBlinks: 4,
+    /* R4's default is the one that must be safe: a signed-in NON-admin. Every pre-existing case in
+     * this file therefore asserts the header a stranger sees, which is the half the exit criteria
+     * call byte-identical. */
+    adminLinkOrigin: overrides?.adminLinkOrigin ?? null,
+  }
+}
+
+/** A bubble carrying one of Nina's selfies: an image row id for the admin link, and a turn id for
+ *  the job link, so one fixture exercises both halves of the cluster. */
+function photoMessage(): ChatMessage {
+  return {
+    id: MSG_ID,
+    role: 'nina',
+    body: '',
+    dayISO: '2026-09-11',
+    state: 'sent',
+    replyToId: null,
+    imageUrls: ['https://blob.example/selfie.jpg'],
+    imageIds: ['img000000001'],
+    imageKinds: ['generated'],
+    turnId: 'job000000001',
   }
 }
 
@@ -323,5 +367,47 @@ describe('ChatScreen', () => {
     const [, , url] = replaceState.mock.calls[0]!
     expect(String(url)).toBe('?s=session-1')
     replaceState.mockRestore()
+  })
+})
+
+describe('ChatScreen — the viewer header cluster (R1/R3/R4)', () => {
+  function openTheOverlay(adminLinkOrigin: string | null) {
+    render(<ChatScreen {...baseProps({ initial: [photoMessage()], adminLinkOrigin })} />)
+    fireEvent.click(screen.getByText(`open-photo:${MSG_ID}`))
+    expect(screen.getByTestId('viewer')).toBeInTheDocument()
+  }
+
+  it('shows the copy-admin-link control beside the job link for the admin', () => {
+    openTheOverlay('https://runins.site')
+
+    expect(screen.getByRole('link', { name: 'Buka detail job foto ini' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: COPY_ADMIN_LINK_LABEL })).toBeInTheDocument()
+  })
+
+  it('renders NO copy control for a signed-in non-admin, and leaves the job link alone', () => {
+    // R4's half that matters: the header a stranger sees is the header that shipped before this
+    // feature. A null origin means the payload carries nothing to hide.
+    openTheOverlay(null)
+
+    expect(screen.getByRole('link', { name: 'Buka detail job foto ini' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: COPY_ADMIN_LINK_LABEL })).not.toBeInTheDocument()
+  })
+
+  it('renders no copy control on the optimistic row, which has no image row to link to', () => {
+    // `chatSessionPhotos` leaves `rowPointer` absent when the message carries no `imageIds` —
+    // ChatScreen's optimistic bubble describes rows that have not been written yet.
+    const optimistic: ChatMessage = {
+      ...photoMessage(),
+      imageIds: undefined,
+      imageUrls: ['blob:local'],
+    }
+    render(
+      <ChatScreen
+        {...baseProps({ initial: [optimistic], adminLinkOrigin: 'https://runins.site' })}
+      />,
+    )
+    fireEvent.click(screen.getByText(`open-photo:${MSG_ID}`))
+
+    expect(screen.queryByRole('button', { name: COPY_ADMIN_LINK_LABEL })).not.toBeInTheDocument()
   })
 })
