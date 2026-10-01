@@ -1401,10 +1401,14 @@ not a (T): it is the barrel contract test, not a pure module's suite.
 - **Photograph away** (since 2026-09-16): `promoteNinaAvatarDependents`/`promoteNinaImageDependents`
   (measure everything that re-shows it, while the link still exists) → the row DELETE (where
   `ON DELETE SET NULL` fires) → `releaseBlobIfUnreferenced` per object, or `reapAvatarBlobs`'
-  windowed `isBlobPathnameReferenced` + chunked `del` for the bulk paths. Five callers, one order:
+  windowed `isBlobPathnameReferenced` + chunked `del` for the bulk paths. Six callers, one order:
   `deleteNinaChatPhoto` (`albumActions.ts`), `removeChatPhotoAction`, `deleteNinaAvatarAction`,
-  `deleteNinaAlbumFolderAction` (via `listNinaAvatarIdsInFolderTree`, read BEFORE the delete) and
-  `removeNinaAvatarsAction`.
+  `deleteNinaAlbumFolderAction` (via `listNinaAvatarIdsInFolderTree`, read BEFORE the delete),
+  `removeNinaAvatarsAction`, and — since card #94, 2026-10-01 — `removeNinaMessage`
+  (`messageActions.ts`), which reads its image rows before `deleteNinaMessage` takes them and then
+  releases one object per distinct `pathname`. `removeNinaSession` is deliberately NOT a caller:
+  `nina_message_images.message_id` is `ON DELETE SET NULL`, so a deleted conversation leaves its
+  photographs — and their references — standing.
 - **Proactive**: cron per user → `resolveNinaPromises` → `evaluateAndEmitForUser` →
   `loadProactiveFacts` (which reads the `reminders` slot DIRECTLY through `readNinaReminders`, not
   off `context.memory.slots` — that path renders every value to a display STRING) →

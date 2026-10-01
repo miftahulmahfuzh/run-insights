@@ -505,7 +505,8 @@ export async function findNinaSignedOriginals(userId: string): Promise<
  *
  * NOT filtered, and a future "consistency" cleanup that adds it here is a data-loss bug —
  * these are what makes a photograph RENDER and what Nina is given to look at (invariant 2):
- *   · `getNinaMessageImagesForMessages` → every bubble, and the delete log
+ *   · `getNinaMessageImagesForMessages` → every bubble, and the handle `removeNinaMessage` promotes
+ *                                         and releases by
  *   · `getNinaMessageImage`             → the ?photo= deep link and the re-attach path
  *   · `getNinaJobPhoto`                 → the Detail foto row's photograph link (this set)
  *   · `dbNinaSourceGateway.readMessageWindow` / `.readConversation` → her context
