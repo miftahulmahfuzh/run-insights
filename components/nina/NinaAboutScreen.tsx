@@ -1,7 +1,6 @@
 'use client'
 
 import * as React from 'react'
-import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 
 import { Button } from '@/components/ui/Button'
@@ -10,9 +9,9 @@ import { PhotoViewer, type ViewerPhoto } from '@/components/ui/PhotoViewer'
 import { SAVE_NOTICE_TEXT, useSavePhoto } from '@/components/ui/useSavePhoto'
 import { cn } from '@/lib/cn'
 import { attachStripPadBottomCss, NINA_KEYBOARD_OVERLAP_VAR } from '@/lib/nina/chatview'
-import { ninaJobHref } from '@/lib/nina/jobview'
 import { NinaPhotoGrid, type NinaGridCell } from './NinaPhotoGrid'
 import { NinaAvatar } from './NinaAvatar'
+import { NinaJobDetailLink } from './NinaJobDetailLink'
 import { KeyboardOverlapPublisher } from './KeyboardOverlapPublisher'
 import {
   attachNinaPhotoToChat,
@@ -784,17 +783,28 @@ export function NinaAboutScreen({
              * `galleryViewer` set above; absent (an upload, or a photo predating this column)
              * renders nothing.
              *
-             * ── A PLAIN `<Link>`, AND IT DELIBERATELY DOES NOT CALL `close` ──────────────────────
+             * ── IT DELIBERATELY DOES NOT CALL `close` ───────────────────────────────────────────
              * The exact bug `NinaSidebar.tsx`'s wand and `NinaSearchField.tsx`'s hits both carry a
              * header about (measured in production, 2026-09-08): `close` calls
              * `window.history.back()` when this session pushed the `?photo=` entry, which it always
              * has here (any grid tap that opened the viewer went through `openAt`). Firing that in
-             * the SAME TICK as this Link's own push to `/nina/jobs/<id>` puts a back and a forward
-             * on one entry and races them — the tap looked like it did nothing because the back
-             * won.
+             * the SAME TICK as the control's own push to `/nina/jobs/<id>` puts a back and a
+             * forward on one entry and races them — the tap looked like it did nothing because the
+             * back won.
              *
              * It does not need to. `/nina/jobs/<id>` is a DIFFERENT ROUTE, so the navigation itself
-             * already leaves the `?photo=` overlay behind — no separate close call required.
+             * already leaves the `?photo=` overlay behind — no separate close call required. That
+             * is why `NinaJobDetailLink`'s `onNavigate` is left UNSET here while `ChatScreen`
+             * passes its `closeViewer`: the callback exists precisely so the two screens can
+             * disagree about this, and both be right.
+             *
+             * ── AND SINCE 2026-10-01 IT ASKS BEFORE IT GOES ──────────────────────────────────────
+             * `photo.id` is a `turn_id` recorded when the photograph arrived; the job row it names
+             * can be soft-deleted from `/nina/jobs` long afterwards, and `/nina/jobs/[id]` 404s on
+             * a hidden row by design. The shared control now pre-flights the id and, on a miss,
+             * shows one line for two seconds instead of navigating — which on THIS screen also
+             * means the `?photo=` entry is left exactly as it was, since nothing pushed and
+             * nothing closed.
              *
              * **The copy button must not close the viewer either, and for a stronger reason: it
              * performs NO navigation at all.** It writes the clipboard and shows a tick in place.
@@ -807,14 +817,7 @@ export function NinaAboutScreen({
                   <CopyAdminLinkButton pointer={photo.rowPointer} origin={adminLinkOrigin} />
                 )}
                 {open.section !== 'album' && photo.id != null && (
-                  <Link
-                    href={ninaJobHref(photo.id)}
-                    aria-label="Buka detail job foto ini"
-                    title="Buka detail job foto ini"
-                    className="grid size-11 place-items-center rounded-pill text-card"
-                  >
-                    <JobDetailIcon className="size-5" />
-                  </Link>
+                  <NinaJobDetailLink jobId={photo.id} />
                 )}
               </>
             )}
@@ -1181,29 +1184,6 @@ function ChevronRightIcon() {
       aria-hidden="true"
     >
       <path d="m9 18 6-6-6-6" />
-    </svg>
-  )
-}
-
-/** "Buka detail job foto ini" — `ChatScreen.tsx`'s `JobDetailIcon`, copied verbatim: same glyph,
- * same destination, a different screen. Lucide's `receipt-text`. `aria-hidden`: the link already
- * carries the accessible name. */
-function JobDetailIcon({ className }: { className: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      className={className}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z" />
-      <path d="M8 7h8" />
-      <path d="M8 11h8" />
-      <path d="M8 15h5" />
     </svg>
   )
 }

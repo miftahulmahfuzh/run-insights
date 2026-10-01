@@ -87,6 +87,34 @@ describe('every read that shows a job or schedules work on one skips a hidden ro
     expect(fake.only().sql).toContain(HIDDEN_SKIPPED)
   })
 
+  it('ninaImageJobIsVisible — the overlay control answers NO for a hidden job', async () => {
+    /*
+     * 2026-10-01's pre-flight (`components/nina/NinaJobDetailLink.tsx`). The point of the function
+     * is that it predicts what `/nina/jobs/[id]` would do, so the interesting assertion is not
+     * that it has the predicate — it is that it has the SAME FOUR as the read above, in the same
+     * shape. A pre-flight that is more permissive than the page sends the runner to the 404 this
+     * change exists to prevent; one that is stricter refuses a page that would have rendered.
+     */
+    fake.enqueue([])
+    await expect(jobs.ninaImageJobIsVisible('u1', JOB)).resolves.toBe(false)
+
+    const { sql, params } = fake.only()
+    expect(sql).toContain(HIDDEN_SKIPPED)
+    expect(sql).toContain('"user_id" = $')
+    expect(sql).toContain('"id" = $')
+    expect(sql).toContain('"kind" = $')
+    /* The trailing 1 is `limit(1)`'s bind — the three before it are the whole WHERE. */
+    expect(params).toEqual(['u1', JOB, 'image', 1])
+    /* One bit, one column, one row — never the detail read's `JOB_COLUMNS`. */
+    expect(sql).toMatch(/^select "id" from "nina_turns"/)
+    expect(sql).toContain('limit')
+  })
+
+  it('…and YES for a row the same WHERE finds', async () => {
+    fake.enqueue([[JOB]])
+    await expect(jobs.ninaImageJobIsVisible('u1', JOB)).resolves.toBe(true)
+  })
+
   it('listOpenNinaImageJobs — the strip skips a hidden row; the sweep it runs first does not', async () => {
     fake.enqueue([], []) // the sweep's SELECT, then the strip's
     await jobs.listOpenNinaImageJobs('u1')

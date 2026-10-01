@@ -17,11 +17,21 @@ const { editNinaMessage, removeNinaMessage } = vi.hoisted(() => ({
 }))
 vi.mock('@/lib/nina/messageActions', () => ({ editNinaMessage, removeNinaMessage }))
 
-const routerRefresh = vi.hoisted(() => vi.fn())
+const { routerRefresh, routerPush } = vi.hoisted(() => ({
+  routerRefresh: vi.fn(),
+  routerPush: vi.fn(),
+}))
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ refresh: routerRefresh }),
+  useRouter: () => ({ refresh: routerRefresh, push: routerPush }),
   useSearchParams: () => new URLSearchParams(),
 }))
+
+// The viewer header's job-detail control pre-flights the job id through this action before it
+// navigates (`NinaJobDetailLink`). The real module is `'use server'` over the db layer; the rule
+// it enforces is that component's own and is tested there — here it is a seam, so the overlay
+// tests can say "the job is still there" or "it is gone" in one line.
+const { ninaImageJobExists } = vi.hoisted(() => ({ ninaImageJobExists: vi.fn() }))
+vi.mock('@/lib/nina/jobActions', () => ({ ninaImageJobExists }))
 
 // The children below own their own rendering, timers and DOM measurement (scroll physics,
 // keyboard overlap, ResizeObserver-driven focus reassertion) and are covered — or are coverable —
@@ -104,6 +114,7 @@ vi.mock('./ChatPhotoActions', () => ({ ChatPhotoActions: () => null }))
 // import in this file regardless of where they are written), but keeping the real imports after
 // the mocks they depend on reads correctly too.
 import { COPY_ADMIN_LINK_LABEL } from '@/components/ui/CopyAdminLinkButton'
+import { NINA_JOB_GONE_NOTE } from '@/lib/nina/jobview'
 import { ChatScreen } from './ChatScreen'
 import type { ChatAvatar, ChatMessage } from './types'
 
@@ -169,6 +180,11 @@ beforeEach(() => {
   editNinaMessage.mockReset()
   removeNinaMessage.mockReset()
   routerRefresh.mockReset()
+  routerPush.mockReset()
+  ninaImageJobExists.mockReset()
+  /* The overwhelmingly common case, and the one every pre-existing overlay test assumes: the job
+   * behind the photograph is still there. The two tests that care override it. */
+  ninaImageJobExists.mockResolvedValue({ exists: true })
   // Never resolves within a test's lifetime unless a test overrides it. The arrival loop this
   // starts is covered by lib/nina/turnflight.test.ts; here it only needs to not throw while a
   // test asserts on the synchronous send/edit/delete wiring, and its own effect cleanup (cleared
@@ -391,6 +407,36 @@ describe('ChatScreen — the viewer header cluster (R1/R3/R4)', () => {
 
     expect(screen.getByRole('link', { name: 'Buka detail job foto ini' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: COPY_ADMIN_LINK_LABEL })).not.toBeInTheDocument()
+  })
+
+  it('opens the job page when the job is still there, closing the overlay behind it', async () => {
+    openTheOverlay(null)
+
+    fireEvent.click(screen.getByRole('link', { name: 'Buka detail job foto ini' }))
+
+    await waitFor(() => expect(routerPush).toHaveBeenCalledWith('/nina/jobs/job000000001'))
+    expect(ninaImageJobExists).toHaveBeenCalledWith({ jobId: 'job000000001' })
+    // `onNavigate` is `closeViewer` here, and this screen's viewer is plain state — so a
+    // successful tap takes the overlay down with it, exactly as the unguarded `<Link onClick>`
+    // this replaced always did.
+    await waitFor(() => expect(screen.queryByTestId('viewer')).not.toBeInTheDocument())
+  })
+
+  it('a deleted job does not navigate, does not close the overlay, and says one line', async () => {
+    // The whole of the 2026-10-01 bug report: "if the page does not exist (has been deleted, etc)
+    // we do not redirect after pressing the button, user only got a 2sec one-line notification
+    // popup". `turnId` outlives the job row — `/nina/jobs`'s trash icon soft-deletes one — so this
+    // is the live production shape, not a contrived one.
+    ninaImageJobExists.mockResolvedValue({ exists: false })
+    openTheOverlay(null)
+
+    fireEvent.click(screen.getByRole('link', { name: 'Buka detail job foto ini' }))
+
+    expect(await screen.findByText(NINA_JOB_GONE_NOTE)).toBeInTheDocument()
+    expect(routerPush).not.toHaveBeenCalled()
+    // Still looking at the photograph. This is the half that distinguishes the fix from "navigate
+    // and show an error on the next page".
+    expect(screen.getByTestId('viewer')).toBeInTheDocument()
   })
 
   it('renders no copy control on the optimistic row, which has no image row to link to', () => {

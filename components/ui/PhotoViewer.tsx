@@ -64,9 +64,10 @@ export interface ViewerPhoto {
    *
    * ── WHY THIS IS NOT `id` ABOVE, AND MUST NEVER BECOME IT ─────────────────────────────────────
    * Because `id` is already spoken for, by something that breaks loudly and on two screens at once.
-   * On both Nina surfaces it carries the image-generation TURN id: `ChatScreen.tsx:703` and
-   * `NinaAboutScreen.tsx:757` hand it straight to `ninaJobHref` for the "Buka detail job foto ini"
-   * link, and `lib/nina/chatphotos.ts:26-32` documents it as such. A photograph's own row id is a
+   * On both Nina surfaces it carries the image-generation TURN id: `ChatScreen.tsx` and
+   * `NinaAboutScreen.tsx` hand it straight to `components/nina/NinaJobDetailLink.tsx`, whose
+   * destination is `ninaJobHref` — the "Buka detail job foto ini" control — and
+   * `lib/nina/chatphotos.ts:26-32` documents it as such. A photograph's own row id is a
    * different id in a different table, so overloading `id` would point both of those links at
    * `/nina/jobs/<a nina_message_images id>` — a page that does not exist — while still compiling
    * and still rendering a plausible-looking button.

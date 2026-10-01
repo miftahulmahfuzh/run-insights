@@ -28,6 +28,12 @@ const { attachNinaPhotoToChat, deleteNinaChatPhoto } = vi.hoisted(() => ({
 }))
 vi.mock('@/lib/nina/albumActions', () => ({ attachNinaPhotoToChat, deleteNinaChatPhoto }))
 
+// The viewer header's job-detail control pre-flights the job id through this action before it
+// navigates (`NinaJobDetailLink`). The real module is `'use server'` over the db layer; the rule
+// it enforces is that component's own and is tested there — here it is a seam.
+const { ninaImageJobExists } = vi.hoisted(() => ({ ninaImageJobExists: vi.fn() }))
+vi.mock('@/lib/nina/jobActions', () => ({ ninaImageJobExists }))
+
 const { fetchNinaAlbumPage, fetchNinaMediaPage } = vi.hoisted(() => ({
   fetchNinaAlbumPage: vi.fn(),
   fetchNinaMediaPage: vi.fn(),
@@ -77,6 +83,7 @@ import {
   type NinaGalleryPhoto,
 } from '@/lib/nina/album'
 import { attachStripPadBottomCss, NINA_KEYBOARD_OVERLAP_VAR } from '@/lib/nina/chatview'
+import { NINA_JOB_GONE_NOTE } from '@/lib/nina/jobview'
 
 const AVATAR: NinaAvatarView = {
   id: 'a2',
@@ -153,6 +160,9 @@ beforeEach(() => {
   routerPush.mockReset()
   routerRefresh.mockReset()
   routerReplace.mockReset()
+  /* The common case every pre-existing overlay test assumes: the job behind the photograph is
+   * still there. The deleted-job case overrides it. */
+  ninaImageJobExists.mockReset().mockResolvedValue({ exists: true })
   window.history.replaceState(null, '', '/nina/about')
 })
 
@@ -484,33 +494,50 @@ describe('NinaAboutScreen — the viewer', () => {
     expect(viewer()).toBeNull()
   })
 
-  it('the job-detail link fires no close callback — a push must not race a history.back()', () => {
+  it('the job-detail link fires no close callback — a push must not race a history.back()', async () => {
     // The pushed `?photo=` entry is live here exactly as it is after any grid tap (`openAt`), so
     // this is the case that raced in production on the sidebar's search hits and wand
-    // (`NinaSearchField.tsx`, `NinaSidebar.tsx`): if this Link's `onClick` called `close()`, the
-    // resulting `history.back()` would pop this same entry the instant the link is tapped.
+    // (`NinaSearchField.tsx`, `NinaSidebar.tsx`): if this control called `close()`, the resulting
+    // `history.back()` would pop this same entry the instant it is tapped. `NinaJobDetailLink`
+    // takes an `onNavigate` precisely so this screen can leave it unset; the assertion is that
+    // this screen leaves it unset.
     at('chat', 'c1')
     renderScreen({
       gallery: [{ ...galleryPhoto('c1', 'his'), turnId: 'job-1' }, galleryPhoto('c2', 'hers')],
     })
     expect(viewer()).not.toBeNull()
 
-    // happy-dom, unlike a real Next `<Link>` with router context, has no soft-navigation to
-    // intercept the click — it follows the anchor's `href` for real once the event finishes. A
-    // capture-phase `preventDefault` neutralises that so this test isolates what the `onClick`
-    // prop itself does, the same way `AppRouterContext`'s absence lets `Link`'s own `onClick` run
-    // without ever reaching `linkClicked` (`node_modules/next/dist/client/app-dir/link.js`).
-    const stopNativeNav = (event: Event) => event.preventDefault()
-    document.addEventListener('click', stopNativeNav, { capture: true })
-    try {
-      fireEvent.click(screen.getByRole('link', { name: 'Buka detail job foto ini' }))
-    } finally {
-      document.removeEventListener('click', stopNativeNav, { capture: true })
-    }
+    // No capture-phase `preventDefault` guard any more. happy-dom follows an anchor's `href` for
+    // real once the event finishes — but since 2026-10-01 the control's own handler calls
+    // `preventDefault` on every unmodified primary click (it has to: the navigation now happens
+    // after a round trip), so there is no native navigation left to neutralise.
+    fireEvent.click(screen.getByRole('link', { name: 'Buka detail job foto ini' }))
 
-    // If `close` were still wired, this default `returnTo: null` fixture would take its final
-    // branch and strip the parameter via `replaceState` — observable here with no rerender
-    // needed, since it is a direct write to the URL, not React state.
+    await waitFor(() => expect(routerPush).toHaveBeenCalledWith('/nina/jobs/job-1'))
+    // If `close` were wired, this default `returnTo: null` fixture would take its final branch and
+    // strip the parameter via `replaceState` — observable here with no rerender needed, since it
+    // is a direct write to the URL, not React state.
+    expect(window.location.search).toBe(`?${NINA_ABOUT_PHOTO_PARAM}=chat.c1`)
+    expect(viewer()).not.toBeNull()
+  })
+
+  it('a deleted job keeps the overlay, the URL and the history exactly as they were', async () => {
+    // 2026-10-01: `turnId` is written when the photograph arrives and outlives the job row, which
+    // `/nina/jobs`'s trash icon soft-deletes. The old `<Link>` walked the runner onto a 404; the
+    // guarded control says one line and stays put. On THIS screen "stays put" is three facts, not
+    // one — no push, no close, and no `replaceState` — because a navigation here would also have
+    // consumed the pushed `?photo=` entry.
+    ninaImageJobExists.mockResolvedValue({ exists: false })
+    at('chat', 'c1')
+    renderScreen({
+      gallery: [{ ...galleryPhoto('c1', 'his'), turnId: 'job-1' }, galleryPhoto('c2', 'hers')],
+    })
+
+    fireEvent.click(screen.getByRole('link', { name: 'Buka detail job foto ini' }))
+
+    expect(await screen.findByText(NINA_JOB_GONE_NOTE)).toBeInTheDocument()
+    expect(routerPush).not.toHaveBeenCalled()
+    expect(routerReplace).not.toHaveBeenCalled()
     expect(window.location.search).toBe(`?${NINA_ABOUT_PHOTO_PARAM}=chat.c1`)
     expect(viewer()).not.toBeNull()
   })

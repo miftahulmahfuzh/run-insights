@@ -16,9 +16,9 @@ const COPIED_HOLD_MS = 2000
 /**
  * The control's words. Indonesian, because its two mount points are Nina's own client surfaces and
  * the header control already standing there says "Buka detail job foto ini"
- * (`ChatScreen.tsx:705`, `NinaAboutScreen.tsx:758`) — one header row, two languages, is the drift
- * these constants exist to prevent. The admin rail's English stays where it is; this button never
- * renders there.
+ * (`components/nina/NinaJobDetailLink.tsx`, rendered by both) — one header row, two languages,
+ * is the drift these constants exist to prevent. The admin rail's English stays where it is; this
+ * button never renders there.
  *
  * Exported so the test asserts the same strings the component renders rather than a second copy of
  * them.
@@ -224,8 +224,9 @@ export function CopyAdminLinkButton({
  * `JobDetailIcon`, a *destination* glyph for a control that navigates; two link-ish marks in one
  * 88 px row would say "two ways to go somewhere" when one of them goes nowhere at all.
  *
- * `strokeWidth` 2 and a caller-supplied `size-5`, matching `JobDetailIcon` (`ChatScreen.tsx:722`)
- * and the ✕ beside it, so the header row stays visually even. `aria-hidden`: the button carries the
+ * `strokeWidth` 2 and a caller-supplied `size-5`, matching `JobDetailIcon`
+ * (`components/nina/NinaJobDetailLink.tsx`) and the ✕ beside it, so the header row stays
+ * visually even. `aria-hidden`: the button carries the
  * accessible name, never the picture — `components/admin/photoIcons.tsx`'s rule for the repo.
  */
 function CopyIcon({ className }: { className: string }) {

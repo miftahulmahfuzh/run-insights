@@ -75,8 +75,11 @@ vi.mock('next/server', () => ({
  * `tests/db.ownership.test.ts`'s question and this file does not duplicate it.
  */
 vi.mock('@/lib/db', () => {
-  const thenable = (rows: () => unknown[]) => ({
+  const thenable = (rows: () => unknown[]): Record<string, unknown> => ({
     returning: () => Promise.resolve(rows()),
+    /* `ninaImageJobIsVisible` ends its chain with `.limit(1)`; every other read here ends at
+     * `where()`. Returning the same thenable keeps both spellings awaitable. */
+    limit: () => thenable(rows),
     then: (ok: (v: unknown) => unknown, err?: (e: unknown) => unknown) =>
       Promise.resolve(rows()).then(ok, err),
   })
@@ -513,6 +516,60 @@ describe('deleteNinaImageJob authenticates first and refuses without writing', (
     await actions.deleteNinaImageJob({ jobId: FAILED_JOB })
 
     expect(insertNinaTurn).not.toHaveBeenCalled()
+    expect(deferred).toHaveLength(0)
+  })
+})
+
+/**
+ * **2026-10-01: the overlay's pre-flight, which is the one READ action in this module.**
+ *
+ * The runner's bug: *"if the job page does not exist, we still redirect it to a 404 page"*. The
+ * full-view control is minted from the photograph's `turn_id`, which outlives the job row a
+ * `deleteNinaImageJob` just hid two describes up — so the tap now asks this before it navigates.
+ *
+ * Two properties, and they are the same two the delete has: line one is the auth call, and the
+ * answer is not an oracle. A malformed id, a foreign job, a job that never existed and a job
+ * already hidden are one answer, `{ exists: false }` — the same set `/nina/jobs/[id]` 404s. What
+ * the WHERE contains is `tests/nina.softDelete.test.ts`'s question, not this file's.
+ */
+describe('ninaImageJobExists authenticates first and tells nobody which ids are real', () => {
+  it('bounces a malformed job id before it reaches the database', async () => {
+    /* ARMED TO SUCCEED and refused anyway, which proves the statement was never issued rather
+     * than merely that it matched nothing. */
+    dbRows.select = failedRow()
+
+    await expect(actions.ninaImageJobExists({ jobId: 'nope' })).resolves.toEqual({ exists: false })
+
+    expect(requireUserId).toHaveBeenCalledOnce()
+  })
+
+  it('answers false for a foreign, unknown or hidden job — one answer for all three', async () => {
+    dbRows.select = []
+
+    await expect(actions.ninaImageJobExists({ jobId: FAILED_JOB })).resolves.toEqual({
+      exists: false,
+    })
+  })
+
+  it('answers true for a job of his that is still visible', async () => {
+    dbRows.select = failedRow()
+
+    await expect(actions.ninaImageJobExists({ jobId: FAILED_JOB })).resolves.toEqual({
+      exists: true,
+    })
+  })
+
+  it('writes nothing, schedules nothing and invalidates nothing', async () => {
+    /* It is a read in a file of mutations, and the only thing that keeps that honest is that it
+     * stays one. A `revalidatePath` here would re-render the list on every tap of a control that
+     * is not even on that screen. */
+    dbRows.select = failedRow()
+
+    await actions.ninaImageJobExists({ jobId: FAILED_JOB })
+
+    expect(updateCalls).toHaveLength(0)
+    expect(insertNinaTurn).not.toHaveBeenCalled()
+    expect(revalidatePath).not.toHaveBeenCalled()
     expect(deferred).toHaveLength(0)
   })
 })
