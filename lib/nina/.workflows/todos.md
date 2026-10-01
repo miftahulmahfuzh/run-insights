@@ -3,16 +3,16 @@
 **Package Path**: `lib/nina`
 **Package Code**: NIN
 **Last Updated**: 2026-10-01
-**Total Active Tasks**: 1
+**Total Active Tasks**: 0
 
 ## Quick Stats
 - P0 Critical: 0
 - P1 High: 0
-- P2 Medium: 1
+- P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 60
+- Completed: 61
 - Archived: 36
 
 ---
@@ -22,17 +22,6 @@
 ### [P1] High
 
 ### [P2] Medium
-
-- [ ] **P2-NIN-A003** `locateNinaAvatar` always returns offset 0 — the album `?avatar=` deep link lands on page 1 for every photograph
-  - **Difficulty**: NORMAL
-  - **Type**: Bug
-  - **Context**: Live on `main` today, independent of any plan set. `lib/nina/queries/avatars.ts:667-673` computes the album offset with a correlated subquery whose outer references are bare drizzle `Column` objects — `earlier.user_id = ${ninaAvatars.userId}`, and the same for `folder`, `created_at` and `id`. **Inside a single-table `select()` projection drizzle renders a bare Column UNQUALIFIED**, so each outer reference emits as `"user_id"` / `"folder"` / `"created_at"` / `"id"` and Postgres binds it to the innermost range table, which is `earlier` itself. Every arm of the subquery becomes a tautology and the tuple comparison becomes `(x, y) > (x, y)`, so `count(*)` is 0 for every row. Consequence: `/admin/nina?avatar=<id>` resolves to page 1 of the folder regardless of where the photograph actually sits. Invisible whenever the folder fits on one page, which is why it has gone unnoticed.
-  - **Discovered**: 2026-10-01, by phase 2 of the `copy-admin-media-link` plan set, which hit the identical defect in its own new query and fixed it there (`6e8e7a1`). Verified independently against `origin/main` by that set's coordinator before this card was raised.
-  - **Fix**: mechanical — route each outer column through the nested-`sql` `outerRef()` helper that now ships in `lib/nina/queries/images.ts`, which forces the qualified spelling, and pin that spelling in a SQL-contract test exactly as `tests/nina.mediaLocate.test.ts` does for `locateNinaMediaPhoto`.
-  - **TRAP — read before "verifying" a fix**: the test suite's fake DB driver **filters nothing**, so a behavioural test over this query goes green whether the offset is right or wrong. It was green over the broken code for the whole life of the defect. The only witness is an assertion on the GENERATED SQL TEXT. A fix validated by a behavioural test has not been validated.
-  - **Why it was not fixed in `copy-admin-media-link`**: `lib/nina/queries/avatars.ts` is in no phase's **Owns** in that set, and its requirements R1-R4 are all the new copy-admin-link button. Decided on rung 4 (the plan index's Why and Requirements), reinforced at rung 6 — widening a phase's Owns mid-flight would have dissolved the file-disjointness that let two sessions share one worktree. Recorded in that set's ledger and in `locateNinaMediaPhoto`'s header so it is not re-discovered as a mystery.
-  - **Files**: lib/nina/queries/avatars.ts, tests/ (a new or extended SQL-contract suite)
-  - **Reference**: `lib/nina/queries/images.ts` (`outerRef`, the working pattern), `tests/nina.mediaLocate.test.ts` (the contract-test shape), merge `b1cb864`
 
 ### [P3] Low
 
@@ -45,6 +34,24 @@
 (all thirty-five completed tasks were archived on 2026-09-12 — see Archive; full
 per-task detail — Context, Drift, Decided, Files — survives in git history and in
 `.workflows/package_readme.md`)
+
+- [x] **P2-NIN-A003** `locateNinaAvatar` always returns offset 0 — the album `?avatar=` deep link lands on page 1 for every photograph
+  - **Difficulty**: NORMAL
+  - **Type**: Bug
+  - **Context**: Live on `main` today, independent of any plan set. `lib/nina/queries/avatars.ts:667-673` computes the album offset with a correlated subquery whose outer references are bare drizzle `Column` objects — `earlier.user_id = ${ninaAvatars.userId}`, and the same for `folder`, `created_at` and `id`. **Inside a single-table `select()` projection drizzle renders a bare Column UNQUALIFIED**, so each outer reference emits as `"user_id"` / `"folder"` / `"created_at"` / `"id"` and Postgres binds it to the innermost range table, which is `earlier` itself. Every arm of the subquery becomes a tautology and the tuple comparison becomes `(x, y) > (x, y)`, so `count(*)` is 0 for every row. Consequence: `/admin/nina?avatar=<id>` resolves to page 1 of the folder regardless of where the photograph actually sits. Invisible whenever the folder fits on one page, which is why it has gone unnoticed.
+  - **Discovered**: 2026-10-01, by phase 2 of the `copy-admin-media-link` plan set, which hit the identical defect in its own new query and fixed it there (`6e8e7a1`). Verified independently against `origin/main` by that set's coordinator before this card was raised.
+  - **Fix**: mechanical — route each outer column through the nested-`sql` `outerRef()` helper that now ships in `lib/nina/queries/images.ts`, which forces the qualified spelling, and pin that spelling in a SQL-contract test exactly as `tests/nina.mediaLocate.test.ts` does for `locateNinaMediaPhoto`.
+  - **TRAP — read before "verifying" a fix**: the test suite's fake DB driver **filters nothing**, so a behavioural test over this query goes green whether the offset is right or wrong. It was green over the broken code for the whole life of the defect. The only witness is an assertion on the GENERATED SQL TEXT. A fix validated by a behavioural test has not been validated.
+  - **Why it was not fixed in `copy-admin-media-link`**: `lib/nina/queries/avatars.ts` is in no phase's **Owns** in that set, and its requirements R1-R4 are all the new copy-admin-link button. Decided on rung 4 (the plan index's Why and Requirements), reinforced at rung 6 — widening a phase's Owns mid-flight would have dissolved the file-disjointness that let two sessions share one worktree. Recorded in that set's ledger and in `locateNinaMediaPhoto`'s header so it is not re-discovered as a mystery.
+  - **Files**: lib/nina/queries/avatars.ts, tests/ (a new or extended SQL-contract suite)
+  - **Reference**: `lib/nina/queries/images.ts` (`outerRef`, the working pattern), `tests/nina.mediaLocate.test.ts` (the contract-test shape), merge `b1cb864`
+  - **Status**: completed
+  - **Completed**: 2026-10-01 12:20
+  - **Method**: /analyze-orchestrator follow-up, TDD — the SQL-contract test was written and watched fail against the shipped query before the fix existed
+  - **Fix as landed**: `outerRef()` moved from module-private in `lib/nina/queries/images.ts` into `lib/nina/queries/columns.ts`, the module-internal shared home the barrel deliberately does not re-export, and applied to all four outer references in `locateNinaAvatar`. `images.ts` now imports the one copy instead of holding its own — a second copy is how the next correlated subquery gets written without it.
+  - **Verified**: RED first — the suite failed with the defect visible in the generated SQL (`earlier.user_id = "user_id"`, `earlier.folder = "folder"`, `(earlier.created_at, earlier.id) > ("created_at", "id")`, every arm a tautology). GREEN after — `earlier.user_id = "nina_avatars"."user_id"` and the qualified tuple on both sides. Full gate: `npm run typecheck` clean; `npm test` 6763/6763 across 378 files; `npm run lint`, `npm run format:check` clean; all seven CI guards PASS; `npm run build` succeeded.
+  - **Note on the two behavioural cases**: they passed BEFORE the fix as well, over the broken query, and are kept in the suite as the standing demonstration of why they are not the witness. The three that went red are all assertions on generated SQL text.
+  - **Files**: lib/nina/queries/avatars.ts, lib/nina/queries/columns.ts, lib/nina/queries/images.ts, tests/nina.avatarLocate.test.ts
 
 - [x] **P1-NIN-A057** Phase 2: `/admin/nina` honours a media deep link
   - **Difficulty**: HARD

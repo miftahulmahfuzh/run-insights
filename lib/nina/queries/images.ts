@@ -3,7 +3,6 @@ import {
   asc,
   desc,
   eq,
-  type AnyColumn,
   inArray,
   isNotNull,
   isNull,
@@ -23,7 +22,7 @@ import {
 } from '@/lib/nina/perceptual'
 import { isValidContentHash } from '@/lib/photos/contentHash'
 import type { NinaImageInsert, NinaImageRow, NinaMediaPage } from './shapes'
-import { imageColumns } from './columns'
+import { imageColumns, outerRef } from './columns'
 
 /**
  * Nina's photographs in the conversation: the write path, every read, the dedup finders, the
@@ -755,19 +754,6 @@ export async function countNinaMediaPhotos(userId: string): Promise<number> {
     .from(ninaMessageImages)
     .where(mediaCollectionScope(userId))
   return counted[0]?.total ?? 0
-}
-
-/**
- * A column reference that keeps its table qualification inside a `select()` projection.
- *
- * Drizzle strips the table prefix from a bare `Column` rendered in the fields of a single-table
- * select, which is right for an ordinary projection and WRONG inside a correlated subquery that
- * has its own alias in scope — the unqualified name binds to the inner alias instead of the outer
- * row and the correlation silently becomes a tautology. Wrapping the column in a nested `SQL`
- * fragment takes it out of that rewrite. See `locateNinaMediaPhoto`'s header for the measurement.
- */
-function outerRef(column: AnyColumn): SQL {
-  return sql`${column}`
 }
 
 /**
