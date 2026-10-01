@@ -5,8 +5,10 @@
  *
  * The layer is `lib/nina/queries/*.ts`, one module per domain; THIS file is the public barrel —
  * one `export * from './queries/<module>'` line per module below, zero imports, no SQL of its
- * own. `queries/columns.ts` (the four shared column lists) is module-internal and deliberately
- * NOT re-exported. The § numbers below are the pre-split section banners, which persist inside
+ * own. `queries/columns.ts` (the four shared column lists, and §2b's `outerRef` — the one shared
+ * spelling of a correlated subquery's outer reference) is module-internal and deliberately
+ * NOT re-exported. That is what lets `outerRef` be shared by `avatars.ts` and `images.ts`
+ * without adding a name to this barrel's frozen surface (P2-NIN-A003). The § numbers below are the pre-split section banners, which persist inside
  * each module: a `§4b` title inside `messages.ts` is by design, not staleness.
  *
  *   queries/shapes.ts      §1               the DTO types — ruling A1 lives here
