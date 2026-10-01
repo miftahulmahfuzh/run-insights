@@ -1,9 +1,10 @@
 # Package: components/nina
 
 **Location**: `components/nina`
-**Last Updated**: 2026-10-01 — the chat photo overlay went session-wide (P1-CN-A007) and then grew
-an admin-only copy-link control in its header (P1-CN-A008); the sections they touch are corrected
-in place. Last full compaction + claim-by-claim re-verification:
+**Last Updated**: 2026-10-01 — the chat photo overlay went session-wide (P1-CN-A007), then grew
+an admin-only copy-link control in its header (P1-CN-A008), and `/nina/about`'s two grids traded
+their chevron stepper for the shared numbered `Pagination` row (P2-CN-A009); the sections they
+touch are corrected in place. Last full compaction + claim-by-claim re-verification:
 2026-09-12 — compacted from 1017 lines and re-verified against the
 tree; the 2026-09-11 changes this file predated are folded in. Per-task record under
 [Recent changes](#recent-changes).
@@ -387,6 +388,21 @@ chat photos.
   travels in the link and the close PUSHES it (production request: closing a viewer opened from
   Detail foto must land back on Detail foto; the push leaves the `?photo=` entry in history, so
   back-swiping from Detail foto re-opens the viewer); else strip the parameter in place.
+- **The two grid pagers** (`NinaAboutPager`, one under each section) — a row of **page numbers**
+  from the shared `components/ui/Pagination`, so page 5 is one tap and not four; the control's own
+  no-window, no-ellipsis rule lives in that file. `onPage` is `goToAlbumPage`/`goToMediaPage` — a
+  client fetch of one `NINA_ABOUT_PAGE_SIZE` page, never a navigation, so the shell does not
+  remount and `busy` is that tap's own flight rather than the attach strip's. Two rules are easy
+  to break here. **`NinaAboutPager` keeps its own `pageCount <= 1` guard even though `Pagination`
+  already renders nothing for one page**: the guard is also what withholds the
+  `Halaman {page} dari {pageCount} · {total} foto` line below the row, which a single-page
+  collection has never shown and `NinaAboutScreen.test.tsx` pins the absence of. The shared control
+  does not guard, and the admin callers deliberately have no guard of their own — do not
+  "simplify" either side into the other. And **the labels are Indonesian** (`"Halaman foto
+  profil"`, `"Halaman media"`): `/nina/about` is an Indonesian surface end to end, where the admin
+  mounts of the same control stay English. The count line is the half a row of numbers cannot
+  express — how many photographs there are — so it stays even though the active number now says
+  where you are.
 - **The attach strip** — two adjacent icon-only `Button`s in one row, ONE flight (`sending:
   NinaAttachTarget | null` names the pulsing button and disables the other): `send-horizontal`
   "Kirim ke chat" (`sessionId: null` — the action's own most-recent resolution, byte-identical
@@ -586,7 +602,12 @@ The package has no barrel; consumers import per file. What crosses its boundary:
   `ButtonLink`, `Card`, `Field`/`Input`, `CONTROL_CLASS`, `Sheet`, `TabBar` +
   `TAB_BAR_OUTER_HEIGHT_PX`, `EmptyState`, `PhotoViewer` + `ViewerPhoto`, `LoadingDots`,
   `useSavePhoto` + `SAVE_NOTICE_TEXT` (the shared download ladder), `CopyAdminLinkButton` (the
-  viewer header's admin half — `{ pointer, origin }`, both non-null or it is not rendered).
+  viewer header's admin half — `{ pointer, origin }`, both non-null or it is not rendered), and
+  `Pagination` (`/nina/about`'s two grid pagers; `label` is REQUIRED, so every mount says which
+  collection it walks). `NinaAboutScreen.tsx` imports each of these by FILE PATH
+  (`@/components/ui/Pagination`), which is that file's own standing convention — the
+  `@/components/ui` barrel is the admin callers' door; follow the habit of the file a primitive
+  lands in, not the other caller's.
 - `@/lib/photos/pointer` — `PhotoPointer`, type-only, through `lib/nina/chatphotos`'s
   `ChatSessionPhoto.rowPointer` and `components/ui`'s `ViewerPhoto.rowPointer`.
 
@@ -840,10 +861,24 @@ pinned the window (P1-CN-A005) and made the rail's `up` the bar toggle through t
 `composer-clipboard-image-paste` (1/1, 2026-09-16) gave the textarea its own way in (P1-CN-A006);
 `chat-session-wide-photo-swipe` (P1-CN-A007, 2026-10-01) widened the chat overlay to the whole
 session and made the history follow it; `copy-admin-media-link` (P1-CN-A008, 4/4, 2026-10-01) put
-an admin-only copy-link control in every full-view photograph's header.
+an admin-only copy-link control in every full-view photograph's header; `numbered-pagination`
+(P2-CN-A009, 2026-10-01) swapped both `/nina/about` grid pagers onto the shared numbered
+`Pagination` row.
 
 ## Recent changes
 
+- **2026-10-01 — numbered page row on `/nina/about` (P2-CN-A009, `numbered-pagination`).** Both
+  grids' `Sebelumnya`/`Berikutnya` chevron stepper became phase 1's shared
+  `components/ui/Pagination` — a row of every page number — so jumping to page 5 is one tap rather
+  than four. `goToAlbumPage`/`goToMediaPage` already took an arbitrary page number and needed no
+  change; the `Halaman … dari … · … foto` line stays below the row, and `NinaAboutPager`'s own
+  `pageCount <= 1` guard is kept on purpose, because it is also what withholds that line on a
+  single-page collection (the shared control does not guard, and the admin mounts deliberately do
+  not either — plan-set fork 8). Labels are Indonesian per the same plan set's label convention,
+  `"Halaman foto profil"` and `"Halaman media"`. `ChevronLeftIcon`/`ChevronRightIcon` left with the
+  stepper — the file's inlined-glyph collection is four, not six, and the file now ends at
+  `DownloadIcon`. No prop on `NinaAboutScreen` changed shape, and the four `readRepoCode` suites
+  that read this screen as text were not touched.
 - **2026-10-01 — the viewer header's admin copy-link control (P1-CN-A008,
   `copy-admin-media-link` 4/4).** Every client entry point onto a full-view Nina photograph —
   `/nina`, `/nina/about`, and `components/photo`'s `/photo/[kind]/[id]` — now renders phase 3's

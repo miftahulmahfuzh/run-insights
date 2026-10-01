@@ -2,7 +2,7 @@
 
 **Package Path**: `components/admin`
 **Package Code**: CA
-**Last Updated**: 2026-09-19
+**Last Updated**: 2026-10-01
 **Total Active Tasks**: 0
 
 ## Quick Stats
@@ -12,7 +12,7 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 9
+- Completed: 11
 - Archived: 6
 
 ---
@@ -38,6 +38,39 @@
 (all six completed tasks were archived on 2026-09-12 — see Archive; full
 per-task detail — Context, Drift, Decided, Files — survives in git history and
 in `.workflows/package_readme.md`)
+
+- [x] **P2-CA-A009** Phase 5: `/admin/photoshop` and `/admin/error-logs`
+  - **Difficulty**: EASY
+  - **Type**: Feature
+  - **Context**: Owns `components/admin/PhotoshopPickerGrid.tsx` and `app/admin/error-logs/page.tsx`; `app/admin/photoshop/page.tsx`, `lib/admin/errorLogModel.ts`, `ErrorLogList.tsx`, `errorLogHref`'s body, the `TabStrip` and both `EmptyState` branches are untouched. Exit: the picker's two hand-rolled `<Link>`s become `<Pagination hrefForPage={(n) => \`/admin/photoshop?page=${n}\`} label="Photo pages" />` and the error-logs `‹ Newer` / `Older ›` row becomes `<Pagination hrefForPage={(n) => errorLogHref(category, n)} label="Error log pages" className="mt-2" />`, both count lines kept and neither surface gaining an outer `pageCount <= 1` guard; `TOUCH_ICON` leaves the error-logs imports while `cn`, `Link`, `TOUCH_TARGET`, `ButtonLink` and `EmptyState` stay; the stale `PhotoGrid.tsx:177-211` citation at `:116` is dropped. Neither file is read by any suite, so `grep -n 'Newer\|Older\|Previous\|Next\|Sebelumnya\|Berikutnya'` over both is invariant 9's **only** check here — load-bearing, not skippable.
+  - **Status**: completed
+  - **Plan Set**: `NUMBERED_PAGINATION_PLAN.md` (phase 5 of 5)
+  - **Satisfies**: R1 — Change **every** pagination system in the app — `/nina/about`, `/admin/nina` (the "Image collection" nav label), and every other paginated surface — so each one uses the new control, and the current Previous/Next pagination UI is gone from all of them
+  - **Depends on**: `P2-CU-A001`
+  - **Plan**: `.workflows/plan/P2-CA-A009.md`
+  - **Completed**: 2026-10-01 13:38
+  - **Method**: /do (plan set phase 5 of 5, run as a swarm session in a worktree shared with three concurrent peer phases)
+  - **Files**: components/admin/PhotoshopPickerGrid.tsx, app/admin/error-logs/page.tsx
+  - **Decided**: Step 0's `grep -c "use client"` returned 2 on `components/ui/Pagination.tsx` instead of 0 — proceeded rather than escalating to the reconciler (rung 3, the plan's own escalation condition is *"if it OPENS WITH `'use client'`"*; `head -1` is `import type * as React from 'react'` and both hits are prose in that file's docblock arguing why it is **not** a client module). `npm run build` renders both routes as Server Components, confirming it.
+  - **Decided**: the full `npm test` sweep's single red (`tests/admin.albumActionsBarrel.test.ts`, a 5s dynamic-import timeout) was ruled not a phase-5 failure (rung 6 + measurement): the file is untouched by this set, it passes in isolation, and load average read 47 with four peer phase sessions sweeping this shared worktree concurrently. Nothing was relaxed.
+  - **Verified**: `npm run format:check`, `npm run typecheck` (`next typegen && tsc --noEmit`), `npm run lint` and `npm run build` all clean — `lint` is the gate that would have caught a leftover `TOUCH_ICON` binding. Full `npm test`: 383/384 files, 6847/6848 tests pass, the one red being the load flake recorded above (green on re-run in isolation). All seven CI guards (`data-layer`, `f08`, `openrouter`, `client-secret`, `llm-payload`, `f11`, `schema-drift`) PASS. Exit-criterion greps both printed nothing: `grep -n 'Newer\|Older\|Previous\|Next\|Sebelumnya\|Berikutnya'` over the two files, and `grep -n 'PhotoGrid.tsx:177-211' app/admin/error-logs/page.tsx` — exit criterion 5 makes the first load-bearing here, since neither file is read by any suite and the set deliberately does not create one (index `## Decisions`, fork 10). `git diff --stat b32d662` over the two files: 2 files, 37 insertions, 55 deletions, nothing else.
+  - **Follow-up**: `tests/admin.pagerSweep.test.ts` — invariant 9 on these two files is verified by grep at commit time, not by a CI gate. Carded deliberately (index `## Decisions`, fork 10 / `## Reconciliation Log` row 11), to be written against the post-migration tree.
+  - **Commit note**: staged and committed by explicit pathspec, never `git add -A` — this worktree is shared with the concurrent peer sessions for phases 2, 3 and 4, whose in-flight edits must not be swept into this phase's commit.
+
+- [x] **P2-CA-A008** Phase 4: `/admin/image-generation` + the job anchor picker
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns `components/admin/PhotoReferencePicker.tsx` and `components/admin/PhotoReferencePicker.test.tsx`; `tests/admin.photoReference.test.ts` is re-read and left byte-for-byte unchanged, as are `ImageGenPanel.tsx`, `NinaJobAnchorPicker.tsx`, both route pages, `photoReferenceModel.ts` and `NINA_PHOTO_REF_PAGE_SIZE`. Exit: the `Previous` / `Next` `ButtonLink`s at `:353-362` (inside the footer row at `:347-374`) become `<Pagination hrefForPage={(n) => \`?page=${n}\`} scroll={false} label="Photo reference pages" className="mt-2" />` with **no** outer `pageCount <= 1` guard, so `page 1 of 1` keeps rendering; the `Clear reference` button and the `selected #… · Showing … of … · page … of …` paragraph stay put; the `scrollIntoView` effect keyed on `page` and the `preloadUrls` prefetch links are untouched; both mounts still render; the four `Previous`/`Next` tests assert the numbered row.
+  - **Status**: completed
+  - **Plan Set**: `NUMBERED_PAGINATION_PLAN.md` (phase 4 of 5)
+  - **Satisfies**: R1 — Change **every** pagination system in the app — `/nina/about`, `/admin/nina` (the "Image collection" nav label), and every other paginated surface — so each one uses the new control, and the current Previous/Next pagination UI is gone from all of them
+  - **Depends on**: `P2-CU-A001`
+  - **Plan**: `.workflows/plan/P2-CA-A008.md`
+  - **Completed**: 2026-10-01 13:33
+  - **Method**: /do (plan set phase 4 of 5, run as a swarm session in a worktree shared with three concurrent peer phases)
+  - **Files**: components/admin/PhotoReferencePicker.tsx, components/admin/PhotoReferencePicker.test.tsx
+  - **Verified**: `npx vitest run components/admin/PhotoReferencePicker.test.tsx tests/admin.photoReference.test.ts` 2 files / 51 tests passed; `npm run typecheck` clean; full `npm test` 384 files / 6848 tests passed; all seven CI guards pass; `npm run lint` and `npm run format:check` clean; `npm run build` succeeds. Exit criteria each checked: `Previous`/`Next` survive only inside stripped block comments (:107, :121, :217, :225); `Pagination` mounted with `hrefForPage={(n) => \`?page=${n}\`} scroll={false} label="Photo reference pages" className="mt-2"` and no outer `pageCount <= 1` guard, the only other `ButtonLink` being `fullViewButton` (:288) and the only `Button` being `Clear reference` (:389); `tests/admin.photoReference.test.ts` byte-for-byte unchanged (sha256 `4db08b51e33a9859253ecf9e482d2bd7441bee8de8042a7b5705dbc7c82ced54` before and after); `ImageGenPanel.tsx`, `NinaJobAnchorPicker.tsx` and both route `page.tsx` files untouched and both mounts still render.
+  - **Commit note**: staged and committed by explicit pathspec, never `git add -A` — this worktree is shared with the concurrent peer sessions for phases 2, 3 and 5, whose in-flight edits to six other files must not be swept into this phase's commit.
 
 - [x] **P1-CA-A007** Phase 5: Crop UI + PhotoshopDetail wiring
   - **Difficulty**: HARD

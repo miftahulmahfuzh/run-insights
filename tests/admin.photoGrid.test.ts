@@ -138,9 +138,24 @@ describe('the explorer grid is the Photo-reference idiom (R4)', () => {
     expect(code).not.toContain('useEffect')
   })
 
-  it('keeps the pager and the empty state working', () => {
-    expect(grid).toContain('rel="prev"')
-    expect(grid).toContain('rel="next"')
+  it('pages by the one shared numbered control, and keeps the count line and the empty state', () => {
+    const code = codeLines(grid)
+    // The stepper is gone in every spelling it had: the words, the `rel` hints that made them a
+    // prev/next pair, and the admin-only tap-target string it borrowed. `codeLines` and not
+    // `grid`, because the header docblock cites all three in order to record what replaced them.
+    expect(code).not.toContain('Newer')
+    expect(code).not.toContain('Older')
+    expect(code).not.toContain('rel="prev"')
+    expect(code).not.toContain('rel="next"')
+    expect(code).not.toContain('TOUCH_ICON')
+    expect(code).not.toContain("from 'next/link'")
+    // One control, not a second hand-rolled row: the numbers, their hrefs and `aria-current` all
+    // live in `components/ui/Pagination.tsx`, which is the whole point of having it.
+    expect(code).toContain('<Pagination')
+    expect(code).not.toContain('aria-current')
+    // What survived the swap: the rule, the range above it, and the empty-page branch's way back.
+    expect(code).toContain('border-t border-rule pt-3')
+    expect(code).toContain('of {page.total}')
     expect(grid).toContain('<EmptyState')
     expect(grid).toContain('<ButtonLink')
   })

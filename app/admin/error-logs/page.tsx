@@ -1,8 +1,8 @@
 import Link from 'next/link'
 
 import { ErrorLogList } from '@/components/admin/ErrorLogList'
-import { TOUCH_ICON, TOUCH_TARGET } from '@/components/admin/touch'
-import { ButtonLink, EmptyState } from '@/components/ui'
+import { TOUCH_TARGET } from '@/components/admin/touch'
+import { ButtonLink, EmptyState, Pagination } from '@/components/ui'
 import {
   ADMIN_ERROR_CATEGORIES,
   ADMIN_ERROR_CATEGORY_LABEL,
@@ -47,6 +47,13 @@ import { listNinaErrorLogs } from '@/lib/nina/errorlogs'
  * use for. `app/admin/shortcuts/page.tsx:63` and `app/admin/nina/page.tsx:193` make the same call
  * for the same reason: the client component receives plain serializable props and names no
  * `server-only` module.
+ *
+ * ── AND IT IS STILL A SERVER COMPONENT ──────────────────────────────────────────
+ * `components/ui/Pagination` is imported through the barrel and carries no `'use client'` — the
+ * same rule `components/ui/Button.tsx:6-10` states for `ButtonLink`, which this file has always
+ * pulled from the same place. The numbered pager is therefore rendered here, server-side, as
+ * `<a>`s and one `<span aria-current="page">`; it ships no React to the browser and does not make
+ * this page a client module.
  */
 
 export const dynamic = 'force-dynamic'
@@ -113,41 +120,24 @@ export default async function AdminErrorLogsPage(props: PageProps<'/admin/error-
         <>
           <ErrorLogList items={items} />
 
-          {/* `PhotoGrid.tsx:177-211`'s pager, with this page's grammar. The disabled end keeps the
-              same box, so the row does not resize and the live control does not move under a thumb
-              when the page changes. */}
-          <div className="mt-4 flex items-center justify-between gap-2 border-t border-rule pt-3">
-            {page > 1 ? (
-              <Link
-                href={errorLogHref(category, page - 1)}
-                className={cn(TOUCH_ICON, 'px-2 text-[12px] font-semibold text-accent')}
-                rel="prev"
-              >
-                &lsaquo; Newer
-              </Link>
-            ) : (
-              <span className={cn(TOUCH_ICON, 'px-2 text-[12px] font-semibold text-ink-3')}>
-                &lsaquo; Newer
-              </span>
-            )}
-
-            <span className="text-[12px] font-semibold text-ink-2 tabular-nums">
+          {/* Every page number, because the operator chasing a streak wants page 7 in one tap, not
+              six. The count line stays above it: a row of numbers cannot say how many rows exist.
+              `errorLogHref` keeps the `?tab=` category and still spells page 1 as the ABSENCE of
+              `?page=`, so every link this row emits is a URL that already worked. No 'use client'
+              is involved — `Pagination`'s `hrefForPage` arm is `<nav>`/`<ul>`/`<Link>`/`<span>`
+              with no hook, exactly `components/ui/Button.tsx:6-10`'s rule, so this Server
+              Component stays one. */}
+          <div className="mt-4 border-t border-rule pt-3">
+            <p className="text-center text-[12px] font-semibold text-ink-2 tabular-nums">
               {first}&ndash;{last} of {listed.total}
-            </span>
-
-            {page < lastPage ? (
-              <Link
-                href={errorLogHref(category, page + 1)}
-                className={cn(TOUCH_ICON, 'px-2 text-[12px] font-semibold text-accent')}
-                rel="next"
-              >
-                Older &rsaquo;
-              </Link>
-            ) : (
-              <span className={cn(TOUCH_ICON, 'px-2 text-[12px] font-semibold text-ink-3')}>
-                Older &rsaquo;
-              </span>
-            )}
+            </p>
+            <Pagination
+              page={page}
+              pageCount={lastPage}
+              label="Error log pages"
+              hrefForPage={(n) => errorLogHref(category, n)}
+              className="mt-2"
+            />
           </div>
         </>
       )}

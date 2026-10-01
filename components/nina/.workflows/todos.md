@@ -12,7 +12,7 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 9
+- Completed: 10
 - Archived: 6
 
 ---
@@ -38,6 +38,28 @@
 (the prior six completed tasks were archived on 2026-09-11 — see Archive; full
 per-task detail — Context, Drift, Decided, Files — survives in git history and in
 `.workflows/package_readme.md`)
+
+- [x] **P2-CN-A009** Phase 2: `/nina/about` — both tabs page by number
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns `components/nina/NinaAboutScreen.tsx` and `components/nina/NinaAboutScreen.test.tsx`; no action, page-size constant, page cookie or route page is touched. Exit: `NinaAboutPager` renders `<Pagination onPage={…} busy={…} label={…} />` under each grid and nothing else of its old self, **keeping** its own `if (pageCount <= 1) return null` guard and the `Halaman … dari … · … foto` count line while both chevron `Button`s go; the two mounts pass `label="Halaman foto profil"` and `label="Halaman media"` verbatim; `ChevronLeftIcon` / `ChevronRightIcon` and their docblock paragraph go if nothing else calls them; the test file pins the numbered row, a multi-page jump and the existing cache/reset behaviour; `grep -rn "Sebelumnya\|Berikutnya\|Chevron" components/nina/` returns nothing.
+  - **Status**: completed
+  - **Plan Set**: `NUMBERED_PAGINATION_PLAN.md` (phase 2 of 5)
+  - **Satisfies**: R1 — Change **every** pagination system in the app — `/nina/about`, `/admin/nina` (the "Image collection" nav label), and every other paginated surface — so each one uses the new control, and the current Previous/Next pagination UI is gone from all of them
+  - **Depends on**: `P2-CU-A001`
+  - **Plan**: `.workflows/plan/P2-CN-A009.md`
+  - **Completed**: 2026-10-01 13:35
+  - **Method**: /do (plan set phase 2 of 5; phases 2-5 are concurrent peers, set not yet complete)
+  - **Files**: components/nina/NinaAboutScreen.tsx, components/nina/NinaAboutScreen.test.tsx
+  - **Drift**: Every code block the plan quoted matched the tree byte-for-byte; only line numbers had shifted (the coordinator pre-merged `origin/main`@`ccbd7f6` at the wave boundary). Mounts were at :705/:730 not :706-712/:731-737; the pager at :986-1045 not :983-1042; the glyph docblock at :1046-1071; the chevrons at :1155-1190. Re-measured and anchored every edit on content, not line numbers.
+    Step 5's delete anchor said "line 1188 (`JobDetailIcon`'s doc comment) becomes the next line". `JobDetailIcon` no longer lives in this file — it moved to `components/nina/NinaJobDetailLink.tsx` in that same merge — so `ChevronLeftIcon` / `ChevronRightIcon` were the file's LAST two functions. Deleted them as the file tail; `NinaAboutScreen.tsx` now ends at `DownloadIcon`'s closing brace.
+    Did NOT reintroduce `import Link from 'next/link'` or `ninaJobHref` (both removed from this file by that merge, per the coordinator's warning). `Pagination` imports `next/link` itself, so the call site needed neither.
+    `NinaAboutScreen.test.tsx`'s `vi.mock('@/lib/nina/jobActions')` and its `ninaImageJobExists` mockReset in the top-level `beforeEach` were left untouched and are still load-bearing; the suite is 45/45 green.
+    The full `npm test` sweep ran against a tree that also contained phases 3/4/5's in-flight uncommitted edits (shared worktree). It was green at 384 files / 6848 tests, but it is therefore not a clean-isolation green for this phase alone. The phase's own suites were run individually and are green on their own.
+  - **Decided**: Exit-criterion grep `grep -rn "Sebelumnya\|Berikutnya\|Chevron" components/nina/` returns hits, so taken literally it fails -> treated invariant 9's stated subject (no pager CONTROL survives, as a word or as a glyph) as the thing measured. (Rung 1: invariant 9 names a control, not a mention.) Proof the literal form is unsatisfiable by construction: `git grep` at HEAD shows the adopted plan copy `components/nina/.workflows/plan/P2-CN-A009.md` already made it non-empty BEFORE any code was edited — MEMORY's "Adopted plan copies trip string guards". The three remaining non-bookkeeping hits are the Step 6 test asserting those controls are ABSENT, plus prose inside the Step 3 and Step 4 docblocks the plan mandates verbatim. Verified no control / glyph / identifier survives: `grep -rn 'aria-label="Sebelumnya"\|aria-label="Berikutnya"\|ChevronLeftIcon\|ChevronRightIcon'` over `components/nina/*.ts,*.tsx` returns nothing.
+    Step 5's `JobDetailIcon` delete anchor was stale -> deleted the two chevron functions as the file's last two instead. (Rung 3: the plan's code block is exact and matched byte-for-byte; only its surrounding landmark had moved.)
+  - **Verified**: `npx vitest run components/nina/NinaAboutScreen.test.tsx` 45/45 passed; `npx vitest run tests/nina.aboutPhoto.test.ts tests/nina.galleryDelete.test.ts tests/nina.chatPhoto.test.ts` 3 files / 80 passed, all three UNEDITED (the `readRepoCode` scan suites that read this file); `npm run typecheck` clean; `npm run lint` clean; `npm run format:check` "All matched files use Prettier code style!"; `npm test` 384 files / 6848 tests passed; `npm run build` succeeded; all seven CI guards PASS (data-layer, f08, openrouter, client-secret, llm-payload, f11, schema-drift).
+
 
 - [x] **P1-CN-A008** Phase 4: Every client entry point carries it, admin-only
   - **Difficulty**: HARD

@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -173,25 +173,58 @@ describe('PhotoReferencePicker', () => {
     expect(screen.queryByRole('link', { name: 'Show more' })).not.toBeInTheDocument()
   })
 
-  it('offers Next but no Previous on the first page of several', () => {
+  it('links to every other page from the first, and draws page 1 as the current cell', () => {
     const items = Array.from({ length: 50 }, (_, i) => item(`k${i}`))
     picker({ items, total: 120, page: 1, pageCount: 3 })
     expect(screen.getByText(/page 1 of 3/)).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Next' })).toHaveAttribute('href', '?page=2')
-    expect(screen.queryByRole('link', { name: 'Previous' })).not.toBeInTheDocument()
-  })
 
-  it('offers Previous but no Next on the last page', () => {
-    const items = Array.from({ length: 20 }, (_, i) => item(`k${i}`))
-    picker({ items, total: 120, page: 3, pageCount: 3 })
-    expect(screen.getByRole('link', { name: 'Previous' })).toHaveAttribute('href', '?page=2')
+    const pager = screen.getByRole('navigation', { name: 'Photo reference pages' })
+    expect(within(pager).getByRole('link', { name: '2' })).toHaveAttribute('href', '?page=2')
+    expect(within(pager).getByRole('link', { name: '3' })).toHaveAttribute('href', '?page=3')
+    // The page you are on is not a link — there is nowhere to go — and it says so in ARIA.
+    expect(within(pager).queryByRole('link', { name: '1' })).not.toBeInTheDocument()
+    expect(within(pager).getByText('1')).toHaveAttribute('aria-current', 'page')
+
+    // The stepper is gone, in both words, from the whole render and not just from the pager.
+    expect(screen.queryByRole('link', { name: 'Previous' })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Next' })).not.toBeInTheDocument()
   })
 
-  it('offers neither Previous nor Next when the whole collection is one page', () => {
+  it('links back to every earlier page from the last, and draws page 3 as the current cell', () => {
+    const items = Array.from({ length: 20 }, (_, i) => item(`k${i}`))
+    picker({ items, total: 120, page: 3, pageCount: 3 })
+
+    const pager = screen.getByRole('navigation', { name: 'Photo reference pages' })
+    // `?page=1` and not a bare `?` — page 1 is a real query value in this component's grammar,
+    // exactly as the old `Previous` link already spelled it from page 2.
+    expect(within(pager).getByRole('link', { name: '1' })).toHaveAttribute('href', '?page=1')
+    expect(within(pager).getByRole('link', { name: '2' })).toHaveAttribute('href', '?page=2')
+    expect(within(pager).queryByRole('link', { name: '3' })).not.toBeInTheDocument()
+    expect(within(pager).getByText('3')).toHaveAttribute('aria-current', 'page')
+  })
+
+  it('puts every page one tap from page 1 — the jump the stepper could not express', () => {
+    // The user's own reason for the change: *"i can jump directly to specific page whenever i
+    // want"*. With six pages a stepper reached page 6 in five taps. Asserted as the full href
+    // list, in order, so this also pins "every number, ascending, no ellipsis and no window".
+    const items = Array.from({ length: 50 }, (_, i) => item(`k${i}`))
+    picker({ items, total: 300, page: 1, pageCount: 6 })
+
+    const pager = screen.getByRole('navigation', { name: 'Photo reference pages' })
+    const hrefs = within(pager)
+      .getAllByRole('link')
+      .map((link) => link.getAttribute('href'))
+    expect(hrefs).toEqual(['?page=2', '?page=3', '?page=4', '?page=5', '?page=6'])
+  })
+
+  it('renders no pager at all when the whole collection is one page — but still counts it', () => {
+    // Plan `## Decisions` fork 1: the count line is not the pagination UI being removed. It is
+    // the only thing left that answers "how many photographs are there", so it outlives the pager
+    // on exactly the page where the pager has nothing to offer.
     picker()
     expect(screen.getByText(/Showing 3 of 3/)).toBeInTheDocument()
     expect(screen.getByText(/page 1 of 1/)).toBeInTheDocument()
+    expect(screen.queryByRole('navigation')).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Previous' })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Next' })).not.toBeInTheDocument()
   })
