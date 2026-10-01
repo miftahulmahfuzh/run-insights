@@ -1,7 +1,16 @@
 # Package: components/admin
 
 **Location**: `components/admin`
-**Last Updated**: 2026-09-19 (`photoshop-aspect-ratio-crop` phase 5/5, `P1-CA-A007`: the optional,
+**Last Updated**: 2026-10-01 (`numbered-pagination`, `P2-CA-A008`: `PhotoReferencePicker.tsx`'s
+hand-rolled `Previous`/`Next` `ButtonLink` pair — and the cluster `<div>` that wrapped them — is
+gone, replaced by the shared numbered control phase 1 added at `components/ui/Pagination.tsx`.
+One cell per page, the current page a non-interactive `aria-current="page"` cell. The `?page=N`
+query grammar, the `scrollIntoView` effect keyed on `page`, the `preloadUrls` prefetch hints and
+both `collapsible` mount shapes are untouched at runtime; `tests/admin.photoReference.test.ts` is
+byte-for-byte unchanged and still gates the file. Three stepper tests became four numbered-row
+tests.)
+
+**Previously**: 2026-09-19 (`photoshop-aspect-ratio-crop` phase 5/5, `P1-CA-A007`: the optional,
 collapsible **Aspect ratio crop** step on `/admin/photoshop/[source]/[id]`, offered identically in
 Anchor and Edit mode. New `PhotoshopCropStudio.tsx` — the rectangle, ratio-aware sibling of
 `CropStudio` — plus `PhotoshopDetail.tsx`'s crop state, toggle and four new payload fields, and two
@@ -146,7 +155,7 @@ see Test consumers under Reverse Dependencies.
 | `ShortcutTable.tsx` | `'use client'` | `/admin/shortcuts` — `MemoryTable`'s mechanics with different columns; on/off checkbox leads the row; only the delete is optimistic. |
 | `ImageGenPanel.tsx` | `'use client'` | `/admin/image-generation` in full: the image-model select, six focus checkboxes, four text fields with ✕ clears, the photo-reference picker, and the editable prompt template with its placeholder legend. `CharacterPanel`'s auto-save pipeline over `lib/admin/imageGenModel`, minus the debounce — every control here commits on CHANGE or on BLUR, so there is no timer; one `useTransition`, one whole-row action. |
 | `ImageGenTestPanel.tsx` | `'use client'` | The paid test button and its verdict. Opens a job off the SAVED prefs, returns, then polls on an escalating schedule bounded by `NINA_IMAGE_TEST_GIVE_UP_MS = 480_000`, the terminal verdict, and unmount. Verdict lines live in `lib/admin/imageGenTestView.ts`, never here. Reads the quota itself; takes `dirty` to warn that the test reads saved settings. |
-| `PhotoReferencePicker.tsx` | `'use client'` | The reference grid: album + chat photographs as one caption-less, gapless, square-tile wall. `items` / `total` / `value` / `onChange`; single selection, reveal-by-`PHOTO_REFERENCE_REVEAL_STEP = 48`, `loading="lazy"`. |
+| `PhotoReferencePicker.tsx` | `'use client'` | The reference grid: album + chat photographs as one caption-less, gapless, square-tile wall. `items` / `total` / `page` / `pageCount` / `value` / `onChange`; single selection, one real `?page=` window per render, `loading="lazy"`. Its footer is two lines: the `Showing … of … · page … of …` count plus `Clear reference` on one `justify-between` row, and `components/ui`'s shared numbered `Pagination` on its own full-width centred line below (since 2026-10-01 — the `Previous`/`Next` stepper is gone). |
 | `photoReferenceModel.ts` | **no directive** | The picker's view model: `PhotoReferenceItem` pinned at exactly three fields — which is what makes "no captions, no dates" structural. |
 | `UserPicker.tsx` | **no directive** | Whose rows are being edited. Plain links, `aria-current`, selection in the URL; `basePath` defaults to `/admin/memory`. |
 | `CharacterPanel.tsx` | `'use client'` | `/admin/personality`'s tuning — twelve trait sliders, the relationship selector, four extra dials, notes, the assembled prompt preview. Auto-saves through `saveNinaTuningAction` (dials debounced 600 ms, toggles/radios on change, notes on blur); no Save/Discard/Reset row. `id="character"` kept on the section root. |
@@ -915,11 +924,37 @@ than a second write path — and the click refocuses the control so the on-scree
 drops.
 
 **`PhotoReferencePicker`** — album and chat photographs as one caption-less, gapless,
-square-tile wall in the iOS Photos idiom; single selection, `aria-pressed`, reveal-by-48,
-`loading="lazy"`. It cannot announce which set a tile came from because `PhotoReferenceItem`
-carries no provenance field — three fields, no fourth, which is what makes "no captions, no
-dates" structural. The draft-side selection is the opaque key string (`''` is nothing selected);
-`ImageReferenceOption` (`lib/admin/imageGenModel`) is the server-mapped shape.
+square-tile wall in the iOS Photos idiom; single selection, `aria-pressed`, one `?page=` window
+per render, `loading="lazy"`. It cannot announce which set a tile came from because
+`PhotoReferenceItem` carries no provenance field — three fields, no fourth, which is what makes
+"no captions, no dates" structural. The draft-side selection is the opaque key string (`''` is
+nothing selected); `ImageReferenceOption` (`lib/admin/imageGenModel`) is the server-mapped shape.
+
+**Its pager is `components/ui/Pagination`, and three things about the mount are rules rather than
+styling** (2026-10-01, `P2-CA-A008` — the `Previous`/`Next` `ButtonLink` pair it replaced put page
+6 five taps from page 1, against a page size the operator pages through hunting one photograph):
+
+- **The href is a BARE query — `hrefForPage` returns `?page=<n>` — and must stay one.** This
+  component is mounted on TWO routes (`/admin/image-generation` and `/nina/jobs/[id]/anchor`), and
+  a bare query is the only spelling correct on both; an absolute path would send one of them to
+  the other's page 2. `PhotoshopPickerGrid.tsx` is a near-copy of this footer and keeps its own
+  absolute-path grammar for the opposite reason — it has exactly one route. **Do not unify them.**
+- **There is deliberately no outer `pageCount <= 1` guard around the pager.** `Pagination` itself
+  returns `null` at one page, so only the numbered row is withheld; the `Showing … of … · page …
+  of …` count line beside `Clear reference` is pinned as PRESENT at `page 1 of 1` by
+  `PhotoReferencePicker.test.tsx`, because a row of numbers cannot say how many photographs exist.
+  Wrapping the pager in a guard that also hid the count line would break that.
+- **The numbered row is its own full-width line.** `Pagination` centres itself and the count line
+  is left-aligned, so sharing one `justify-between` row would make one of the two lie about its
+  alignment. `Clear reference` stays on the count row on purpose: it acts on the SELECTION, not on
+  which window is drawn.
+
+`scroll={false}` is forwarded to every cell, which is what the `scrollIntoView` effect keyed on
+the `page` PROP pays for. That effect did not change: it never knew what the runner tapped, only
+that `page` is now something else, so a jump from 1 to 6 scrolls exactly as a step from 1 to 2
+did. The `preloadUrls` hints are still exactly the two neighbouring pages — every page is one tap
+away now, but the pages either side are still the likely next stop, and warming all of them would
+prefetch the whole collection on every render.
 
 **`ImageGenTestPanel`** — *"add a test prompt button, so we can see if this prompt is actually
 allowed by guardrails."* It does NOT await the generation: the click opens a job off the SAVED
@@ -1185,7 +1220,9 @@ counts stay MEMORY counts: still true of the account, just not of this page.
   `NinaPhotoshopSourceKind` (`PhotoshopDetail`), all **type-only**, so no drizzle table module
   reaches the bundle.
 - `@/components/ui` — `Button`, `ButtonLink`, `EmptyState`, `Card`, `Field`, `CONTROL_CLASS`,
-  `buttonClasses` (exported precisely so a non-`<button>` — or a `<button>` that must keep
+  `Pagination` (the shared numbered pager; `PhotoReferencePicker` is this directory's consumer of
+  it since 2026-10-01, handing it a bare `?page=` href builder because it is mounted on two
+  routes), `buttonClasses` (exported precisely so a non-`<button>` — or a `<button>` that must keep
   `onClick` on itself — can borrow the look), and `useSavePhoto`/`SaveNotice`
   (`@/components/ui/useSavePhoto`), the shared save/download/open ladder both rails warm on
   `pointerdown`.
@@ -1686,6 +1723,20 @@ prompt-length dial's `defaultValue` chip.
   moved it off its default — and with it went this panel's only range input, which is why it now
   has no debounce, no timer and no `defaults` prop. Putting a slider back means putting the
   whole settle-detector pipeline back with it.
+- **Do not make `PhotoReferencePicker`'s pager href absolute.** It is a bare `?page=<n>` because
+  the component is mounted on two routes (`/admin/image-generation`, `/nina/jobs/[id]/anchor`) and
+  that is the only spelling correct on both. For the same reason, do not unify this footer with
+  `PhotoshopPickerGrid.tsx`'s — that one has exactly one route and keeps its absolute-path grammar.
+- **Do not wrap that pager in a `pageCount <= 1` guard.** `Pagination` already returns `null` at
+  one page; a guard here would take the `Showing … of … · page … of …` count line with it, and
+  `PhotoReferencePicker.test.tsx` pins that line as present at `page 1 of 1` — a row of numbers
+  cannot say how many photographs exist.
+- **Do not move `Clear reference` into the numbered row, or the numbered row onto the count line.**
+  Clear acts on the selection, not on which window is drawn; `Pagination` centres itself, so a
+  shared `justify-between` line would make one of the two lie about its alignment.
+- **Do not re-key the picker's `scrollIntoView` effect on a click.** It watches the `page` PROP,
+  which is why swapping a stepper for a row of numbers cost it nothing — and why `scroll={false}`
+  has to stay on the pager, or Next's scroll-to-top fights it.
 - **Do not put the template guard in the browser.** The server refuses a broken template with a
   sentence; a client-side validator would be a second rule that can disagree, and the failure
   the feature exists to prevent is a broken PROMPT, not a refused edit.
@@ -1853,3 +1904,21 @@ to her.
   here at all, so `PhotoshopDetail.tsx`'s module-map row, its consumer page, and the
   `photoshopActions` / `photoshopPresets` / `imagerecipe` imports are recorded for the first time
   alongside the crop step itself.
+- **2026-10-01** — `numbered-pagination` (`P2-CA-A008`): `PhotoReferencePicker.tsx`'s
+  `Previous`/`Next` `ButtonLink` pair, and the cluster `<div>` that wrapped them, replaced by the
+  shared numbered control phase 1 of the set added at `components/ui/Pagination.tsx` (one cell per
+  page, every number ascending, no window and no ellipsis, the current page a non-interactive
+  `aria-current="page"` cell). The defect it fixes is one the stepper could not be tuned out of:
+  page 6 was five taps from page 1 while the runner hunted one photograph in a several-hundred-row
+  union. **Nothing else about the component moved**: the `?page=N` query grammar is the same
+  (bare, because two routes mount this picker), the `scrollIntoView` effect keyed on the `page`
+  prop is untouched, `preloadUrls` still warms exactly the two neighbouring pages, and both
+  `collapsible` mount shapes render as before. `tests/admin.photoReference.test.ts` — the
+  `readRepoCode` source-scan suite — is byte-for-byte unchanged and still gates this file; the
+  colocated suite's three stepper tests became four numbered-row tests, one of which asserts the
+  full ascending href list (every number, no ellipsis) with `within` scoping every assertion to
+  the pager's own `<nav>`. Recorded above: the module-map row, the image-generation section's three
+  pager rules, the `@/components/ui` import inventory, and four new Gotchas. `Pagination` itself is
+  `components/ui`'s and is documented there. **`PhotoshopPickerGrid.tsx` is not part of this
+  entry** — it is another phase's file, and its footer is described here only as the near-copy that
+  keeps its own absolute-path grammar because it has exactly one route.

@@ -3,16 +3,16 @@
 **Package Path**: `components/admin`
 **Package Code**: CA
 **Last Updated**: 2026-10-01
-**Total Active Tasks**: 2
+**Total Active Tasks**: 1
 
 ## Quick Stats
 - P0 Critical: 0
 - P1 High: 0
-- P2 Medium: 2
+- P2 Medium: 1
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 9
+- Completed: 10
 - Archived: 6
 
 ---
@@ -24,16 +24,6 @@
 ### [P1] High
 
 ### [P2] Medium
-
-- [ ] **P2-CA-A008** Phase 4: `/admin/image-generation` + the job anchor picker
-  - **Difficulty**: NORMAL
-  - **Type**: Feature
-  - **Context**: Owns `components/admin/PhotoReferencePicker.tsx` and `components/admin/PhotoReferencePicker.test.tsx`; `tests/admin.photoReference.test.ts` is re-read and left byte-for-byte unchanged, as are `ImageGenPanel.tsx`, `NinaJobAnchorPicker.tsx`, both route pages, `photoReferenceModel.ts` and `NINA_PHOTO_REF_PAGE_SIZE`. Exit: the `Previous` / `Next` `ButtonLink`s at `:353-362` (inside the footer row at `:347-374`) become `<Pagination hrefForPage={(n) => \`?page=${n}\`} scroll={false} label="Photo reference pages" className="mt-2" />` with **no** outer `pageCount <= 1` guard, so `page 1 of 1` keeps rendering; the `Clear reference` button and the `selected #… · Showing … of … · page … of …` paragraph stay put; the `scrollIntoView` effect keyed on `page` and the `preloadUrls` prefetch links are untouched; both mounts still render; the four `Previous`/`Next` tests assert the numbered row.
-  - **Status**: open
-  - **Plan Set**: `NUMBERED_PAGINATION_PLAN.md` (phase 4 of 5)
-  - **Satisfies**: R1 — Change **every** pagination system in the app — `/nina/about`, `/admin/nina` (the "Image collection" nav label), and every other paginated surface — so each one uses the new control, and the current Previous/Next pagination UI is gone from all of them
-  - **Depends on**: `P2-CU-A001`
-  - **Plan**: `.workflows/plan/P2-CA-A008.md`
 
 - [ ] **P2-CA-A009** Phase 5: `/admin/photoshop` and `/admin/error-logs`
   - **Difficulty**: EASY
@@ -58,6 +48,21 @@
 (all six completed tasks were archived on 2026-09-12 — see Archive; full
 per-task detail — Context, Drift, Decided, Files — survives in git history and
 in `.workflows/package_readme.md`)
+
+- [x] **P2-CA-A008** Phase 4: `/admin/image-generation` + the job anchor picker
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns `components/admin/PhotoReferencePicker.tsx` and `components/admin/PhotoReferencePicker.test.tsx`; `tests/admin.photoReference.test.ts` is re-read and left byte-for-byte unchanged, as are `ImageGenPanel.tsx`, `NinaJobAnchorPicker.tsx`, both route pages, `photoReferenceModel.ts` and `NINA_PHOTO_REF_PAGE_SIZE`. Exit: the `Previous` / `Next` `ButtonLink`s at `:353-362` (inside the footer row at `:347-374`) become `<Pagination hrefForPage={(n) => \`?page=${n}\`} scroll={false} label="Photo reference pages" className="mt-2" />` with **no** outer `pageCount <= 1` guard, so `page 1 of 1` keeps rendering; the `Clear reference` button and the `selected #… · Showing … of … · page … of …` paragraph stay put; the `scrollIntoView` effect keyed on `page` and the `preloadUrls` prefetch links are untouched; both mounts still render; the four `Previous`/`Next` tests assert the numbered row.
+  - **Status**: completed
+  - **Plan Set**: `NUMBERED_PAGINATION_PLAN.md` (phase 4 of 5)
+  - **Satisfies**: R1 — Change **every** pagination system in the app — `/nina/about`, `/admin/nina` (the "Image collection" nav label), and every other paginated surface — so each one uses the new control, and the current Previous/Next pagination UI is gone from all of them
+  - **Depends on**: `P2-CU-A001`
+  - **Plan**: `.workflows/plan/P2-CA-A008.md`
+  - **Completed**: 2026-10-01 13:33
+  - **Method**: /do (plan set phase 4 of 5, run as a swarm session in a worktree shared with three concurrent peer phases)
+  - **Files**: components/admin/PhotoReferencePicker.tsx, components/admin/PhotoReferencePicker.test.tsx
+  - **Verified**: `npx vitest run components/admin/PhotoReferencePicker.test.tsx tests/admin.photoReference.test.ts` 2 files / 51 tests passed; `npm run typecheck` clean; full `npm test` 384 files / 6848 tests passed; all seven CI guards pass; `npm run lint` and `npm run format:check` clean; `npm run build` succeeds. Exit criteria each checked: `Previous`/`Next` survive only inside stripped block comments (:107, :121, :217, :225); `Pagination` mounted with `hrefForPage={(n) => \`?page=${n}\`} scroll={false} label="Photo reference pages" className="mt-2"` and no outer `pageCount <= 1` guard, the only other `ButtonLink` being `fullViewButton` (:288) and the only `Button` being `Clear reference` (:389); `tests/admin.photoReference.test.ts` byte-for-byte unchanged (sha256 `4db08b51e33a9859253ecf9e482d2bd7441bee8de8042a7b5705dbc7c82ced54` before and after); `ImageGenPanel.tsx`, `NinaJobAnchorPicker.tsx` and both route `page.tsx` files untouched and both mounts still render.
+  - **Commit note**: staged and committed by explicit pathspec, never `git add -A` — this worktree is shared with the concurrent peer sessions for phases 2, 3 and 5, whose in-flight edits to six other files must not be swept into this phase's commit.
 
 - [x] **P1-CA-A007** Phase 5: Crop UI + PhotoshopDetail wiring
   - **Difficulty**: HARD

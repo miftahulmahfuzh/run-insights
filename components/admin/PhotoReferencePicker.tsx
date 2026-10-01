@@ -3,7 +3,7 @@
 import * as React from 'react'
 
 import { Maximize2Icon } from '@/components/admin/photoIcons'
-import { Button, ButtonLink, EmptyState } from '@/components/ui'
+import { Button, ButtonLink, EmptyState, Pagination } from '@/components/ui'
 import { cn } from '@/lib/cn'
 
 import {
@@ -103,6 +103,25 @@ import type { PhotoReferenceItem } from './photoReferenceModel'
  * reason the page exists must not open collapsed; a runner who lands here should see photographs,
  * not a closed disclosure they have to know to tap.
  *
+ * ── THE PAGER IS A ROW OF NUMBERS, NOT A STEPPER (2026-10-01) ─────────────────────────────
+ * `Previous`/`Next` are gone. The shared `components/ui/Pagination.tsx` draws one cell per page —
+ * `1 2 3 4 5 6`, every number, no window and no ellipsis — and the current page is a
+ * non-interactive `aria-current="page"` cell rather than a link to where you already are. The
+ * reason is the defect the stepper had and could not be tuned out of: page 6 was five taps from
+ * page 1, and `NINA_PHOTO_REF_PAGE_SIZE` is 99, so a runner hunting one photograph in a
+ * five-hundred-row union walked past four pages to reach the fifth. A tap is now a jump.
+ *
+ * The href is a BARE query (`?page=3`), not an absolute path, and that is load-bearing rather than
+ * incidental: this one component is mounted on two different routes — `/admin/image-generation`
+ * and `/nina/jobs/[id]/anchor` — and a bare query is the only spelling that is correct on both.
+ * `PhotoshopPickerGrid.tsx` is a near-copy of this footer and keeps its own absolute-path grammar
+ * for the opposite reason: it has exactly one route. Do not unify the two.
+ *
+ * `scroll={false}` is forwarded to every cell, for the same reason the old `ButtonLink`s carried
+ * it — see the `scrollIntoView` effect below, which is what pays for turning Next's scroll-to-top
+ * off. The pager renders nothing at all when `pageCount <= 1`; the `page N of M` line beside
+ * `Clear reference` still does, because a row of numbers cannot say how many photographs exist.
+ *
  * ── THE "FULL VIEW" BUTTON DOES NOT PARSE `key` (2026-09-20) ────────────────────────────────────
  * `/nina/jobs/[id]`'s Detail-foto screen (`NinaJobDetail.tsx`) opens its reference photo in the
  * app's one full-screen viewer (`components/ui/PhotoViewer.tsx`, mounted by `/nina/about`) through
@@ -141,8 +160,13 @@ export function PhotoReferencePicker({
   pageCount: number
   /**
    * Thumbnail (or original) URLs for the page either side of `page` — `listNinaPhotoReferences`'s
-   * `preloadUrls`, rendered below as `<link rel="prefetch">` hints so a `Previous`/`Next` click
-   * finds its images already warming in the browser instead of starting cold.
+   * `preloadUrls`, rendered below as `<link rel="prefetch">` hints so a tap on an adjacent number
+   * in the pager finds its images already warming in the browser instead of starting cold.
+   *
+   * Still exactly the two neighbours, unchanged by the 2026-10-01 numbered pager: every page is
+   * now one tap away, but the pages either side of this one are still the likely next stop, and
+   * warming all of them would mean prefetching the whole collection on every render. This is a
+   * bet on where the runner goes next, not a claim about where they CAN go.
    */
   preloadUrls: readonly string[]
   /** The saved (or drafted) selection. `PHOTO_REFERENCE_NONE` (`''`) means no reference. */
@@ -189,14 +213,19 @@ export function PhotoReferencePicker({
   const mountedRef = React.useRef(false)
 
   /*
-   * `Previous`/`Next` swap the whole page's RSC payload (`?page=` is a real navigation, not local
-   * state), and `ButtonLink`'s `scroll={false}` below turns off Next's default scroll-to-top for
-   * it — so without this effect the viewport would just stay wherever it was, which on a page
-   * taller than the grid is usually still scrolled past the top. Scrolling the section itself into
-   * view puts the first row back under the pointer instead. Skipped on mount: the section is
-   * already in view on first load, and the component instance (and its `sectionRef`) persists
-   * across the `page`-prop change a Previous/Next click causes, so the effect fires exactly on
-   * that change.
+   * A pager cell swaps the whole page's RSC payload (`?page=` is a real navigation, not local
+   * state), and the `scroll={false}` this file hands `Pagination` below turns off Next's default
+   * scroll-to-top for it — so without this effect the viewport would just stay wherever it was,
+   * which on a page taller than the grid is usually still scrolled past the top. Scrolling the
+   * section itself into view puts the first row back under the pointer instead. Skipped on mount:
+   * the section is already in view on first load, and the component instance (and its
+   * `sectionRef`) persists across the `page`-prop change a pager tap causes, so the effect fires
+   * exactly on that change.
+   *
+   * Keyed on the PROP and not on a click, which is why the 2026-10-01 swap from `Previous`/`Next`
+   * to a row of numbers did not have to touch a line of it: the effect never knew what the runner
+   * tapped, only that `page` is now something else. A jump from 1 to 6 scrolls exactly as a step
+   * from 1 to 2 did.
    */
   React.useEffect(() => {
     if (!mountedRef.current) {
@@ -280,10 +309,11 @@ export function PhotoReferencePicker({
          * The saved reference is not on THIS page. Two causes, both real and indistinguishable
          * from here: the row was deleted (`/admin/photos` can remove a chat photograph and the
          * album manager can delete an album row), or it is simply on a different page — the picker
-         * now reaches every photograph, so nothing is ever permanently out of reach any more, only
-         * a `Previous`/`Next` tap away. Nothing is drawn as selected, and `onChange` is deliberately
-         * NOT called — see the file's Decisions entry: self-healing in an effect would mark the
-         * operator's draft dirty on mount.
+         * now reaches every photograph, so nothing is ever permanently out of reach any more, and
+         * since 2026-10-01 every page is one tap on its own number rather than a walk through the
+         * ones in between. Nothing is drawn as selected, and `onChange` is deliberately NOT called
+         * — see the file's Decisions entry: self-healing in an effect would mark the operator's
+         * draft dirty on mount.
          */
         <p className="mb-2 max-w-[70ch] text-[13px] font-medium text-ink-2">
           The saved reference is not on this page &mdash; it was deleted, or it is on a different
@@ -349,29 +379,38 @@ export function PhotoReferencePicker({
               {selectedId !== '' && <>selected #{selectedId} &middot; </>}
               Showing {items.length} of {total} &middot; page {page} of {pageCount}
             </p>
-            <div className="flex flex-wrap items-center gap-2">
-              {page > 1 && (
-                <ButtonLink href={`?page=${page - 1}`} scroll={false} size="md" variant="secondary">
-                  Previous
-                </ButtonLink>
-              )}
-              {page < pageCount && (
-                <ButtonLink href={`?page=${page + 1}`} scroll={false} size="md" variant="secondary">
-                  Next
-                </ButtonLink>
-              )}
-              {value !== PHOTO_REFERENCE_NONE && (
-                <Button
-                  type="button"
-                  size="md"
-                  variant="ghost"
-                  onClick={() => onChange(PHOTO_REFERENCE_NONE)}
-                >
-                  Clear reference
-                </Button>
-              )}
-            </div>
+            {/*
+             * `Clear reference` stays on the count line rather than joining the numbered row
+             * below: it acts on the SELECTION, not on which window of the collection is drawn, and
+             * the line it sits beside is the one that names that selection. `justify-between`
+             * keeps it pinned right, exactly where the old three-control cluster put it.
+             */}
+            {value !== PHOTO_REFERENCE_NONE && (
+              <Button
+                type="button"
+                size="md"
+                variant="ghost"
+                onClick={() => onChange(PHOTO_REFERENCE_NONE)}
+              >
+                Clear reference
+              </Button>
+            )}
           </div>
+
+          {/*
+           * Its own full-width line, because `Pagination` centres itself and a centred row cannot
+           * share a `justify-between` line with a left-aligned paragraph without one of the two
+           * lying about its alignment. Renders nothing when `pageCount <= 1`, so the `mt-2` goes
+           * with it and a one-page collection keeps the footer it has today.
+           */}
+          <Pagination
+            page={page}
+            pageCount={pageCount}
+            label="Photo reference pages"
+            hrefForPage={(n) => `?page=${n}`}
+            scroll={false}
+            className="mt-2"
+          />
         </>
       )}
     </>
