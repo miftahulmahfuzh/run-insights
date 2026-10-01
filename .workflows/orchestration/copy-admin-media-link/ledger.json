@@ -3,6 +3,12 @@
   "coordinator": "orch-copy-admin-media-link",
   "coordinator_session_id": "899ce690-deee-4d09-9bba-9254bca2dfd0",
   "created": "2026-10-01T04:23:37+00:00",
+  "landed": {
+    "at": "2026-10-01T05:10:40+00:00",
+    "base": "main",
+    "commit": "b1cb864e436f6822bf5ad20b8b60cb83d146c00a",
+    "machine": "pc"
+  },
   "phases": [
     {
       "card": null,
