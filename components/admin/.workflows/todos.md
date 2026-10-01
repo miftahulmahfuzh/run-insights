@@ -3,16 +3,16 @@
 **Package Path**: `components/admin`
 **Package Code**: CA
 **Last Updated**: 2026-10-01
-**Total Active Tasks**: 1
+**Total Active Tasks**: 0
 
 ## Quick Stats
 - P0 Critical: 0
 - P1 High: 0
-- P2 Medium: 1
+- P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 10
+- Completed: 11
 - Archived: 6
 
 ---
@@ -24,16 +24,6 @@
 ### [P1] High
 
 ### [P2] Medium
-
-- [ ] **P2-CA-A009** Phase 5: `/admin/photoshop` and `/admin/error-logs`
-  - **Difficulty**: EASY
-  - **Type**: Feature
-  - **Context**: Owns `components/admin/PhotoshopPickerGrid.tsx` and `app/admin/error-logs/page.tsx`; `app/admin/photoshop/page.tsx`, `lib/admin/errorLogModel.ts`, `ErrorLogList.tsx`, `errorLogHref`'s body, the `TabStrip` and both `EmptyState` branches are untouched. Exit: the picker's two hand-rolled `<Link>`s become `<Pagination hrefForPage={(n) => \`/admin/photoshop?page=${n}\`} label="Photo pages" />` and the error-logs `‹ Newer` / `Older ›` row becomes `<Pagination hrefForPage={(n) => errorLogHref(category, n)} label="Error log pages" className="mt-2" />`, both count lines kept and neither surface gaining an outer `pageCount <= 1` guard; `TOUCH_ICON` leaves the error-logs imports while `cn`, `Link`, `TOUCH_TARGET`, `ButtonLink` and `EmptyState` stay; the stale `PhotoGrid.tsx:177-211` citation at `:116` is dropped. Neither file is read by any suite, so `grep -n 'Newer\|Older\|Previous\|Next\|Sebelumnya\|Berikutnya'` over both is invariant 9's **only** check here — load-bearing, not skippable.
-  - **Status**: open
-  - **Plan Set**: `NUMBERED_PAGINATION_PLAN.md` (phase 5 of 5)
-  - **Satisfies**: R1 — Change **every** pagination system in the app — `/nina/about`, `/admin/nina` (the "Image collection" nav label), and every other paginated surface — so each one uses the new control, and the current Previous/Next pagination UI is gone from all of them
-  - **Depends on**: `P2-CU-A001`
-  - **Plan**: `.workflows/plan/P2-CA-A009.md`
 
 ### [P3] Low
 
@@ -48,6 +38,24 @@
 (all six completed tasks were archived on 2026-09-12 — see Archive; full
 per-task detail — Context, Drift, Decided, Files — survives in git history and
 in `.workflows/package_readme.md`)
+
+- [x] **P2-CA-A009** Phase 5: `/admin/photoshop` and `/admin/error-logs`
+  - **Difficulty**: EASY
+  - **Type**: Feature
+  - **Context**: Owns `components/admin/PhotoshopPickerGrid.tsx` and `app/admin/error-logs/page.tsx`; `app/admin/photoshop/page.tsx`, `lib/admin/errorLogModel.ts`, `ErrorLogList.tsx`, `errorLogHref`'s body, the `TabStrip` and both `EmptyState` branches are untouched. Exit: the picker's two hand-rolled `<Link>`s become `<Pagination hrefForPage={(n) => \`/admin/photoshop?page=${n}\`} label="Photo pages" />` and the error-logs `‹ Newer` / `Older ›` row becomes `<Pagination hrefForPage={(n) => errorLogHref(category, n)} label="Error log pages" className="mt-2" />`, both count lines kept and neither surface gaining an outer `pageCount <= 1` guard; `TOUCH_ICON` leaves the error-logs imports while `cn`, `Link`, `TOUCH_TARGET`, `ButtonLink` and `EmptyState` stay; the stale `PhotoGrid.tsx:177-211` citation at `:116` is dropped. Neither file is read by any suite, so `grep -n 'Newer\|Older\|Previous\|Next\|Sebelumnya\|Berikutnya'` over both is invariant 9's **only** check here — load-bearing, not skippable.
+  - **Status**: completed
+  - **Plan Set**: `NUMBERED_PAGINATION_PLAN.md` (phase 5 of 5)
+  - **Satisfies**: R1 — Change **every** pagination system in the app — `/nina/about`, `/admin/nina` (the "Image collection" nav label), and every other paginated surface — so each one uses the new control, and the current Previous/Next pagination UI is gone from all of them
+  - **Depends on**: `P2-CU-A001`
+  - **Plan**: `.workflows/plan/P2-CA-A009.md`
+  - **Completed**: 2026-10-01 13:38
+  - **Method**: /do (plan set phase 5 of 5, run as a swarm session in a worktree shared with three concurrent peer phases)
+  - **Files**: components/admin/PhotoshopPickerGrid.tsx, app/admin/error-logs/page.tsx
+  - **Decided**: Step 0's `grep -c "use client"` returned 2 on `components/ui/Pagination.tsx` instead of 0 — proceeded rather than escalating to the reconciler (rung 3, the plan's own escalation condition is *"if it OPENS WITH `'use client'`"*; `head -1` is `import type * as React from 'react'` and both hits are prose in that file's docblock arguing why it is **not** a client module). `npm run build` renders both routes as Server Components, confirming it.
+  - **Decided**: the full `npm test` sweep's single red (`tests/admin.albumActionsBarrel.test.ts`, a 5s dynamic-import timeout) was ruled not a phase-5 failure (rung 6 + measurement): the file is untouched by this set, it passes in isolation, and load average read 47 with four peer phase sessions sweeping this shared worktree concurrently. Nothing was relaxed.
+  - **Verified**: `npm run format:check`, `npm run typecheck` (`next typegen && tsc --noEmit`), `npm run lint` and `npm run build` all clean — `lint` is the gate that would have caught a leftover `TOUCH_ICON` binding. Full `npm test`: 383/384 files, 6847/6848 tests pass, the one red being the load flake recorded above (green on re-run in isolation). All seven CI guards (`data-layer`, `f08`, `openrouter`, `client-secret`, `llm-payload`, `f11`, `schema-drift`) PASS. Exit-criterion greps both printed nothing: `grep -n 'Newer\|Older\|Previous\|Next\|Sebelumnya\|Berikutnya'` over the two files, and `grep -n 'PhotoGrid.tsx:177-211' app/admin/error-logs/page.tsx` — exit criterion 5 makes the first load-bearing here, since neither file is read by any suite and the set deliberately does not create one (index `## Decisions`, fork 10). `git diff --stat b32d662` over the two files: 2 files, 37 insertions, 55 deletions, nothing else.
+  - **Follow-up**: `tests/admin.pagerSweep.test.ts` — invariant 9 on these two files is verified by grep at commit time, not by a CI gate. Carded deliberately (index `## Decisions`, fork 10 / `## Reconciliation Log` row 11), to be written against the post-migration tree.
+  - **Commit note**: staged and committed by explicit pathspec, never `git add -A` — this worktree is shared with the concurrent peer sessions for phases 2, 3 and 4, whose in-flight edits must not be swept into this phase's commit.
 
 - [x] **P2-CA-A008** Phase 4: `/admin/image-generation` + the job anchor picker
   - **Difficulty**: NORMAL

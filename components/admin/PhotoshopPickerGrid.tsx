@@ -1,6 +1,6 @@
 import Link from 'next/link'
 
-import { EmptyState } from '@/components/ui'
+import { EmptyState, Pagination } from '@/components/ui'
 import type { NinaPhotoRef } from '@/lib/nina/imageprefs'
 
 /**
@@ -58,28 +58,20 @@ export function PhotoshopPickerGrid({
         </ul>
       </div>
 
+      {/* The count line answers "how many are there"; the numbered row answers "take me to page 7".
+          Different questions, so both stay — see the plan set's `## Decisions`, fork 1. The href is
+          ABSOLUTE on purpose: this grid is mounted by one route and has always spelled it that way,
+          unlike `PhotoReferencePicker`'s bare `?page=`. */}
       <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
         <p className="text-[10px] font-medium text-ink-3 tabular-nums sm:text-[12px]">
           Showing {items.length} of {total} &middot; page {page} of {pageCount}
         </p>
-        <div className="flex flex-wrap items-center gap-2">
-          {page > 1 && (
-            <Link
-              href={`/admin/photoshop?page=${page - 1}`}
-              className="rounded-field bg-card px-3 py-2 text-[14px] font-semibold text-ink hover:bg-accent-soft"
-            >
-              Previous
-            </Link>
-          )}
-          {page < pageCount && (
-            <Link
-              href={`/admin/photoshop?page=${page + 1}`}
-              className="rounded-field bg-card px-3 py-2 text-[14px] font-semibold text-ink hover:bg-accent-soft"
-            >
-              Next
-            </Link>
-          )}
-        </div>
+        <Pagination
+          page={page}
+          pageCount={pageCount}
+          label="Photo pages"
+          hrefForPage={(n) => `/admin/photoshop?page=${n}`}
+        />
       </div>
     </>
   )

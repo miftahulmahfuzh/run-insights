@@ -1,7 +1,16 @@
 # Package: components/admin
 
 **Location**: `components/admin`
-**Last Updated**: 2026-10-01 (`numbered-pagination`, `P2-CA-A008`: `PhotoReferencePicker.tsx`'s
+**Last Updated**: 2026-10-01 (`numbered-pagination` phase 5 of 5, `P2-CA-A009`: the set's sweep —
+`PhotoshopPickerGrid.tsx`'s `Previous`/`Next` `<Link>` pair and `app/admin/error-logs/page.tsx`'s
+three-child `‹ Newer` / count / `Older ›` row both become mounts of the same
+`components/ui/Pagination`. Two different href grammars survive the migration on purpose
+(absolute for the photoshop grid, `errorLogHref` for the log, which keeps `?tab=`), both pages
+stay Server Components, and neither gained a hook or a `'use client'`. With this phase **no
+hand-rolled Previous/Next pager survives anywhere in the app** — a property verified by grep at
+commit time, not by a test. See *The numbered pager across this package*.)
+
+**Previously**: 2026-10-01 (`numbered-pagination`, `P2-CA-A008`: `PhotoReferencePicker.tsx`'s
 hand-rolled `Previous`/`Next` `ButtonLink` pair — and the cluster `<div>` that wrapped them — is
 gone, replaced by the shared numbered control phase 1 added at `components/ui/Pagination.tsx`.
 One cell per page, the current page a non-interactive `aria-current="page"` cell. The `?page=N`
@@ -51,7 +60,12 @@ There is no data access, no validation and no vendor call in this directory. Rea
 props from a Server Component; writes leave through a Server Action in `lib/admin`.
 
 **The `'use client'` census is deliberate.** Most of the package is client, but `AdminNav`,
-`UserPicker`, `CircleFrame`, `touch.ts` and `photoIcons.tsx` carry no directive. `CircleFrame`
+`UserPicker`, `CircleFrame`, `PhotoshopPickerGrid`, `touch.ts` and `photoIcons.tsx` carry no
+directive. `PhotoshopPickerGrid` is the one whose directive-freedom is now load-bearing rather
+than incidental: it renders `components/ui/Pagination`, and that control is directive-free too, so
+a numbered row of thirty-odd page links reaches the browser as `<a>`s and one
+`<span aria-current="page">` with no React behind them. Adding a `'use client'` here to reach for
+a hook would make that row — and the whole tile wall — a client bundle. `CircleFrame`
 is stateless with pure imports, so it renders on the server and compiles into whichever client
 graph imports it. `UserPicker` expresses selection in the URL (`aria-current` + a `basePath`
 prop) because `usePathname()` would make it client-rendered to bold one word. `AdminNav` is the
@@ -107,6 +121,9 @@ see Test consumers under Reverse Dependencies.
   thumbnail in the browser, and run a bounded, resumable, chunk-registering upload queue.
 - Own the framing studio and the sanity circles at the sizes chat actually draws; hand a photo
   to her chat as a pointer in a new tab with the describe fired but never awaited.
+- Be `/admin/photoshop`'s entry wall: the same deduplicated album+chat union the reference picker
+  draws, in the same iOS-Photos idiom, except every tile NAVIGATES to that photo's detail page
+  instead of selecting a value — with a numbered pager under it and no client JavaScript at all.
 - `/admin/photoshop/[source]/[id]`: mode, model, the improvement field, the OPTIONAL aspect-ratio
   crop step (since 2026-09-19), the execute button and the before/after resolution row. The crop
   step picks one of the catalogued OpenRouter `aspect_ratio` labels and pans/zooms the source
@@ -148,6 +165,7 @@ see Test consumers under Reverse Dependencies.
 | `CropStudio.tsx` | `'use client'` | Drag / pinch / wheel / slider / arrows. Every pointer tracked by `pointerId` in a Map: one pans, two pinch. Contains one subtraction and one `Math.hypot`. |
 | `CircleFrame.tsx` | **no directive** | A stored crop as a circle at any size. `ninaCropStyle` + a square box; percentages, never `translate()`. |
 | `PhotoshopCropStudio.tsx` | `'use client'` | `CropStudio`'s RECTANGLE sibling, and a sibling by copy of the interaction pattern rather than by shared code. A ratio `<select>` over `NINA_IMAGE_ASPECT_RATIOS` above a frame shaped `aspect-ratio: a / b` from the LABEL (`'5:4'` → `'5 / 4'` — exact where the float would be a rounding), drag / pinch / wheel / slider / arrows inside it. Controlled, and the ratio is PART of the value (`PhotoshopCropSelection = { ratioLabel, crop }`): changing the ratio changes the frame's shape, which invalidates the offsets, so the two can never be set apart. Every bound, clamp, delta conversion and CSS mapping is `lib/nina/photoshopCrop.ts`, whose functions all take **source, target ratio, crop** in that order; this file holds two pointer positions, a subtraction, one `Math.hypot` and a label→ratio lookup. `zoomFactorForWheel` is imported from `lib/nina/crop` directly. |
+| `PhotoshopPickerGrid.tsx` | **no directive** | `/admin/photoshop`'s entry wall: every Nina photo as a navigating `<Link>` tile, over a numbered `Pagination`. |
 | `PhotoshopDetail.tsx` | `'use client'` | `/admin/photoshop/[source]/[id]` in full: mode, model, the improvement field (free text + a non-sticky preset `<select>` that fills it), the optional crop step, execute, and — once a job lands — the before/after with Replace / Add as new / Cancel. Polls with a sequential `setTimeout` (`POLL_INTERVAL_MS = 3_000`), `ImageGenTestPanel`'s shape, so a slow response cannot stack a second poll. Owns `cropOpen` + `cropSelection` and the only mount of `PhotoshopCropStudio`. |
 | `photoIcons.tsx` | **no directive** | The shared inline-SVG glyph set — one home so one trash cannot grow two silhouettes. 10 glyphs (`EyeIcon`, `ChevronLeftIcon`, `ChevronRightIcon` deleted 2026-09-12: rendered nowhere, imported only by this file's own test). |
 | `AdminNav.tsx` | **no directive** | The nav shell: `<nav>`, desktop eyebrow/footer, breakpoint mechanics (`fixed bottom-0` + `pb-[calc(var(--safe-bottom)/2)]` below `lg`, `lg:sticky lg:top-8` above). The list is `AdminNavLinks`. |
@@ -975,6 +993,81 @@ the panel above turns "the test reads the saved settings" into a warning. A succ
 lands in the Image collection's Media folder with a caption bubble, because a chat photo cannot
 exist without a message to hang on.
 
+## The numbered pager across this package
+
+Since 2026-10-01 (`numbered-pagination`, phases 4 and 5) **every paged surface in this directory,
+and every `app/admin/**` route it feeds, renders its pages as numbers through one control,
+`components/ui/Pagination`.** No `Previous`/`Next` stepper survives in either. The defect that
+bought the sweep is the same at all three mounts: a stepper puts page 6 five taps from page 1, and
+the operator chasing one photograph or one failure streak pages by jumping, not by stepping.
+(`explorer/PhotoGrid.tsx`'s own `‹ Newer` / `Older ›` row is a separate phase's file and is
+documented in `components/admin/explorer/.workflows/package_readme.md`; the rules below are about
+the three mounts this file owns.)
+
+**Three mounts, three href builders, and the differences are rules.** The control itself is
+href-agnostic (`hrefForPage: (page: number) => string`), which is exactly what lets each surface
+keep the URL grammar it already had:
+
+| Mount | `label` | `hrefForPage` | Why that spelling |
+|---|---|---|---|
+| `PhotoReferencePicker.tsx` | `Photo pages` | bare `?page=<n>` | Two routes mount it; only a bare query is right on both. |
+| `PhotoshopPickerGrid.tsx` | `Photo pages` | absolute `/admin/photoshop?page=<n>` | Exactly one route, and it always spelled it this way. |
+| `app/admin/error-logs/page.tsx` | `Error log pages` | `errorLogHref(category, n)` | The `?tab=` category has to ride along. |
+
+**Do not unify the three.** The temptation is strong because the first two footers are near-copies
+of each other, but the picker's bare query is a correctness requirement of being mounted twice, and
+collapsing the photoshop grid onto it (or the reverse) sends one route to the other's page 2. The
+error log's builder is a third thing again: it is a `lib/admin/errorLogModel` export shared with
+the tab strip above it, which is what keeps the strip and the pager from disagreeing about what
+page 1 of a category looks like.
+
+**Both of the phase-5 surfaces are Server Components, and the pager did not change that**
+(confirmed by `npm run build`, 2026-10-01). `components/ui/Pagination` carries no `'use client'`
+and uses no hook, so on these two pages the numbered row renders server-side as `<a>`s plus one
+`<span aria-current="page">` and ships no React for itself. That is the same rule
+`components/ui/Button.tsx:6-10` states for `ButtonLink`, which `app/admin/error-logs/page.tsx` had
+always pulled from the same barrel — the pager just joined it.
+
+**The count line and the numbered row answer different questions, so both stay** (the plan set's
+`## Decisions`, fork 1). A row of numbers cannot say how many rows exist; a count line cannot take
+you to page 7. Their *layout* differs per mount and each layout is deliberate:
+
+- `PhotoshopPickerGrid` keeps the `Showing … of … · page … of …` paragraph and the pager on ONE
+  `justify-between` row, because with no `Clear reference` button there are only two children and
+  neither has to lie about its alignment.
+- `PhotoReferencePicker` cannot: `Clear reference` holds the count row (it acts on the selection,
+  not on which window is drawn), so the pager takes its own full-width centred line below.
+- `app/admin/error-logs` centres a `{first}–{last} of {total}` line and puts the pager under it,
+  both inside the same `border-t border-rule pt-3` block the old three-child row used.
+
+**Nothing else about either phase-5 file moved.** `PhotoshopPickerGrid`'s `items.length === 0`
+`EmptyState` early return, its absolute tile hrefs and its `routeKind` mapping are byte-identical
+to `b32d662`; `import Link` stays because the tiles are links. On the error-log page `TabStrip` and
+both `EmptyState` branches (including the `page > 1` "Go to the first page" `ButtonLink`) are
+byte-identical, and the only import that left is the `TOUCH_ICON` binding the deleted arrow
+`<span>`s needed — `TOUCH_TARGET`, `Link`, `cn`, `ButtonLink` and `EmptyState` all stay.
+
+### The sweep's completeness is a grep, not a gate — read this before "tidying" it
+
+The plan set's **invariant 9** — *no hand-rolled pager survives* — is, for these two specific
+files (`components/admin/PhotoshopPickerGrid.tsx` and `app/admin/error-logs/page.tsx`), **verified
+by grep at commit time and by nothing else.** Note this is the plan set's own numbering, not the
+repo-wide invariant list's (where 9 is the public-env-var rule quoted under Gotchas).
+
+Neither file is read by any test suite: there is no colocated `.test.tsx` for the photoshop grid
+and no source-scan suite that names either path. The set **deliberately declined to create one**
+rather than serialise four concurrent phases to buy a single grep-equivalent assertion — recorded
+at the plan index's `## Decisions` fork 10 and `## Reconciliation Log` row 11. So:
+
+- A future editor who reintroduces a `Previous`/`Next` pair in either file **will not be caught by
+  CI.** Nothing will go red. The regression is invisible until someone looks.
+- The follow-up card is **`tests/admin.pagerSweep.test.ts`**, to be written against the
+  post-migration tree. Until it exists, this paragraph is the only thing standing where a test
+  would, which is why it must not be edited away as redundant prose.
+- `PhotoReferencePicker.tsx` is the exception that proves the shape: it *is* gated, by
+  `tests/admin.photoReference.test.ts` (a `readRepoCode` source scan) plus its colocated suite.
+  The asymmetry is phase ordering, not a judgement that those two files matter less.
+
 ## `/admin/memory`
 
 `MemoryTable` is the whole content of the route (R1: *"just make all the memory to show as one
@@ -1220,9 +1313,12 @@ counts stay MEMORY counts: still true of the account, just not of this page.
   `NinaPhotoshopSourceKind` (`PhotoshopDetail`), all **type-only**, so no drizzle table module
   reaches the bundle.
 - `@/components/ui` — `Button`, `ButtonLink`, `EmptyState`, `Card`, `Field`, `CONTROL_CLASS`,
-  `Pagination` (the shared numbered pager; `PhotoReferencePicker` is this directory's consumer of
-  it since 2026-10-01, handing it a bare `?page=` href builder because it is mounted on two
-  routes), `buttonClasses` (exported precisely so a non-`<button>` — or a `<button>` that must keep
+  `Pagination` (the shared numbered pager, since 2026-10-01; this directory has TWO consumers —
+  `PhotoReferencePicker`, handing it a bare `?page=` href builder because it is mounted on two
+  routes, and `PhotoshopPickerGrid`, handing it an absolute one because it is mounted on one.
+  `app/admin/error-logs/page.tsx` is a third mount through the same barrel, outside this package.
+  See *The numbered pager across this package*), `buttonClasses` (exported precisely so a
+  non-`<button>` — or a `<button>` that must keep
   `onClick` on itself — can borrow the look), and `useSavePhoto`/`SaveNotice`
   (`@/components/ui/useSavePhoto`), the shared save/download/open ladder both rails warm on
   `pointerdown`.
@@ -1276,6 +1372,17 @@ calling bundle. `lib/share/origin.ts` is the mirror: it opens with `import 'serv
   `NINA_SLOT_PENDING_PROMISES` slot), passes `factTotal`/`hiddenCount`.
 - `app/admin/shortcuts/page.tsx` — `ShortcutTable` (only mount site) + `UserPicker` with
   `basePath="/admin/shortcuts"`. `force-dynamic`, rows built server-side by `buildShortcutRows`.
+- `app/admin/photoshop/page.tsx` — `PhotoshopPickerGrid` (only mount site, which is why that
+  component's pager href may stay absolute). `requireAdmin()` for the `userId`, one
+  `listNinaPhotoReferences` read paged at `NINA_PHOTO_REF_PAGE_SIZE`, and `pageCount` computed
+  HERE as `Math.max(1, Math.ceil(total / pageSize))` — the page owns the page size, the component
+  is handed the arithmetic's answer. `?page=` is parsed with a `Math.max(1, …)` floor, so a
+  hand-typed `?page=0` or `?page=abc` reads as page 1 instead of a negative offset.
+- `app/admin/error-logs/page.tsx` — `ErrorLogList`, `touch.ts`'s `TOUCH_TARGET` (the tab pills) and,
+  since 2026-10-01, `components/ui/Pagination` through the same barrel it already took `ButtonLink`
+  and `EmptyState` from. A **Server Component with no Server Action of its own**, `force-dynamic`
+  because background work writes the log table without revalidating; `errorLogHref` serves both the
+  tab strip and the pager so the two cannot disagree about page 1 of a category.
 - `app/admin/photoshop/[source]/[id]/page.tsx` — `PhotoshopDetail` (only mount site).
   `requireAdmin()`, the `source` segment narrowed to `'avatar' | 'message_image'` and the id
   through `isValidId` before `getPhotoshopSourcePhoto`, `notFound()` on either miss. It hands down
@@ -1737,6 +1844,20 @@ prompt-length dial's `defaultValue` chip.
 - **Do not re-key the picker's `scrollIntoView` effect on a click.** It watches the `page` PROP,
   which is why swapping a stepper for a row of numbers cost it nothing — and why `scroll={false}`
   has to stay on the pager, or Next's scroll-to-top fights it.
+- **Do not make `PhotoshopPickerGrid`'s pager href bare, either.** It is the mirror of the rule
+  above: one route, an absolute `/admin/photoshop?page=<n>` it has always spelled, and the two
+  footers stay near-copies rather than one component on purpose.
+- **Do not add a `'use client'` to `PhotoshopPickerGrid.tsx` or `app/admin/error-logs/page.tsx`.**
+  Both render `Pagination` server-side today, as plain anchors with no React behind them; a hook
+  reached for in either file turns a thirty-cell page row — and a whole tile wall or log table —
+  into a client bundle.
+- **Do not delete the count line at any of the three mounts** to "avoid repeating the pager".
+  `Showing … of …` / `{first}–{last} of {total}` answers how many rows exist; the numbered row
+  answers take-me-to-page-7. Different questions (the plan set's `## Decisions`, fork 1).
+- **Do not trust CI to catch a reintroduced stepper in `PhotoshopPickerGrid.tsx` or
+  `app/admin/error-logs/page.tsx`.** Neither file is read by any test suite, so the sweep's
+  completeness is verified by grep at commit time only — see *The sweep's completeness is a grep,
+  not a gate*, and write `tests/admin.pagerSweep.test.ts` if you want that to stop being true.
 - **Do not put the template guard in the browser.** The server refuses a broken template with a
   sentence; a client-side validator would be a second rule that can disagree, and the failure
   the feature exists to prevent is a broken PROMPT, not a refused edit.
@@ -1922,3 +2043,25 @@ to her.
   `components/ui`'s and is documented there. **`PhotoshopPickerGrid.tsx` is not part of this
   entry** — it is another phase's file, and its footer is described here only as the near-copy that
   keeps its own absolute-path grammar because it has exactly one route.
+- **2026-10-01** — `numbered-pagination` phase 5 of 5 (`P2-CA-A009`), the set's sweep and the entry
+  that closes the gap the one above names. `PhotoshopPickerGrid.tsx`'s two hand-rolled
+  `Previous`/`Next` `<Link>`s and their wrapper `<div>` are now a single
+  `<Pagination page pageCount label="Photo pages" hrefForPage={(n) => '/admin/photoshop?page=' + n} />`
+  from the `@/components/ui` barrel, and `app/admin/error-logs/page.tsx`'s three-child
+  `‹ Newer` / count / `Older ›` row (both `rel="prev"`/`rel="next"` links and both greyed `<span>`
+  dead ends) is now a centred `{first}–{last} of {total}` line plus a `Pagination` labelled
+  `Error log pages` over `errorLogHref`, inside the same `border-t border-rule pt-3` block. Neither
+  page gained a `'use client'`, a hook, or any client JavaScript — both still render as Server
+  Components (`npm run build`). Byte-identical either side of the change: the grid's absolute tile
+  hrefs, its `routeKind` mapping, its count paragraph and its `items.length === 0` `EmptyState`;
+  the log page's `TabStrip` and both `EmptyState` branches. One import binding left, `TOUCH_ICON`,
+  which only the deleted arrow `<span>`s used. New above: the `PhotoshopPickerGrid.tsx` module-map
+  row and its Key Responsibilities bullet (the file had never been documented here), the
+  `'use client'` census correction, the `## The numbered pager across this package` section with the
+  three-mount href table, two new Primary consumers (`app/admin/photoshop/page.tsx`,
+  `app/admin/error-logs/page.tsx`), the `@/components/ui` import inventory, and five Gotchas.
+  **The standing caveat recorded in that section is the load-bearing part of this entry**: the set's
+  invariant 9 (no hand-rolled pager survives) is verified on these two files by grep at commit time
+  and by no test at all — the set declined to write one rather than serialise four concurrent phases
+  (plan index `## Decisions` fork 10, `## Reconciliation Log` row 11), and the follow-up card is
+  `tests/admin.pagerSweep.test.ts`. Do not tidy that paragraph away as redundant prose.
