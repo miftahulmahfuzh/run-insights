@@ -3,6 +3,12 @@
   "coordinator": "orch-media-parity-compact-pager",
   "coordinator_session_id": "a77591e2-4026-4b3d-9394-12fc50d23033",
   "created": "2026-10-02T07:40:37+00:00",
+  "landed": {
+    "at": "2026-10-02T07:58:30+00:00",
+    "base": "main",
+    "commit": "44243e8189c41fdd84c38c15ce54bf31c6d0fc79",
+    "machine": "pc"
+  },
   "phases": [
     {
       "card": null,
@@ -42,7 +48,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/media-parity-compact-pager/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "media-parity-compact-pager",
-  "updated": "2026-10-02T07:57:00+00:00",
+  "updated": "2026-10-02T07:58:30+00:00",
   "verified_at": "2026-10-02T07:54:38+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/media-parity-compact-pager"
 }

@@ -6,8 +6,8 @@
 **Worktree:** `~/.worktrees/run-insights/media-parity-compact-pager`
 **Branch:** `feature/media-parity-compact-pager` (base: `origin/main` @ `9010c11`)
 **Phases:** 2
-**Status:** reconciled
-**Coordinator:** —
+**Status:** landed — both phases committed, verified from git, and merged to `main` as `44243e8` (2026-10-02). Per-phase state is `ledger.json`; this line is the coordinator's, and no phase session may write it.
+**Coordinator:** `orch-media-parity-compact-pager` (session `a77591e2-4026-4b3d-9394-12fc50d23033`)
 
 ---
 
@@ -80,8 +80,8 @@ The user's rationale, verbatim:
 
 | # | Title | Satisfies | Package | Files | Depends on | Difficulty | Plan | TaskID | Card |
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
-| 1 | Media page size binds to the read's ceiling | R1 | `lib/nina` + `app/nina/about` + `components/nina` + `tests/` | 9 | — | NORMAL | `.workflows/plan/media-parity-compact-pager/phase-1.md` | — | — |
-| 2 | One pager cell: 30.8 px, circular | R2 | `components/ui` (+ `docs/`) | 4 | — | EASY | `.workflows/plan/media-parity-compact-pager/phase-2.md` | — | — |
+| 1 ✅ | Media page size binds to the read's ceiling | R1 | `lib/nina` + `app/nina/about` + `components/nina` + `tests/` | 9 | — | NORMAL | `.workflows/plan/media-parity-compact-pager/phase-1.md` | P1-NIN-A058 | — |
+| 2 ✅ | One pager cell: 30.8 px, circular | R2 | `components/ui` (+ `docs/`) | 4 | — | EASY | `.workflows/plan/media-parity-compact-pager/phase-2.md` | P2-CU-A002 | — |
 
 Neither phase depends on the other and their file sets are disjoint (verified below), so the two
 may run concurrently in either order.
