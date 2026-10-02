@@ -1,0 +1,47 @@
+{
+  "branch": "feature/media-parity-compact-pager",
+  "coordinator": "orch-media-parity-compact-pager",
+  "coordinator_session_id": "a77591e2-4026-4b3d-9394-12fc50d23033",
+  "created": "2026-10-02T07:40:37+00:00",
+  "phases": [
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [],
+      "difficulty": "NORMAL",
+      "n": 1,
+      "note": null,
+      "package": "lib/nina` + `app/nina/about` + `components/nina` + `tests/",
+      "plan": ".workflows/plan/media-parity-compact-pager/phase-1.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Media page size binds to the read's ceiling"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [],
+      "difficulty": "EASY",
+      "n": 2,
+      "note": null,
+      "package": "components/ui` (+ `docs/`)",
+      "plan": ".workflows/plan/media-parity-compact-pager/phase-2.md",
+      "reported_at": null,
+      "satisfies": [
+        "R2"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "One pager cell: 30.8 px, circular"
+    }
+  ],
+  "plan": "/home/miftah/run-insights/.workflows/orchestration/media-parity-compact-pager/PLAN.md",
+  "repo": "/home/miftah/run-insights",
+  "slug": "media-parity-compact-pager",
+  "updated": "2026-10-02T07:40:37+00:00",
+  "worktree": "~/.worktrees/run-insights/media-parity-compact-pager"
+}
