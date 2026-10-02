@@ -22,6 +22,16 @@ only; phases 2-5 adopt it at `/nina/about`, `/admin/nina`, `/admin/image-generat
 their measured values — nothing outside this directory imports `Pagination` yet — while the
 directory's own file/module/test counts were re-measured today and carry today's stamp.
 
+**Updated 2026-10-02** (`P2-CU-A002`, phase 2 of the media-parity-compact-pager set) —
+`Pagination`'s cell shrank 30%: `min-h-11 min-w-11 rounded-field` became
+`min-h-[1.925rem] min-w-[1.925rem] rounded-pill px-1 text-[12px]` (30.8 px, circular), knowingly
+below the 44 px iOS floor because the owner asked for that number. **No file outside
+`Pagination.tsx` changed** — not one of the five call sites, and no markup, role or aria change —
+so every count in this document still holds at its existing stamp (re-verified today: 18 suites,
+240/240 green via `npx vitest run components/ui`). The decision itself is recorded in the Paging
+section below, in `Pagination.tsx`'s `CELL` docstring, and in `docs/architecture.md`; all three
+exist so a later reader does not "fix" the size back.
+
 ## Overview
 
 `components/ui` is the app's shared component kit: seventeen components (ScreenHeader shares
@@ -372,16 +382,26 @@ The one numbered pager, and the rules a call site inherits:
   more than one pager and "Navigation" twice is no navigation at all.
 - The active cell is `bg-ink text-card`, not `bg-accent`: the same measured contrast ruling as
   `Button`'s primary (white-on-cyan near 2:1, ink-on-card ~14:1, and it inverts in dark mode).
-  Cells are `min-h-11 min-w-11`, not `h-11 w-11` — a minimum cannot fight a wrapped row's line
-  height, and a four-digit page number must be allowed to be wider than it is tall.
+  Cells are `min-h-[1.925rem] min-w-[1.925rem]`, not `h-…`/`w-…` — a minimum cannot fight a
+  wrapped row's line height, and a long page number must be allowed to be wider than it is tall.
+- **The cell is 30.8 px, circular, and below the 44 px tap floor on purpose.** `1.925rem` is
+  44 × 0.7, spelled in rem so it tracks the root scale the way `min-h-11` did; `rounded-pill` is
+  the radius every round control in the app already uses. The owner asked for exactly this on
+  2026-10-02 once `/nina/about`'s Media tab reached 13 pages. It is the only place in the app under
+  the iOS minimum, so **do not "restore" `min-h-11` here** — you would be reverting a request.
+  `px-1` and `text-[12px]` moved with the box so a three-digit page still sits inside the circle
+  and four digits is the first to stretch it into a pill; `Pagination.tsx`'s `CELL` docstring
+  carries that arithmetic digit by digit, and `Pagination.test.tsx` pins all three tokens.
 - **No `'use client'`, no hook, no effect, and that is load-bearing.** It is what lets the same
   module serve a client screen and a Server Component, and it is what keeps the barrel inside the
   client-safe claim `tests/share.bundle.test.ts` audits. Adding a hook here would be a barrel-wide
   change, not a local one.
-- **It must not import `components/admin/*`.** `ui` importing `admin` is an inverted dependency;
-  the 44 px tap floor is spelled locally in `CELL` instead of borrowing `admin/touch.ts`'s
-  constant, and that duplication is the cheaper of the two. The whole import list is a type-only
-  `react` import, `next/link` and `@/lib/cn` — keep it that short.
+- **It must not import `components/admin/*`.** `ui` importing `admin` is an inverted dependency, so
+  `CELL` spells its own geometry rather than borrowing `admin/touch.ts`'s `TOUCH_ICON` — and since
+  the 30.8 px change the two are not even the same geometry, because `TOUCH_ICON` is the 44 px
+  floor and this control is the sanctioned exception to it. They are meant to disagree; do not
+  reconcile them by import. The whole import list is a type-only `react` import, `next/link` and
+  `@/lib/cn` — keep it that short.
 
 ### Absence (`EmptyState`, `EmptySlot`)
 
@@ -649,6 +669,11 @@ do not land, the right move is to remove the re-export, not to keep it on spec.
 - **Do not fold `ViewerPhoto.rowPointer` into `ViewerPhoto.id`.** `id` is the image-generation
   turn id on both Nina surfaces and feeds `ninaJobHref`; merging them breaks two screens' job
   links silently and still compiles.
+- **Do not raise `Pagination`'s cell back to the 44 px floor.** The 30.8 px circular cell
+  (`min-h-[1.925rem] min-w-[1.925rem] rounded-pill`) is the app's one sanctioned exception to the
+  tap minimum, asked for by number; the Paging section above holds the argument and
+  `Pagination.test.tsx` pins all three tokens. It is the only control here that *should* disagree
+  with `components/admin`'s `TOUCH_ICON`.
 - **Do not pass `aria-selected` to `Chip`** — it is `aria-pressed`, and a screen reader that
   announces "selected" has told the user nothing about toggling.
 - **Do not change a `TabBar` literal without its constant and its test** — `h-[39px]`,
@@ -697,6 +722,16 @@ do not land, the right move is to remove the re-export, not to keep it on spec.
 
 ## Documentation log
 
+- **2026-10-02** — surgical update for `P2-CU-A002` (phase 2 of the media-parity-compact-pager
+  set): `Pagination`'s shared `CELL` class went from the 44 px `min-h-11 min-w-11 rounded-field` to
+  a 30% smaller circular cell, `min-h-[1.925rem] min-w-[1.925rem] rounded-pill px-1 text-[12px]`.
+  Changed here: the header stamp, the two Paging bullets that carry the sizing decision and the
+  `components/admin` import boundary it now also explains, and one gotcha so the Gotchas list — the
+  file's index of "do not revert this" rules — names the exception too. Nothing else moved, and
+  nothing else should have: the diff is one implementation file plus its suite, no call site, no
+  markup, role or aria change, so the module map, the barrel count, the import grammars, the
+  reverse-wiring map and every stamped census are untouched and still correct at their own dates.
+  The directory's suite was re-run today to confirm that: 18 files, 240/240.
 - **2026-10-01** — surgical update for `P2-CU-A001` (phase 1 of 5 of the numbered-pagination set):
   `Pagination.tsx` added with its suite, and `index.ts` re-exports it. Changed here: the module map
   row and the barrel's name count (15 → 16), the directive-free roster and the client-module

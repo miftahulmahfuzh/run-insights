@@ -425,20 +425,63 @@ export function decodeAboutTab(raw: unknown): NinaAboutTab {
 }
 
 /**
- * How many photographs one page of Foto profil or Media holds — 33 columns x 3 rows on desktop,
- * 3 x 33 on phones, the same tiling `NINA_PHOTO_REF_PAGE_SIZE` (the photo-reference picker,
+ * How many photographs one page of **Foto profil** holds — 33 columns x 3 rows on desktop, 3 x 33
+ * on phones, the same tiling `NINA_PHOTO_REF_PAGE_SIZE` (the photo-reference picker,
  * `lib/nina/imageprefs.ts`) already settled on for the identical grid shape. A separate constant
  * rather than a shared import: that module is deliberately zero-import (its header) so it stays
  * loadable from the image-generation worker, and this page is not part of that boundary.
+ *
+ * ── IT IS THE PROFILE TAB'S NUMBER ONLY, SINCE media-parity-compact-pager (2026-10-02) ────────
+ * It used to be spelled for BOTH tabs, and that was the bug. 99 is correct here because it is
+ * `listNinaAvatarsPage`'s own default AND ceiling, so what this page asks for is what Postgres is
+ * told. It was never correct for Media, whose read ceilings at `NINA_CHAT_PHOTO_PAGE_SIZE` —
+ * see `NINA_ABOUT_MEDIA_PAGE_SIZE` directly below, which is the fix and the argument for it.
  */
 export const NINA_ABOUT_PAGE_SIZE = 99
+
+/**
+ * How many photographs one page of **Media** holds.
+ *
+ * ── IT IS DEFINED AS `NINA_CHAT_PHOTO_PAGE_SIZE`, NOT SPELLED AS 48, AND THAT IS THE POINT ────
+ * `listNinaMediaPhotos` (`lib/nina/queries/images.ts`) does not merely default to
+ * `NINA_CHAT_PHOTO_PAGE_SIZE` — it CEILINGS at it: `Math.min(opts.limit ?? 48, 48)`. A caller that
+ * asks for more is handed 48 and told nothing. So the page SIZE a caller strides its offset by and
+ * the row count the read will actually return are two numbers that must never be allowed to
+ * disagree, and the only way to make that true by construction rather than by vigilance is to
+ * derive one from the other. Writing `= 48` here would restore exactly the shape that failed.
+ *
+ * What failed, measured against production on 2026-10-02 before the fix: `/nina/about` passed
+ * `limit: NINA_ABOUT_PAGE_SIZE` (99), was clamped to 48, and stepped `offset` by 99 anyway. Rows
+ * 48…98 of every 99-row window were fetched by no page, and `galleryPageCount = ceil(total / 99)`
+ * drew only 7 pages where `ceil(total / 48)` draws 13 — so no page number existed that would have
+ * reached them either. Of 596 Media rows, 336 were reachable and **260 were not**.
+ *
+ * ── WHY MEDIA DOES NOT SIMPLY GET 99 LIKE FOTO PROFIL ─────────────────────────────────────────
+ * Because `NINA_CHAT_PHOTO_PAGE_SIZE`'s own docstring (:80-104) already made the argument and it
+ * applies here unchanged: `nina_avatars` has `thumb_url`, so a 99-tile profile page is 99 derived
+ * 256 px JPEGs. `nina_message_images` has NO thumbnail column, so every Media tile loads the full
+ * original — hers are 768x1024 PNGs on the order of a megabyte each. Raising this to 99 would
+ * roughly double a page's payload on the surface that is *mobile*, to fix a pagination bug that
+ * does not need payload to fix it. The number travels with the cost, not with the screen.
+ *
+ * ── AND IT IS WHAT MAKES THE TWO SURFACES THE SAME SURFACE ────────────────────────────────────
+ * `/admin/nina?view=media` strides by `NINA_CHAT_PHOTO_PAGE_SIZE` over the identical read and the
+ * identical predicate (`mediaCollectionScope`) in the identical order
+ * (`coalesce(last_replaced_at, created_at) desc, id desc`). Binding this constant to that one is
+ * therefore not merely "a size that fits under the ceiling" — it makes Media page N on `/nina/about`
+ * literally the same row set as Media page N on the admin surface, which is the request R1 spells:
+ * *"make sure /nina/about Media show exactly the same photos as admin page's …?view=media"*.
+ *
+ * Well under `NINA_GALLERY_LIMIT` (200), so `galleryPhotos`'s slice stays the no-op it has been.
+ */
+export const NINA_ABOUT_MEDIA_PAGE_SIZE = NINA_CHAT_PHOTO_PAGE_SIZE
 
 /**
  * Where the last page a runner viewed is remembered across a reload — one cookie per tab, written
  * by the fetch action that serves each page (`lib/nina/aboutPageActions.ts`) and read on the
  * server render that seeds the first page. Non-sensitive: a page number, not a credential.
  *
- * ── THE NAME CARRIES `NINA_ABOUT_PAGE_SIZE` ─────────────────────────────────────────────────────
+ * ── EACH NAME CARRIES ITS OWN TAB'S PAGE SIZE ───────────────────────────────────────────────────
  * A bare page NUMBER is only meaningful against the page SIZE it was recorded under. Bump the
  * constant (30x3, then 33x3, both this same sitting) and a phone that had wandered to, say, page 3
  * under the old size lands on a DIFFERENT, often near-empty offset window under the new one — the
@@ -449,9 +492,18 @@ export const NINA_ABOUT_PAGE_SIZE = 99
  * page 1" — rather than silently reinterpreting its number against new math. The 30-day `maxAge` on
  * a page number cookie was already accepted as disposable; this just makes "disposable" include
  * "across a resize" too.
+ *
+ * ── WHICH IS WHY THE TWO NAMES NO LONGER CARRY THE SAME NUMBER ──────────────────────────────────
+ * media-parity-compact-pager (2026-10-02) moved Media from 99 to `NINA_ABOUT_MEDIA_PAGE_SIZE` (48)
+ * and the profile tab not at all. That is a resize of exactly one tab, so exactly one cookie is
+ * orphaned: a device sitting on Media page 6 under the old 99-stride does NOT get reinterpreted as
+ * page 6 of 13 under the new 48-stride — it reads as absent and starts over on page 1, which is
+ * both correct and the cheapest possible answer. `nina-about-ppage-99` keeps its name and its
+ * remembered page, because nothing about Foto profil changed. Interpolating each tab's OWN size is
+ * what makes that fall out automatically instead of needing to be remembered.
  */
 export const NINA_ABOUT_PROFILE_PAGE_COOKIE = `nina-about-ppage-${NINA_ABOUT_PAGE_SIZE}`
-export const NINA_ABOUT_MEDIA_PAGE_COOKIE = `nina-about-mpage-${NINA_ABOUT_PAGE_SIZE}`
+export const NINA_ABOUT_MEDIA_PAGE_COOKIE = `nina-about-mpage-${NINA_ABOUT_MEDIA_PAGE_SIZE}`
 
 /**
  * The one sanitizer for a page number from anywhere untrusted — a cookie string, a hand-edited

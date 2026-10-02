@@ -75,6 +75,7 @@ vi.mock('@/components/ui/PhotoViewer', () => ({
 import { COPY_ADMIN_LINK_LABEL } from '@/components/ui/CopyAdminLinkButton'
 import { NinaAboutScreen } from './NinaAboutScreen'
 import {
+  NINA_ABOUT_MEDIA_PAGE_SIZE,
   NINA_ABOUT_PAGE_SIZE,
   NINA_ABOUT_PHOTO_PARAM,
   NINA_ATTACH_MAX_CHARS,
@@ -327,17 +328,27 @@ describe('NinaAboutScreen — pagination', () => {
     expect(fetchNinaAlbumPage).toHaveBeenCalledTimes(1)
   })
 
-  it('the Media tab pages independently through fetchNinaMediaPage', async () => {
+  it('the Media tab pages independently through fetchNinaMediaPage, at its OWN page size', async () => {
+    /* The totals here are built from `NINA_ABOUT_MEDIA_PAGE_SIZE`, not `NINA_ABOUT_PAGE_SIZE`:
+     * `galleryPageCount` divides by the Media stride, and a test that spells the profile tab's
+     * number would be asserting against arithmetic the screen does not do. That mismatch WAS the
+     * 2026-10-02 bug — 99 in the caller, 48 at the read — so the suite must not reproduce it. */
     fetchNinaMediaPage.mockResolvedValue({
       items: [galleryPhoto('c9', 'his')],
-      total: NINA_ABOUT_PAGE_SIZE * 2,
+      total: NINA_ABOUT_MEDIA_PAGE_SIZE * 2,
       page: 2,
     })
-    renderScreen({ galleryTotal: NINA_ABOUT_PAGE_SIZE * 2 })
+    renderScreen({ galleryTotal: NINA_ABOUT_MEDIA_PAGE_SIZE * 2 })
     fireEvent.click(screen.getByRole('tab', { name: 'Media' }))
 
     // Its own landmark, naming its own collection.
-    expect(screen.getByRole('navigation', { name: 'Halaman media' })).toBeInTheDocument()
+    const nav = screen.getByRole('navigation', { name: 'Halaman media' })
+    expect(nav).toBeInTheDocument()
+    // Exactly two pages for exactly two pages' worth of rows — the pager's divisor is the Media
+    // stride. Under the old shared 99 this same total drew one page and the control vanished.
+    expect(nav.querySelectorAll('li')).toHaveLength(2)
+    expect(screen.getByText(/Halaman 1 dari 2/)).toBeInTheDocument()
+
     fireEvent.click(screen.getByRole('button', { name: '2' }))
     expect(fetchNinaMediaPage).toHaveBeenCalledWith(2)
     expect(fetchNinaAlbumPage).not.toHaveBeenCalled()

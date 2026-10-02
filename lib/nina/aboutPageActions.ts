@@ -7,6 +7,7 @@ import {
   clampNinaAboutPage,
   galleryPhotos,
   NINA_ABOUT_MEDIA_PAGE_COOKIE,
+  NINA_ABOUT_MEDIA_PAGE_SIZE,
   NINA_ABOUT_PAGE_SIZE,
   NINA_ABOUT_PROFILE_PAGE_COOKIE,
   type NinaAlbumPhoto,
@@ -32,6 +33,16 @@ import { requireUserId } from '@/lib/auth/requireUserId'
  * always knows which tab it is paging — a runtime `section` argument would need a generic
  * overload or a union return type callers immediately narrow anyway. Two small, fully-typed
  * functions cost less than one that reintroduces the branch its caller already resolved.
+ *
+ * ── AND WHY EACH ONE SPELLS ITS OWN PAGE SIZE ────────────────────────────────────────────────
+ * `NINA_ABOUT_PAGE_SIZE` here, `NINA_ABOUT_MEDIA_PAGE_SIZE` there, and they are different numbers
+ * (99 and 48) because the two reads ceiling at different numbers. A shared `section` parameter
+ * would have had to carry the size as a third thing to get right; two functions each name theirs
+ * beside the read it belongs to. That is not hypothetical tidiness: until 2026-10-02 this file
+ * passed 99 to BOTH, `listNinaMediaPhotos` clamped the Media leg to 48 and said nothing, and the
+ * offset went on advancing by 99 — 260 of 596 photographs unreachable from the Media tab.
+ * `lib/nina/album.ts` carries the argument; `tests/nina.aboutMediaPage.test.ts` pins this
+ * function's half of it against the bound parameters Postgres would receive.
  */
 
 export interface NinaAboutPage<T> {
@@ -68,8 +79,8 @@ export async function fetchNinaMediaPage(page: number): Promise<NinaAboutPage<Ni
   })
 
   const { rows, total } = await listNinaMediaPhotos(userId, {
-    limit: NINA_ABOUT_PAGE_SIZE,
-    offset: (safePage - 1) * NINA_ABOUT_PAGE_SIZE,
+    limit: NINA_ABOUT_MEDIA_PAGE_SIZE,
+    offset: (safePage - 1) * NINA_ABOUT_MEDIA_PAGE_SIZE,
   })
   return { items: galleryPhotos(rows), total, page: safePage }
 }

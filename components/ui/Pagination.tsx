@@ -13,8 +13,10 @@ import { cn } from '@/lib/cn'
  *
  * Imports are `next/link` and `@/lib/cn` and nothing else. In particular NOT
  * `components/admin/touch.ts`'s `TOUCH_ICON`, whose own header argues it is admin-scoped: `ui`
- * importing `admin` is an inverted dependency. The 44 px string is spelled locally in `CELL`
- * instead. The duplication is the cheaper of the two.
+ * importing `admin` is an inverted dependency. `CELL` spells its own geometry instead — and since
+ * 2026-10-02 it is not even the same geometry, because the pager cell is a deliberate 30.8 px
+ * exception to the 44 px floor `TOUCH_ICON` exists to enforce. Read `CELL`'s docstring before
+ * reconciling the two: they are supposed to disagree now.
  *
  * ── EVERY NUMBER, ALWAYS ────────────────────────────────────────────────────────────────────
  * No ellipsis, no window, no truncation. The whole point of this control is that page 7 is one tap
@@ -49,13 +51,57 @@ export type PaginationProps =
   | (PaginationBase & { onPage: (page: number) => void; hrefForPage?: never })
 
 /**
- * `min-h-11 min-w-11` and not `h-11 w-11`: a minimum cannot fight a wrapped row's line height, and
- * a four-digit page number needs to be allowed to be wider than it is tall. 44 px is the app's iOS
- * floor (`components/ui/Button.tsx:13`).
+ * ── 30.8 px, AND YES, THAT IS BELOW THE TAP FLOOR ────────────────────────────────
+ * `1.925rem` is 44 × 0.7. It is spelled in rem, not px, so it tracks the root font scale exactly
+ * the way the `min-h-11` it replaces did (`11` = `calc(var(--spacing) * 11)` = 2.75rem = 44 px);
+ * a reader who scales text up still gets a proportionally bigger target.
+ *
+ * The repo owner asked for this on 2026-10-02, with the number in hand — "reduce their size, and
+ * make it circular, make sure the circular button is 30% smaller" — after `/nina/about`'s Media
+ * tab went from 7 pages to 13 and a row of thirteen 44 px slabs ate the screen. So this is the
+ * ONE place in the app that goes under the 44 px iOS minimum (`components/ui/Button.tsx:13`,
+ * `docs/design-brief.md:174`, `components/admin/touch.ts`), and it does so knowingly. Do not
+ * "restore" the floor here: you would be reverting a request, not fixing a regression. What makes
+ * it survivable is that the cells are separated by `gap-1` and that a mis-tap lands on a
+ * NEIGHBOURING PAGE NUMBER — one tap to undo, nothing destructive, no state written. If the floor
+ * is ever re-imposed on this control it has to be re-imposed by whoever asked for the exception.
+ *
+ * ── `min-h`/`min-w`, NEVER `h`/`w` ─────────────────────────────────────────────
+ * Unchanged from the 44 px era, for the same two reasons: a minimum cannot fight a wrapped row's
+ * line height, and a long page number must be allowed to be wider than it is tall.
+ *
+ * ── WHY `px-1` AND `text-[12px]` MOVED WITH THE BOX ─────────────────────────────
+ * A 30.8 px *minimum* box means a short label sits inside a CIRCLE and a long one stretches it
+ * into a pill. Stretching is correct — it is what `min-w` is for — but it should start as late as
+ * possible. Poppins' digits are uniform-width at 600/1000 em (so `tabular-nums` is belt and
+ * braces), a digit at 12 px advances 7.2 px, and `px-1` spends 4 px a side INSIDE the 30.8 because
+ * preflight makes every box `border-box`:
+ *
+ *     1 digit    7.2 +  8 = 15.2 px  ->  min-w wins; a 30.8 x 30.8 circle
+ *     2 digits  14.4 +  8 = 22.4 px  ->  circle
+ *     3 digits  21.6 +  8 = 29.6 px  ->  circle, with 1.2 px to spare
+ *     4 digits  28.8 +  8 = 36.8 px  ->  FIRST to stretch: a 36.8 x 30.8 pill
+ *
+ * Four digits is therefore the stated breaking point, and it is stated rather than discovered.
+ * Keeping the old `px-2` + `text-[13px]` would have stretched at TWO digits (15.6 + 16 = 31.6 >
+ * 30.8) — page 10 of today's thirteen — which is why the padding and the type are part of this
+ * change and not a later tidy-up. 12 px semibold tabular digits stay legible on a phone; the app
+ * already ships 11 px and 10 px labels, and the 16 px rule in `app/globals.css` is an INPUT rule
+ * (Safari zooms on focusing a small form control) that a span, an anchor and a button never trip.
+ *
+ * ── `rounded-pill` AND NOT `rounded-full` ───────────────────────────────────
+ * They render identically here — 999 px and `calc(infinity * 1px)` both clamp to half of a 30.8 px
+ * box — so this is a vocabulary call, and the vocabulary is settled. `app/globals.css`'s
+ * `@theme inline` ships a four-step radius ladder mirrored from `docs/design/tokens.css` (chip 8 /
+ * field 14 / card 22 / pill 999), and every round CONTROL in the app spells `rounded-pill`:
+ * `Composer.tsx`'s size-11 buttons, `Sheet.tsx`'s close, `Chip.tsx`, `CircleFrame.tsx`. Tailwind's
+ * own `rounded-full` survives only on decorative 1-3 px dots. A pager cell is a control, and
+ * `rounded-field` — the thing it replaces — is from the same ladder, so the diff stays inside one
+ * vocabulary instead of straddling two.
  */
 const CELL =
-  'inline-flex min-h-11 min-w-11 items-center justify-center rounded-field px-2 ' +
-  'text-[13px] font-semibold tabular-nums'
+  'inline-flex min-h-[1.925rem] min-w-[1.925rem] items-center justify-center rounded-pill px-1 ' +
+  'text-[12px] font-semibold tabular-nums'
 
 /**
  * `bg-ink text-card` for the active page and not `bg-accent`: `components/ui/Button.tsx:46-54`
