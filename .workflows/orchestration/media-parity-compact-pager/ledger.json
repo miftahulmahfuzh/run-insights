@@ -6,19 +6,19 @@
   "phases": [
     {
       "card": null,
-      "commit": null,
+      "commit": "5c043a698fa731aaa6e51addd2f890f86c091774",
       "depends_on": [],
       "difficulty": "NORMAL",
       "n": 1,
-      "note": null,
+      "note": "R1 done: NINA_ABOUT_MEDIA_PAGE_SIZE = NINA_CHAT_PHOTO_PAGE_SIZE (48), never the literal, per D-2; both Media call sites + galleryPageCount divisor bound to it; cookie moved to nina-about-mpage-48 per D-3, nina-about-ppage-99 untouched. 13 pages on both surfaces for 596 rows, 0 unreachable (was 7 pages / 260 unreachable). Decisions: (a) Step 3 created only phase 1's task, not phase 2's -- tie-break narrower blast radius, p2 minted P2-CU-A002 concurrently in the shared worktree; (b) plan's escaped */ inline comment respelled as a plain clause, rung 3, the plan offered both; (c) knip's new 'Duplicate exports NINA_CHAT_PHOTO_PAGE_SIZE|NINA_ABOUT_MEDIA_PAGE_SIZE' is D-2 working as specified and is LEFT AS IS -- knip is not in ci.yml, exits 0, and already reports ~40 pre-existing entries. Gates: npm test 386/6863, typecheck, lint, prettier all green; tests/nina.avatarsPage.test.ts green unedited; no diff in lib/nina/queries or app/admin/nina. Plan index phase-1 row ticked in the main checkout but UNCOMMITTED -- Status: reconciled deliberately left for you.",
       "package": "lib/nina` + `app/nina/about` + `components/nina` + `tests/",
       "plan": ".workflows/plan/media-parity-compact-pager/phase-1.md",
-      "reported_at": null,
+      "reported_at": "2026-10-02T07:57:00+00:00",
       "satisfies": [
         "R1"
       ],
-      "status": "pending",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-NIN-A058",
       "title": "Media page size binds to the read's ceiling"
     },
     {
@@ -42,7 +42,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/media-parity-compact-pager/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "media-parity-compact-pager",
-  "updated": "2026-10-02T07:54:38+00:00",
+  "updated": "2026-10-02T07:57:00+00:00",
   "verified_at": "2026-10-02T07:54:38+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/media-parity-compact-pager"
 }
