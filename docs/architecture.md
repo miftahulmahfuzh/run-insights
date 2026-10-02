@@ -322,7 +322,7 @@ replaced five hand-written Previous/Next steppers in three copy grammars, which 
 enough that `/admin/error-logs` carried a comment saying it had copied `PhotoGrid.tsx`'s pager by
 hand. The control is mechanism-agnostic by a discriminated union — `hrefForPage` for the four
 `<Link>`-navigating surfaces, `onPage` for `/nina/about`'s client fetch — so no surface changed how
-it navigates. Three things are deliberate and easy to "fix" wrongly:
+it navigates. Four things are deliberate and easy to "fix" wrongly:
 
 - **No ellipsis or windowing.** A large `pageCount` wraps onto more lines. The point of the control
   is jumping straight to a page, and a window is the thing that was removed.
@@ -333,6 +333,16 @@ it navigates. Three things are deliberate and easy to "fix" wrongly:
 - **The four `hrefForPage` grammars stay different on purpose.** `/admin/photoshop` is absolute,
   `PhotoReferencePicker` bare (it mounts on two routes), `/admin/nina` spells page 1 as the
   *absence* of `?page=`, `/admin/error-logs` goes through `errorLogHref`. No shared factory.
+- **The cell is 30.8 px and circular, below the 44 px tap floor, on purpose.**
+  `min-h-[1.925rem] min-w-[1.925rem] rounded-pill px-1 text-[12px]` — 44 × 0.7, asked for by the
+  repo owner with that number on 2026-10-02, once `/nina/about`'s Media tab reached 13 pages and a
+  row of thirteen 44 px slabs ate the screen. It is the **only** place in the app that goes under
+  the iOS minimum (`components/ui/Button.tsx:13`, `docs/design-brief.md:174`,
+  `components/admin/touch.ts`), which makes it the one most likely to be "corrected" by an
+  accessibility sweep. It must not be: a mis-tap lands on a neighbouring page number and costs one
+  tap. The padding and type moved with the box so a three-digit page still sits inside the circle
+  and four digits is the first to stretch it to a pill; `Pagination.tsx`'s `CELL` docstring has the
+  arithmetic and `Pagination.test.tsx` pins the three tokens.
 
 Count lines ("1–120 of 980", "Showing 99 of 412") were kept everywhere — only the navigation
 control was replaced. `/admin/photoshop` and `/admin/error-logs` have no rendering suite, so their

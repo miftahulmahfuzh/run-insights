@@ -8,9 +8,9 @@ import { Pagination } from './Pagination'
 /**
  * Component tests for the one numbered pager. What is pinned here is the *contract* phases 2-5
  * consume — every number rendered, the active cell non-interactive, the two mechanism arms — and
- * the two class tokens that were argued for rather than picked (`bg-ink text-card`, `min-h-11
- * min-w-11`). The rest of the class list is not asserted, which would make this a snapshot of the
- * string rather than a test of the choice.
+ * the class tokens that were argued for rather than picked (`bg-ink text-card`, the 30.8 px
+ * `min-h-[1.925rem] min-w-[1.925rem]` pair, and `rounded-pill`). The rest of the class list is not
+ * asserted, which would make this a snapshot of the string rather than a test of the choice.
  */
 
 /** Every number in the row, in document order, as the user reads them. */
@@ -87,13 +87,19 @@ describe('Pagination', () => {
     expect(active).not.toHaveClass('bg-accent')
   })
 
-  it('gives every cell a 44px tap-target floor', () => {
+  it('sizes every cell 30.8px and circular — the asked-for exception to the 44px floor', () => {
     render(
       <Pagination page={1} pageCount={3} label="Album pages" hrefForPage={(n) => `?page=${n}`} />,
     )
 
     for (const label of ['1', '2', '3']) {
-      expect(screen.getByText(label)).toHaveClass('min-h-11', 'min-w-11')
+      // 1.925rem is 44 x 0.7, in rem so it tracks the root scale the way `min-h-11` did, and it
+      // is BELOW the app's 44px iOS floor on purpose — `Pagination.tsx`'s `CELL` docstring carries
+      // the request and the arithmetic. A later reader restoring `min-h-11` lands here first.
+      expect(screen.getByText(label)).toHaveClass('min-h-[1.925rem]', 'min-w-[1.925rem]')
+      // "Circular" is the requirement, so the radius is an argued choice and belongs in the pin.
+      expect(screen.getByText(label)).toHaveClass('rounded-pill')
+      expect(screen.getByText(label)).not.toHaveClass('rounded-field')
     }
   })
 
