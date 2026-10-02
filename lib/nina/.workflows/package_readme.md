@@ -79,7 +79,10 @@ P2-NIN-A003: `outerRef()` is no longer module-private to `images.ts` — it MOVE
 resolving `/admin/nina?avatar=<id>` to page 1 of the folder for the whole life of the feature, now
 routes all four of its outer references through it. The Gotchas entry that recorded that defect as
 KNOWN, UNREPAIRED is gone, because the defect is; what stands in its place is the TESTING TRAP that
-hid it — see Gotchas and Tests.
+hid it — see Gotchas and Tests. Restated 2026-10-02 for P1-NIN-A058
+(media-parity-compact-pager phase 1): `NINA_ABOUT_MEDIA_PAGE_SIZE` added to `album.ts`, DEFINED as
+`NINA_CHAT_PHOTO_PAGE_SIZE` rather than respelled as 48, and `NINA_ABOUT_MEDIA_PAGE_COOKIE` moved
+with it to `nina-about-mpage-48` — see standing rule 12.
 **Documentation Created**: 2026-09-05 (`NINA_CHARACTER_TUNING_PLAN.md` phase 2)
 
 ## Overview
@@ -188,6 +191,19 @@ modules into `'use client'` components.
     but task #136 took that panel out too, on this same instruction. The stakes it named are
     still real and still separate the two controls: `SessionRow`'s delete has no undo at all,
     while these controls cost a capped generation or write a reversible flag.
+12. **A page SIZE is DEFINED as the read's ceiling, never respelled as that ceiling's literal.**
+    Collection reads here CLAMP the `limit` they are handed and say nothing —
+    `listNinaMediaPhotos` at `NINA_CHAT_PHOTO_PAGE_SIZE`, `listNinaAvatarsPage` at
+    `NINA_ABOUT_PAGE_SIZE` — so a caller that strides its offset by a wider number skips every row
+    between the ceiling and the stride, and `ceil(total / stride)` then draws no page number that
+    would reach them. The shape to copy is `album.ts`'s
+    `NINA_ABOUT_MEDIA_PAGE_SIZE = NINA_CHAT_PHOTO_PAGE_SIZE`: one derivation binds the stride to
+    the ceiling, where `= 48` only promises to. A page size is also interpolated into the page
+    COOKIE's NAME (`nina-about-mpage-48`), so changing one orphans the remembered number — read
+    as absent, back to page 1 — instead of reinterpreting it against new math. `/nina/about`'s
+    Media tab asked 99, was handed 48 and advanced 99 until this was enforced: of 596 rows, 260
+    were unreachable (measured on production 2026-10-02), where `/admin/nina?view=media`
+    striding 48 over the identical read listed them all.
 
 ## The character layer
 

@@ -21,6 +21,7 @@ import {
 } from '@/lib/nina/albumActions'
 import { fetchNinaAlbumPage, fetchNinaMediaPage } from '@/lib/nina/aboutPageActions'
 import {
+  NINA_ABOUT_MEDIA_PAGE_SIZE,
   NINA_ABOUT_PAGE_SIZE,
   NINA_ABOUT_PHOTO_PARAM,
   NINA_ABOUT_TAB_PARAM,
@@ -91,13 +92,19 @@ export function NinaAboutScreen({
   adminLinkOrigin,
 }: {
   avatar: NinaAvatarView
-  /** The Foto profil tab's LOADED page — 30 at a time (`NINA_ABOUT_PAGE_SIZE`), not the album. */
+  /** The Foto profil tab's LOADED page — 99 at a time (`NINA_ABOUT_PAGE_SIZE`), not the album. */
   album: readonly NinaAlbumPhoto[]
   /** Every avatar this user has, across every page — how the pager computes its page count. */
   albumTotal?: number
   /** 1-based: which page `album` is. Seeded from a cookie, so a reload resumes where it left off. */
   albumPage?: number
-  /** The Media tab's LOADED page — same pagination shape as `album`, over the conversation's photos. */
+  /**
+   * The Media tab's LOADED page — the same pagination shape as `album` over the conversation's
+   * photographs, but a SMALLER page: `NINA_ABOUT_MEDIA_PAGE_SIZE` (48), not `NINA_ABOUT_PAGE_SIZE`
+   * (99). The read ceilings there (`nina_message_images` has no thumbnail column, so every tile is
+   * a full original); `galleryPageCount` below divides by the same constant so the pager and the
+   * fetch cannot disagree about how wide a page is.
+   */
   gallery: readonly NinaGalleryPhoto[]
   galleryTotal?: number
   galleryPage?: number
@@ -105,7 +112,7 @@ export function NinaAboutScreen({
    * **A photograph the URL names but the loaded Media page dropped — resolved on the server, or
    * null.** Optional and nullable, and both absences are the SAME answer downstream.
    *
-   * `?photo=chat.<id>` opens only when the id sits inside the LOADED page of `gallery` — 30 rows,
+   * `?photo=chat.<id>` opens only when the id sits inside the LOADED page of `gallery` — 48 rows,
    * narrower now that the Media tab paginates than the 200-row window it used to be — so a
    * photograph off that page resolves to `index < 0` and the viewer would silently not open. The
    * page falls such a miss through `getNinaMessageImage` (the deep-link read; it never filters
@@ -306,8 +313,17 @@ export function NinaAboutScreen({
     }
   }, [])
 
+  /*
+   * ── TWO DIVISORS, BECAUSE THE TWO TABS STRIDE DIFFERENTLY ────────────────────────────────────
+   * Each count must divide by the SAME number its fetch offsets by, or the row of page numbers
+   * stops describing the collection. Until 2026-10-02 both lines divided by `NINA_ABOUT_PAGE_SIZE`
+   * while `fetchNinaMediaPage` was being handed 48 rows per call: the Media pager drew
+   * `ceil(596 / 99) = 7` buttons over a collection that needs `ceil(596 / 48) = 13`, so the 260
+   * photographs between them had no button to be reached by. The divisor is not a display choice —
+   * it is the stride, and `lib/nina/album.ts` is where each stride is bound to its read's ceiling.
+   */
   const albumPageCount = Math.max(1, Math.ceil(albumTotal / NINA_ABOUT_PAGE_SIZE))
-  const galleryPageCount = Math.max(1, Math.ceil(galleryTotal / NINA_ABOUT_PAGE_SIZE))
+  const galleryPageCount = Math.max(1, Math.ceil(galleryTotal / NINA_ABOUT_MEDIA_PAGE_SIZE))
 
   /**
    * ── REFRESH ON RETURN, NOT ON A TIMER ────────────────────────────────────────────────────────
@@ -987,10 +1003,19 @@ function toCell(photo: NinaAlbumPhoto | NinaGalleryPhoto): NinaGridCell {
 }
 
 /**
- * The numbered page row under each grid — one page of `NINA_ABOUT_PAGE_SIZE`, so every photograph
- * in the collection is reachable rather than only the render-capped newest batch. Renders nothing
- * for a single-page collection, the common case: most albums and most conversations do not yet
- * hold 30 photographs.
+ * The numbered page row under each grid — one page of the tab's own size, so every photograph in
+ * the collection is reachable rather than only the render-capped newest batch. Renders nothing for
+ * a single-page collection, the common case: most albums and most conversations do not yet hold a
+ * full page.
+ *
+ * ── THE TWO TABS DO NOT PAGE AT THE SAME SIZE, AND THIS COMPONENT NEVER LEARNS WHICH IS WHICH ──
+ * It is handed `pageCount` and `total` and divides nothing itself, which is why one component can
+ * serve Foto profil's 99-row pages and Media's 48-row ones with no branch. Its caller
+ * (`albumPageCount` / `galleryPageCount` above) owns the divisor, and each divisor is the constant
+ * its own fetch strides by. Do not reintroduce a page-size import here to "simplify": a second
+ * place that knows the size is a second place that can disagree with the read's ceiling, which is
+ * exactly the 2026-10-02 defect — 7 buttons drawn over a 13-page Media collection, 260 photographs
+ * with no number that reached them.
  *
  * `onPage` is `goToAlbumPage`/`goToMediaPage` — a client fetch, never a navigation (the runner's
  * own choice over a `?page=` link): the page shell never remounts and `busy` is this tap's own

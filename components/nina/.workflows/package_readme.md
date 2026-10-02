@@ -375,8 +375,9 @@ because the server page parses the very parameter this screen derives its state 
 and Media section are one viewer list each — swiping inside the album must not wander into his
 chat photos.
 
-- **`resolvedPhoto`** (optional, nullable): the server's answer for a `chat.<id>` the
-  `NINA_GALLERY_LIMIT` (200) newest window dropped — resolved through `getNinaMessageImage`, mapped
+- **`resolvedPhoto`** (optional, nullable): the server's answer for a `chat.<id>` the LOADED Media
+  page dropped — `NINA_ABOUT_MEDIA_PAGE_SIZE` (48) rows since 2026-10-02, narrower than the
+  `NINA_GALLERY_LIMIT` (200) window it used to be — resolved through `getNinaMessageImage`, mapped
   through `galleryPhotos` (`description` never crosses), appended to the chat arm at the END. Every
   viewer reader reads the merged list, so paging and the delete control reach a resolved photo;
   the Media grid keeps mapping `gallery`. An unresolvable id still falls out the bottom as a
@@ -391,7 +392,8 @@ chat photos.
 - **The two grid pagers** (`NinaAboutPager`, one under each section) — a row of **page numbers**
   from the shared `components/ui/Pagination`, so page 5 is one tap and not four; the control's own
   no-window, no-ellipsis rule lives in that file. `onPage` is `goToAlbumPage`/`goToMediaPage` — a
-  client fetch of one `NINA_ABOUT_PAGE_SIZE` page, never a navigation, so the shell does not
+  client fetch of one page — `NINA_ABOUT_PAGE_SIZE` (99) for Foto profil, `NINA_ABOUT_MEDIA_PAGE_SIZE`
+  (48) for Media, each bound to the ceiling its own read enforces — never a navigation, so the shell does not
   remount and `busy` is that tap's own flight rather than the attach strip's. Two rules are easy
   to break here. **`NinaAboutPager` keeps its own `pageCount <= 1` guard even though `Pagination`
   already renders nothing for one page**: the guard is also what withholds the

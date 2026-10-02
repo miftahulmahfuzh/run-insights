@@ -6,6 +6,7 @@ import { resolveAdminLinkOrigin } from '@/lib/admin/adminLinkOrigin'
 import { requireUserId } from '@/lib/auth/requireUserId'
 import {
   NINA_ABOUT_MEDIA_PAGE_COOKIE,
+  NINA_ABOUT_MEDIA_PAGE_SIZE,
   NINA_ABOUT_PAGE_SIZE,
   NINA_ABOUT_PHOTO_PARAM,
   NINA_ABOUT_PROFILE_PAGE_COOKIE,
@@ -54,6 +55,18 @@ import {
  * reads it back to seed the FIRST fetch. A missing or garbled cookie (`clampNinaAboutPage`) reads
  * as page 1, never an error.
  *
+ * ── THE TWO TABS PAGE AT DIFFERENT SIZES, AND EACH ONE IS ITS READ'S OWN CEILING ──────────────
+ * `NINA_ABOUT_PAGE_SIZE` (99) for Foto profil, `NINA_ABOUT_MEDIA_PAGE_SIZE` (48) for Media. Not a
+ * styling preference: each read CEILINGS the limit it is handed, and a caller that strides its
+ * offset by a number larger than the ceiling skips rows that no page number can then reach. This
+ * page passed 99 to both legs until 2026-10-02 (media-parity-compact-pager), and because
+ * `listNinaMediaPhotos` clamps to `NINA_CHAT_PHOTO_PAGE_SIZE`, the Media leg received 48 rows and
+ * advanced by 99 — 260 of the user's 596 photographs were unreachable from this screen while
+ * `/admin/nina?view=media`, striding 48 over the identical read, listed all of them across 13
+ * pages. Binding the Media stride to that same constant is what makes page N here the same row set
+ * as page N there. `lib/nina/album.ts`'s two constants carry the full argument;
+ * `tests/nina.aboutMediaPage.test.ts` pins it against the SQL the driver actually receives.
+ *
  * ── THE HERO'S CURRENT-AVATAR RESOLVER (pagination's one correctness cost) ───────────────────
  * Before pagination, `listNinaAvatars` read the whole album, so the current avatar was always in
  * memory and the hero's tap could always find it by `findIndex`. Now the loaded page may not hold
@@ -90,8 +103,8 @@ export default async function NinaAboutPage({ searchParams }: PageProps<'/nina/a
       offset: (profilePage - 1) * NINA_ABOUT_PAGE_SIZE,
     }),
     listNinaMediaPhotos(userId, {
-      limit: NINA_ABOUT_PAGE_SIZE,
-      offset: (mediaPage - 1) * NINA_ABOUT_PAGE_SIZE,
+      limit: NINA_ABOUT_MEDIA_PAGE_SIZE,
+      offset: (mediaPage - 1) * NINA_ABOUT_MEDIA_PAGE_SIZE,
     }),
     getCurrentNinaAvatar(userId),
   ])

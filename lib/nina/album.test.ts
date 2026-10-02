@@ -5,9 +5,14 @@ import {
   albumPhotos,
   describeSubjectForSide,
   galleryPhotos,
+  NINA_ABOUT_MEDIA_PAGE_COOKIE,
+  NINA_ABOUT_MEDIA_PAGE_SIZE,
+  NINA_ABOUT_PAGE_SIZE,
+  NINA_ABOUT_PROFILE_PAGE_COOKIE,
   NINA_ALBUM_MAX,
   NINA_ATTACH_MAX_CHARS,
   NINA_AVATAR_FALLBACK_SRC,
+  NINA_CHAT_PHOTO_PAGE_SIZE,
   NINA_GALLERY_LIMIT,
   ninaAvatarView,
   photoSideOf,
@@ -201,5 +206,52 @@ describe('NINA_ATTACH_MAX_CHARS', () => {
   it('is short enough to be one question and shorter than the message ceiling', () => {
     expect(NINA_ATTACH_MAX_CHARS).toBe(600)
     expect(NINA_ATTACH_MAX_CHARS).toBeLessThan(MAX_RUNNER_MESSAGE_CHARS)
+  })
+})
+
+/**
+ * ── INVARIANT 4: NO PAGE STRIDE MAY EXCEED ITS READ'S OWN CEILING ──────────────────────────────
+ * The cheap half of the guard media-parity-compact-pager exists to install. The expensive half
+ * (`tests/nina.aboutMediaPage.test.ts`) proves what the driver is actually told; this one proves
+ * the constants cannot be arranged into the bug again in the first place, and it costs nothing.
+ *
+ * What it guards, measured on production 2026-10-02: `/nina/about`'s Media tab passed
+ * `NINA_ABOUT_PAGE_SIZE` (99) to `listNinaMediaPhotos`, which ceilings at `NINA_CHAT_PHOTO_PAGE_SIZE`
+ * (48) and returns 48 rows without complaining — and then strode its offset by 99 anyway. Of 596
+ * Media rows, 336 were reachable and 260 were not, across a pager that drew 7 page numbers where
+ * `/admin/nina?view=media` drew 13.
+ */
+describe("/nina/about page sizes — each stride is its read's ceiling", () => {
+  it('the Media stride never exceeds what listNinaMediaPhotos will return', () => {
+    // The relation, not the number: if `NINA_CHAT_PHOTO_PAGE_SIZE` moves for cost reasons, the
+    // Media stride must move with it, and `= NINA_CHAT_PHOTO_PAGE_SIZE` is what makes that free.
+    expect(NINA_ABOUT_MEDIA_PAGE_SIZE).toBeLessThanOrEqual(NINA_CHAT_PHOTO_PAGE_SIZE)
+    // And it is DEFINED as it, not merely equal to it today. A literal `48` here would pass the
+    // line above and still be the defect, one `NINA_CHAT_PHOTO_PAGE_SIZE` edit later.
+    expect(NINA_ABOUT_MEDIA_PAGE_SIZE).toBe(NINA_CHAT_PHOTO_PAGE_SIZE)
+  })
+
+  it('matches /admin/nina?view=media exactly — same read, same predicate, same stride', () => {
+    // R1 in one assertion: the admin surface strides by `NINA_CHAT_PHOTO_PAGE_SIZE` over
+    // `listNinaMediaPhotos`. Equal strides over one ordered read make page N the same row set.
+    expect(NINA_ABOUT_MEDIA_PAGE_SIZE).toBe(NINA_CHAT_PHOTO_PAGE_SIZE)
+  })
+
+  it('the profile stride is unchanged, and the two tabs are no longer one number', () => {
+    expect(NINA_ABOUT_PAGE_SIZE).toBe(99)
+    expect(NINA_ABOUT_MEDIA_PAGE_SIZE).not.toBe(NINA_ABOUT_PAGE_SIZE)
+  })
+
+  it("a Media page still fits inside galleryPhotos' render cap, so the slice stays a no-op", () => {
+    expect(NINA_ABOUT_MEDIA_PAGE_SIZE).toBeLessThanOrEqual(NINA_GALLERY_LIMIT)
+  })
+
+  it('each cookie name carries its OWN size, so a one-tab resize orphans one cookie', () => {
+    expect(NINA_ABOUT_MEDIA_PAGE_COOKIE).toBe(`nina-about-mpage-${NINA_ABOUT_MEDIA_PAGE_SIZE}`)
+    expect(NINA_ABOUT_PROFILE_PAGE_COOKIE).toBe(`nina-about-ppage-${NINA_ABOUT_PAGE_SIZE}`)
+    // The profile tab did not resize, so its remembered page must survive this change untouched.
+    expect(NINA_ABOUT_PROFILE_PAGE_COOKIE).toBe('nina-about-ppage-99')
+    // Two tabs, two keys — a shared name would let one tab's page number be read as the other's.
+    expect(NINA_ABOUT_MEDIA_PAGE_COOKIE).not.toBe(NINA_ABOUT_PROFILE_PAGE_COOKIE)
   })
 })

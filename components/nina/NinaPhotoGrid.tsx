@@ -12,10 +12,19 @@ import * as React from 'react'
  * `ScreenshotStrip`'s arrows and its swipe drifted before F18 unified them.
  *
  * ── 3 COLUMNS ON A PHONE, 33 ON DESKTOP (nina-about-pagination) ────────────────────────────────
- * `NinaAboutScreen` now pages both grids at `NINA_ABOUT_PAGE_SIZE` (99) rows at a time — the same
- * number `components/admin/PhotoReferencePicker.tsx` settled on for the identical reason: 99 is
- * divisible by both 3 and 33, so a full page tiles as a clean sheet with no trailing gap on either
+ * `NinaAboutScreen` pages Foto profil at `NINA_ABOUT_PAGE_SIZE` (99) — the same number
+ * `components/admin/PhotoReferencePicker.tsx` settled on for the identical reason: 99 is divisible
+ * by both 3 and 33, so a full page tiles as a clean sheet with no trailing gap on either
  * breakpoint. Only the collection's last (partial) page can ever leave a row short.
+ *
+ * Media pages at `NINA_ABOUT_MEDIA_PAGE_SIZE` (48) instead, and it does NOT tile cleanly at 33
+ * columns — 48 = 16 rows of 3 on a phone, and one row of 33 plus a row of 15 on desktop. That
+ * trailing short row is accepted deliberately (media-parity-compact-pager, 2026-10-02): 48 is the
+ * ceiling `listNinaMediaPhotos` enforces because `nina_message_images` has no thumbnail column and
+ * every tile here is a full original, and a stride wider than the read's ceiling is what made 260
+ * of 596 photographs unreachable from the Media tab in the first place. A clean sheet is a nicety;
+ * a reachable collection is the requirement. This grid draws whatever array it is handed either
+ * way — the divisor lives in `NinaAboutScreen`, never here.
  *
  * ── WHY THE DESKTOP TIER SCROLLS SIDEWAYS ───────────────────────────────────────────────────────
  * 33 columns of plain `1fr` would divide whatever width this screen has and shrink every tile below

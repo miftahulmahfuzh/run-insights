@@ -2,7 +2,7 @@
 
 **Package Path**: `lib/nina`
 **Package Code**: NIN
-**Last Updated**: 2026-10-01
+**Last Updated**: 2026-10-02
 **Total Active Tasks**: 0
 
 ## Quick Stats
@@ -12,7 +12,7 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 61
+- Completed: 62
 - Archived: 36
 
 ---
@@ -34,6 +34,24 @@
 (all thirty-five completed tasks were archived on 2026-09-12 — see Archive; full
 per-task detail — Context, Drift, Decided, Files — survives in git history and in
 `.workflows/package_readme.md`)
+
+- [x] **P1-NIN-A058** Phase 1: Media page size binds to the read's ceiling
+  - **Difficulty**: NORMAL
+  - **Type**: Bug
+  - **Context**: Owns lib/nina/album.ts (new NINA_ABOUT_MEDIA_PAGE_SIZE = NINA_CHAT_PHOTO_PAGE_SIZE, media cookie name -> nina-about-mpage-48), app/nina/about/page.tsx, lib/nina/aboutPageActions.ts, components/nina/NinaAboutScreen.tsx, components/nina/NinaPhotoGrid.tsx, components/nina/NinaAboutScreen.test.tsx, lib/nina/album.test.ts, new tests/nina.aboutMediaPage.test.ts, components/nina/.workflows/package_readme.md. Exit: /nina/about Media draws ceil(total/48) pages and page N fetches 48 rows at offset 48*(N-1), byte-for-byte the row set /admin/nina?view=media page N shows; 13 pages on both for today's 596 rows; tests/nina.avatarsPage.test.ts passes unedited; npm test, typecheck, lint, format:check green.
+  - **Status**: completed
+  - **Plan Set**: `MEDIA_PARITY_COMPACT_PAGER_PLAN.md` (phase 1 of 2)
+  - **Satisfies**: R1 — `/nina/about`'s Media tab must show exactly the same photographs as `/admin/nina?view=media`
+  - **Depends on**: none
+  - **Plan**: `.workflows/plan/P1-NIN-A058.md`
+  - **Completed**: 2026-10-02 15:10
+  - **Method**: /do
+  - **Files**: lib/nina/album.ts, app/nina/about/page.tsx, lib/nina/aboutPageActions.ts, components/nina/NinaAboutScreen.tsx, components/nina/NinaPhotoGrid.tsx, components/nina/NinaAboutScreen.test.tsx, lib/nina/album.test.ts, tests/nina.aboutMediaPage.test.ts (new), components/nina/.workflows/package_readme.md
+  - **Outcome**: The Media tab asked for 99 rows, the read clamped it to 48, and the offset strode 99 anyway — rows 48..98 of every window were fetched by no page, and `ceil(total/99)` drew no page number that reached them. Measured on production 2026-10-02: 596 Media rows, 13 pages on `/admin/nina?view=media` vs 7 on `/nina/about`, **260 photographs unreachable**. New `NINA_ABOUT_MEDIA_PAGE_SIZE`, *defined as* `NINA_CHAT_PHOTO_PAGE_SIZE` rather than respelled as the literal 48, so the stride is bound by construction to the ceiling the read enforces (D-2, invariant 4). Both Media call sites (the server render's `Promise.all` leg and `fetchNinaMediaPage`) and `galleryPageCount`'s divisor now use it. Per the in-code invariant at `lib/nina/album.ts` recording a measured 2026-09-19 bug, the cookie NAME moved with the size: `NINA_ABOUT_MEDIA_PAGE_COOKIE` is now `nina-about-mpage-48`, so the stale `nina-about-mpage-99` is orphaned (read as absent → Media restarts at page 1) rather than reinterpreted against new math. Foto profil untouched — `NINA_ABOUT_PAGE_SIZE` is still 99 and `nina-about-ppage-99` keeps its name and its remembered page. 13 pages on both surfaces now; R1 satisfied.
+  - **Guards**: two, so the invariant cannot return as a comment-only promise — a constants block in `lib/nina/album.test.ts`, and `tests/nina.aboutMediaPage.test.ts`, which asserts against the **bound parameters the recording fake driver actually receives**. A `vi.fn()` spy cannot witness this bug: the clamp happens *inside* the read.
+  - **Verified**: `npx vitest run tests/nina.aboutMediaPage.test.ts lib/nina/album.test.ts components/nina/NinaAboutScreen.test.tsx tests/nina.avatarsPage.test.ts` → 4 files, 81 tests passed (`tests/nina.avatarsPage.test.ts` green unedited, as the exit criteria require); `npm test` → 386 files, 6863 tests passed; `npm run typecheck`, `npm run lint` and `prettier --check` on all 8 code files → clean.
+  - **Decided**: Step 3 task-creation scope — create only phase 1's task, not phase 2's → tie-break rung "narrower blast radius". Phase 2's session is live in the same worktree and minted its own `P2-CU-A002` concurrently; creating both from here would have raced its todos.md write and double-minted.
+  - **Decided**: The plan's escaped `*\/` inline comment inside the new test's module docstring → respelled as a plain trailing clause ("…, i.e. 48") → rung 3, the plan's own implementer note offers "keep it, or respell that line without the inline comment" as equally valid.
 
 - [x] **P2-NIN-A003** `locateNinaAvatar` always returns offset 0 — the album `?avatar=` deep link lands on page 1 for every photograph
   - **Difficulty**: NORMAL
