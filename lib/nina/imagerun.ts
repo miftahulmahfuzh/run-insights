@@ -14,7 +14,7 @@ import { captionNinaPhoto } from './caption'
 import { logNinaError } from './errorlogs'
 import { callNinaImageModel, type NinaImageCallResult } from './imagecall'
 import { planNinaImageWrite, type NinaImageDedupHit } from './imageDedupe'
-import { ninaImageCaption, type NinaImageFailure } from './imagefail'
+import { isRetryableImageFailure, ninaImageCaption, type NinaImageFailure } from './imagefail'
 import { signImageBytes, type NinaImageSignature } from './perceptualSign'
 import { coerceNinaImageModel } from './imageprefs'
 import {
@@ -595,7 +595,14 @@ async function closeFailed(
     outcome.costSource ??
     (outcome.costMicroUsd != null && outcome.costMicroUsd > 0 ? 'openrouter' : undefined)
 
-  if (attempts < NINA_IMAGE_MAX_ATTEMPTS) {
+  /* TWO gates, kind first, on `photoshopRun.ts`'s identical reasoning: `runNinaImageJob` reclaims
+   * on `'retry'` in the SAME invocation and budgets another full `ninaImageCallTimeoutMs` (150s,
+   * 235s anchored) for it. Spending that on a `policy` is re-asking a provider that already read
+   * this prompt and declined — the seed is the only thing that differs between the two calls, and a
+   * refusal is a judgement about the words. 60 turns closed `policy` in the 30 days to 2026-10-02,
+   * ~50 minutes of provider wait. `isRetryableImageFailure` is the single list, beside the
+   * classifier that produces the kinds. */
+  if (isRetryableImageFailure(outcome.kind) && attempts < NINA_IMAGE_MAX_ATTEMPTS) {
     /* The spend travels with the requeue. Invariant 9: this attempt reached the provider and was
      * billed, and the retry must not erase it. `null` adds nothing rather than guessing — see
      * `requeueNinaImageJob`. */

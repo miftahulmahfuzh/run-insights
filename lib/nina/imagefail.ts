@@ -42,6 +42,46 @@ export const NINA_IMAGE_FAILURES = ['timeout', 'policy', 'transport', 'stale'] a
 export type NinaImageFailure = (typeof NINA_IMAGE_FAILURES)[number]
 
 /**
+ * The kinds worth a SECOND provider call — a POSITIVE list, on `proxy.ts`'s own reasoning: what is
+ * retryable has to be stated, so that a fifth kind added to the vocabulary above is non-retryable
+ * until somebody decides otherwise, rather than inheriting a retry nobody chose for it.
+ *
+ * Both are conditions that WAITING fixes, which is the whole test. A `timeout` is a call that never
+ * came back. A `transport` is an unreachable provider — and, deliberately, a 429: `POLICY_STATUSES`
+ * below excludes rate limits from `policy` precisely so that throttling stays a thing we retry.
+ *
+ * ── WHY `policy` IS NOT HERE, AND WHAT IT COST TO LEARN ───────────────────────────────────────
+ * `policy` means the provider read this prompt and declined it. The next attempt sends the SAME
+ * prompt to the SAME model under the SAME content rules, so the only thing that differs is the
+ * seed — and a refusal is a judgement about the words, not about the noise. It is a deterministic
+ * answer being asked twice.
+ *
+ * Measured on production over 30 days to 2026-10-02: 26 `nina_photoshop_jobs` closed `policy` and
+ * carried 52 attempts between them — every one of them spent its full retry budget re-asking a
+ * question that had already been answered. On the generation side the same month closed 60 `policy`
+ * turns worth ~50 minutes of provider wait. That is the Fluid Active CPU this list exists to stop
+ * buying.
+ *
+ * ── WHY `stale` IS NOT HERE, THOUGH IT CANNOT REACH A REQUEUE TODAY ───────────────────────────
+ * `stale` is written by the sweep (`lib/nina/imagejobs.ts`, `lib/nina/chatturn.ts`), which closes an
+ * abandoned row with a direct UPDATE and never travels through a runner's failure path. So this
+ * entry changes no behaviour now; it is here because the alternative — a negative list saying only
+ * `!== 'policy'` — would answer "retry" for a kind that by construction has no attempt left to
+ * spend, and that is the answer a reader would have to reason backwards to distrust.
+ */
+const NINA_RETRYABLE_IMAGE_FAILURES: readonly NinaImageFailure[] = ['timeout', 'transport']
+
+/**
+ * Is this failure worth spending another attempt on? The runners (`lib/nina/imagerun.ts`'s
+ * `closeFailed`, `lib/nina/photoshopRun.ts`'s attempt loop) gate their requeue on this AND on the
+ * attempt budget; neither is sufficient alone. Pure, total over the vocabulary, and importing
+ * nothing — the worker reads this module by relative path, see the header.
+ */
+export function isRetryableImageFailure(kind: NinaImageFailure): boolean {
+  return NINA_RETRYABLE_IMAGE_FAILURES.includes(kind)
+}
+
+/**
  * Statuses that mean "the provider looked at this and said no", as opposed to "the provider was not
  * reachable". 429 is deliberately NOT here: a rate limit is a transport condition — waiting fixes
  * it — and telling the runner she was refused when she was throttled is a lie in her mouth.

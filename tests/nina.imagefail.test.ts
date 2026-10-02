@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   classifyImageFailure,
+  isRetryableImageFailure,
   NINA_IMAGE_APOLOGIES,
   NINA_IMAGE_CAPPED_NOTE,
   NINA_IMAGE_CAPTION_POOL,
@@ -95,6 +96,36 @@ describe('classifyImageFailure', () => {
     expect(
       classifyImageFailure({ cause: new Error('dispatch HTTP 404 {"message":"Not Found"}') }),
     ).toBe('transport')
+  })
+})
+
+describe('isRetryableImageFailure', () => {
+  /*
+   * The runners spend a second provider call on a kind this answers true for. The measurement that
+   * forced the distinction: 26 photoshop jobs closed `policy` in September burned 52 attempts
+   * between them — every one of them asked a provider that had already read the prompt and said no
+   * to read the same prompt again.
+   */
+  it('a refusal is never retried: the provider already read this prompt and declined', () => {
+    expect(isRetryableImageFailure('policy')).toBe(false)
+  })
+
+  it('a job the sweep closed is never retried', () => {
+    expect(isRetryableImageFailure('stale')).toBe(false)
+  })
+
+  it('a timeout is retried — waiting is what fixes it', () => {
+    expect(isRetryableImageFailure('timeout')).toBe(true)
+  })
+
+  it('a transport fault is retried, which is what keeps a 429 worth a second call', () => {
+    expect(isRetryableImageFailure('transport')).toBe(true)
+  })
+
+  it('answers for every kind in the vocabulary, so a new one cannot default to silently retrying', () => {
+    for (const kind of NINA_IMAGE_FAILURES) {
+      expect(typeof isRetryableImageFailure(kind)).toBe('boolean')
+    }
   })
 })
 

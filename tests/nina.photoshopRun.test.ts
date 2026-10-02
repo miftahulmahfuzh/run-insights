@@ -3,7 +3,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { callNinaImageModel } from '@/lib/nina/imagecall'
 import { nearestNinaImageAspectRatio } from '@/lib/nina/imagerecipe'
 import { photoshopCropBox } from '@/lib/nina/photoshopCrop'
-import { claimNinaPhotoshopJob, completeNinaPhotoshopJob } from '@/lib/nina/photoshopJobs'
+import {
+  claimNinaPhotoshopJob,
+  completeNinaPhotoshopJob,
+  failNinaPhotoshopJob,
+  requeueNinaPhotoshopJob,
+} from '@/lib/nina/photoshopJobs'
 import type { NinaPhotoshopJobArgs } from '@/lib/nina/photoshopJobs'
 import { runPhotoshopJob } from '@/lib/nina/photoshopRun'
 
@@ -55,6 +60,8 @@ const claim = vi.mocked(claimNinaPhotoshopJob)
 const complete = vi.mocked(completeNinaPhotoshopJob)
 const call = vi.mocked(callNinaImageModel)
 const cropBoxOf = vi.mocked(photoshopCropBox)
+const requeue = vi.mocked(requeueNinaPhotoshopJob)
+const giveUp = vi.mocked(failNinaPhotoshopJob)
 
 const USER_ID = 'usrAAAAAAAAA'
 const JOB_ID = 'psjAAAAAAAAA'
@@ -288,5 +295,65 @@ describe('attemptPhotoshopOnce — the aspect-ratio crop', () => {
       true,
     )
     warn.mockRestore()
+  })
+})
+
+describe('attemptPhotoshopOnce — what is worth a second provider call', () => {
+  /*
+   * `runPhotoshopJob` loops on `'retry'` IN THE SAME INVOCATION, so a requeue here is not a cheap
+   * note for a later worker: it spends this function's remaining wall clock on another provider
+   * call. That is what made the retry-on-refusal measured in September expensive — 26 jobs, 52
+   * attempts — and it is why these two cases pin the decision rather than the plumbing.
+   */
+  beforeEach(() => {
+    vi.clearAllMocks()
+    putBlob.mockResolvedValue({ url: 'https://blob.test/nina/out.png', pathname: 'nina/out.png' })
+    cropBoxOf.mockReturnValue(BOX)
+  })
+
+  it('a REFUSAL with budget left is terminal: no requeue, no second call', async () => {
+    /* The claim is chained exactly like the transport case below — attempt 1, then attempt 2 — so
+     * that a runner WITHOUT the gate terminates and fails this test on its assertions instead of
+     * spinning the `for(;;)` loop until the worker runs out of heap. The bug is the requeue, and
+     * the assertions are what should name it. */
+    claim
+      .mockResolvedValueOnce({ jobId: JOB_ID, attempts: 1, args: argsOf() })
+      .mockResolvedValue({ jobId: JOB_ID, attempts: 2, args: argsOf() })
+    call.mockResolvedValue({
+      ok: false,
+      kind: 'policy',
+      detail: 'content policy',
+      costMicroUsd: 0,
+      latencyMs: 900,
+      timeoutMs: null,
+    })
+
+    const outcome = await runPhotoshopJob(USER_ID, JOB_ID, SOURCE_URL, SOURCE_WIDTH, SOURCE_HEIGHT)
+
+    expect(outcome).toBe('gave-up')
+    expect(requeue).not.toHaveBeenCalled()
+    // One call, not two: the attempt budget was there and was deliberately not spent.
+    expect(call).toHaveBeenCalledTimes(1)
+    expect(giveUp).toHaveBeenCalledWith(USER_ID, JOB_ID, 'policy', 0)
+  })
+
+  it('a TRANSPORT fault with budget left still retries — the gate is the kind, not the budget', async () => {
+    claim
+      .mockResolvedValueOnce({ jobId: JOB_ID, attempts: 1, args: argsOf() })
+      .mockResolvedValue({ jobId: JOB_ID, attempts: 2, args: argsOf() })
+    call.mockResolvedValue({
+      ok: false,
+      kind: 'transport',
+      detail: 'socket hang up',
+      costMicroUsd: 0,
+      latencyMs: 900,
+      timeoutMs: null,
+    })
+
+    const outcome = await runPhotoshopJob(USER_ID, JOB_ID, SOURCE_URL, SOURCE_WIDTH, SOURCE_HEIGHT)
+
+    expect(requeue).toHaveBeenCalledTimes(1)
+    expect(call).toHaveBeenCalledTimes(2)
+    expect(outcome).toBe('gave-up')
   })
 })

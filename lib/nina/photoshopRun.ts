@@ -10,6 +10,7 @@ import { contentHashOf } from '@/lib/photos/contentHash'
 
 import { logNinaError } from './errorlogs'
 import { callNinaImageModel, type NinaImageCropBox } from './imagecall'
+import { isRetryableImageFailure } from './imagefail'
 import {
   NINA_IMAGE_CACHE_MAX_AGE,
   NINA_IMAGE_CONTENT_TYPE,
@@ -204,7 +205,14 @@ async function attemptPhotoshopOnce(
       jobId,
       sourceId: claim.args.sourceId,
     })
-    if (claim.attempts < NINA_PHOTOSHOP_MAX_ATTEMPTS) {
+    /* TWO gates, and the kind is checked FIRST because it is the cheaper "no". The budget alone
+     * used to decide this, and `runPhotoshopJob` loops on `'retry'` in the SAME invocation, so a
+     * refusal spent this function's remaining wall clock re-asking a provider that had already read
+     * the prompt and declined it. Measured over 30 days to 2026-10-02: 26 jobs closed `policy`
+     * carrying 52 attempts between them, a 100% requeue rate on a deterministic answer. The list of
+     * kinds worth a second call lives in `lib/nina/imagefail.ts` beside the classifier that
+     * produces them, so the two can never disagree. */
+    if (isRetryableImageFailure(outcome.kind) && claim.attempts < NINA_PHOTOSHOP_MAX_ATTEMPTS) {
       await requeueNinaPhotoshopJob(userId, jobId, outcome.costMicroUsd)
       return 'retry'
     }

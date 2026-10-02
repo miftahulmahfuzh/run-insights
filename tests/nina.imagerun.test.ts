@@ -6,7 +6,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { captionNinaPhoto } from '@/lib/nina/caption'
 import { callNinaImageModel } from '@/lib/nina/imagecall'
 import { ninaImageCaption } from '@/lib/nina/imagefail'
-import { claimNinaImageJob, completeNinaImageJob, failNinaImageJob } from '@/lib/nina/imagejobs'
+import {
+  claimNinaImageJob,
+  completeNinaImageJob,
+  failNinaImageJob,
+  requeueNinaImageJob,
+} from '@/lib/nina/imagejobs'
 import { NINA_IMAGE_MAX_ATTEMPTS } from '@/lib/nina/imagerecipe'
 import { runNinaImageJob } from '@/lib/nina/imagerun'
 import {
@@ -93,6 +98,7 @@ const insertAvatar = vi.mocked(insertNinaAvatarAsCurrent)
 const tuning = vi.mocked(readNinaTuning)
 const writeSession = vi.mocked(resolveNinaWriteSession)
 const notify = vi.mocked(notifyNinaPush)
+const requeue = vi.mocked(requeueNinaImageJob)
 
 const USER = 'user-1'
 const JOB_ID = 'job-abc'
@@ -399,5 +405,56 @@ describe('the delivered photograph buzzes the phone', () => {
 
     expect(insertAvatar).toHaveBeenCalled()
     expect(notify).not.toHaveBeenCalled()
+  })
+})
+
+describe('closeFailed — what is worth a second provider call', () => {
+  /*
+   * `runNinaImageJob` reclaims on `'retry'` in the SAME invocation and budgets a whole
+   * `ninaImageCallTimeoutMs` (150s, or 235s anchored) for the next attempt. So the kind gate is not
+   * bookkeeping: it is the difference between one provider call and two on a question the provider
+   * has already answered. September's measurement: 60 `policy` turns, ~50 minutes of provider wait.
+   */
+  it('a REFUSAL with budget left is terminal: no requeue, no second call', async () => {
+    /* Chained so a runner without the gate TERMINATES and fails on the assertions, rather than
+     * spinning the `for(;;)` loop until the worker runs out of heap. */
+    claim
+      .mockResolvedValueOnce({ args: ARGS, attempts: 1 } as never)
+      .mockResolvedValue({ args: ARGS, attempts: NINA_IMAGE_MAX_ATTEMPTS } as never)
+    call.mockResolvedValue({
+      ok: false,
+      kind: 'policy',
+      detail: 'flagged by content policy',
+      costMicroUsd: 0,
+      latencyMs: 900,
+      timeoutMs: null,
+    })
+
+    const outcome = await runNinaImageJob(USER, JOB_ID)
+
+    expect(requeue).not.toHaveBeenCalled()
+    expect(call).toHaveBeenCalledTimes(1)
+    expect(outcome).toBe('gave-up')
+    expect(fail).toHaveBeenCalledWith(expect.objectContaining({ kind: 'policy' }))
+  })
+
+  it('a TIMEOUT with budget left still retries — the gate is the kind, not the budget', async () => {
+    claim
+      .mockResolvedValueOnce({ args: ARGS, attempts: 1 } as never)
+      .mockResolvedValue({ args: ARGS, attempts: NINA_IMAGE_MAX_ATTEMPTS } as never)
+    call.mockResolvedValue({
+      ok: false,
+      kind: 'timeout',
+      detail: 'aborted',
+      costMicroUsd: 0,
+      latencyMs: 150_000,
+      timeoutMs: null,
+    })
+
+    const outcome = await runNinaImageJob(USER, JOB_ID)
+
+    expect(requeue).toHaveBeenCalledTimes(1)
+    expect(call).toHaveBeenCalledTimes(2)
+    expect(outcome).toBe('gave-up')
   })
 })
