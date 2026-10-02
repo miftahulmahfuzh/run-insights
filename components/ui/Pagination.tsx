@@ -70,24 +70,38 @@ export type PaginationProps =
  * Unchanged from the 44 px era, for the same two reasons: a minimum cannot fight a wrapped row's
  * line height, and a long page number must be allowed to be wider than it is tall.
  *
- * ── WHY `px-1` AND `text-[12px]` MOVED WITH THE BOX ─────────────────────────────
+ * ── WHY `px-1` AND `text-[11px]` MOVED WITH THE BOX ─────────────────────────────
  * A 30.8 px *minimum* box means a short label sits inside a CIRCLE and a long one stretches it
  * into a pill. Stretching is correct — it is what `min-w` is for — but it should start as late as
- * possible. Poppins' digits are uniform-width at 600/1000 em (so `tabular-nums` is belt and
- * braces), a digit at 12 px advances 7.2 px, and `px-1` spends 4 px a side INSIDE the 30.8 because
- * preflight makes every box `border-box`:
+ * possible. `px-1` spends 4 px a side INSIDE the 30.8 (preflight makes every box `border-box`),
+ * leaving a 22.8 px content budget.
  *
- *     1 digit    7.2 +  8 = 15.2 px  ->  min-w wins; a 30.8 x 30.8 circle
- *     2 digits  14.4 +  8 = 22.4 px  ->  circle
- *     3 digits  21.6 +  8 = 29.6 px  ->  circle, with 1.2 px to spare
- *     4 digits  28.8 +  8 = 36.8 px  ->  FIRST to stretch: a 36.8 x 30.8 pill
+ * **Poppins' digits are PROPORTIONAL, and `tabular-nums` does nothing here.** Measured from the
+ * exact `wght@600` latin subset `next/font` self-hosts (fontTools, unitsPerEm 1000): `1` is 362
+ * units and `4` is 661 — a 1.83x spread — and the face ships an EMPTY GSUB feature list, so there
+ * is no `tnum` for `font-variant-numeric` to switch on. The class is kept only because the
+ * fallback stack honours it during `display: 'swap'`; no arithmetic here may lean on it, and a
+ * fit computed from an "average digit" is wrong. The budget has to be checked against the WIDEST
+ * string, which is all-`4`s at 661 u a digit:
+ *
+ *     1 digit    661 u  ->  7.27 px + 8 = 15.27  ->  min-w wins; a 30.8 x 30.8 circle
+ *     2 digits  1322 u  -> 14.54 px + 8 = 22.54  ->  circle, 0.26 px to spare
+ *     3 digits  1983 u  -> 21.81 px + 8 = 29.81  ->  circle, 0.99 px to spare
+ *     4 digits  2644 u  -> 29.08 px + 8 = 37.08  ->  FIRST to stretch: a 37.1 x 30.8 pill
  *
  * Four digits is therefore the stated breaking point, and it is stated rather than discovered.
- * Keeping the old `px-2` + `text-[13px]` would have stretched at TWO digits (15.6 + 16 = 31.6 >
- * 30.8) — page 10 of today's thirteen — which is why the padding and the type are part of this
- * change and not a later tidy-up. 12 px semibold tabular digits stay legible on a phone; the app
- * already ships 11 px and 10 px labels, and the 16 px rule in `app/globals.css` is an INPUT rule
- * (Safari zooms on focusing a small form control) that a span, an anchor and a button never trip.
+ * **11 px is the only size that earns that sentence**: at 12 px the worst three-digit page is
+ * 23.80 px against a 22.8 px budget and stretches — roughly half of all three-digit numbers do —
+ * so the breaking point would silently be three. Keeping the old `px-2` + `text-[13px]` would
+ * have stretched at TWO digits (`44` = 17.2 + 16 = 33.2 > 30.8) — page 10 of today's thirteen —
+ * which is why the padding and the type are part of this change and not a later tidy-up.
+ *
+ * Legibility survives the drop because the GLYPH-TO-CELL ratio goes UP, not down: 13 px in a
+ * 44 px cell is 0.295, 11 px in a 30.8 px cell is 0.357, so the number reads 21 % larger relative
+ * to its button than it did before. 11 px also matches the `Halaman ... dari ...` caption rendered
+ * directly beneath this row (`components/nina/NinaAboutScreen.tsx`), and the 16 px rule in
+ * `app/globals.css` is an INPUT rule (Safari zooms on focusing a small form control) that a span,
+ * an anchor and a button never trip.
  *
  * ── `rounded-pill` AND NOT `rounded-full` ───────────────────────────────────
  * They render identically here — 999 px and `calc(infinity * 1px)` both clamp to half of a 30.8 px
@@ -101,7 +115,7 @@ export type PaginationProps =
  */
 const CELL =
   'inline-flex min-h-[1.925rem] min-w-[1.925rem] items-center justify-center rounded-pill px-1 ' +
-  'text-[12px] font-semibold tabular-nums'
+  'text-[11px] font-semibold tabular-nums'
 
 /**
  * `bg-ink text-card` for the active page and not `bg-accent`: `components/ui/Button.tsx:46-54`
