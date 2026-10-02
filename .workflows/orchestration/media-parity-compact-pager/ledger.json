@@ -17,7 +17,7 @@
       "satisfies": [
         "R1"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": null,
       "title": "Media page size binds to the read's ceiling"
     },
@@ -34,7 +34,7 @@
       "satisfies": [
         "R2"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": null,
       "title": "One pager cell: 30.8 px, circular"
     }
@@ -42,6 +42,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/media-parity-compact-pager/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "media-parity-compact-pager",
-  "updated": "2026-10-02T07:40:37+00:00",
-  "worktree": "~/.worktrees/run-insights/media-parity-compact-pager"
+  "updated": "2026-10-02T07:41:36+00:00",
+  "worktree": "/home/miftah/.worktrees/run-insights/media-parity-compact-pager"
 }
