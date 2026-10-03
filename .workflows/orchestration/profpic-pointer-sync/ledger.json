@@ -10,15 +10,15 @@
       "depends_on": [],
       "difficulty": "NORMAL",
       "n": 1,
-      "note": null,
+      "note": "live in tmux @21; verify downgraded spawned->pending only for lack of a commit",
       "package": "lib/nina`, `lib/admin",
       "plan": ".workflows/plan/profpic-pointer-sync/phase-1.md",
-      "reported_at": null,
+      "reported_at": "2026-10-03T08:05:08+00:00",
       "satisfies": [
         "R1",
         "R2"
       ],
-      "status": "pending",
+      "status": "running",
       "task_id": null,
       "title": "Adoption relinks legacy copies and stale pointers"
     },
@@ -65,7 +65,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/profpic-pointer-sync/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "profpic-pointer-sync",
-  "updated": "2026-10-03T08:04:59+00:00",
+  "updated": "2026-10-03T08:05:08+00:00",
   "verified_at": "2026-10-03T08:04:59+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/profpic-pointer-sync"
 }
