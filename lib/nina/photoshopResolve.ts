@@ -2,6 +2,7 @@ import 'server-only'
 
 import type { NinaPhotoshopJob } from '@/lib/db/schema'
 
+import { releaseBlobIfUnreferenced } from './blobRelease'
 import {
   getNinaAvatar,
   getNinaMessageImage,
@@ -70,7 +71,16 @@ async function loadResolvableJob(
   return { error: null, job }
 }
 
-/** "Replace the existing photo": overwrite the source row's bytes in place, keep its id. */
+/** "Replace the existing photo": overwrite the source row's bytes in place, keep its id — then free
+ * the object the row stopped naming (profpic-pointer-sync R3).
+ *
+ * ROW FIRST, BLOB SECOND, in three moves: read the row so the old object's URL is in hand, write
+ * the new bytes (which moves every pointer and chat reference in the same batch — see
+ * `updateNinaChatPhotoBlob` / `updateNinaAvatarBlob`), and only then ask `releaseBlobIfUnreferenced`
+ * about the old object and the old album thumbnail. Until this set the old object was never
+ * released here at all; every Photoshop replace leaked one file. The release never throws and its
+ * outcome does not change this function's: the photo was replaced either way, and a kept object is
+ * `reap-orphaned-blobs`' to collect. */
 export async function resolvePhotoshopReplace(
   userId: string,
   jobId: string,
@@ -90,6 +100,12 @@ export async function resolvePhotoshopReplace(
     contentHash: job.resultContentHash,
   }
 
+  const before =
+    job.sourceKind === 'avatar'
+      ? await getNinaAvatar(userId, job.sourceId)
+      : await getNinaMessageImage(userId, job.sourceId)
+  if (before == null) return { ok: false, reason: 'source-unavailable' }
+
   const written =
     job.sourceKind === 'avatar'
       ? await updateNinaAvatarBlob(userId, job.sourceId, patch)
@@ -98,7 +114,35 @@ export async function resolvePhotoshopReplace(
   if (written == null) return { ok: false, reason: 'source-unavailable' }
 
   await resolveNinaPhotoshopJob(userId, jobId, 'replaced')
+
+  for (const ref of replacedObjects(before, patch.pathname)) {
+    await releaseBlobIfUnreferenced(userId, ref)
+  }
   return { ok: true }
+}
+
+/** The objects a replace stopped naming: the original's own bytes (unless the job somehow handed
+ * back the same pathname — deleting what the row now serves would be unrecoverable) and an album
+ * row's thumbnail, which `updateNinaAvatarBlob` just nulled. A chat row has no thumbnail columns,
+ * hence the optional pair. `thumb_pathname ?? thumb_url` is `deleteNinaAvatarAction`'s spelling for
+ * the same question. */
+function replacedObjects(
+  before: {
+    blobUrl: string
+    pathname: string
+    thumbUrl?: string | null
+    thumbPathname?: string | null
+  },
+  newPathname: string,
+): Array<{ blobUrl: string; pathname: string }> {
+  const refs: Array<{ blobUrl: string; pathname: string }> = []
+  if (before.pathname !== newPathname) {
+    refs.push({ blobUrl: before.blobUrl, pathname: before.pathname })
+  }
+  if (before.thumbUrl != null) {
+    refs.push({ blobUrl: before.thumbUrl, pathname: before.thumbPathname ?? before.thumbUrl })
+  }
+  return refs
 }
 
 /** The album folder every photoshop result lands in on "Add as a new photo" — the runner's own

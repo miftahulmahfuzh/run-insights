@@ -89,6 +89,13 @@ place into a fresh pointer at the Media row's CURRENT bytes (`relinkNinaAvatarTo
 barrel, plus `NinaAvatarRelinkSource`/`NinaAvatarRelinkResult` in `shapes.ts`) and then releases
 what the row stopped naming; both adoption paths call it, and the chat path reports `changed: true`
 when the bytes swapped — see *Linked album rows*' *A re-adoption refreshes a stale hit*.
+Restated 2026-10-03 for P1-NIN-A060 (profpic-pointer-sync phase 2): a Replace now propagates to
+every row that re-shows the photograph and frees the old file — `updateNinaChatPhotoBlob` is one
+gated `db.batch` of four statements (the Media row; album pointers under D1; chat references under
+D2, direct and via a pointer), `updateNinaAvatarBlob` one of two (the album row, now also nulling
+its thumbnail pair; its `source_avatar_id` chat references under D2), and `resolvePhotoshopReplace`
+reads the source row first and releases the old object and thumbnail after — see *Linked album
+rows*' *A Replace moves every row that re-shows the photograph*.
 **Documentation Created**: 2026-09-05 (`NINA_CHARACTER_TUNING_PLAN.md` phase 2)
 
 ## Overview
@@ -1368,6 +1375,51 @@ it: the album row shows the `nina_message_images` row's bytes and names it in `s
     `pathname`, `width`, `height`, `bytes`); a `NinaImageRow` satisfies it structurally.
   Guarded by `tests/nina.avatarRelink.test.ts` (query SQL shape, chat path, admin path, the race,
   a shared object kept); `relinkNinaAvatarToImage` is on `BARREL_VALUE_EXPORTS`.
+- **A Replace moves every row that re-shows the photograph (since 2026-10-03, P1-NIN-A060,
+  profpic-pointer-sync R1/R3).** Before this, a Replace rewrote only the replaced row: every album
+  pointer and chat reference kept naming v1, `/nina/about` kept showing v1, and
+  `isBlobPathnameReferenced` kept answering `'shared'` for v1, so the old object was never freed
+  (and `resolvePhotoshopReplace` never released it at all — one leaked file per Photoshop replace).
+  - **`updateNinaChatPhotoBlob(userId, id, patch)` (`queries/images.ts`) is ONE `db.batch` of four
+    statements** — neon-http has no `db.transaction()`, and a half-applied replace is exactly the
+    stale state this exists to end: (1) the Media row, unchanged in its own SET; (2) album pointers
+    (`nina_avatars.source_image_id = id`) under **D1**: the five byte columns, NULL `content_hash`,
+    prose/keywords/embedding and thumbnail pair, and the crop kept **only when the dimensions are
+    unchanged** (`is not distinct from` — SET expressions read the OLD values, and pre-measurement
+    rows carry NULL dims); (3) chat references with `source_image_id = id` and (4) chat references
+    whose `source_avatar_id` names one of those pointers, both under **D2**: mirror the original's
+    POST-write values — five byte columns + `content_hash` from the patch, `description`,
+    `perceptual_hash`, `perceptual_sig` NULL (readers read a reference's OWN description, so v1
+    prose left there would be described to her as the v2 photograph).
+  - **Statements 2–4 are GATED** on `exists(...)` over an alias (`replaced_original`) asserting the
+    original now serves `patch.pathname` and is still an original. Postgres runs a batch in order
+    inside one transaction, so the gate sees statement 1's write; a refused statement 1 (not found,
+    not his, or a reference row) moves nothing.
+  - **`updateNinaAvatarBlob` (`queries/avatars.ts`) is ONE `db.batch` of two**: the album row (still
+    guarded `source_image_id IS NULL`, and now also NULLing `thumb_url`/`thumb_pathname`, which were
+    rendered from the old bytes — a renderer falls back to `blob_url`), then the chat references with
+    `source_avatar_id = id` under D2, gated on the album row now serving the new pathname. Album
+    pointers never point at an album row, so there is no third statement.
+  - **The callers release, row first, blob second.** `replaceChatPhotoAction` (`lib/admin`) already
+    released the old object; it now normally comes back `'deleted'`. `replaceNinaAvatarAction`
+    (`lib/admin`) also releases the old THUMBNAIL (`thumb_pathname ?? thumb_url`, the delete
+    action's spelling). `resolvePhotoshopReplace` (`photoshopResolve.ts`) now reads the source row
+    BEFORE the write (`getNinaAvatar` / `getNinaMessageImage`; a miss is `source-unavailable`) and
+    after it hands each ref from the module-private `replacedObjects(before, newPathname)` — the old
+    original unless the pathname is unchanged, plus an album row's old thumbnail — to
+    `releaseBlobIfUnreferenced`. A release never throws and never changes the replace's outcome.
+  - **A `'shared'` answer now means something OUTSIDE the photograph's own family names the
+    bytes** — the known case is a legacy album copy made before the pointer design, which phase 3's
+    repair script removes.
+  Guarded by `tests/nina.replacePropagation.test.ts` (exactly one batch of four / of two, each
+  member's SET and owner scope, the D1 crop rule, pointer identity untouched, the gate, and the
+  post-batch release deleting v1), `tests/nina.photoshopResolve.test.ts` (row first, blob second:
+  album source releases original + thumbnail, Media source the original only, a refused write or a
+  gone source releases nothing, the served object is never released, a `'shared'` answer does not
+  fail the replace) and `tests/integration/replacePropagation.int.test.ts` (real Postgres: pointer
+  and both references move and v1 is freed, crop kept on same dims, a refused write moves nothing);
+  `tests/nina.photoRefs.test.ts` and `tests/nina.chatPhotoDescription.test.ts` were adjusted for the
+  batch shape.
 
 ## Memory, promises, patterns, proactive
 
@@ -1518,6 +1570,13 @@ not a (T): it is the barrel contract test, not a pure module's suite.
   `getNinaAvatarBySourceKey` hit → `refreshAdoptedNinaAvatar` (fresh: no write; stale:
   `relinkNinaAvatarToImage` UPDATE → `releaseBlobIfUnreferenced` per dropped original/thumb) →
   crop/`setCurrentNinaAvatar` as before — the same order in the admin action and the chat tool.
+- **Replacing a photograph's bytes** (since 2026-10-03, P1-NIN-A060): Media Replace
+  (`replaceChatPhotoAction`) → `updateNinaChatPhotoBlob` batch [Media row → album pointers (D1) →
+  direct chat references (D2) → references re-showing a pointer (D2), 2–4 gated on 1] →
+  `releaseBlobIfUnreferenced(old object)`. Album Replace (`replaceNinaAvatarAction`) →
+  `updateNinaAvatarBlob` batch [album row + thumb NULL → `source_avatar_id` references (D2)] →
+  release old object + old thumbnail. Photoshop "replace" (`resolvePhotoshopReplace`) → read source
+  row → the matching writer above → release old object (+ thumbnail for an album source).
 
 ## Dependencies
 

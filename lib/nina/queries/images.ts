@@ -3,6 +3,7 @@ import {
   asc,
   desc,
   eq,
+  exists,
   inArray,
   isNotNull,
   isNull,
@@ -11,6 +12,7 @@ import {
   sql,
   type SQL,
 } from 'drizzle-orm'
+import { alias } from 'drizzle-orm/pg-core'
 
 import { db } from '@/lib/db'
 import { ninaAvatars, ninaMessageImages, ninaMessages, type NinaImageKind } from '@/lib/db/schema'
@@ -956,65 +958,191 @@ export interface NinaChatPhotoBlobPatch {
  * `prompt` is the generation sidecar for bytes that are gone. It has no reader anywhere in the repo
  * (only this file's projection and `insertNinaMessageImages`), and it is already NULL on every
  * `kind = 'upload'` row, so NULL is honest and invisible rather than a marker.
+ *
+ * ── EVERY ROW THAT RE-SHOWS THIS PHOTOGRAPH MOVES IN THE SAME BATCH (profpic-pointer-sync R3) ──
+ * Three kinds of row copy this row's `blob_url/pathname/width/height/bytes` at link time and never
+ * own bytes of their own: album POINTERS (`nina_avatars.source_image_id = id`), chat REFERENCES
+ * (`nina_message_images.source_image_id = id`), and chat references that re-show one of those
+ * pointers (`source_avatar_id` naming a pointer — `ninaPhotoProvenance({ kind: 'avatar' })`).
+ * Until this set, a replace moved none of them: `/nina/about` kept showing v1 through every pointer,
+ * and `isBlobPathnameReferenced` kept answering "shared" for v1, so the old object was never freed.
+ * The plan's Decisions table rules both ways: chat references follow the original, and a pointer's
+ * crop survives only when the new bytes have the same dimensions (`clampCrop`'s guarantee needs
+ * the real dims; NULL is identity and always covers the circle).
+ *
+ * `db.batch`, not four awaits: neon-http has no `db.transaction()`, and a half-applied replace
+ * (original moved, pointers not) is exactly the stale state this exists to end. Statements 2–4 are
+ * GATED on the original now serving the new pathname — they move nothing when statement 1 refused
+ * (not found, not his, or a reference row: `ninaPhotoProvenance` can write `source_image_id` =
+ * a reference's id when that reference only carried `source_avatar_id`, and replacing such a
+ * reference must not repaint its re-shows). Postgres runs a batch's statements in order inside one
+ * transaction, so the gate sees statement 1's write.
+ *
+ * ONE column contract, shared with `relinkNinaAvatarToImage` and the repair script
+ * (`profpic-pointer-sync` Decisions D1/D2):
+ *   · A POINTER takes the five byte columns, and NULL `content_hash` (a pointer owns no bytes and
+ *     makes no claim), NULL prose/keywords/embedding (dead by doctrine — `avatarPointer.ts`) and
+ *     NULL thumbnail pair (nothing generates one for a link). Its crop survives only on unchanged
+ *     dimensions. Its identity — `id`, `is_current`, `folder`, `source_key`, `source_image_id` — is
+ *     not touched.
+ *   · A REFERENCE mirrors its target's POST-write values, which is how `resolveAttachment` and
+ *     `planChatPhotoAddWrite` create one (they copy `description` off the target): the five byte
+ *     columns and `content_hash` from the patch, and `description`, `perceptual_hash`,
+ *     `perceptual_sig` NULL, because statement 1 has just set the original's to NULL. Readers read a
+ *     reference's OWN `description` (no provenance redirect — `gateway.ts`'s history read says so),
+ *     so v1 prose left here would be described to her as the v2 photograph.
  */
 export async function updateNinaChatPhotoBlob(
   userId: string,
   id: string,
   patch: NinaChatPhotoBlobPatch,
 ): Promise<NinaImageRow | null> {
-  const updated = await db
-    .update(ninaMessageImages)
-    .set({
-      blobUrl: patch.blobUrl,
-      pathname: patch.pathname,
-      width: patch.width,
-      height: patch.height,
-      bytes: patch.bytes,
-      description: null,
-      prompt: null,
-      /*
-       * F37. These described where the OLD bytes came from. The new bytes came from the operator's
-       * file picker, so the row is now an original and must say so — otherwise a Replace applied
-       * to a reference (reachable from a stale tab: the id comes from a client and
-       * `getNinaMessageImage` does not filter references) leaves a unique photograph that no
-       * listing will ever show. Same statement as the two nulls above it, for the same reason:
-       * there must be no window in which the row points at new bytes and old provenance.
-       */
-      sourceAvatarId: null,
-      sourceImageId: null,
-      /*
-       * media-dedupe P3. Same statement as the nulls above it, for the same reason: there must be
-       * no window in which the row points at new bytes and claims old ones. A valid claim from
-       * the caller sticks; its absence retracts. See `NinaChatPhotoBlobPatch.contentHash`.
-       */
-      contentHash: patch.contentHash ?? null,
-      /*
-       * media-dedupe follow-up, ghost-signature fix (2026-09-15). The perceptual pair describes
-       * "the bytes a row OWNS" (the column header's own doctrine) and this statement just swapped
-       * them — so a pair left standing is a GHOST: the send-time twin scan would compare every
-       * future re-upload against a signature of the OLD photograph. Measured on production that
-       * day: 49 of 71 signed originals carried a signature 23-42/64 bits from their own live
-       * bytes, and a pixel-identical re-upload of `ymKp8lDU_Br6` matched nothing — its twin gate
-       * saw the ghost, not the photograph. NULL retracts to the same honest "unsigned =
-       * dedup-inactive" the column header defines, and `replaceChatPhotoAction` re-signs the NEW
-       * bytes in `after()` (`scheduleChatPhotoResign`), so the row is unsigned for seconds, not
-       * until the next sweep run.
-       */
-      perceptualHash: null,
-      perceptualSig: null,
-      /*
-       * media-recency-sort, 2026-09-19. `created_at` stays untouched (this function's own header
-       * argues why); this is the column the Media view's sort key reads instead —
-       * `listNinaMediaPhotos` orders by `COALESCE(last_replaced_at, created_at)`. Same statement
-       * as the byte swap, for the same reason as every other field here: no window in which the
-       * row shows new bytes under a stale sort key.
-       */
-      lastReplacedAt: new Date(),
-    })
-    .where(
-      and(eq(ninaMessageImages.userId, userId), eq(ninaMessageImages.id, id), isOriginalPhoto()),
-    )
-    .returning(imageColumns)
+  /* The bytes every re-showing row takes on — the same five measurements the original gets. */
+  const bytesOfPatch = {
+    blobUrl: patch.blobUrl,
+    pathname: patch.pathname,
+    width: patch.width,
+    height: patch.height,
+    bytes: patch.bytes,
+  }
+
+  /* The gate for statements 2–4. An alias because statements 3 and 4 UPDATE this same table, and
+   * an unaliased subquery would be ambiguous to read even where Postgres would bind it correctly. */
+  const replacedOriginal = alias(ninaMessageImages, 'replaced_original')
+  const originalNowServesPatch = exists(
+    db
+      .select({ one: sql`1` })
+      .from(replacedOriginal)
+      .where(
+        and(
+          eq(replacedOriginal.userId, userId),
+          eq(replacedOriginal.id, id),
+          eq(replacedOriginal.pathname, patch.pathname),
+          isNull(replacedOriginal.sourceAvatarId),
+          isNull(replacedOriginal.sourceImageId),
+        ),
+      ),
+  )
+
+  /* SET-list expressions read the row's OLD values in Postgres, so this compares the pointer's
+   * current dimensions against the new ones even though the same statement rewrites them.
+   * `is not distinct from` because pre-measurement rows carry NULL dimensions. */
+  const sameDimensions = sql`${ninaAvatars.width} is not distinct from ${patch.width} and ${ninaAvatars.height} is not distinct from ${patch.height}`
+
+  /* The reference contract (statements 3 and 4): mirror the original's POST-write values. */
+  const referenceTakesPatch = {
+    ...bytesOfPatch,
+    contentHash: patch.contentHash ?? null,
+    description: null,
+    perceptualHash: null,
+    perceptualSig: null,
+  }
+
+  const pointersAtThisOriginal = db
+    .select({ id: ninaAvatars.id })
+    .from(ninaAvatars)
+    .where(and(eq(ninaAvatars.userId, userId), eq(ninaAvatars.sourceImageId, id)))
+
+  const [updated] = await db.batch([
+    db
+      .update(ninaMessageImages)
+      .set({
+        blobUrl: patch.blobUrl,
+        pathname: patch.pathname,
+        width: patch.width,
+        height: patch.height,
+        bytes: patch.bytes,
+        description: null,
+        prompt: null,
+        /*
+         * F37. These described where the OLD bytes came from. The new bytes came from the operator's
+         * file picker, so the row is now an original and must say so — otherwise a Replace applied
+         * to a reference (reachable from a stale tab: the id comes from a client and
+         * `getNinaMessageImage` does not filter references) leaves a unique photograph that no
+         * listing will ever show. Same statement as the two nulls above it, for the same reason:
+         * there must be no window in which the row points at new bytes and old provenance.
+         */
+        sourceAvatarId: null,
+        sourceImageId: null,
+        /*
+         * media-dedupe P3. Same statement as the nulls above it, for the same reason: there must be
+         * no window in which the row points at new bytes and claims old ones. A valid claim from
+         * the caller sticks; its absence retracts. See `NinaChatPhotoBlobPatch.contentHash`.
+         */
+        contentHash: patch.contentHash ?? null,
+        /*
+         * media-dedupe follow-up, ghost-signature fix (2026-09-15). The perceptual pair describes
+         * "the bytes a row OWNS" (the column header's own doctrine) and this statement just swapped
+         * them — so a pair left standing is a GHOST: the send-time twin scan would compare every
+         * future re-upload against a signature of the OLD photograph. Measured on production that
+         * day: 49 of 71 signed originals carried a signature 23-42/64 bits from their own live
+         * bytes, and a pixel-identical re-upload of `ymKp8lDU_Br6` matched nothing — its twin gate
+         * saw the ghost, not the photograph. NULL retracts to the same honest "unsigned =
+         * dedup-inactive" the column header defines, and `replaceChatPhotoAction` re-signs the NEW
+         * bytes in `after()` (`scheduleChatPhotoResign`), so the row is unsigned for seconds, not
+         * until the next sweep run.
+         */
+        perceptualHash: null,
+        perceptualSig: null,
+        /*
+         * media-recency-sort, 2026-09-19. `created_at` stays untouched (this function's own header
+         * argues why); this is the column the Media view's sort key reads instead —
+         * `listNinaMediaPhotos` orders by `COALESCE(last_replaced_at, created_at)`. Same statement
+         * as the byte swap, for the same reason as every other field here: no window in which the
+         * row shows new bytes under a stale sort key.
+         */
+        lastReplacedAt: new Date(),
+      })
+      .where(
+        and(eq(ninaMessageImages.userId, userId), eq(ninaMessageImages.id, id), isOriginalPhoto()),
+      )
+      .returning(imageColumns),
+    /* 2 — album pointers at this original (profpic-pointer-sync R1/R3). */
+    db
+      .update(ninaAvatars)
+      .set({
+        ...bytesOfPatch,
+        contentHash: null,
+        description: null,
+        searchKeywords: null,
+        negativeSearchKeywords: null,
+        descriptionEmbedding: null,
+        thumbUrl: null,
+        thumbPathname: null,
+        cropScale: sql`case when ${sameDimensions} then ${ninaAvatars.cropScale} else null end`,
+        cropX: sql`case when ${sameDimensions} then ${ninaAvatars.cropX} else null end`,
+        cropY: sql`case when ${sameDimensions} then ${ninaAvatars.cropY} else null end`,
+      })
+      .where(
+        and(
+          eq(ninaAvatars.userId, userId),
+          eq(ninaAvatars.sourceImageId, id),
+          originalNowServesPatch,
+        ),
+      ),
+    /* 3 — chat references that re-show this original directly. */
+    db
+      .update(ninaMessageImages)
+      .set(referenceTakesPatch)
+      .where(
+        and(
+          eq(ninaMessageImages.userId, userId),
+          eq(ninaMessageImages.sourceImageId, id),
+          originalNowServesPatch,
+        ),
+      ),
+    /* 4 — chat references that re-show one of this original's album pointers. */
+    db
+      .update(ninaMessageImages)
+      .set(referenceTakesPatch)
+      .where(
+        and(
+          eq(ninaMessageImages.userId, userId),
+          inArray(ninaMessageImages.sourceAvatarId, pointersAtThisOriginal),
+          originalNowServesPatch,
+        ),
+      ),
+  ])
 
   return updated[0] ?? null
 }

@@ -3,6 +3,7 @@ import {
   asc,
   desc,
   eq,
+  exists,
   inArray,
   isNotNull,
   isNull,
@@ -13,7 +14,7 @@ import {
 import type { PgColumn } from 'drizzle-orm/pg-core'
 
 import { db } from '@/lib/db'
-import { ninaAvatars, ninaFolders } from '@/lib/db/schema'
+import { ninaAvatars, ninaFolders, ninaMessageImages } from '@/lib/db/schema'
 import { newId } from '@/lib/id'
 import {
   NINA_ABOUT_PAGE_SIZE,
@@ -197,13 +198,32 @@ export async function updateNinaAvatarCrop(
 }
 
 /**
- * Photoshop's "replace the existing photo": swap this row's bytes in place, keep its id. Mirrors
- * `updateNinaChatPhotoBlob`'s shape for the reason that function states — a row must not point
- * at new bytes while still claiming old prose about them, so description/keywords/embedding are
- * cleared alongside the blob fields. Guarded by `sourceImageId IS NULL`: a row with that column
- * set is a POINTER at a Media original and owns no bytes of its own to replace — replacing it
- * in place would silently detach it from the row it borrows from. Returns `null` for that case
- * exactly as for "not found" or "not yours"; the caller cannot and need not tell them apart.
+ * Swap an album original's bytes in place and keep its id. There are two callers: Photoshop's
+ * "replace the existing photo" (`resolvePhotoshopReplace`) and the album's manual Replace
+ * (`replaceNinaAvatarAction`). It mirrors `updateNinaChatPhotoBlob`'s shape for the reason that
+ * function gives: a row must not point at new bytes while it still claims old prose about them,
+ * so description, keywords and embedding are cleared along with the blob fields.
+ *
+ * It is guarded by `sourceImageId IS NULL`. A row with that column set is a POINTER at a Media
+ * original. It owns no bytes of its own to replace, and replacing it in place would silently
+ * detach it from the row it borrows from. A pointer returns `null` exactly as "not found" or
+ * "not yours" do. The caller cannot tell these apart and does not need to.
+ *
+ * ── THE THUMBNAIL GOES TOO (profpic-pointer-sync R3) ─────────────────────────────────────────
+ * `thumb_url/thumb_pathname` (written only by the folder upload) were rendered from the OLD
+ * bytes. Leaving them in place shows the old picture in every grid. It also keeps the old
+ * thumbnail object referenced, so the caller's release could never free it. With both NULL, a
+ * renderer falls back to `blob_url`, which is the column header's own meaning. The caller holds
+ * the row it read before the write, and it releases that thumbnail.
+ *
+ * ── CHAT REFERENCES FOLLOW, IN THE SAME BATCH ────────────────────────────────────────────────
+ * A `nina_message_images` row with `source_avatar_id = id` re-shows this photograph and copies its
+ * bytes (`resolveAttachment`). It moves to the new bytes in the same `db.batch`, with
+ * `updateNinaChatPhotoBlob`'s reference contract: it mirrors this row's post-write values (new
+ * bytes and `content_hash`; `description` NULL like this row's; no perceptual pair). It is
+ * gated on this row now serving the new pathname, so a refused write (a pointer, or a row that is
+ * not his) moves nothing. Album pointers never point at an album row, so no third statement is
+ * needed.
  */
 export async function updateNinaAvatarBlob(
   userId: string,
@@ -217,28 +237,66 @@ export async function updateNinaAvatarBlob(
     contentHash: string | null
   },
 ): Promise<NinaAvatarRow | null> {
-  const updated = await db
-    .update(ninaAvatars)
-    .set({
-      blobUrl: patch.blobUrl,
-      pathname: patch.pathname,
-      width: patch.width,
-      height: patch.height,
-      bytes: patch.bytes,
-      contentHash: patch.contentHash ?? null,
-      description: null,
-      searchKeywords: null,
-      negativeSearchKeywords: null,
-      descriptionEmbedding: null,
-    })
-    .where(
-      and(
-        eq(ninaAvatars.userId, userId),
-        eq(ninaAvatars.id, id),
-        isNull(ninaAvatars.sourceImageId),
+  const albumRowNowServesPatch = exists(
+    db
+      .select({ one: sql`1` })
+      .from(ninaAvatars)
+      .where(
+        and(
+          eq(ninaAvatars.userId, userId),
+          eq(ninaAvatars.id, id),
+          eq(ninaAvatars.pathname, patch.pathname),
+          isNull(ninaAvatars.sourceImageId),
+        ),
       ),
-    )
-    .returning(avatarColumns)
+  )
+
+  const [updated] = await db.batch([
+    db
+      .update(ninaAvatars)
+      .set({
+        blobUrl: patch.blobUrl,
+        pathname: patch.pathname,
+        width: patch.width,
+        height: patch.height,
+        bytes: patch.bytes,
+        contentHash: patch.contentHash ?? null,
+        description: null,
+        searchKeywords: null,
+        negativeSearchKeywords: null,
+        descriptionEmbedding: null,
+        thumbUrl: null,
+        thumbPathname: null,
+      })
+      .where(
+        and(
+          eq(ninaAvatars.userId, userId),
+          eq(ninaAvatars.id, id),
+          isNull(ninaAvatars.sourceImageId),
+        ),
+      )
+      .returning(avatarColumns),
+    db
+      .update(ninaMessageImages)
+      .set({
+        blobUrl: patch.blobUrl,
+        pathname: patch.pathname,
+        width: patch.width,
+        height: patch.height,
+        bytes: patch.bytes,
+        contentHash: patch.contentHash ?? null,
+        description: null,
+        perceptualHash: null,
+        perceptualSig: null,
+      })
+      .where(
+        and(
+          eq(ninaMessageImages.userId, userId),
+          eq(ninaMessageImages.sourceAvatarId, id),
+          albumRowNowServesPatch,
+        ),
+      ),
+  ])
   return updated[0] ?? null
 }
 
