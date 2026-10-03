@@ -1,0 +1,70 @@
+{
+  "branch": "feature/profpic-pointer-sync",
+  "coordinator": "orch-profpic-pointer-sync",
+  "coordinator_session_id": "34a6f0be-7f27-47cc-b4ba-74d5ba1a6aaf",
+  "created": "2026-10-03T07:55:29+00:00",
+  "phases": [
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [],
+      "difficulty": "NORMAL",
+      "n": 1,
+      "note": null,
+      "package": "lib/nina`, `lib/admin",
+      "plan": ".workflows/plan/profpic-pointer-sync/phase-1.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1",
+        "R2"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Adoption relinks legacy copies and stale pointers"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [
+        1
+      ],
+      "difficulty": "HARD",
+      "n": 2,
+      "note": null,
+      "package": "lib/nina`, `lib/admin",
+      "plan": ".workflows/plan/profpic-pointer-sync/phase-2.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1",
+        "R3"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Replace propagates to dependents and frees the old file"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [],
+      "difficulty": "NORMAL",
+      "n": 3,
+      "note": null,
+      "package": "scripts",
+      "plan": ".workflows/plan/profpic-pointer-sync/phase-3.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1",
+        "R2",
+        "R3"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Repair existing production rows and delete freed files"
+    }
+  ],
+  "plan": "/home/miftah/run-insights/.workflows/orchestration/profpic-pointer-sync/PLAN.md",
+  "repo": "/home/miftah/run-insights",
+  "slug": "profpic-pointer-sync",
+  "updated": "2026-10-03T07:55:29+00:00",
+  "worktree": "/home/miftah/.worktrees/run-insights/profpic-pointer-sync"
+}
