@@ -18,7 +18,7 @@
         "R1",
         "R2"
       ],
-      "status": "spawned",
+      "status": "pending",
       "task_id": null,
       "title": "Adoption relinks legacy copies and stale pointers"
     },
@@ -44,27 +44,28 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "2d8bc48",
       "depends_on": [],
       "difficulty": "NORMAL",
       "n": 3,
-      "note": null,
+      "note": "Prod repair applied: dry run 21/11/13/7 0 skipped; --apply 52/52 rows, 31 blobs deleted, 9 kept (jsonb-named), failed 0; second dry run all zeros; Daofejusg4Xa MATCHES jWWu8vkl09fT. Backup ~/backups/run-insights/nina-profpic-pointer-repair-2026-10-03.json. Decided: only phase 3's task created (shared worktree); plan test's skipped-ids assertion made exact; ?. for noUncheckedIndexedAccess. Owes D6 post-deploy dry run.",
       "package": "scripts",
       "plan": ".workflows/plan/profpic-pointer-sync/phase-3.md",
-      "reported_at": null,
+      "reported_at": "2026-10-03T08:04:59+00:00",
       "satisfies": [
         "R1",
         "R2",
         "R3"
       ],
-      "status": "spawned",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-SC-A004",
       "title": "Repair existing production rows and delete freed files"
     }
   ],
   "plan": "/home/miftah/run-insights/.workflows/orchestration/profpic-pointer-sync/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "profpic-pointer-sync",
-  "updated": "2026-10-03T07:57:32+00:00",
+  "updated": "2026-10-03T08:04:59+00:00",
+  "verified_at": "2026-10-03T08:04:59+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/profpic-pointer-sync"
 }
