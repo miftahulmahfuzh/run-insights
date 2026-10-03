@@ -24,22 +24,22 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "5966107",
       "depends_on": [
         1
       ],
       "difficulty": "HARD",
       "n": 2,
-      "note": null,
+      "note": "updateNinaChatPhotoBlob batch of 4, updateNinaAvatarBlob batch of 2, replaceNinaAvatarAction releases old thumb, resolvePhotoshopReplace read-write-release. typecheck/lint/format/npm test 6924/7 guards green; integration test NOT run (no non-prod TEST_DATABASE_URL). No ladder decisions.",
       "package": "lib/nina`, `lib/admin",
       "plan": ".workflows/plan/profpic-pointer-sync/phase-2.md",
-      "reported_at": null,
+      "reported_at": "2026-10-03T08:13:11+00:00",
       "satisfies": [
         "R1",
         "R3"
       ],
-      "status": "spawned",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-NIN-A060",
       "title": "Replace propagates to dependents and frees the old file"
     },
     {
@@ -65,7 +65,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/profpic-pointer-sync/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "profpic-pointer-sync",
-  "updated": "2026-10-03T08:07:01+00:00",
+  "updated": "2026-10-03T08:13:11+00:00",
   "verified_at": "2026-10-03T08:04:59+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/profpic-pointer-sync"
 }

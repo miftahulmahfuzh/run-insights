@@ -6,7 +6,7 @@
 **Worktree:** `/home/miftah/.worktrees/run-insights/profpic-pointer-sync`
 **Branch:** `feature/profpic-pointer-sync` (base: `origin/main` @ `d4491e5`)
 **Phases:** 3
-**Status:** planned
+**Status:** complete
 **Coordinator:** —
 
 ---
@@ -72,9 +72,9 @@ them keeps a replaced file alive, because the blob release sees "still reference
 
 | # | Title | Satisfies | Package | Files | Depends on | Difficulty | Plan | TaskID | Card |
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
-| 1 | Adoption relinks legacy copies and stale pointers | R1, R2 | `lib/nina`, `lib/admin` | 7 | — | NORMAL | `.workflows/plan/profpic-pointer-sync/phase-1.md` | — | — |
-| 2 | Replace propagates to dependents and frees the old file | R1, R3 | `lib/nina`, `lib/admin` | 12 | 1 | HARD | `.workflows/plan/profpic-pointer-sync/phase-2.md` | — | — |
-| 3 | Repair existing production rows and delete freed files | R1, R2, R3 | `scripts` | 3 | — | NORMAL | `.workflows/plan/profpic-pointer-sync/phase-3.md` | — | — |
+| 1 ✓ | Adoption relinks legacy copies and stale pointers | R1, R2 | `lib/nina`, `lib/admin` | 7 | — | NORMAL | `.workflows/plan/profpic-pointer-sync/phase-1.md` | `P1-NIN-A059` | — |
+| 2 ✓ | Replace propagates to dependents and frees the old file | R1, R3 | `lib/nina`, `lib/admin` | 12 | 1 | HARD | `.workflows/plan/profpic-pointer-sync/phase-2.md` | `P1-NIN-A060` | — |
+| 3 ✓ | Repair existing production rows and delete freed files | R1, R2, R3 | `scripts` | 3 | — | NORMAL | `.workflows/plan/profpic-pointer-sync/phase-3.md` | `P1-SC-A004` | — |
 
 **Requirement map (final):** R1 → 1, 2, 3 · R2 → 1, 3 · R3 → 2, 3.
 
