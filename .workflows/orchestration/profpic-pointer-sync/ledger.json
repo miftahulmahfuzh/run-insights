@@ -3,6 +3,12 @@
   "coordinator": "orch-profpic-pointer-sync",
   "coordinator_session_id": "34a6f0be-7f27-47cc-b4ba-74d5ba1a6aaf",
   "created": "2026-10-03T07:55:29+00:00",
+  "landed": {
+    "at": "2026-10-03T08:13:25+00:00",
+    "base": "main",
+    "commit": "58f2af93777d3a1a92490a9e035b6d3bd769b4d4",
+    "machine": "GPD"
+  },
   "phases": [
     {
       "card": null,
@@ -65,7 +71,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/profpic-pointer-sync/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "profpic-pointer-sync",
-  "updated": "2026-10-03T08:13:11+00:00",
+  "updated": "2026-10-03T08:13:25+00:00",
   "verified_at": "2026-10-03T08:04:59+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/profpic-pointer-sync"
 }
