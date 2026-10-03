@@ -1,9 +1,9 @@
 # Package: scripts
 
 **Location**: `scripts`
-**Last Updated**: 2026-09-16 (the dedupe sweep's phantom-original census and its `fill-dimensions`
-op; prior: `search-analysis.mjs`, the album-search relevance diagnostic, and the project skill that
-drives it; see Notes for the documentation history)
+**Last Updated**: 2026-10-03 (`nina-profpic-pointer-repair.mjs`, the one-off relink of legacy
+profpic copies and stale pointers/references; prior: the dedupe sweep's phantom-original census and
+its `fill-dimensions` op; see Notes for the documentation history)
 
 ## Overview
 
@@ -11,11 +11,11 @@ drives it; see Notes for the documentation history)
 production data and Blob storage, the read-only diagnostics that explain production behaviour the
 app's own code paths hide, the CI boundary guards, Nina's off-platform image-generation worker, and
 the capture toolkit that photographs the app for the README. Nothing here is imported
-by the app, and none of it runs under `npm test`. The reverse is deliberate in three cases —
+by the app, and none of it runs under `npm test`. The reverse is deliberate in four cases —
 `nina-dedupe-plan.mjs`, `nina-image-worker.ts` (a re-export barrel over `nina-image-worker/`
-since 2026-09-12) and `nina-shortcuts-import.mjs` are importable BY
-the test suite (`tests/nina.dedupeMedia.test.ts`, `tests/nina.imageworker.test.ts`,
-`tests/nina.shortcutsImport.test.ts`), which is why each separates its pure, judgment-bearing half
+since 2026-09-12), `nina-shortcuts-import.mjs` and `nina-profpic-pointer-repair.mjs` are importable
+BY the test suite (`tests/nina.dedupeMedia.test.ts`, `tests/nina.imageworker.test.ts`,
+`tests/nina.shortcutsImport.test.ts`, `tests/nina.profpicPointerRepair.test.ts`), which is why each separates its pure, judgment-bearing half
 from its I/O half.
 
 **The standing rules of the directory** — each script's header restates the ones it lives by:
@@ -162,6 +162,32 @@ re-seeds `assets/nina/_anchor.png` in the working tree (kept only as the seed fo
 consistent-face feature; RU-18 dropped reference-based generation, so the anchor affects no
 generation today). She announces the change herself via `source = 'operator'` — a laptop script
 must never be a second author of Nina's voice.
+
+### `nina-profpic-pointer-repair.mjs` — `npm run nina:profpic-pointer-repair`
+One-off production repair (`profpic-pointer-sync`): makes every `nina_avatars` row that came from a
+Media photo point at that photo's CURRENT bytes, moves every `nina_message_images` reference that
+re-shows one along with it, then deletes the Blob objects those rows stop naming. Three kinds of
+broken row, each of which kept the old object alive because `releaseBlobIfUnreferenced` answered
+'shared': **legacy copies** (pre-2026-09-17 "Set as her profile picture" rows with `source_key
+'chat-photo:<imageId>'` and `source_image_id NULL`, relinked into pointers), **stale pointers**
+(`source_image_id` set, bytes columns copied once at link time — the D1 column contract), and
+**stale references** (image→image and image→avatar chat rows, D2, resolved against the album rows'
+POST-repair bytes). Pure half — `parseRepairArgs`, `resolveBackupPath`, `isOriginalImage`,
+`planRepair`, `collectReleaseCandidates`, `summarizePlan` — tested in
+`tests/nina.profpicPointerRepair.test.ts`; `main()` is the I/O half and runs only as the entry
+point. It imports `isStoreUrl`/`releaseDecision` from `nina-dedupe-plan.mjs` and mirrors
+`NINA_CHAT_PHOTO_SOURCE_KEY_PREFIX` by hand (raw SQL, same reason as `nina-dedupe-media.mjs`).
+Dry run plans and reports every op and release candidate with a predicted verdict. `--apply`
+(optional `--backup <path>`, default under `os.tmpdir()`; a path inside the repo is REFUSED because
+the file holds production rows) writes a `select *` JSON backup and reads it back before any
+write, then runs ONE `sql.transaction([...])` whose UPDATEs are each guarded on the row's old
+`pathname`/`blob_url` and the target's planned bytes (a row a concurrent writer moved is skipped,
+never clobbered). ROW FIRST, BLOB SECOND: only after commit does it re-ask the six reference
+columns plus the jsonb backstop (`nina_turns.args`, `nina_memory_slots.value`) and `del` at zero;
+an object still named in jsonb is kept and reported `kept-jsonb`. Idempotent — a second run plans
+0 ops; a legacy copy whose Media original is gone is skipped and left as is. Applied to production
+2026-10-03: 52 rows repaired, 31 objects deleted, 9 kept-jsonb. Re-run it as a post-deploy check
+once the relink (Phase 1) and replace propagation (Phase 2) are live — expect 0 ops.
 
 ### `f04-e2e-probe.mjs` — no npm entry
 Proves the ASSEMBLED extraction pipeline against the real world — real Blob PUT, real `glm-4.6v`
@@ -391,6 +417,12 @@ real money on a real generation.
 live in the body sections and in each script's own header; narrative lives in git history, which
 is complete and ordered and costs a session no context to load.
 
+- **2026-10-03 — profpic pointers repaired** (`profpic-pointer-sync`; P1-SC-A004). New
+  `nina-profpic-pointer-repair.mjs` + `npm run nina:profpic-pointer-repair` (entry under **Ops &
+  maintenance**), the fourth test-importable script (`tests/nina.profpicPointerRepair.test.ts`,
+  20 cases). Applied to production the same day (52 rows, 31 objects deleted, 9 kept-jsonb)
+  ahead of the code fix in `lib/nina/` (`avatarRelink.ts`, replace propagation), so its standing
+  role is the post-deploy check that should then plan 0 ops.
 - **2026-09-16 — the sweep sees ghost photos** (`nina-ghost-photo-dedup-fix`, phase 2 of 2;
   P1-SC-A003). `nina-dedupe-plan.mjs` gained `isPhantomOriginal`, `classifyPhantomOriginals` and
   `buildFillDimensionOps`; `nina-dedupe-media.mjs` gained the census report and the
