@@ -13,6 +13,7 @@ import {
   type NinaAvatarRow,
   type NinaImageRow,
 } from '@/lib/nina/queries'
+import { refreshAdoptedNinaAvatar } from '@/lib/nina/avatarRelink'
 
 /**
  * **R2: a photograph that already exists becomes her face, unchanged.** The chat-side counterpart of
@@ -47,6 +48,12 @@ import {
  * cron to announce a change she has already described a moment earlier. `setCurrentNinaAvatar`
  * re-arms it to NULL by design; `markNinaAvatarAnnounced` immediately after is what closes it, and
  * the order matters.
+ *
+ * ── A RE-ADOPTION REFRESHES THE ROW IT FINDS (profpic-pointer-sync) ───────────────────────────
+ * The `source_key` hit can be a legacy copy made before the link existed, or a pointer left on
+ * bytes a Replace has since swapped. Both used to be re-currented as-is, which put an OLD photograph
+ * back on her face. `refreshAdoptedNinaAvatar` (`lib/nina/avatarRelink.ts`, shared with the admin
+ * twin) rewrites such a row into a fresh pointer before it is promoted.
  */
 
 /**
@@ -172,14 +179,23 @@ export async function adoptNinaChatPhotoAsAvatar(
   const sourceKey = `${NINA_CHAT_PHOTO_SOURCE_KEY_PREFIX}${row.id}`
 
   /* RE-ADOPTION IS A CONSTRAINT DECISION, NOT A COUNT. The lookup is the policy — a second "pakai
-   * foto ini" finds the first link BEFORE any insert and just re-currents it. The
-   * `nina_avatars_user_source_key_unq` index is the backstop for the race the lookup cannot close;
-   * `linkChatPhotoIntoNinaAlbum` re-reads by key when the INSERT conflicts away. */
+   * foto ini" finds the first link BEFORE any insert. The `nina_avatars_user_source_key_unq` index
+   * is the backstop for the race the lookup cannot close; `linkChatPhotoIntoNinaAlbum` re-reads by
+   * key when the INSERT conflicts away.
+   *
+   * A hit is REFRESHED, not just re-currented (`profpic-pointer-sync` R2): a legacy copy or a
+   * pointer left on pre-Replace bytes becomes a pointer at this row's CURRENT bytes, and the object
+   * it stopped naming is released. `lib/nina/avatarRelink.ts` argues the rest. */
   const existing = await getNinaAvatarBySourceKey(userId, sourceKey)
-  const avatar = existing ?? (await linkChatPhotoIntoNinaAlbum(userId, row, sourceKey))
-  if (avatar == null) return { ok: false, kind: 'link_failed' }
+  if (existing == null) {
+    const linked = await linkChatPhotoIntoNinaAlbum(userId, row, sourceKey)
+    if (linked == null) return { ok: false, kind: 'link_failed' }
+    return promoteAndAnnounce(userId, linked)
+  }
 
-  return promoteAndAnnounce(userId, avatar)
+  const refreshed = await refreshAdoptedNinaAvatar(userId, existing, row, sourceKey)
+  if (refreshed == null) return { ok: false, kind: 'link_failed' }
+  return promoteAndAnnounce(userId, refreshed.row, refreshed.relinked)
 }
 
 /**
@@ -204,13 +220,16 @@ export async function promoteNinaAvatarAsCurrent(
  * return is ignored on purpose: `false` means the row was already announced, which is the state we
  * wanted anyway.
  *
- * `changed` is read BEFORE the promotion, since after it the answer is always "current".
+ * `changed` is read BEFORE the promotion, since after it the answer is always "current". It is also
+ * true when `bytesChanged`: a relinked row that was already current still shows her a different
+ * photograph now (`profpic-pointer-sync` R2), and "it already was" would be false.
  */
 async function promoteAndAnnounce(
   userId: string,
   avatar: NinaAvatarRow,
+  bytesChanged = false,
 ): Promise<NinaAvatarAdoptResult> {
-  const changed = !avatar.isCurrent
+  const changed = !avatar.isCurrent || bytesChanged
   const promoted = await setCurrentNinaAvatar(userId, avatar.id)
   if (!promoted) return { ok: false, kind: 'missing' }
   await markNinaAvatarAnnounced(userId, avatar.id)

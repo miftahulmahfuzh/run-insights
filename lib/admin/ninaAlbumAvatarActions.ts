@@ -24,6 +24,7 @@ import {
   type NinaImageRow,
 } from '@/lib/nina/queries'
 import { releaseBlobIfUnreferenced } from '@/lib/nina/blobRelease'
+import { refreshAdoptedNinaAvatar } from '@/lib/nina/avatarRelink'
 import { promoteNinaAvatarDependents } from '@/lib/nina/provenancePromotion'
 import { isValidContentHash } from '@/lib/photos/contentHash'
 
@@ -109,12 +110,14 @@ export async function setCurrentNinaAvatarAction(rawId: string): Promise<AdminAc
  * in one place automatically synchronize"* true by construction rather than by a sync mechanism
  * that could get it wrong.
  *
- * ── RE-ADOPTION IS STILL A CONSTRAINT DECISION ──────────────────────────────────────────────
- * Unchanged: the row is written with `source_key = 'chat-photo:<imageId>'`, so a second click
- * finds the first adoption through `getNinaAvatarBySourceKey` and just re-currents it, and
- * `nina_avatars_user_source_key_unq` is the backstop for the race the lookup cannot close. What
- * changes is the cost of losing that race: nothing. There is no orphaned object to reap any more,
- * because no object was minted.
+ * ── RE-ADOPTION IS STILL A CONSTRAINT DECISION — AND NOW A REFRESH ──────────────────────────
+ * The row is written with `source_key = 'chat-photo:<imageId>'`, so a second click finds the first
+ * adoption through `getNinaAvatarBySourceKey`, and `nina_avatars_user_source_key_unq` is the
+ * backstop for the race the lookup cannot close. What a hit gets is no longer "re-current it as
+ * is": `refreshAdoptedNinaAvatar` (`lib/nina/avatarRelink.ts`) first rewrites a legacy copy (pre-R3,
+ * its own `avatar-…` object) or a pointer left on pre-Replace bytes into a fresh pointer at this
+ * row's CURRENT bytes, then releases the object it stopped naming. `profpic-pointer-sync` R2: the
+ * operator replaced `jWWu8vkl09fT`, clicked this, and got v1 back from a 2026-09-14 copy.
  *
  * ── THE GUARDS ARE REPLACE'S AND REMOVE'S, VERBATIM ─────────────────────────────────────────
  * Unchanged. `getNinaMessageImage` deliberately does not filter (it is the bubble and viewer read
@@ -153,10 +156,11 @@ export async function setChatPhotoAsAvatarAction(input: unknown): Promise<AdminA
   const crop = clampCrop({ width: row.width, height: row.height }, resolveCrop({ scale, x, y }))
   const sourceKey = `chat-photo:${row.id}`
 
-  let avatar = await getNinaAvatarBySourceKey(userId, sourceKey)
-  if (avatar == null) {
-    avatar = await linkChatPhotoIntoAlbum(userId, row, sourceKey)
-  }
+  const previous = await getNinaAvatarBySourceKey(userId, sourceKey)
+  const avatar =
+    previous == null
+      ? await linkChatPhotoIntoAlbum(userId, row, sourceKey)
+      : ((await refreshAdoptedNinaAvatar(userId, previous, row, sourceKey))?.row ?? null)
   if (avatar == null) {
     return { ok: false, error: 'The link into her album did not land. Try again.' }
   }
