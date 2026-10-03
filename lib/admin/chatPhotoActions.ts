@@ -142,6 +142,14 @@ import { notifyNinaPush } from '@/lib/push/send'
  * release runs, this row already points at the NEW pathname, so it is out of the reference answer
  * and no "except this row" parameter is needed.
  *
+ * Since profpic-pointer-sync (R3), `updateNinaChatPhotoBlob` also moves every album pointer and
+ * chat reference that re-shows this photograph to the new bytes, in the same batch. Before that,
+ * they were exactly what made this release answer `'shared'` and keep v1 in the store forever.
+ * Now nothing in this photograph's own family names the old object, so the release normally
+ * deletes it. A `'shared'` answer, and its note, now means something outside that family names
+ * the bytes. A legacy album copy made before the pointer design is the known case, and Phase 3's
+ * repair script removes those.
+ *
  * The `existing.pathname !== pathname` guard is not paranoia: `addRandomSuffix` makes a collision
  * impossible in practice, and deleting the object the row now points at would be unrecoverable, so
  * the one comparison that rules it out is worth making.

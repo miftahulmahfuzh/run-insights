@@ -2,7 +2,7 @@
 
 **Package Path**: `lib/nina`
 **Package Code**: NIN
-**Last Updated**: 2026-10-02
+**Last Updated**: 2026-10-03
 **Total Active Tasks**: 0
 
 ## Quick Stats
@@ -12,7 +12,7 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 62
+- Completed: 64
 - Archived: 36
 
 ---
@@ -34,6 +34,36 @@
 (all thirty-five completed tasks were archived on 2026-09-12 — see Archive; full
 per-task detail — Context, Drift, Decided, Files — survives in git history and in
 `.workflows/package_readme.md`)
+
+- [x] **P1-NIN-A060** Phase 2: Replace propagates to dependents and frees the old file
+  - **Difficulty**: HARD
+  - **Type**: Bug
+  - **Context**: Owns `updateNinaChatPhotoBlob` as one gated `db.batch` of 4 (Media row; pointers under D1; image→image references under D2; references re-showing a pointer of this original under D2); `updateNinaAvatarBlob` as one gated `db.batch` of 2 (album row, now also nulling its thumb pair; its `source_avatar_id` references under D2); `replaceNinaAvatarAction` releasing the old thumbnail; `resolvePhotoshopReplace` reading before writing and releasing after; docstrings in `chatPhotoActions.ts`; the two existing single-statement tests moved to the batch shape; new `tests/nina.replacePropagation.test.ts`, `tests/nina.photoshopResolve.test.ts`, `tests/integration/replacePropagation.int.test.ts`. Exit: both writers issue exactly one batch (4 / 2 statements) with the D1/D2 SET lists and the gate pinned by tests; after the batch the release on the old object returns `'deleted'`; Photoshop replace reads, writes, resolves, then releases object and thumb; typecheck, lint, format, `npm test`, seven guards and knip are green.
+  - **Status**: completed
+  - **Plan Set**: `PROFPIC_POINTER_SYNC_PLAN.md` (phase 2 of 3)
+  - **Satisfies**: R1 — Every photo in `/nina/about` → Foto profil points at one real image file (Media or elsewhere) — no detached copies; R3 — A replaced photo's old file is permanently deleted — storage does not grow
+  - **Depends on**: P1-NIN-A059
+  - **Plan**: `.workflows/plan/P1-NIN-A060.md`
+  - **Completed**: 2026-10-03 15:10
+  - **Method**: /do
+  - **Files**: lib/nina/queries/images.ts, lib/nina/queries/avatars.ts, lib/nina/photoshopResolve.ts, lib/admin/ninaAlbumAvatarActions.ts, lib/admin/chatPhotoActions.ts, tests/nina.chatPhotoDescription.test.ts, tests/nina.photoRefs.test.ts, tests/nina.replacePropagation.test.ts, tests/nina.photoshopResolve.test.ts, tests/integration/replacePropagation.int.test.ts
+  - **Drift**: none in code — every quoted block matched the post-Phase-1 tree; applied verbatim, then prettier.
+    knip exits non-zero, but its findings are identical to HEAD 51291a7's (pre-existing; none in this phase's files).
+    Integration test not run (needs a non-production TEST_DATABASE_URL).
+
+- [x] **P1-NIN-A059** Phase 1: Adoption relinks legacy copies and stale pointers
+  - **Difficulty**: NORMAL
+  - **Type**: Bug
+  - **Context**: Owns `relinkNinaAvatarToImage` (new, `lib/nina/queries/avatars.ts`, after `getNinaAvatarBySourceKey`) with the D1 pointer SET list, returning the refs it stopped naming; `NinaAvatarRelinkSource` / `NinaAvatarRelinkResult` (`shapes.ts`); `refreshAdoptedNinaAvatar` (new `lib/nina/avatarRelink.ts`), which relinks a stale `source_key` hit then releases the dropped object and thumb; the relink branch in `setChatPhotoAsAvatarAction` and `adoptNinaChatPhotoAsAvatar` (`changed: true` when bytes swapped); the barrel allowlist line; `tests/nina.avatarRelink.test.ts`. Exit: adopting a Media photo whose `source_key` row is a legacy copy or stale pointer, from either path, yields the same row id rewritten under D1; the dropped object and thumbnail are passed to `releaseBlobIfUnreferenced` after the UPDATE; typecheck, lint, format, `npm test`, seven guards and knip are green.
+  - **Status**: completed
+  - **Plan Set**: `PROFPIC_POINTER_SYNC_PLAN.md` (phase 1 of 3)
+  - **Satisfies**: R1 — Every photo in `/nina/about` → Foto profil points at one real image file (Media or elsewhere) — no detached copies; R2 — Replace a Media photo, set it as profile picture → `/nina/about` shows the new version
+  - **Depends on**: —
+  - **Plan**: `.workflows/plan/P1-NIN-A059.md`
+  - **Completed**: 2026-10-03 15:04
+  - **Method**: /do
+  - **Files**: lib/nina/queries/shapes.ts, lib/nina/queries/avatars.ts, lib/nina/avatarRelink.ts, lib/admin/ninaAlbumAvatarActions.ts, lib/nina/avatarAdopt.ts, lib/nina/queries.test.ts, tests/nina.avatarRelink.test.ts
+  - **Drift**: avatarAdopt.ts module header closes at line 50, not line 46 as the plan says. Step 5d's paragraph was appended before that ` */`, which is where the plan intended it.
 
 - [x] **P1-NIN-A058** Phase 1: Media page size binds to the read's ceiling
   - **Difficulty**: NORMAL

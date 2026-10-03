@@ -97,6 +97,14 @@ describe('updateNinaChatPhotoDescription', () => {
 })
 
 describe('updateNinaChatPhotoBlob — the replace write (D-P2-1)', () => {
+  /* profpic-pointer-sync phase 2: the replace is one `db.batch` whose FIRST member is this row's
+   * own write; members 2–4 move the rows that re-show it (`tests/nina.replacePropagation.test.ts`
+   * pins those). These cases are about member 1 and read it by index. */
+  function mediaRowWrite(): string {
+    expect(fake.batches).toEqual([4])
+    return fake.sqlAt(0)
+  }
+
   it('is original-only and kind-blind: a replaced upload keeps its kind', async () => {
     fake.enqueue([])
     await queries.updateNinaChatPhotoBlob(USER, ID, {
@@ -108,7 +116,7 @@ describe('updateNinaChatPhotoBlob — the replace write (D-P2-1)', () => {
       contentHash: null,
     })
 
-    const { sql } = fake.only()
+    const sql = mediaRowWrite()
     expect(sql).toContain('update "nina_message_images"')
     expect(sql).toContain('"source_avatar_id" is null')
     expect(sql).toContain('"source_image_id" is null')
@@ -128,7 +136,7 @@ describe('updateNinaChatPhotoBlob — the replace write (D-P2-1)', () => {
       bytes: 240_000,
     })
 
-    const { sql } = fake.only()
+    const sql = mediaRowWrite()
     // Drizzle spells the SET clause once and comma-joins the assignments, so the column names,
     // not a repeated `set`, are what proves all five land in the ONE statement.
     expect(sql).toContain('"description" = $')

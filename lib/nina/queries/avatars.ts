@@ -3,6 +3,7 @@ import {
   asc,
   desc,
   eq,
+  exists,
   inArray,
   isNotNull,
   isNull,
@@ -13,7 +14,7 @@ import {
 import type { PgColumn } from 'drizzle-orm/pg-core'
 
 import { db } from '@/lib/db'
-import { ninaAvatars, ninaFolders } from '@/lib/db/schema'
+import { ninaAvatars, ninaFolders, ninaMessageImages } from '@/lib/db/schema'
 import { newId } from '@/lib/id'
 import {
   NINA_ABOUT_PAGE_SIZE,
@@ -30,6 +31,8 @@ import type {
   NinaAvatarInsert,
   NinaAvatarManifestEntry,
   NinaAvatarPage,
+  NinaAvatarRelinkResult,
+  NinaAvatarRelinkSource,
   NinaAvatarRow,
   NinaFolderRenameResult,
 } from './shapes'
@@ -195,13 +198,32 @@ export async function updateNinaAvatarCrop(
 }
 
 /**
- * Photoshop's "replace the existing photo": swap this row's bytes in place, keep its id. Mirrors
- * `updateNinaChatPhotoBlob`'s shape for the reason that function states — a row must not point
- * at new bytes while still claiming old prose about them, so description/keywords/embedding are
- * cleared alongside the blob fields. Guarded by `sourceImageId IS NULL`: a row with that column
- * set is a POINTER at a Media original and owns no bytes of its own to replace — replacing it
- * in place would silently detach it from the row it borrows from. Returns `null` for that case
- * exactly as for "not found" or "not yours"; the caller cannot and need not tell them apart.
+ * Swap an album original's bytes in place and keep its id. There are two callers: Photoshop's
+ * "replace the existing photo" (`resolvePhotoshopReplace`) and the album's manual Replace
+ * (`replaceNinaAvatarAction`). It mirrors `updateNinaChatPhotoBlob`'s shape for the reason that
+ * function gives: a row must not point at new bytes while it still claims old prose about them,
+ * so description, keywords and embedding are cleared along with the blob fields.
+ *
+ * It is guarded by `sourceImageId IS NULL`. A row with that column set is a POINTER at a Media
+ * original. It owns no bytes of its own to replace, and replacing it in place would silently
+ * detach it from the row it borrows from. A pointer returns `null` exactly as "not found" or
+ * "not yours" do. The caller cannot tell these apart and does not need to.
+ *
+ * ── THE THUMBNAIL GOES TOO (profpic-pointer-sync R3) ─────────────────────────────────────────
+ * `thumb_url/thumb_pathname` (written only by the folder upload) were rendered from the OLD
+ * bytes. Leaving them in place shows the old picture in every grid. It also keeps the old
+ * thumbnail object referenced, so the caller's release could never free it. With both NULL, a
+ * renderer falls back to `blob_url`, which is the column header's own meaning. The caller holds
+ * the row it read before the write, and it releases that thumbnail.
+ *
+ * ── CHAT REFERENCES FOLLOW, IN THE SAME BATCH ────────────────────────────────────────────────
+ * A `nina_message_images` row with `source_avatar_id = id` re-shows this photograph and copies its
+ * bytes (`resolveAttachment`). It moves to the new bytes in the same `db.batch`, with
+ * `updateNinaChatPhotoBlob`'s reference contract: it mirrors this row's post-write values (new
+ * bytes and `content_hash`; `description` NULL like this row's; no perceptual pair). It is
+ * gated on this row now serving the new pathname, so a refused write (a pointer, or a row that is
+ * not his) moves nothing. Album pointers never point at an album row, so no third statement is
+ * needed.
  */
 export async function updateNinaAvatarBlob(
   userId: string,
@@ -215,28 +237,66 @@ export async function updateNinaAvatarBlob(
     contentHash: string | null
   },
 ): Promise<NinaAvatarRow | null> {
-  const updated = await db
-    .update(ninaAvatars)
-    .set({
-      blobUrl: patch.blobUrl,
-      pathname: patch.pathname,
-      width: patch.width,
-      height: patch.height,
-      bytes: patch.bytes,
-      contentHash: patch.contentHash ?? null,
-      description: null,
-      searchKeywords: null,
-      negativeSearchKeywords: null,
-      descriptionEmbedding: null,
-    })
-    .where(
-      and(
-        eq(ninaAvatars.userId, userId),
-        eq(ninaAvatars.id, id),
-        isNull(ninaAvatars.sourceImageId),
+  const albumRowNowServesPatch = exists(
+    db
+      .select({ one: sql`1` })
+      .from(ninaAvatars)
+      .where(
+        and(
+          eq(ninaAvatars.userId, userId),
+          eq(ninaAvatars.id, id),
+          eq(ninaAvatars.pathname, patch.pathname),
+          isNull(ninaAvatars.sourceImageId),
+        ),
       ),
-    )
-    .returning(avatarColumns)
+  )
+
+  const [updated] = await db.batch([
+    db
+      .update(ninaAvatars)
+      .set({
+        blobUrl: patch.blobUrl,
+        pathname: patch.pathname,
+        width: patch.width,
+        height: patch.height,
+        bytes: patch.bytes,
+        contentHash: patch.contentHash ?? null,
+        description: null,
+        searchKeywords: null,
+        negativeSearchKeywords: null,
+        descriptionEmbedding: null,
+        thumbUrl: null,
+        thumbPathname: null,
+      })
+      .where(
+        and(
+          eq(ninaAvatars.userId, userId),
+          eq(ninaAvatars.id, id),
+          isNull(ninaAvatars.sourceImageId),
+        ),
+      )
+      .returning(avatarColumns),
+    db
+      .update(ninaMessageImages)
+      .set({
+        blobUrl: patch.blobUrl,
+        pathname: patch.pathname,
+        width: patch.width,
+        height: patch.height,
+        bytes: patch.bytes,
+        contentHash: patch.contentHash ?? null,
+        description: null,
+        perceptualHash: null,
+        perceptualSig: null,
+      })
+      .where(
+        and(
+          eq(ninaMessageImages.userId, userId),
+          eq(ninaMessageImages.sourceAvatarId, id),
+          albumRowNowServesPatch,
+        ),
+      ),
+  ])
   return updated[0] ?? null
 }
 
@@ -316,6 +376,101 @@ export async function getNinaAvatarBySourceKey(
     .where(and(eq(ninaAvatars.userId, userId), eq(ninaAvatars.sourceKey, sourceKey)))
     .limit(1)
   return rows[0] ?? null
+}
+
+/**
+ * **Turn an adopted album row back into a TRUE pointer at its Media original.**
+ * `profpic-pointer-sync` R1/R2.
+ *
+ * `getNinaAvatarBySourceKey('chat-photo:<imageId>')` can answer with a row whose bytes are NOT the
+ * Media row's current bytes, in two shapes, both confirmed on production rows on 2026-10-03:
+ *
+ *   · **a legacy copy** — `source_image_id IS NULL`, its own `avatar-…` object, written before
+ *     `media-album-unified-search` R3 made adoption a link (21 rows, one of them current);
+ *   · **a stale pointer** — `source_image_id` set, but `blob_url`/`pathname` still name the object
+ *     the Media row held before a Replace (11 rows).
+ *
+ * Re-currenting either one puts the OLD photograph back on her face, which is the reported bug.
+ * This rewrites the row in place into exactly what `linkChatPhotoIntoAlbum` would insert today:
+ *
+ *   · `blob_url`/`pathname`/`width`/`height`/`bytes` — the Media row's, verbatim.
+ *   · `source_image_id` — the Media row's id. This is what makes it a pointer.
+ *   · `description`, `search_keywords`, `negative_search_keywords`, `description_embedding` — NULL.
+ *     A pointer holds no prose. The Media row is the one place it lives (`avatarPointer.ts`).
+ *   · `content_hash` — NULL, as a fresh link writes it. A pointer must not answer the album arm of
+ *     the duplicate lookup with a hash for bytes it does not own.
+ *   · `thumb_url`/`thumb_pathname` — NULL. Nothing generates a thumbnail for a link, and a legacy
+ *     copy's thumbnail is a picture of the OLD bytes.
+ *   · `crop_scale`/`crop_x`/`crop_y` — NULL **only when the dimensions change**. A crop is clamped
+ *     against real dimensions (`clampCrop`), so the old crop on new dimensions may not cover the
+ *     circle. Identity (three NULLs) always does. Same dimensions keep the operator's framing.
+ *
+ * `id`, `folder`, `filename`, `source`, `source_key`, `is_current` and `announced_at` are NOT in the
+ * SET. The row is still the same album entry, in the same place, and still current if it was.
+ *
+ * ── THE WHERE CLAUSE PINS WHAT THE CALLER READ ───────────────────────────────────────────────
+ * `pathname` and both thumbnail columns must still equal the `avatar` the caller read. So the
+ * `dropped*` refs returned are exactly the objects THIS statement stopped naming, never a guess
+ * about a row another tab rewrote in between. A miss (another writer won, or the row is gone or not
+ * yours) returns `null`. The caller re-reads.
+ *
+ * Does not `del` anything. Releasing the dropped objects is the caller's job, through
+ * `releaseBlobIfUnreferenced`, after this statement has run (row first, blob second).
+ */
+export async function relinkNinaAvatarToImage(
+  userId: string,
+  avatar: NinaAvatarRow,
+  image: NinaAvatarRelinkSource,
+): Promise<NinaAvatarRelinkResult | null> {
+  const dimensionsChanged = avatar.width !== image.width || avatar.height !== image.height
+
+  const updated = await db
+    .update(ninaAvatars)
+    .set({
+      blobUrl: image.blobUrl,
+      pathname: image.pathname,
+      width: image.width,
+      height: image.height,
+      bytes: image.bytes,
+      sourceImageId: image.id,
+      description: null,
+      searchKeywords: null,
+      negativeSearchKeywords: null,
+      descriptionEmbedding: null,
+      contentHash: null,
+      thumbUrl: null,
+      thumbPathname: null,
+      ...(dimensionsChanged ? { cropScale: null, cropX: null, cropY: null } : {}),
+    })
+    .where(
+      and(
+        eq(ninaAvatars.userId, userId),
+        eq(ninaAvatars.id, avatar.id),
+        eq(ninaAvatars.pathname, avatar.pathname),
+        avatar.thumbUrl == null
+          ? isNull(ninaAvatars.thumbUrl)
+          : eq(ninaAvatars.thumbUrl, avatar.thumbUrl),
+        avatar.thumbPathname == null
+          ? isNull(ninaAvatars.thumbPathname)
+          : eq(ninaAvatars.thumbPathname, avatar.thumbPathname),
+      ),
+    )
+    .returning(avatarColumns)
+
+  const row = updated[0]
+  if (row == null) return null
+
+  return {
+    row,
+    droppedOriginal:
+      avatar.pathname === image.pathname
+        ? null
+        : { blobUrl: avatar.blobUrl, pathname: avatar.pathname },
+    droppedThumb:
+      avatar.thumbUrl == null
+        ? null
+        : { blobUrl: avatar.thumbUrl, pathname: avatar.thumbPathname ?? avatar.thumbUrl },
+  }
 }
 
 /**

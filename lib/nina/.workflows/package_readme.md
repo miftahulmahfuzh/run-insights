@@ -82,7 +82,20 @@ KNOWN, UNREPAIRED is gone, because the defect is; what stands in its place is th
 hid it — see Gotchas and Tests. Restated 2026-10-02 for P1-NIN-A058
 (media-parity-compact-pager phase 1): `NINA_ABOUT_MEDIA_PAGE_SIZE` added to `album.ts`, DEFINED as
 `NINA_CHAT_PHOTO_PAGE_SIZE` rather than respelled as 48, and `NINA_ABOUT_MEDIA_PAGE_COOKIE` moved
-with it to `nina-about-mpage-48` — see standing rule 12.
+with it to `nina-about-mpage-48` — see standing rule 12. Restated 2026-10-03 for P1-NIN-A059
+(profpic-pointer-sync phase 1): a `source_key` hit on re-adoption is no longer re-currented as-is —
+`avatarRelink.ts`'s `refreshAdoptedNinaAvatar` rewrites a legacy copy or a pre-Replace pointer in
+place into a fresh pointer at the Media row's CURRENT bytes (`relinkNinaAvatarToImage`, new on the
+barrel, plus `NinaAvatarRelinkSource`/`NinaAvatarRelinkResult` in `shapes.ts`) and then releases
+what the row stopped naming; both adoption paths call it, and the chat path reports `changed: true`
+when the bytes swapped — see *Linked album rows*' *A re-adoption refreshes a stale hit*.
+Restated 2026-10-03 for P1-NIN-A060 (profpic-pointer-sync phase 2): a Replace now propagates to
+every row that re-shows the photograph and frees the old file — `updateNinaChatPhotoBlob` is one
+gated `db.batch` of four statements (the Media row; album pointers under D1; chat references under
+D2, direct and via a pointer), `updateNinaAvatarBlob` one of two (the album row, now also nulling
+its thumbnail pair; its `source_avatar_id` chat references under D2), and `resolvePhotoshopReplace`
+reads the source row first and releases the old object and thumbnail after — see *Linked album
+rows*' *A Replace moves every row that re-shows the photograph*.
 **Documentation Created**: 2026-09-05 (`NINA_CHARACTER_TUNING_PLAN.md` phase 2)
 
 ## Overview
@@ -788,7 +801,11 @@ the first is the one a new caller gets wrong:
   policy.** A second "pakai foto ini" finds the first copy before any bytes move;
   `nina_avatars_user_source_key_unq` is only the backstop for the race the lookup cannot close, and
   a conflicted insert re-reads by key rather than erroring. `changed` is read BEFORE the promotion,
-  so she can say "it already was" instead of pretending to have just changed it.
+  so she can say "it already was" instead of pretending to have just changed it. Since 2026-10-03
+  (P1-NIN-A059) a hit is first passed through `refreshAdoptedNinaAvatar` (`avatarRelink.ts`), and
+  `promoteAndAnnounce(userId, avatar, bytesChanged = false)` makes `changed` true when the row's
+  bytes were swapped even if it was already current — otherwise she would say "it already was" over
+  a face that just changed. See *Linked album rows*.
 - **`source: 'operator'`, and `description` is inherited.** `'operator'` is the `NinaAvatarSource`
   member that had no writer until this: a PERSON picked these exact bytes — not the generator
   (`'generated'`), not `/admin` (`'admin'`). The chat row's `description` seeds the album row's, so
@@ -1326,6 +1343,83 @@ it: the album row shows the `nina_message_images` row's bytes and names it in `s
   backstop for the race this read cannot close — the pre-check exists to turn a constraint
   violation naming a constraint the operator has never heard of into the `{ ok: false }` + one
   sentence shape the delete action already uses.
+- **A re-adoption refreshes a stale hit (since 2026-10-03, P1-NIN-A059, profpic-pointer-sync R1/R2).**
+  `getNinaAvatarBySourceKey('chat-photo:<imageId>')` can answer with a row whose bytes are NOT the
+  Media row's current bytes: a **legacy copy** (`source_image_id` NULL, its own `avatar-…` object,
+  written before adoption became a link) or a **stale pointer** (`source_image_id` set, but
+  `pathname`/`blob_url` still naming the pre-Replace object). Re-currenting either put the OLD
+  photograph back on her face — the reported bug. Both adoption paths (`setChatPhotoAsAvatarAction`
+  in `lib/admin`, `adoptNinaChatPhotoAsAvatar` here) now route a hit through
+  `refreshAdoptedNinaAvatar(userId, avatar, image, sourceKey)` (`avatarRelink.ts`, `server-only`)
+  before the crop/promotion:
+  - **Fresh** (`sourceImageId === image.id` and same `pathname` and `blobUrl`) → returned untouched,
+    zero writes, `relinked: false`. That is every re-adoption made since the pointer design.
+  - **Stale** (anything else, including a `source_image_id` naming a DIFFERENT Media row — the key
+    wins) → `relinkNinaAvatarToImage(userId, avatar, image)` (`queries/avatars.ts`) rewrites the row
+    in place into exactly what a fresh link would insert. This SET list is the plan set's one
+    "pointer re-shows its Media row's bytes" column contract (Decision D1): the five byte columns
+    (`blob_url`, `pathname`, `width`, `height`, `bytes`) from the Media row, `source_image_id`, NULL
+    `description`/`search_keywords`/`negative_search_keywords`/`description_embedding`/`content_hash`/
+    `thumb_url`/`thumb_pathname`, and the three crop columns NULL **only when the dimensions change**
+    (an old crop on new dimensions may not cover the circle). `id`, `folder`, `filename`, `source`,
+    `source_key`, `is_current`, `announced_at` are NOT in the SET.
+  - **The WHERE pins what the caller read** (`pathname` and both thumbnail columns), so the returned
+    `NinaAvatarRelinkResult.droppedOriginal`/`droppedThumb` are exactly the objects THIS statement
+    stopped naming (`droppedOriginal` NULL when the old pathname already was the Media row's). A
+    miss returns `null`; the helper re-reads by key, releases nothing, and reports `relinked` iff the
+    re-read's pathname differs.
+  - **Row first, blob second.** The query module never `del`s; after the UPDATE the helper hands
+    each non-null dropped ref to `releaseBlobIfUnreferenced`. A stale pointer's old object is often
+    still named by OTHER stale rows, answers `'shared'`, and stays — the recoverable direction.
+  - `NinaAvatarRelinkSource` is the six Media columns a pointer borrows (`id`, `blobUrl`,
+    `pathname`, `width`, `height`, `bytes`); a `NinaImageRow` satisfies it structurally.
+  Guarded by `tests/nina.avatarRelink.test.ts` (query SQL shape, chat path, admin path, the race,
+  a shared object kept); `relinkNinaAvatarToImage` is on `BARREL_VALUE_EXPORTS`.
+- **A Replace moves every row that re-shows the photograph (since 2026-10-03, P1-NIN-A060,
+  profpic-pointer-sync R1/R3).** Before this, a Replace rewrote only the replaced row: every album
+  pointer and chat reference kept naming v1, `/nina/about` kept showing v1, and
+  `isBlobPathnameReferenced` kept answering `'shared'` for v1, so the old object was never freed
+  (and `resolvePhotoshopReplace` never released it at all — one leaked file per Photoshop replace).
+  - **`updateNinaChatPhotoBlob(userId, id, patch)` (`queries/images.ts`) is ONE `db.batch` of four
+    statements** — neon-http has no `db.transaction()`, and a half-applied replace is exactly the
+    stale state this exists to end: (1) the Media row, unchanged in its own SET; (2) album pointers
+    (`nina_avatars.source_image_id = id`) under **D1**: the five byte columns, NULL `content_hash`,
+    prose/keywords/embedding and thumbnail pair, and the crop kept **only when the dimensions are
+    unchanged** (`is not distinct from` — SET expressions read the OLD values, and pre-measurement
+    rows carry NULL dims); (3) chat references with `source_image_id = id` and (4) chat references
+    whose `source_avatar_id` names one of those pointers, both under **D2**: mirror the original's
+    POST-write values — five byte columns + `content_hash` from the patch, `description`,
+    `perceptual_hash`, `perceptual_sig` NULL (readers read a reference's OWN description, so v1
+    prose left there would be described to her as the v2 photograph).
+  - **Statements 2–4 are GATED** on `exists(...)` over an alias (`replaced_original`) asserting the
+    original now serves `patch.pathname` and is still an original. Postgres runs a batch in order
+    inside one transaction, so the gate sees statement 1's write; a refused statement 1 (not found,
+    not his, or a reference row) moves nothing.
+  - **`updateNinaAvatarBlob` (`queries/avatars.ts`) is ONE `db.batch` of two**: the album row (still
+    guarded `source_image_id IS NULL`, and now also NULLing `thumb_url`/`thumb_pathname`, which were
+    rendered from the old bytes — a renderer falls back to `blob_url`), then the chat references with
+    `source_avatar_id = id` under D2, gated on the album row now serving the new pathname. Album
+    pointers never point at an album row, so there is no third statement.
+  - **The callers release, row first, blob second.** `replaceChatPhotoAction` (`lib/admin`) already
+    released the old object; it now normally comes back `'deleted'`. `replaceNinaAvatarAction`
+    (`lib/admin`) also releases the old THUMBNAIL (`thumb_pathname ?? thumb_url`, the delete
+    action's spelling). `resolvePhotoshopReplace` (`photoshopResolve.ts`) now reads the source row
+    BEFORE the write (`getNinaAvatar` / `getNinaMessageImage`; a miss is `source-unavailable`) and
+    after it hands each ref from the module-private `replacedObjects(before, newPathname)` — the old
+    original unless the pathname is unchanged, plus an album row's old thumbnail — to
+    `releaseBlobIfUnreferenced`. A release never throws and never changes the replace's outcome.
+  - **A `'shared'` answer now means something OUTSIDE the photograph's own family names the
+    bytes** — the known case is a legacy album copy made before the pointer design, which phase 3's
+    repair script removes.
+  Guarded by `tests/nina.replacePropagation.test.ts` (exactly one batch of four / of two, each
+  member's SET and owner scope, the D1 crop rule, pointer identity untouched, the gate, and the
+  post-batch release deleting v1), `tests/nina.photoshopResolve.test.ts` (row first, blob second:
+  album source releases original + thumbnail, Media source the original only, a refused write or a
+  gone source releases nothing, the served object is never released, a `'shared'` answer does not
+  fail the replace) and `tests/integration/replacePropagation.int.test.ts` (real Postgres: pointer
+  and both references move and v1 is freed, crop kept on same dims, a refused write moves nothing);
+  `tests/nina.photoRefs.test.ts` and `tests/nina.chatPhotoDescription.test.ts` were adjusted for the
+  batch shape.
 
 ## Memory, promises, patterns, proactive
 
@@ -1389,7 +1483,7 @@ it: the album row shows the `nina_message_images` row's bytes and names it in `s
 | Prompts | `prompts/index.ts`, `prompts/system.ts`, `prompts/tools.ts`, `prompts/distill.ts`, `prompts/describe.ts` (two witness prompts behind a `Record` — a third subject is a compile error, and `subject` defaults to `'runner'` so existing callers are byte-identical), `prompts/caption.ts` |
 | Character | `tuning.ts`, `persona.ts` (barrel) + `persona/` (bands, identity, appearance, voice, instructor, anger, verbosity, never-say, tuning-blocks) |
 | Memory/behaviour | `memory.ts`, `distill.ts`, `promise.ts`(T)/`promises.ts`, `reminders.ts`/`reminderstore.ts`* (2026-09-16 — the same pure/impure split as promises; the pure half imports NO value and never reads a clock, and the impure half is the only file in the feature that knows a database exists; its suite is repo-level `tests/nina.reminders.test.ts`, not colocated), `nags.ts`, `patterns.ts`, `shortcuts.ts`(T), `title.ts`/`autotitle.ts` |
-| Images | `imagerecipe.ts`, `imagegen.ts`, `imageprefs.ts`, `imagejobs.ts`, `imagecall.ts`, `imageDedupe.ts`, `perceptual.ts`/`perceptualSign.ts`, `imagerun.ts`, `imagefail.ts`, `caption.ts`, `imagetools.ts`/`avatartools.ts`, `selfiegen.ts`/`avatargen.ts`/`avatarAdopt.ts`*(2026-09-17 — the no-camera avatar path; the only avatar writer that announces inline)/`imagetest.ts`, `jobview.ts`(T), `provenancePromotion.ts` (2026-09-16 — the promote-before-delete pass; `blobRelease.ts` is the reference-checked release every single-object delete goes through; neither declares `server-only`, both are db-touching and neither is a Server Action), `photoshopCrop.ts`(T) (2026-09-19 — zero-import, same footing as `imagerecipe.ts`; the rectangle/ratio-aware analogue of `crop.ts` — resolve/clamp/pan/zoom/nudge over a per-axis `x`/`y` thousandths-of-frame crop, `ninaPhotoshopCropStyle` for the CSS preview, and `photoshopCropBox(source, targetRatio, crop)`, the one capability `crop.ts` never needed: an integer pixel rectangle for `sharp().extract()`, or `null` when the crop cannot be applied — phase 1 of the photoshop aspect-ratio crop feature; its one server-side caller is `photoshopRun.ts`'s `photoshopCropFor`, which hands the box to `callNinaImageModel`'s `cropBox` — phase 3, 2026-09-19) |
+| Images | `imagerecipe.ts`, `imagegen.ts`, `imageprefs.ts`, `imagejobs.ts`, `imagecall.ts`, `imageDedupe.ts`, `perceptual.ts`/`perceptualSign.ts`, `imagerun.ts`, `imagefail.ts`, `caption.ts`, `imagetools.ts`/`avatartools.ts`, `selfiegen.ts`/`avatargen.ts`/`avatarAdopt.ts`*(2026-09-17 — the no-camera avatar path; the only avatar writer that announces inline)/`avatarRelink.ts` (2026-10-03 — `refreshAdoptedNinaAvatar`, server-only, shared by both adoption paths: relink a stale `source_key` hit, then release what it dropped)/`imagetest.ts`, `jobview.ts`(T), `provenancePromotion.ts` (2026-09-16 — the promote-before-delete pass; `blobRelease.ts` is the reference-checked release every single-object delete goes through; neither declares `server-only`, both are db-touching and neither is a Server Action), `photoshopCrop.ts`(T) (2026-09-19 — zero-import, same footing as `imagerecipe.ts`; the rectangle/ratio-aware analogue of `crop.ts` — resolve/clamp/pan/zoom/nudge over a per-axis `x`/`y` thousandths-of-frame crop, `ninaPhotoshopCropStyle` for the CSS preview, and `photoshopCropBox(source, targetRatio, crop)`, the one capability `crop.ts` never needed: an integer pixel rectangle for `sharp().extract()`, or `null` when the crop cannot be applied — phase 1 of the photoshop aspect-ratio crop feature; its one server-side caller is `photoshopRun.ts`'s `photoshopCropFor`, which hands the box to `callNinaImageModel`'s `cropBox` — phase 3, 2026-09-19) |
 | Vision/intake | `vision.ts`(T), `imageTicket.ts`(T) (HMAC carrier, `node:crypto`), `images.ts`(T), `crop.ts`(T) |
 | Provider constants | `openrouter.ts` (zero imports; the ONE home of `OPENROUTER_CHAT_URL` + `OPENROUTER_EMBEDDINGS_URL` and of all three model vocabularies — `NINA_VISION_FALLBACK_MODEL` hardcoded, `NINA_CHAT_FALLBACK_MODEL_IDS`/`_SPECS`/`_DEFAULT_MODEL` operator-picked, `NINA_EMBEDDING_MODEL` migration-locked; read by the vision fallback, the text-chat fallback client and `embedding.ts`) |
 | Embeddings | `embedding.ts`*(T) (one `fetch` to `OPENROUTER_EMBEDDINGS_URL`, no fallback ladder, no retry; the width guard gates the return against `NINA_EMBEDDING_DIMENSIONS`) |
@@ -1472,7 +1566,17 @@ not a (T): it is the barrel contract test, not a pure module's suite.
   pointer's prose lives on the row it names. `(user_id, source_key)` stays the only key that
   statement conflicts on, which is what keeps re-adoption a constraint decision rather than a second
   pointer row. Reads of that row's prose go through `resolveNinaAvatarLinkedText`; a delete of the
-  media row goes through `countNinaAvatarsLinkedToImage` first.
+  media row goes through `countNinaAvatarsLinkedToImage` first. A re-adoption (since 2026-10-03):
+  `getNinaAvatarBySourceKey` hit → `refreshAdoptedNinaAvatar` (fresh: no write; stale:
+  `relinkNinaAvatarToImage` UPDATE → `releaseBlobIfUnreferenced` per dropped original/thumb) →
+  crop/`setCurrentNinaAvatar` as before — the same order in the admin action and the chat tool.
+- **Replacing a photograph's bytes** (since 2026-10-03, P1-NIN-A060): Media Replace
+  (`replaceChatPhotoAction`) → `updateNinaChatPhotoBlob` batch [Media row → album pointers (D1) →
+  direct chat references (D2) → references re-showing a pointer (D2), 2–4 gated on 1] →
+  `releaseBlobIfUnreferenced(old object)`. Album Replace (`replaceNinaAvatarAction`) →
+  `updateNinaAvatarBlob` batch [album row + thumb NULL → `source_avatar_id` references (D2)] →
+  release old object + old thumbnail. Photoshop "replace" (`resolvePhotoshopReplace`) → read source
+  row → the matching writer above → release old object (+ thumbnail for an album source).
 
 ## Dependencies
 

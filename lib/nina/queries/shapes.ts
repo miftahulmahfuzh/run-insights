@@ -654,6 +654,37 @@ export interface NinaAvatarBlobRef {
 }
 
 /**
+ * What `relinkNinaAvatarToImage` copies off the Media row. The six columns a pointer row borrows,
+ * per `linkChatPhotoIntoAlbum` (`lib/admin/ninaAlbumAvatarActions.ts`). A `NinaImageRow`
+ * satisfies it structurally, so callers pass the row they already read.
+ */
+export interface NinaAvatarRelinkSource {
+  id: string
+  blobUrl: string
+  pathname: string
+  width: number | null
+  height: number | null
+  bytes: number | null
+}
+
+/**
+ * `relinkNinaAvatarToImage`'s outcome. `row` is the album row AFTER the write. The two `dropped*`
+ * fields are the Blob objects the row named BEFORE the write and no longer names. The caller hands
+ * each non-null one to `releaseBlobIfUnreferenced`, row first and blob second, which is why they
+ * are returned rather than deleted here: a query module never calls `del`.
+ *
+ *   · `droppedOriginal` — the row's old `blob_url`/`pathname`. NULL when the old pathname IS the
+ *     Media row's (a legacy copy that happens to name the same object needs no release).
+ *   · `droppedThumb` — the row's old `thumb_url`/`thumb_pathname`. NULL when it had none. A pointer
+ *     never carries a thumbnail, so a relink always clears one.
+ */
+export interface NinaAvatarRelinkResult {
+  row: NinaAvatarRow
+  droppedOriginal: { blobUrl: string; pathname: string } | null
+  droppedThumb: { blobUrl: string; pathname: string } | null
+}
+
+/**
  * `renameNinaAvatarFolder`'s outcome. `moved` is a count and `0` is a legitimate success — a
  * folder can be renamed while it holds nothing but subfolders that hold nothing.
  *

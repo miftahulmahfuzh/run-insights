@@ -90,6 +90,12 @@ import * as barrel from '@/lib/nina/queries'
  * re-share through `source_image_id` to its original, because `isOriginalPhoto()` keeps a re-show
  * out of the collection and the original is the row a Replace would rewrite. Documented growth,
  * one name; see the plan set's Phase 2 Interface Contract.
+ *
+ * profpic-pointer-sync phase 1 adds one name: `relinkNinaAvatarToImage`, the in-place rewrite that
+ * turns an adopted album row (a pre-R3 legacy copy, or a pointer left on pre-Replace bytes) back
+ * into a pointer at its Media original's current bytes. It returns the objects it stopped naming,
+ * so the caller can release them. Documented growth, one name. See the plan set's Phase 1
+ * Interface Contract.
  */
 const BARREL_VALUE_EXPORTS = [
   'adoptNinaMessageImage',
@@ -221,6 +227,9 @@ const BARREL_VALUE_EXPORTS = [
   // 2026-09-19 "quick-set reference from the Image Collection": `generatedChatPhotoScope`'s
   // sibling, widened to `kind IN ('generated', 'upload')` for the reference picker only.
   'referenceEligibleChatPhotoScope',
+  // profpic-pointer-sync phase 1 (R1/R2): rewrite a stale adopted album row into a fresh pointer.
+  // `lib/nina/queries/avatars.ts` argues the SET list and the WHERE pin.
+  'relinkNinaAvatarToImage',
   'removeNinaSession',
   'renameNinaAvatarFolder',
   'renameNinaFolderSubtree',

@@ -24,6 +24,7 @@ import {
   type NinaImageRow,
 } from '@/lib/nina/queries'
 import { releaseBlobIfUnreferenced } from '@/lib/nina/blobRelease'
+import { refreshAdoptedNinaAvatar } from '@/lib/nina/avatarRelink'
 import { promoteNinaAvatarDependents } from '@/lib/nina/provenancePromotion'
 import { isValidContentHash } from '@/lib/photos/contentHash'
 
@@ -109,12 +110,14 @@ export async function setCurrentNinaAvatarAction(rawId: string): Promise<AdminAc
  * in one place automatically synchronize"* true by construction rather than by a sync mechanism
  * that could get it wrong.
  *
- * ── RE-ADOPTION IS STILL A CONSTRAINT DECISION ──────────────────────────────────────────────
- * Unchanged: the row is written with `source_key = 'chat-photo:<imageId>'`, so a second click
- * finds the first adoption through `getNinaAvatarBySourceKey` and just re-currents it, and
- * `nina_avatars_user_source_key_unq` is the backstop for the race the lookup cannot close. What
- * changes is the cost of losing that race: nothing. There is no orphaned object to reap any more,
- * because no object was minted.
+ * ── RE-ADOPTION IS STILL A CONSTRAINT DECISION — AND NOW A REFRESH ──────────────────────────
+ * The row is written with `source_key = 'chat-photo:<imageId>'`, so a second click finds the first
+ * adoption through `getNinaAvatarBySourceKey`, and `nina_avatars_user_source_key_unq` is the
+ * backstop for the race the lookup cannot close. What a hit gets is no longer "re-current it as
+ * is": `refreshAdoptedNinaAvatar` (`lib/nina/avatarRelink.ts`) first rewrites a legacy copy (pre-R3,
+ * its own `avatar-…` object) or a pointer left on pre-Replace bytes into a fresh pointer at this
+ * row's CURRENT bytes, then releases the object it stopped naming. `profpic-pointer-sync` R2: the
+ * operator replaced `jWWu8vkl09fT`, clicked this, and got v1 back from a 2026-09-14 copy.
  *
  * ── THE GUARDS ARE REPLACE'S AND REMOVE'S, VERBATIM ─────────────────────────────────────────
  * Unchanged. `getNinaMessageImage` deliberately does not filter (it is the bubble and viewer read
@@ -153,10 +156,11 @@ export async function setChatPhotoAsAvatarAction(input: unknown): Promise<AdminA
   const crop = clampCrop({ width: row.width, height: row.height }, resolveCrop({ scale, x, y }))
   const sourceKey = `chat-photo:${row.id}`
 
-  let avatar = await getNinaAvatarBySourceKey(userId, sourceKey)
-  if (avatar == null) {
-    avatar = await linkChatPhotoIntoAlbum(userId, row, sourceKey)
-  }
+  const previous = await getNinaAvatarBySourceKey(userId, sourceKey)
+  const avatar =
+    previous == null
+      ? await linkChatPhotoIntoAlbum(userId, row, sourceKey)
+      : ((await refreshAdoptedNinaAvatar(userId, previous, row, sourceKey))?.row ?? null)
   if (avatar == null) {
     return { ok: false, error: 'The link into her album did not land. Try again.' }
   }
@@ -263,16 +267,23 @@ export async function saveNinaAvatarCropAction(input: unknown): Promise<AdminAct
 }
 
 /**
- * Swap the bytes behind an existing album row, keeping its id, its folder and its place in the
- * album — the manual file-pick counterpart to `resolvePhotoshopReplace`'s "accept the job's own
- * result", called from the Photoshop detail screen's own Replace button rather than from a
- * finished job. `replaceChatPhotoAction`'s exact shape (`lib/admin/chatPhotoActions.ts`), the
- * Media folder's Replace, mirrored onto this table.
+ * Swap the bytes behind an existing album row and keep its id, its folder and its place in the
+ * album. This is the manual file-pick counterpart to `resolvePhotoshopReplace`, which accepts a
+ * finished job's own result. This one is called from the Photoshop detail screen's own Replace
+ * button instead. It has `replaceChatPhotoAction`'s exact shape (`lib/admin/chatPhotoActions.ts`,
+ * the Media folder's Replace), mirrored onto this table.
  *
- * A pointer row (`sourceImageId` set) owns no bytes of its own to replace — it shows the Media
- * row's object — so it is refused before any write is attempted, the same refusal
- * `updateNinaAvatarBlob`'s own `sourceImageId IS NULL` guard would otherwise report as a bare
+ * A pointer row (`sourceImageId` set) owns no bytes of its own to replace, because it shows the
+ * Media row's object. So it is refused before any write is attempted. Without that refusal,
+ * `updateNinaAvatarBlob`'s own `sourceImageId IS NULL` guard would report it as a bare
  * "not in the album".
+ *
+ * ── THE OLD FILE AND THE OLD THUMBNAIL ARE BOTH RELEASED (profpic-pointer-sync R3) ──────────
+ * `updateNinaAvatarBlob` moves every chat reference to the new bytes and nulls this row's
+ * thumbnail pair in the same batch. After that, nothing this replace knows about still names
+ * either old object, so both releases normally come back `'deleted'`. A `'shared'` answer now
+ * means a row outside this photograph's own family names the bytes, for example a legacy album
+ * copy Phase 3 has not repaired yet. That is still worth the note.
  */
 export async function replaceNinaAvatarAction(input: unknown): Promise<AdminActionResult> {
   const { userId } = await requireAdmin()
@@ -310,6 +321,14 @@ export async function replaceNinaAvatarAction(input: unknown): Promise<AdminActi
   if (existing.pathname !== pathname) {
     const outcome = await releaseBlobIfUnreferenced(userId, existing)
     if (outcome === 'shared') note = 'The old file is still used elsewhere, so it was kept.'
+  }
+  if (existing.thumbUrl != null) {
+    /* The write nulled the thumbnail pair, so the row no longer names it. Same spelling as
+     * `deleteNinaAvatarAction`'s thumbnail release. */
+    await releaseBlobIfUnreferenced(userId, {
+      blobUrl: existing.thumbUrl,
+      pathname: existing.thumbPathname ?? existing.thumbUrl,
+    })
   }
 
   /* The write nulled description/keywords/embedding — re-earn the prose for the NEW bytes, same

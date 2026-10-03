@@ -301,14 +301,18 @@ describe('Replace stops the provenance lying about bytes that are gone', () => {
       bytes: 123,
     })
 
-    const { sql } = fake.only()
+    /* profpic-pointer-sync phase 2: one batch, this row's write first. */
+    expect(fake.batches).toEqual([4])
+    const sql = fake.sqlAt(0)
+    expect(sql).toContain('update "nina_message_images"')
     const setClause = sql.slice(0, sql.indexOf(' where '))
     for (const column of ['description', 'prompt', 'source_avatar_id', 'source_image_id']) {
       expect(setClause, column).toContain(column)
     }
     /* One statement, so there is no window in which the row points at new bytes and old
-     * provenance — `updateNinaChatPhotoBlob`'s own argument for nulling `description` here. */
-    expect(fake.queries).toHaveLength(1)
+     * provenance — `updateNinaChatPhotoBlob`'s own argument for nulling `description` here. The
+     * other three batch members write OTHER rows (its pointers and references), never this one. */
+    expect(fake.queries.every((query) => query.batched)).toBe(true)
   })
 
   it('media-dedupe P3: names content_hash in the SAME statement — a claim sticks, its absence retracts', async () => {
@@ -322,11 +326,11 @@ describe('Replace stops the provenance lying about bytes that are gone', () => {
       contentHash: 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
     })
 
-    const { sql } = fake.only()
+    expect(fake.batches).toEqual([4])
+    const sql = fake.sqlAt(0)
     /* One statement, so there is no window in which the row points at new bytes and claims old
      * ones — the same argument the provenance nulls above it make. */
     expect(sql.slice(0, sql.indexOf(' where '))).toContain('content_hash')
-    expect(fake.queries).toHaveLength(1)
   })
 })
 

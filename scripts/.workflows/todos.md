@@ -2,7 +2,7 @@
 
 **Package Path**: `scripts`
 **Package Code**: SC
-**Last Updated**: 2026-09-16
+**Last Updated**: 2026-10-03
 **Total Active Tasks**: 0
 
 ## Quick Stats
@@ -12,7 +12,7 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 5
+- Completed: 6
 - Archived: 2
 
 ---
@@ -34,6 +34,27 @@
 ---
 
 ## Completed Tasks
+
+- [x] **P1-SC-A004** Phase 3: Repair existing production rows and delete freed files
+  - **Difficulty**: NORMAL
+  - **Type**: Bug
+  - **Context**: Owns scripts/nina-profpic-pointer-repair.mjs (raw SQL via @neondatabase/serverless, del via @vercel/blob, pure planner + I/O main(), dry-run default, backup JSON outside repo, one sql.transaction, release after commit through six-column + jsonb check), the nina:profpic-pointer-repair npm script, tests/nina.profpicPointerRepair.test.ts. Exit: second dry run prints 0/0/0/0/0 skipped and `Daofejusg4Xa → media jWWu8vkl09fT blob_url MATCHES`; apply printed `failed 0`; backup outside repo; git status shows only the phase's three files; tests, typecheck, lint, format, knip green.
+  - **Status**: completed
+  - **Plan Set**: `PROFPIC_POINTER_SYNC_PLAN.md` (phase 3 of 3)
+  - **Satisfies**: R1, R2, R3 — every Foto profil photo points at a real file; replace+set-as-profpic shows the new version; a replaced photo's old file is permanently deleted
+  - **Depends on**: —
+  - **Plan**: `.workflows/plan/P1-SC-A004.md`
+  - **Completed**: 2026-10-03 15:02
+  - **Method**: /do
+  - **Files**: scripts/nina-profpic-pointer-repair.mjs, tests/nina.profpicPointerRepair.test.ts, package.json, scripts/.workflows/todos.md, scripts/.workflows/plan/P1-SC-A004.md
+  - **Drift**:
+    - Plan's test 'skips a legacy copy whose original is gone, or is itself a reference' expected skipped ids ['a1','a2'], but its own fixture m2 (sourceImageId 'm9', nonexistent) is also skipped by the reference pass. Planner is correct; assertion made exact and stricter: [['nina_avatars','a1'],['nina_avatars','a2'],['nina_message_images','m2']].
+    - Plan's test indexed results directly (op., avatarOps[0].); tsconfig noUncheckedIndexedAccess made typecheck fail. Switched to optional chaining (op?., [0]?.), the idiom tests/nina.dedupeMedia.test.ts uses.
+  - **Decided**:
+    - Step 3 task creation → only phase 3's task created by this session (peer impl-profpic-pointer-sync-p1 runs concurrently in the same worktree and owns its own bookkeeping) (tie-break: narrower blast radius)
+    - Unattended --apply against production → applied after dry-run counts matched exactly 21/11/13/7, 0 skipped (index Decision D5, rung 5)
+    - Backup location → scratchpad per plan, plus a durable copy at ~/backups/run-insights/nina-profpic-pointer-repair-2026-10-03.json (outside the repo; scratchpad is session-temporary) (rung 1: invariant 7)
+  - **Handoff**: POST-DEPLOY (Decision D6): once main with Phases 1–2 is live on Vercel, run `npm run nina:profpic-pointer-repair` (dry run) from the main checkout. All zeros = done; else `--apply --backup <path outside repo>`. 9 objects kept as kept-jsonb (nina_turns.args / nina_memory_slots.value still name them); 13 references with NULL width/height/bytes but correct pathname left alone (cosmetic follow-up).
 
 - [x] **P1-SC-A003** Phase 2: Phantom-original census + `fill-dimensions` in the existing sweep
   - **Difficulty**: NORMAL
