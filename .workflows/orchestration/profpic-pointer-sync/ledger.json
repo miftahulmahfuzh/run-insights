@@ -18,7 +18,7 @@
         "R1",
         "R2"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": null,
       "title": "Adoption relinks legacy copies and stale pointers"
     },
@@ -57,7 +57,7 @@
         "R2",
         "R3"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": null,
       "title": "Repair existing production rows and delete freed files"
     }
@@ -65,6 +65,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/profpic-pointer-sync/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "profpic-pointer-sync",
-  "updated": "2026-10-03T07:55:29+00:00",
+  "updated": "2026-10-03T07:57:32+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/profpic-pointer-sync"
 }
