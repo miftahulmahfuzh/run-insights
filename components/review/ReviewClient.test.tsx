@@ -214,7 +214,9 @@ describe('ReviewClient — the three banner states', () => {
         baseline: emptyDraft(NOW),
         extractionStatus: 'failed',
         errorCode: 'llm_overloaded',
-        photos: [{ url: 'https://blob.test/a.png', kind: 'summary', width: 1, height: 1 }],
+        photos: [
+          { url: 'https://blob.test/a.png', thumbUrl: null, kind: 'summary', width: 1, height: 1 },
+        ],
       }),
     })
 

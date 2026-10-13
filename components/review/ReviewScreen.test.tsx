@@ -38,7 +38,15 @@ function context(overrides: Partial<ReviewContext> = {}): ReviewContext {
     extractionId: 'x1234567890',
     runId: null,
     baseline: hydrateDraftFromExtraction(JSON.parse(JSON.stringify(TRUTH)) as never, NOW),
-    photos: [{ url: 'https://blob.test/summary.png', kind: 'summary', width: 739, height: 1600 }],
+    photos: [
+      {
+        url: 'https://blob.test/summary.png',
+        thumbUrl: null,
+        kind: 'summary',
+        width: 739,
+        height: 1600,
+      },
+    ],
     extractionStatus: 'ok',
     errorCode: null,
     rawVendorResponse: { vendor: { choices: [] }, attempts: 1 },

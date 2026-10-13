@@ -250,9 +250,12 @@ export default async function AdminNinaPage(props: PageProps<'/admin/nina'>) {
       origin: 'media',
       id: row.id,
       url: row.blobUrl,
-      /* `null`, permanently: the table has no thumbnail column (`lib/nina/album.ts:80-105`), so
-         the grid's `thumbUrl ?? url` fallback is the only render path. */
-      thumbUrl: null,
+      /* media-thumbnails phase 4. This read `null, permanently: the table has no thumbnail
+         column (lib/nina/album.ts:80-105), so the grid's thumbUrl ?? url fallback is the only
+         render path` — true when written, and the reason this pane drew 48 untouched originals
+         per page. Phase 1 added the column; the fallback is now the DEGRADED path rather than
+         the only one. `NINA_CHAT_PHOTO_PAGE_SIZE` of ~1 MB PNGs was ~48 MB a page view. */
+      thumbUrl: row.thumbUrl,
       /* A message image is filed nowhere. The value is the album root's path — but nothing links
          into it: the breadcrumb and the pane draw their trail from `view`, and folder verbs never
          see a media row. */

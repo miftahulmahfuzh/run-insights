@@ -130,12 +130,21 @@ export interface AlbumExplorerPhoto extends ExplorerPhotoBase {
 export interface MediaExplorerPhoto extends ExplorerPhotoBase {
   origin: 'media'
   /**
-   * Always `null`, and typed as the LITERAL so a media row cannot grow a thumbnail by accident:
-   * the table has no thumbnail column (`lib/nina/album.ts:80-105`'s argument), so the grid's
+   * media-thumbnails phase 4. This was typed as the LITERAL `null` — *"so a media row cannot
+   * grow a thumbnail by accident: the table has no thumbnail column… the grid's
    * `photo.thumbUrl ?? photo.url` fallback is the only render path — the accepted cost behind
-   * `NINA_CHAT_PHOTO_PAGE_SIZE = 48`.
+   * `NINA_CHAT_PHOTO_PAGE_SIZE = 48`."*
+   *
+   * That guard did its job: when phase 1 added the column and the page started passing
+   * `row.thumbUrl`, this literal is what refused to compile, instead of a media row silently
+   * keeping its `null` forever. The premise it guarded is gone — `nina_message_images` has the
+   * pair now — so the type widens to the base's `string | null` and the fallback becomes the
+   * DEGRADED path (an un-backfilled row) rather than the only one.
+   *
+   * It stays nullable, permanently: a derivation can fail, and a row the sweep has not reached
+   * is a legal state the grid answers by rendering the original.
    */
-  thumbUrl: null
+  thumbUrl: string | null
   /**
    * Always `false`. Adoption (`setChatPhotoAsAvatarAction`) mints an `nina_avatars` row, and it is
    * THAT row which carries `is_current` — a message image is never itself her face.

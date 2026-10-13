@@ -33,6 +33,18 @@ import { draftFromRun, hydrateDraftFromExtraction, type ReviewDraft } from '@/li
 
 export interface ReviewPhoto {
   url: string
+  /**
+   * media-thumbnails phase 4. The derived 168 px-tall strip tile, or NULL.
+   *
+   * `ScreenshotStrip` draws every photo of a run at `h-[168px]`, and both `/r/[id]` and the
+   * PUBLIC `/s/[token]` share page mount it. The share page is the one surface in this app a
+   * stranger's browser opens cold with nothing cached, and an Apple Watch screenshot is the
+   * largest class of original in the store — so this is where a thumbnail earns the most per
+   * view, even though a run has only a handful of photos.
+   *
+   * `PhotoViewer` keeps reading `url`: the strip is a tile, the viewer is the photograph.
+   */
+  thumbUrl: string | null
   kind: PhotoKind
   width: number | null
   height: number | null
@@ -94,6 +106,7 @@ export async function loadExtractionReview(
     baseline: hydrateDraftFromExtraction(session, now),
     photos: photos.map((p) => ({
       url: p.blobUrl,
+      thumbUrl: p.thumbUrl,
       kind: p.kind,
       width: p.width,
       height: p.height,
@@ -122,6 +135,7 @@ export async function loadRunEdit(userId: string, runId: string): Promise<Review
     baseline: draftFromRun(detail, detail.splits, detail.zones),
     photos: detail.photos.map((p) => ({
       url: p.blobUrl,
+      thumbUrl: p.thumbUrl,
       kind: p.kind,
       width: p.width,
       height: p.height,

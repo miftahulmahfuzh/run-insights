@@ -64,7 +64,12 @@ describe('normalizeClaimedContentHash', () => {
 })
 
 describe('planNinaPickUpload — dup -> skip upload + attach pointer', () => {
-  const existing = { kind: 'image' as const, id: 'imgKEEPER001', url: 'https://blob.example/k.jpg' }
+  const existing = {
+    kind: 'image' as const,
+    id: 'imgKEEPER001',
+    url: 'https://blob.example/k.jpg',
+    thumbUrl: null,
+  }
 
   it('attaches the existing photograph when the pre-check matched', () => {
     const plan = planNinaPickUpload({ contentHash: HASH, duplicate: existing })
@@ -242,5 +247,52 @@ describe('partitionNinaUploadClaims — the same-send split and the race-close s
     )
     expect(partition.fresh).toHaveLength(0)
     expect(partition.references.every((r) => r.keeper === k)).toBe(true)
+  })
+})
+
+/* ============================================================================
+ * media-thumbnails phase 3 — on the upload path too, the thumbnail follows the BYTES
+ * ==========================================================================*/
+describe('ninaUploadInsertRow — the derived thumbnail follows the bytes', () => {
+  const CLAIM_THUMB = {
+    blobUrl: 'https://blob.example/nina/u1/chat/thumb-claim.jpg',
+    pathname: 'nina/u1/chat/thumb-claim.jpg',
+  }
+  const KEEPER_THUMB = {
+    thumbUrl: 'https://blob.example/nina/u1/chat/thumb-keeper.jpg',
+    thumbPathname: 'nina/u1/chat/thumb-keeper.jpg',
+  }
+
+  it('an original carries the tile the server derived from its own bytes', () => {
+    const decision = ninaUploadInsertRow({
+      messageId: 'msgROW000001',
+      claim: claim({ thumb: CLAIM_THUMB }),
+      keeper: null,
+    })
+    expect(decision.row.thumbUrl).toBe(CLAIM_THUMB.blobUrl)
+    expect(decision.row.thumbPathname).toBe(CLAIM_THUMB.pathname)
+  })
+
+  it("a reference takes the KEEPER's tile and DISCARDS the claim's", () => {
+    // Not "prefer the keeper, fall back to the claim's" — unlike `description` above, and that
+    // difference is the point. A claim's thumbnail depicts the claim's OWN object, which a
+    // reference row does not render; pairing them would show two different photographs at two
+    // sizes in the same bubble.
+    const decision = ninaUploadInsertRow({
+      messageId: 'msgROW000001',
+      claim: claim({ thumb: CLAIM_THUMB }),
+      keeper: keeper(KEEPER_THUMB),
+    })
+    expect(decision.row.thumbUrl).toBe(KEEPER_THUMB.thumbUrl)
+    expect(decision.row.thumbUrl).not.toBe(CLAIM_THUMB.blobUrl)
+  })
+
+  it('a keeper with no tile yields a reference with none — never the claim’s', () => {
+    const decision = ninaUploadInsertRow({
+      messageId: 'msgROW000001',
+      claim: claim({ thumb: CLAIM_THUMB }),
+      keeper: keeper(),
+    })
+    expect(decision.row.thumbUrl).toBeNull()
   })
 })

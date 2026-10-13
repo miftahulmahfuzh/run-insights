@@ -41,7 +41,13 @@ export function PhotoAttachmentChip({
       <div className="min-w-0 flex-1">
         {/* eslint-disable-next-line @next/next/no-img-element -- Blob-hosted, arbitrary
             dimensions, already compressed by whoever wrote the row. See the header. */}
-        <img src={photo.url} alt="" className="size-14 rounded-field bg-ink-3/20 object-cover" />
+        <img
+          /* media-thumbnails phase 4. 56 px of chip must not cost a megabyte; the fallback is the
+             original, which is what this drew before the column existed. */
+          src={photo.thumbUrl ?? photo.url}
+          alt=""
+          className="size-14 rounded-field bg-ink-3/20 object-cover"
+        />
       </div>
       <button
         type="button"

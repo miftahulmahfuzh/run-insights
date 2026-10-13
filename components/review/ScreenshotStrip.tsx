@@ -84,7 +84,9 @@ export function ScreenshotStrip({ photos }: { photos: ReviewPhoto[] }) {
                     (F04 §3). next/image would re-optimise a file that is already at its target
                     size, on a paid transform quota, for no gain. */}
                 <img
-                  src={photo.url}
+                  /* media-thumbnails phase 4. The tile, falling back to the original on a row
+                     the backfill has not reached. `PhotoViewer` below still opens `photo.url`. */
+                  src={photo.thumbUrl ?? photo.url}
                   alt=""
                   width={photo.width ?? undefined}
                   height={photo.height ?? undefined}
@@ -155,7 +157,11 @@ export function SheetSource({ photos, section }: { photos: ReviewPhoto[]; sectio
               aria-label="Open this screenshot full screen"
             >
               {/* eslint-disable-next-line @next/next/no-img-element -- see the strip above. */}
-              <img src={photo.url} alt="" className="h-[168px] w-auto object-cover" />
+              <img
+                src={photo.thumbUrl ?? photo.url}
+                alt=""
+                className="h-[168px] w-auto object-cover"
+              />
             </button>
           ))}
         </div>

@@ -49,10 +49,14 @@ export interface PhotoReferenceItem {
   /**
    * The album's 256 px derived JPEG, or `null`.
    *
-   * **`null` is the common case, not an edge case.** `nina_avatars` has `thumb_url`;
-   * `nina_message_images` has no such column at all (`lib/nina/album.ts:80-84`), so every chat
-   * photograph in this union arrives with `null` here and renders its original. An empty string is
-   * treated as absent too — see `photoReferenceTileSrc`.
+   * **`null` WAS the common case.** This read: *"`nina_avatars` has `thumb_url`;
+   * `nina_message_images` has no such column at all, so every chat photograph in this union
+   * arrives with `null` here and renders its original."* media-thumbnails phase 1 added the
+   * column and phase 5 backfilled it, so both arms of the union now usually carry one and this
+   * picker — 99 tiles to a page — stopped being a download.
+   *
+   * It stays nullable permanently: a derivation can fail and an un-swept row has none. An empty
+   * string is treated as absent too — see `photoReferenceTileSrc`.
    */
   thumbUrl: string | null
 }

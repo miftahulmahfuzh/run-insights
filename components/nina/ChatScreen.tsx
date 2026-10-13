@@ -705,7 +705,17 @@ export function ChatScreen({
                        * effect of the tap. It replaces any photo already pinned, because there is
                        * one `photo` slot by design.
                        */
-                      setPhoto({ kind: 'image', id: viewerAttachId, url: shownPhoto.url })
+                      /* `thumbUrl: null` deliberately: this path runs from the FULLSCREEN
+                       * viewer, so the browser has just decoded the original and has it cached —
+                       * the chip's fallback render costs nothing here, and `ViewerPhoto` carries
+                       * no tile to pass (it is the viewer's shape, which reads the original by
+                       * design — see `toCell` in `NinaAboutScreen`). */
+                      setPhoto({
+                        kind: 'image',
+                        id: viewerAttachId,
+                        url: shownPhoto.url,
+                        thumbUrl: null,
+                      })
                       setNotice(null)
                       closeViewer()
                     }

@@ -52,7 +52,9 @@ export async function findNinaDuplicateChatImage(input: {
   try {
     const keeper = await findNinaImageByContentHash(userId, keys)
     if (keeper === null) return null
-    return { kind: 'image', id: keeper.id, url: keeper.blobUrl }
+    /* The keeper's own tile, so the chip that announces the duplicate is as cheap as any other
+     * — `findNinaImageByContentHash` projects `imageColumns`, so it is already in hand. */
+    return { kind: 'image', id: keeper.id, url: keeper.blobUrl, thumbUrl: keeper.thumbUrl }
   } catch (cause) {
     console.warn('[nina] duplicate pre-check failed; the pick will upload', {
       error: String(cause),

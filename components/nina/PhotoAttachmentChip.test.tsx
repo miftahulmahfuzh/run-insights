@@ -13,6 +13,9 @@ function photo(overrides?: Partial<NinaExistingPhoto>): NinaExistingPhoto {
     kind: 'image',
     id: 'img-1',
     url: 'https://blob.example/photo.jpg',
+    /* The un-backfilled row, so every pre-existing case here keeps asserting the fallback render
+     * it always asserted. The tile case overrides it. */
+    thumbUrl: null,
     ...overrides,
   }
 }

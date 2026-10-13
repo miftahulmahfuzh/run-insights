@@ -48,6 +48,7 @@ const ATTACHMENT: RunAttachment = {
 const EXISTING_PHOTO: NinaExistingPhoto = {
   kind: 'image',
   id: 'photo-1',
+  thumbUrl: null,
   url: 'https://blob.example/existing.jpg',
 }
 

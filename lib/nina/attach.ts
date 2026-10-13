@@ -109,6 +109,14 @@ export interface NinaPhotoPointer {
 export interface NinaExistingPhoto extends NinaPhotoPointer {
   /** A public Blob URL, read off the row the server just proved is his. */
   url: string
+  /**
+   * media-thumbnails phase 4. The derived tile, or NULL.
+   *
+   * `PhotoAttachmentChip` draws this at `size-14` — 56 px — which is the smallest box in the app
+   * and was, until phase 1, fetching a megabyte to fill it. The chip is also mounted in the
+   * composer, so it is on screen while the runner is typing.
+   */
+  thumbUrl: string | null
 }
 
 /**

@@ -385,18 +385,30 @@ export default async function NinaPage({ searchParams }: PageProps<'/nina'>) {
   }))
 
   /*
-   * The one place a row becomes a URL, which is what makes the thumbnail a one-line change later:
-   * phase 1's column is `nina_avatars.thumb_url`, surfaced as `NinaAvatarRow.thumbUrl`, so
-   * preferring it is `photoRow.thumbUrl ?? photoRow.blobUrl` HERE and nowhere else — on the
-   * `'avatar'` branch only, since `NinaImageRow` has no thumbnail. **Not written in this phase**,
-   * because `depends_on` is empty and the column does not exist on `main`. It reads `blobUrl` and
-   * `kind`/`id` and NOTHING ELSE off the row — in particular not `description` (invariant 5) and
-   * not `pathname`, which is Blob's own suffixed spelling and no business of a client's.
+   * The one place a row becomes a URL — *"which is what makes the thumbnail a one-line change
+   * later"*, as this comment predicted, and media-thumbnails phase 4 is that later. It is written
+   * now. The prediction's one caveat has also expired: it said *"on the `'avatar'` branch only,
+   * since `NinaImageRow` has no thumbnail"*, and phase 1 gave `nina_message_images` the same pair,
+   * so BOTH branches carry one and the expression is uniform across the union.
+   *
+   * `thumbUrl` is passed alongside `url` rather than instead of it, because the two have different
+   * readers: `PhotoAttachmentChip` draws a 56 px chip and wants the tile, while the send path
+   * carries the pointer and resolves the ORIGINAL server-side from the row. Collapsing them here
+   * would make the chip cheap by making the attachment wrong.
+   *
+   * It still reads `blobUrl`/`thumbUrl` and `kind`/`id` and NOTHING ELSE off the row — in
+   * particular not `description` (invariant 5) and not `pathname`, which is Blob's own suffixed
+   * spelling and no business of a client's.
    */
   const pendingPhoto: NinaExistingPhoto | null =
     photoPointer === null || photoRow == null
       ? null
-      : { kind: photoPointer.kind, id: photoPointer.id, url: photoRow.blobUrl }
+      : {
+          kind: photoPointer.kind,
+          id: photoPointer.id,
+          url: photoRow.blobUrl,
+          thumbUrl: photoRow.thumbUrl,
+        }
 
   /*
    * The photos, in one query rather than a join. `getNinaMessageImagesForMessages` reads

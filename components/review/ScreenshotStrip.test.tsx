@@ -45,7 +45,9 @@ vi.mock('@/components/ui/PhotoViewer', () => ({
 }))
 
 function photo(kind: ReviewPhoto['kind'], url: string): ReviewPhoto {
-  return { url: `https://blob.test/${url}`, kind, width: 739, height: 1600 }
+  // No thumbnail: the un-backfilled row, so every pre-existing assertion in this file keeps
+  // describing the fallback render path it always described.
+  return { url: `https://blob.test/${url}`, thumbUrl: null, kind, width: 739, height: 1600 }
 }
 
 const PHOTOS: ReviewPhoto[] = [
@@ -162,5 +164,37 @@ describe('SheetSource — the section resolver (R-45)', () => {
     expect(call.photos).toHaveLength(1)
     expect(call.photos[0]!.kind).toBe('splits')
     expect(call.index).toBe(0)
+  })
+})
+
+/* ============================================================================
+ * media-thumbnails phase 4 — the strip tile, and the share page it protects
+ *
+ * `/s/[token]` mounts this component for strangers with a cold cache, and an Apple Watch
+ * screenshot is the largest class of original in the store. The viewer still opens the original.
+ * ==========================================================================*/
+describe('media-thumbnails: the strip draws the tile, the viewer the original', () => {
+  const ORIGINAL = 'https://blob.test/shots/big-summary.jpg'
+  const THUMB = 'https://blob.test/shots/thumb-big-summary.jpg'
+
+  const withThumb: ReviewPhoto = {
+    url: ORIGINAL,
+    thumbUrl: THUMB,
+    kind: 'summary',
+    width: 739,
+    height: 1600,
+  }
+
+  it('renders the derived tile, not the full screenshot', () => {
+    render(<ScreenshotStrip photos={[withThumb]} />)
+    const sources = [...document.querySelectorAll('img')].map((i) => i.getAttribute('src'))
+    expect(sources).toContain(THUMB)
+    expect(sources).not.toContain(ORIGINAL)
+  })
+
+  it('falls back to the original when the row has no thumbnail', () => {
+    render(<ScreenshotStrip photos={[{ ...withThumb, thumbUrl: null }]} />)
+    const sources = [...document.querySelectorAll('img')].map((i) => i.getAttribute('src'))
+    expect(sources).toContain(ORIGINAL)
   })
 })
