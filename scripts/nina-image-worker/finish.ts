@@ -211,8 +211,10 @@ export async function finishSelfie(
    * only on the race path: the skip path never put anything. If the INSERT above throws instead,
    * the loser blob stays behind and the reaper owns it — the same orphan class the existing
    * `finish:` failure branch already documents. */
-  if (writePlan.release != null) {
-    await releaseBlobIfUnreferenced(sql, userId, writePlan.release)
+  /* A LIST since media-thumbnails phase 3 — the fresh original and the thumbnail derived from
+   * it are both stranded by a lost race. Sequential for `imagerun.ts`'s stated reason. */
+  for (const loser of writePlan.release) {
+    await releaseBlobIfUnreferenced(sql, userId, loser)
   }
 
   /*

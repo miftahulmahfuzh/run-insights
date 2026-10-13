@@ -214,7 +214,16 @@ export async function setPhotoExcludedFromShare(
 export async function updatePhotoBlobLocation(
   userId: string,
   photoId: string,
-  location: { blobUrl: string; pathname: string },
+  /* `thumbUrl`/`thumbPathname` are OPTIONAL rather than nullable-required, deliberately: an
+   * absent pair means "this photo has no thumbnail to move", and `.set()` must then leave the
+   * columns alone. A required `thumbUrl: null` would let a caller that simply forgot them blank a
+   * live pointer on every rotation — the failure mode this signature makes unexpressible. */
+  location: {
+    blobUrl: string
+    pathname: string
+    thumbUrl?: string
+    thumbPathname?: string
+  },
 ): Promise<void> {
   const rows = await db
     .update(runPhotos)

@@ -123,6 +123,39 @@ export function ninaChatPathname(userId: string, id: string): string {
 }
 
 /**
+ * **The derived thumbnail's requested pathname, from the ORIGINAL's own** — media-thumbnails
+ * phase 3. `nina/u1/chat/abc.jpg` → `nina/u1/chat/thumb-abc.jpg`.
+ *
+ * ── WHY IT IS DERIVED FROM A PATHNAME AND NOT BUILT FROM AN ID ──────────────────────────────
+ * `lib/admin/avatars.ts`'s `adminAvatarThumbPathname(userId, id, ext)` builds its own from the
+ * avatar's id, which it can because an avatar's pathname has one shape. The objects behind
+ * `nina_message_images` have THREE — `chat/<id>.jpg` from the composer, `<purpose>-<id>.png` from
+ * the generator, `photoshop-<id>.png` from `scripts/photoshop.ts` — and `run_photos` adds
+ * `shots/<id>.jpg` under a different prefix entirely. A builder would need to know which, and the
+ * caller always already holds the original's pathname. So: take the basename, put `thumb-` on it,
+ * keep the directory.
+ *
+ * Keeping the directory is the load-bearing part, twice over. It keeps the derivative under the
+ * `nina/<userId>/` subtree RU-7 requires, so an orphan stays attributable to a user; and it keeps
+ * it under a PREFIX `scripts/blob-reap.mjs` already walks, so the reaper sees it as a blob to
+ * account for rather than as something under an unknown prefix it refuses to touch.
+ *
+ * **The returned value is what the caller ASKS for, never what is stored.** Every caller puts
+ * with `addRandomSuffix: true`, so Blob answers with a different pathname, and that answer is
+ * what `thumb_pathname` records. A delete that recomputed this string instead of reading the
+ * column would miss the object every time. See the column's header.
+ */
+export function ninaThumbPathname(originalPathname: string): string {
+  const cut = originalPathname.lastIndexOf('/')
+  const dir = cut === -1 ? '' : originalPathname.slice(0, cut + 1)
+  const base = originalPathname.slice(cut + 1).replace(/\.[^.]+$/, '')
+  if (base.length === 0) {
+    throw new Error(`ninaThumbPathname: bad original pathname ${JSON.stringify(originalPathname)}`)
+  }
+  return `${dir}thumb-${base}.jpg`
+}
+
+/**
  * The whole of the path-traversal and don't-write-beside-anything-else defence for the chat
  * branch, and **stronger than F04's `SHOT_REQUEST_PATHNAME_RE`**: this does not merely check an
  * alphabet, it binds the requested path to the AUTHENTICATED user. A signed-in runner cannot mint

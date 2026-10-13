@@ -31,8 +31,10 @@ describe('planNinaImageWrite', () => {
         pathname: FRESH.pathname,
         sourceImageId: null,
         contentHash: HASH,
+        thumbUrl: null,
+        thumbPathname: null,
       },
-      release: null,
+      release: [],
     })
   })
 
@@ -45,8 +47,10 @@ describe('planNinaImageWrite', () => {
         pathname: FRESH.pathname,
         sourceImageId: null,
         contentHash: null,
+        thumbUrl: null,
+        thumbPathname: null,
       },
-      release: null,
+      release: [],
     })
   })
 
@@ -62,8 +66,10 @@ describe('planNinaImageWrite', () => {
       pathname: KEEPER.pathname,
       sourceImageId: KEEPER.id,
       contentHash: HASH,
+      thumbUrl: null,
+      thumbPathname: null,
     })
-    expect(plan.release).toBeNull()
+    expect(plan.release).toEqual([])
   })
 
   it('on the race path the row references the keeper and the fresh loser bytes are released', () => {
@@ -71,7 +77,7 @@ describe('planNinaImageWrite', () => {
     const plan = planNinaImageWrite({ hit: KEEPER, stored: { ...FRESH, contentHash: HASH } })
     expect(plan.row.blobUrl).toBe(KEEPER.blobUrl)
     expect(plan.row.sourceImageId).toBe(KEEPER.id)
-    expect(plan.release).toEqual({ blobUrl: FRESH.blobUrl, pathname: FRESH.pathname })
+    expect(plan.release).toEqual([{ blobUrl: FRESH.blobUrl, pathname: FRESH.pathname }])
   })
 
   it('keeps the hash on the reference row: the column is about the bytes, and they are the same', () => {
@@ -79,5 +85,69 @@ describe('planNinaImageWrite', () => {
     // reference row too, because it displays exactly the keeper's bytes.
     const plan = planNinaImageWrite({ hit: KEEPER, stored: { ...FRESH, contentHash: HASH } })
     expect(plan.row.contentHash).toBe(HASH)
+  })
+})
+
+/* ============================================================================
+ * media-thumbnails phase 3 — the derived thumbnail follows the bytes
+ * ==========================================================================*/
+describe('planNinaImageWrite: the thumbnail follows the bytes, not the row', () => {
+  const KEEPER_THUMB = {
+    thumbUrl: 'https://blob.test/nina/u1/thumb-keeper-wxyz.jpg',
+    thumbPathname: 'nina/u1/thumb-keeper-wxyz.jpg',
+  }
+  const FRESH_THUMB = {
+    thumbUrl: 'https://blob.test/nina/u1/thumb-fresh-abcd.jpg',
+    thumbPathname: 'nina/u1/thumb-fresh-abcd.jpg',
+  }
+
+  it('an original carries its OWN derived thumbnail', () => {
+    const plan = planNinaImageWrite({
+      hit: null,
+      stored: { ...FRESH, contentHash: HASH, ...FRESH_THUMB },
+    })
+    expect(plan.row.thumbUrl).toBe(FRESH_THUMB.thumbUrl)
+    expect(plan.row.thumbPathname).toBe(FRESH_THUMB.thumbPathname)
+    expect(plan.release).toEqual([])
+  })
+
+  it("a reference row takes the KEEPER's thumbnail, never a second derivative of the same bytes", () => {
+    // The row displays the keeper's bytes. Pairing the keeper's original with a locally-derived
+    // thumbnail would put two objects behind one photograph and undo the sharing the keeper has.
+    const plan = planNinaImageWrite({
+      hit: { ...KEEPER, ...KEEPER_THUMB },
+      stored: { blobUrl: KEEPER.blobUrl, pathname: KEEPER.pathname, contentHash: HASH },
+    })
+    expect(plan.row.thumbUrl).toBe(KEEPER_THUMB.thumbUrl)
+    expect(plan.row.thumbPathname).toBe(KEEPER_THUMB.thumbPathname)
+  })
+
+  it('a keeper with no thumbnail yet yields a reference row with none either', () => {
+    // NULL is legal and permanent; the keeper's own fill will cover both rows at once. Deriving
+    // one here would create the duplicate object the keeper-sharing rule exists to avoid.
+    const plan = planNinaImageWrite({
+      hit: KEEPER,
+      stored: { blobUrl: KEEPER.blobUrl, pathname: KEEPER.pathname, contentHash: HASH },
+    })
+    expect(plan.row.thumbUrl).toBeNull()
+  })
+
+  it('a LOST RACE releases the fresh original AND the thumbnail derived from it', () => {
+    // Releasing only the original would strand a thumbnail nothing references — an orphan this
+    // function already knows about and can hand over for free.
+    const plan = planNinaImageWrite({
+      hit: { ...KEEPER, ...KEEPER_THUMB },
+      stored: { ...FRESH, contentHash: HASH, ...FRESH_THUMB },
+    })
+    expect(plan.row.thumbUrl).toBe(KEEPER_THUMB.thumbUrl)
+    expect(plan.release).toEqual([
+      { blobUrl: FRESH.blobUrl, pathname: FRESH.pathname },
+      { blobUrl: FRESH_THUMB.thumbUrl, pathname: FRESH_THUMB.thumbPathname },
+    ])
+  })
+
+  it('a lost race whose thumbnail derivation FAILED releases only the original', () => {
+    const plan = planNinaImageWrite({ hit: KEEPER, stored: { ...FRESH, contentHash: HASH } })
+    expect(plan.release).toEqual([{ blobUrl: FRESH.blobUrl, pathname: FRESH.pathname }])
   })
 })

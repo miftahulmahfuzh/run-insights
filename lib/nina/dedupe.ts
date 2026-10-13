@@ -93,6 +93,19 @@ export interface NinaUploadClaim {
   /** `normalizeClaimedContentHash`'s answer. Null = dedup is inactive for this claim. */
   contentHash: string | null
   /**
+   * media-thumbnails phase 3. The 256 px tile the SERVER derived from the stored bytes, or null.
+   *
+   * **Server-measured, never a client claim** — the same standing as `perceptual` below and for
+   * the same reason: the send path already holds these bytes to sign them, so there is no reason
+   * to accept a browser's word for a second object's location. A browser-derived thumbnail would
+   * also need its own minted upload ticket for a `thumb-` pathname, which is a second door into
+   * the store for a saving the server can take for free.
+   *
+   * Null when derivation or the put failed, which is a legal permanent state: the row carries
+   * NULL, the grid renders the original, and the sweep fills it later.
+   */
+  thumb?: { blobUrl: string; pathname: string } | null
+  /**
    * The SERVER's measurement of the stored bytes' perceptual signature — the send-time race-close
    * (`lib/nina/actions/send.ts` STEP 1b) fetched the just-landed object back and signed it with the one
    * signer (`lib/nina/perceptualSign.ts`). Never a client claim: the browser computes no
@@ -115,6 +128,17 @@ export interface NinaUploadKeeper {
   kind: NinaDedupeImageKind
   blobUrl: string
   pathname: string
+  /**
+   * media-thumbnails phase 3. The keeper's derived tile, copied onto the reference row with its
+   * `blob_url` — the same rule `planNinaImageWrite` applies on the generated path and the
+   * backfill applies to its whole work set: **the thumbnail follows the BYTES.** A row that
+   * renders the keeper's pixels shares the keeper's derivative rather than owning a second one.
+   *
+   * Optional so that `NinaImageRow` keeps satisfying this structurally (the header's whole point)
+   * without every hand-built keeper fixture having to mention it.
+   */
+  thumbUrl?: string | null
+  thumbPathname?: string | null
   description: string | null
   sourceAvatarId: string | null
   sourceImageId: string | null
@@ -129,6 +153,10 @@ export interface NinaDedupeInsertRow {
   kind: NinaDedupeImageKind
   blobUrl: string
   pathname: string
+  /** media-thumbnails phase 3. The claim's own derived tile on the fresh arm, the KEEPER's on the
+   * reference arm — never a second derivative of bytes something else already covers. */
+  thumbUrl?: string | null
+  thumbPathname?: string | null
   width?: number | null
   height?: number | null
   bytes?: number | null
@@ -197,6 +225,10 @@ export function ninaUploadInsertRow(input: {
         bytes: input.claim.bytes,
         description: input.claim.description,
         contentHash: input.claim.contentHash,
+        /* An original carries its OWN derivative, exactly as it carries its own hash and
+         * signature: a row states the facts of the bytes it OWNS. */
+        thumbUrl: input.claim.thumb?.blobUrl ?? null,
+        thumbPathname: input.claim.thumb?.pathname ?? null,
         /*
          * The signature rides only on an ORIGINAL — the row that owns bytes. The reference arm
          * below copies the keeper's object and binds nothing here, exactly as it binds no
@@ -218,6 +250,13 @@ export function ninaUploadInsertRow(input: {
       kind: keeper.kind,
       blobUrl: keeper.blobUrl,
       pathname: keeper.pathname,
+      /* THE KEEPER'S, and this one is NOT like `description` two lines down: there is no
+       * "prefer the keeper, fall back to the claim's" here. A claim's thumbnail is a derivative
+       * of the claim's OWN object, and a reference row does not render that object — pairing the
+       * keeper's original with the claim's tile would show two different photographs at two
+       * sizes. NULL when the keeper has none; its own fill covers both rows at once. */
+      thumbUrl: keeper.thumbUrl ?? null,
+      thumbPathname: keeper.thumbPathname ?? null,
       description: keeper.description ?? input.claim.description ?? null,
       ...ninaPhotoProvenance({
         kind: 'image',

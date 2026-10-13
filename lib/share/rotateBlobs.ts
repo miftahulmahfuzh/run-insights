@@ -3,6 +3,7 @@ import { rename } from '@vercel/blob'
 
 import { updatePhotoBlobLocation } from '@/lib/db/queries'
 import { BLOB_CACHE_MAX_AGE, SHOT_PREFIX, UPLOAD_CONTENT_TYPE } from '@/lib/extract/constants'
+import { PHOTO_THUMB_CONTENT_TYPE } from '@/lib/photos/thumbnailSpec'
 import { blobEnv } from '@/lib/env'
 import { newId } from '@/lib/id'
 
@@ -28,6 +29,14 @@ import { newId } from '@/lib/id'
  * failure mode is also the one we want — *"if the copy fails, the source blob is left untouched"* —
  * so a rotation that dies half way has not destroyed a photo.
  *
+ * ── BOTH OBJECTS MOVE, OR THE PHOTO IS REPORTED STILL LIVE ───────────────────────────────────
+ * Since media-thumbnails phase 3 a screenshot can be behind TWO objects, and a revocation is only
+ * as strong as the weaker one. So a photo counts as rotated only when every object it has was
+ * moved and the row names both new locations; a thumbnail that would not move puts the photo in
+ * `failed`, exactly as a failed original does, and the UI turns that into "try Stop sharing
+ * again". Half a rotation is not a partial success here — it is the original outcome with extra
+ * steps, and the caller has to be told.
+ *
  * ── WHAT THIS DOES NOT FIX, SAID PLAINLY ──────────────────────────────────────────────────────
  * Somebody who already saved the image keeps the pixels. Nothing server-side reaches into a phone.
  * That is why `REVOKE_BODY` says so in the confirm dialog rather than only in this comment.
@@ -38,6 +47,21 @@ interface RotatablePhoto {
   blobUrl: string
   /** The stored pathname. Needed to put a photo back at its exact old URL if the row write fails. */
   pathname: string
+  /**
+   * **The derived thumbnail — media-thumbnails phase 3 — and it is a SECOND BEARER SECRET.**
+   *
+   * Everything this file's header says about a Blob URL applies to it unchanged: *"A Vercel Blob
+   * URL is public, unguessable and permanent. It is not protected by the share token — it is its
+   * own bearer secret."* `ScreenshotStrip` on `/s/[token]` serves this URL to whoever opened the
+   * link, so a revocation that rotated only the original would kill the page, 404 the original,
+   * and leave the photograph fully readable at its thumbnail's address forever. That is R-15's
+   * hole, reopened at 256 px — which is still the photograph.
+   *
+   * NULL on a row the backfill has not reached, or whose derivation failed. There is then nothing
+   * to rotate and nothing leaks.
+   */
+  thumbUrl: string | null
+  thumbPathname: string | null
 }
 
 interface RotationResult {
@@ -82,10 +106,38 @@ export async function rotateRunPhotoBlobs(
         token,
       })
 
+      /*
+       * The thumbnail, to a pathname of its own under the same prefix. Done BEFORE the row write
+       * so that one `updatePhotoBlobLocation` publishes both new locations atomically: a row that
+       * named a new original and an old thumbnail would be a half-revoked photograph, which is
+       * the state this whole function exists to not produce.
+       *
+       * A failure here is NOT swallowed — it throws to the outer catch, which reports the photo
+       * as still live. The original has already moved at that point, so the old original URL is
+       * dead and the old thumbnail URL is not; saying "rotated" would be a lie in the one
+       * direction that matters. The row is untouched, so the owner's page still resolves through
+       * the restore path below on the next attempt.
+       */
+      const movedThumb =
+        photo.thumbUrl != null && photo.thumbPathname != null
+          ? await rename(photo.thumbUrl, `${SHOT_PREFIX}thumb-${newId()}.jpg`, {
+              access: 'public',
+              addRandomSuffix: true,
+              /* `rename` preserves no metadata, so the thumbnail's own type has to be restated —
+               * it is JPEG whatever the original was (`PHOTO_THUMB_CONTENT_TYPE`). */
+              contentType: PHOTO_THUMB_CONTENT_TYPE,
+              cacheControlMaxAge: BLOB_CACHE_MAX_AGE,
+              token,
+            })
+          : null
+
       try {
         await updatePhotoBlobLocation(userId, photo.id, {
           blobUrl: moved.url,
           pathname: moved.pathname,
+          ...(movedThumb != null
+            ? { thumbUrl: movedThumb.url, thumbPathname: movedThumb.pathname }
+            : {}),
         })
         rotated++
       } catch (error) {

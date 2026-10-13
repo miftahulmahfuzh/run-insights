@@ -120,6 +120,10 @@ describe('ninaUploadInsertRow — the fresh arm', () => {
       // send-time race-close measured one (media-dedupe follow-up, 2026-09-10)
       perceptualHash: null,
       perceptualSig: null,
+      /* media-thumbnails phase 3. This claim carries no server-derived thumbnail, so the fresh
+       * arm binds NULL — the legal permanent state the grid answers by rendering the original. */
+      thumbUrl: null,
+      thumbPathname: null,
       sortOrder: 0,
     })
     expect('sourceAvatarId' in decision.row).toBe(false)

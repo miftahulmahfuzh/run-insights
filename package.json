@@ -74,7 +74,8 @@
     "pretest:live:nina-vision": "node scripts/check-node-version.mjs",
     "test:live:nina-vision": "LLM_LIVE_TEST=1 vitest run tests/live/ninaVision.live.test.ts",
     "pretest:live:nina-image": "node scripts/check-node-version.mjs",
-    "test:live:nina-image": "LLM_LIVE_TEST=1 vitest run tests/live/ninaImageE2E.live.test.ts"
+    "test:live:nina-image": "LLM_LIVE_TEST=1 vitest run tests/live/ninaImageE2E.live.test.ts",
+    "thumbs:backfill": "node --experimental-strip-types --no-warnings --env-file=.env.local scripts/backfill-thumbnails.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.117.1",

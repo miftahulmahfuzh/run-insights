@@ -119,6 +119,21 @@ export async function insertNinaMessageImages(
         kind: row.kind,
         blobUrl: row.blobUrl,
         pathname: row.pathname,
+        /*
+         * media-thumbnails phase 3. Coalesced rather than spread, so the pair appears in EVERY
+         * insert this function builds and the statement has one shape — `sourceAvatarId`'s stated
+         * reason, two blocks down. A writer with no thumbnail binds NULL, which the grid answers
+         * by rendering the original.
+         *
+         * Unlike `contentHash` below there is no validator, and that is deliberate: this is never
+         * a client CLAIM. The three writers that send a value either derived it on the server
+         * (`imagerun.ts`), uploaded it under a minted, pathname-scoped token (`send.ts`), or
+         * copied it from a row they had already read owner-scoped (`resolveAttachment`). There is
+         * no door here for an attacker-supplied string that a URL column would have to be checked
+         * for — and a wrong value costs a broken tile, not a wrong photograph.
+         */
+        thumbUrl: row.thumbUrl ?? null,
+        thumbPathname: row.thumbPathname ?? null,
         width: row.width ?? null,
         height: row.height ?? null,
         bytes: row.bytes ?? null,

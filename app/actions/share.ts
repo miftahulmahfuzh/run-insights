@@ -89,6 +89,10 @@ export async function revokeShareLinkAction(runId: string): Promise<RevokeResult
       id: p.id,
       blobUrl: p.blobUrl,
       pathname: p.pathname,
+      /* R-15 covers every bearer URL the photo has, and since media-thumbnails phase 3 that is
+       * two. See `rotateRunPhotoBlobs`'s `RotatablePhoto.thumbUrl`. */
+      thumbUrl: p.thumbUrl,
+      thumbPathname: p.thumbPathname,
     }))
     const { rotated, failed } = await rotateRunPhotoBlobs(userId, photos)
 

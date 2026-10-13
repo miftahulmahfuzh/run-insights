@@ -71,6 +71,11 @@ function image(id: string, messageId: string, description: string | null, sortOr
     kind: 'generated' as const,
     blobUrl: `https://blob.example/nina/u1/selfie-${id}.jpg`,
     pathname: `nina/u1/selfie-${id}.jpg`,
+    /* media-thumbnails phase 3 widened `NinaImageRow` with these two. The window read is Nina's
+     * CONTEXT, not a grid — she is handed descriptions, never URLs — so the untagged default is
+     * what this file wants, exactly as it is for the keyword pair below. */
+    thumbUrl: null,
+    thumbPathname: null,
     width: 768,
     height: 1024,
     bytes: 150_000,

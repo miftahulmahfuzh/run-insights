@@ -7,6 +7,7 @@ import type { NinaImageCostSource } from '@/lib/db/schema'
 import { blobEnv } from '@/lib/env'
 import { newId } from '@/lib/id'
 import { contentHashOf } from '@/lib/photos/contentHash'
+
 import { notifyNinaPush } from '@/lib/push/send'
 
 import { releaseBlobIfUnreferenced } from './blobRelease'
@@ -16,6 +17,7 @@ import { callNinaImageModel, type NinaImageCallResult } from './imagecall'
 import { planNinaImageWrite, type NinaImageDedupHit } from './imageDedupe'
 import { isRetryableImageFailure, ninaImageCaption, type NinaImageFailure } from './imagefail'
 import { signImageBytes, type NinaImageSignature } from './perceptualSign'
+import { storeThumbnailFromBytes } from './thumbnailStore'
 import { coerceNinaImageModel } from './imageprefs'
 import {
   claimNinaImageJob,
@@ -124,6 +126,13 @@ import { NINA_TUNING_DEFAULTS } from './tuning'
 interface StoredImage {
   blobUrl: string
   pathname: string
+  /**
+   * media-thumbnails phase 3. The derived 256 px tile stored beside the original, or NULL when
+   * nothing was put (the dedup skip) or derivation failed. Travels with the original so that
+   * `planNinaImageWrite` can release BOTH on a lost race.
+   */
+  thumbUrl: string | null
+  thumbPathname: string | null
   bytes: number
   /**
    * media-dedupe P3. sha-256 hex of the exact bytes this image holds, or null when the purpose is
@@ -189,6 +198,8 @@ async function storeNinaImage(
       contentHash: null,
       duplicateOf: null,
       signature: null,
+      thumbUrl: null,
+      thumbPathname: null,
     }
   }
 
@@ -220,6 +231,11 @@ async function storeNinaImage(
       /* The row is a REFERENCE, and references carry no signature — the keeper's row already
        * carries (or the sweep fills) the signature of the object they both render. */
       signature: null,
+      /* Nor a thumbnail of its own: nothing was put, and `planNinaImageWrite` takes the KEEPER's
+       * from `duplicateOf`. Deriving one here would cost a second object for the same pixels —
+       * the duplication the backfill measured at 267 rows and refuses for the same reason. */
+      thumbUrl: null,
+      thumbPathname: null,
     }
   }
 
@@ -234,7 +250,33 @@ async function storeNinaImage(
   const signature = await signImageBytes(bytes)
 
   const blob = await putNinaImageBlob(userId, purpose, bytes)
-  return { ...blob, bytes: bytes.byteLength, contentHash, duplicateOf: null, signature }
+
+  /*
+   * media-thumbnails phase 3 — THE THUMBNAIL HAPPENS HERE, for the third time the same reason
+   * applies: the bytes are in hand. This is the only moment in a generated photograph's life
+   * when a server holds its pixels for free; a thumbnail derived anywhere later would have to
+   * GET the megabyte back out of Blob to do it, which is the backfill's cost and the backfill is
+   * the path for photographs that already exist.
+   *
+   * She renders at 768x1024 PNG, so this is the write path that matters most: ~1 MB of original
+   * becomes ~20 KB of tile, and `NINA_ABOUT_MEDIA_PAGE_SIZE` of them is the difference between a
+   * ~48 MB page view and a ~1 MB one.
+   *
+   * AFTER the put, not before, and `null` on any failure — the degradation ladder every other
+   * derived fact on this path follows. A thumbnail must never be able to cost a photograph: the
+   * columns are nullable, the grid falls back to the original, and the sweep fills it later.
+   */
+  const thumb = await storeThumbnailFromBytes(blob.pathname, bytes)
+
+  return {
+    ...blob,
+    bytes: bytes.byteLength,
+    contentHash,
+    duplicateOf: null,
+    signature,
+    thumbUrl: thumb?.blobUrl ?? null,
+    thumbPathname: thumb?.pathname ?? null,
+  }
 }
 
 /** The put itself, exactly the pre-dedup statement — extracted so the dedup branch reads. */
@@ -402,7 +444,14 @@ async function finishSelfie(
   }
   const writePlan = planNinaImageWrite({
     hit: image.duplicateOf ?? racedDuplicate,
-    stored: { blobUrl: image.blobUrl, pathname: image.pathname, contentHash: image.contentHash },
+    stored: {
+      blobUrl: image.blobUrl,
+      pathname: image.pathname,
+      contentHash: image.contentHash,
+      /* The thumbnail derived from the bytes THIS run put, so a lost race releases both. */
+      thumbUrl: image.thumbUrl,
+      thumbPathname: image.thumbPathname,
+    },
   })
   if (writePlan.release != null) {
     console.info('[nina] lost a dedup race; the row will reference the keeper', {
@@ -423,6 +472,10 @@ async function finishSelfie(
        * `isOriginalPhoto()` hides it from the Media feed while the bubble still renders it. */
       blobUrl: writePlan.row.blobUrl,
       pathname: writePlan.row.pathname,
+      /* The plan's, for the plan's reason: a deduped row carries the KEEPER's thumbnail, so the
+       * two rows share one derivative exactly as they share one original. */
+      thumbUrl: writePlan.row.thumbUrl,
+      thumbPathname: writePlan.row.thumbPathname,
       width: NINA_IMAGE_WIDTH,
       height: NINA_IMAGE_HEIGHT,
       bytes: image.bytes,
@@ -457,11 +510,21 @@ async function finishSelfie(
 
   /* Loser bytes out — only after the row that pointed at them is in, and only when the plan says
    * there ARE loser bytes: the skip path referenced the keeper without ever putting, so there is
-   * nothing of ours in the store at all. */
-  if (writePlan.release != null) {
-    const outcome = await releaseBlobIfUnreferenced(userId, writePlan.release)
+   * nothing of ours in the store at all.
+   *
+   * A LIST since media-thumbnails phase 3: a lost race strands the fresh original AND the
+   * thumbnail derived from it. Sequential, not `Promise.all` — `releaseBlobIfUnreferenced` runs a
+   * reference check per object and two of them racing would each answer about a store the other
+   * is changing. Two objects on a human-paced path is not worth that. */
+  for (const loser of writePlan.release) {
+    const outcome = await releaseBlobIfUnreferenced(userId, loser)
     if (outcome !== 'deleted') {
-      console.warn('[nina] dedup loser kept in the store', { jobId, outcome, bytes: image.bytes })
+      console.warn('[nina] dedup loser kept in the store', {
+        jobId,
+        outcome,
+        pathname: loser.pathname,
+        bytes: image.bytes,
+      })
     }
   }
 

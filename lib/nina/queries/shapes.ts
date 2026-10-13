@@ -145,6 +145,19 @@ export interface NinaImageRow {
   kind: NinaImageKind
   blobUrl: string
   pathname: string
+  /**
+   * media-thumbnails phase 3's derived grid tile and its STORED pathname, or NULL.
+   *
+   * Required here, unlike on `NinaImageInsert` above, and the asymmetry is the same one
+   * `NinaAlbumPhoto`/`ImageLike` draw in `lib/nina/album.ts`: a ROW always has a value for every
+   * column, even when that value is NULL, while an INSERT may legitimately decline to mention a
+   * field. A reader that had to `?? null` a row's column would be hiding a projection bug.
+   *
+   * Projected by `imageColumns` (`lib/nina/queries/columns.ts`), where the pair is APPENDED for
+   * the positional-fixture reason that file states three times over.
+   */
+  thumbUrl: string | null
+  thumbPathname: string | null
   width: number | null
   height: number | null
   bytes: number | null
@@ -193,6 +206,18 @@ export interface NinaImageInsert {
   kind: NinaImageKind
   blobUrl: string
   pathname: string
+  /**
+   * media-thumbnails phase 3's derived grid tile and its STORED pathname.
+   *
+   * **Optional, and the default is what keeps the other writers correct** — `sourceAvatarId`'s
+   * argument four fields down, for the same reason. A writer with no thumbnail says nothing and
+   * `insertNinaMessageImages` coalesces to NULL, which is a legal permanent state the grid
+   * answers by rendering the original. Only the paths that actually derived or inherited one
+   * send it: `lib/nina/imagerun.ts` (its own, or the keeper's via `planNinaImageWrite`),
+   * `lib/nina/actions/send.ts` (the browser's), and `resolveAttachment` (the source row's).
+   */
+  thumbUrl?: string | null
+  thumbPathname?: string | null
   width?: number | null
   height?: number | null
   bytes?: number | null

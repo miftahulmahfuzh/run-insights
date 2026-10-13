@@ -29,6 +29,7 @@ import {
 } from '../photoShortcut'
 import { isPerceptualTwin, parseDhashHex, sig16FromBase64 } from '../perceptual'
 import { fetchAndSignImage, type NinaImageSignature } from '../perceptualSign'
+import { storeThumbnailFromStoredUrl } from '../thumbnailStore'
 import { findGlobalDuplicatePhoto } from '@/lib/photos/globalDuplicate'
 import type { ResolvedPhotoPointer } from '@/lib/photos/pointer'
 import { notifyDuplicateImagePush } from '@/lib/push/duplicateImage'
@@ -177,6 +178,22 @@ export interface NinaAttachExisting {
 interface ResolvedNinaAttachment {
   blobUrl: string
   pathname: string
+  /**
+   * media-thumbnails phase 3. The SOURCE row's derived tile, copied alongside its `blob_url`.
+   *
+   * This is the field that makes re-attachment free. `resolveAttachment` copies a reference to
+   * bytes without copying a byte — that is R26's whole mechanism, and the reason
+   * `isBlobPathnameReferenced` has to exist. The derivative behaves identically: the new row
+   * renders the same pixels, so it shares the same thumbnail object rather than deriving a
+   * second one from the same source. Omitting it here would not break a tile — the row would
+   * carry NULL and fall back to the original — it would silently make every re-attached
+   * photograph the expensive kind again, which is the failure mode this plan is about.
+   *
+   * NULL when the source has none yet; the backfill fills BOTH rows when it reaches that object,
+   * because its unit of work is the object and not the row.
+   */
+  thumbUrl: string | null
+  thumbPathname: string | null
   kind: NinaImageKind
   description: string | null
   /**
@@ -218,6 +235,9 @@ async function resolveAttachment(
     return {
       blobUrl: row.blobUrl,
       pathname: row.pathname,
+      /* The album row's own derivative — F34 R1 has filled these since it shipped. */
+      thumbUrl: row.thumbUrl,
+      thumbPathname: row.thumbPathname,
       kind: 'generated',
       description: row.description,
       /*
@@ -249,6 +269,9 @@ async function resolveAttachment(
   return {
     blobUrl: row.blobUrl,
     pathname: row.pathname,
+    /* The source chat row's derivative, shared the same way its original is. */
+    thumbUrl: row.thumbUrl,
+    thumbPathname: row.thumbPathname,
     kind: row.kind,
     description: row.description,
     ...ninaPhotoProvenance({
@@ -826,6 +849,32 @@ export async function sendNinaMessage(input: {
       const partition = applyPerceptualKeepers(
         partitionNinaUploadClaims(claims, keepersByHash),
         perceptualKeepers,
+      )
+
+      /*
+       * ── THE THUMBNAILS, FOR THE ORIGINALS ONLY (media-thumbnails phase 3) ─────────────────
+       *
+       * `partition.fresh` is the set of claims that will OWN bytes; every other claim becomes a
+       * reference and takes its keeper's tile instead. Deriving before the partition would spend
+       * a GET and a PUT on photographs that turn out to be duplicates — which is the opposite of
+       * this feature's purpose.
+       *
+       * SERVER-SIDE, from the stored object, and deliberately not from the browser. F34 derived
+       * avatar thumbnails in the tab because the pixels were already decoded there for free; that
+       * is still the right trade when a browser is in the loop with a file in hand. Here it is
+       * not worth a second door into the Blob store: a browser-uploaded thumbnail needs its own
+       * minted ticket for a `thumb-` pathname, and this path ALREADY fetches these very bytes a
+       * few lines up to sign them perceptually. A chat upload is also pre-compressed to ~120-200
+       * KB (`NINA_CHAT_TARGET_MAX_MB`), so the GET is small and runs once per photograph, ever.
+       *
+       * Failures are `null`-shaped and never fatal — the standing ladder. A claim whose
+       * thumbnail could not be made lands with NULL and renders its original, which is what the
+       * whole collection did before this plan.
+       */
+      await Promise.all(
+        partition.fresh.map(async (claim) => {
+          claim.thumb = await storeThumbnailFromStoredUrl(claim.blobUrl, claim.pathname)
+        }),
       )
 
       /* ROW FIRST (1/2) — the originals, in one statement, so their ids exist for the same-send

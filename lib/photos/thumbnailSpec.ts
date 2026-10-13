@@ -1,4 +1,17 @@
-import { longEdgeTargetFor } from './resizeTarget'
+/*
+ * **The `.ts` extension is load-bearing, not a slip.** `scripts/backfill-thumbnails.mjs` imports
+ * this module under `node --experimental-strip-types`, whose ESM resolver does no extension
+ * guessing — an extensionless specifier here is `ERR_MODULE_NOT_FOUND` at link time, before a
+ * line runs. `tsconfig.json` already sets `allowImportingTsExtensions`, and Turbopack resolves it
+ * unchanged, so this costs the app nothing and is what keeps the backfill reading the SAME short
+ * edge, quality and box arithmetic the two encoders read instead of copying three constants into
+ * a script.
+ *
+ * `lib/nina/avatarEmbedText.ts` is the precedent for "a script imports a lib module", and it only
+ * works there because that file is a LEAF with no imports at all. This one has exactly one, so
+ * spelling it is the whole price of staying importable.
+ */
+import { longEdgeTargetFor } from './resizeTarget.ts'
 
 /**
  * **What a derived display thumbnail IS** — one short edge, one quality, one container, and the
