@@ -67,6 +67,10 @@ scripts/capture/*.webm
 # git worktrees for isolated feature work
 .worktrees
 
-# The "I already cancelled Vercel Pro" marker that silences
-# .claude/vercel-cancel-reminder.sh. Local state, not a repo fact.
+# The Vercel-Pro cancellation reminder: a SessionStart hook that checks billing.plan
+# against the Vercel API and DELETES ITSELF once the team is back on Hobby. Machine-local
+# state like .claude/settings.local.json, and untracked for that reason: a tracked file
+# that removes itself would leave a dirty worktree on somebody else's clone. The reasoning
+# is preserved in the commit that introduced it.
+.claude/vercel-cancel-reminder.sh
 .claude/.vercel-cancel-done
