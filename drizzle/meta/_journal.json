@@ -260,6 +260,13 @@
       "when": 1789807880819,
       "tag": "0036_fantastic_wild_pack",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1791871986512,
+      "tag": "0037_wild_thunderbird",
+      "breakpoints": true
     }
   ]
 }

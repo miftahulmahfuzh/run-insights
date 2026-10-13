@@ -37,6 +37,10 @@
  *   - `run_photos.pathname` / `run_photos.blob_url` — the mutable photo lifecycle. This is the
  *     authority after a share revocation, because `lib/share/rotateBlobs.ts` renames the blob to a
  *     fresh random pathname and writes the new location to this row (R-15).
+ *   - `run_photos.thumb_pathname` / `.thumb_url` — media-thumbnails phase 1's derived strip
+ *     thumbnail. Nullable: a NULL means no thumbnail, not no reference. Note that
+ *     `lib/share/rotateBlobs.ts` must rotate this object too, or a revoked share leaves a
+ *     thumbnail at its old guessable pathname — that is phase 3's job, not this script's.
  *   - `extractions.blob_urls` — an immutable upload-time snapshot. It can be the ONLY reference to
  *     an extraction that has not been committed to a run yet, so it cannot be skipped. It can also
  *     be STALE after a rotation, naming bytes that no longer exist; that direction is harmless,
@@ -44,6 +48,10 @@
  *
  *   nina/
  *   - `nina_message_images.pathname` / `.blob_url` — chat photos, `nina/<userId>/chat/<id>.jpg`.
+ *   - `nina_message_images.thumb_pathname` / `.thumb_url` — media-thumbnails phase 1 brought the
+ *     album's derived thumbnail to this table too, for the reason the suspension of 2026-10-13
+ *     made unarguable: 48 untouched originals per Media page view is ~48 MB. Same two-column
+ *     shape, same nullability, same consequence for omitting them here.
  *   - `nina_avatars.pathname` / `.blob_url` — the album, `nina/<userId>/avatar-<id>.<ext>`.
  *   - `nina_avatars.thumb_pathname` / `.thumb_url` — the DERIVED grid thumbnail, a second object
  *     under the same prefix. Omitting these two columns would have deleted every thumbnail in the
@@ -173,10 +181,11 @@ const readSite = async (site, query, fields) => {
 }
 
 if (active.some((p) => p.prefix === 'shots/')) {
-  await readSite('run_photos', () => sql`select pathname, blob_url from run_photos`, [
-    'pathname',
-    'blob_url',
-  ])
+  await readSite(
+    'run_photos',
+    () => sql`select pathname, blob_url, thumb_pathname, thumb_url from run_photos`,
+    ['pathname', 'blob_url', 'thumb_pathname', 'thumb_url'],
+  )
   let n = 0
   for (const r of await sql`select blob_urls from extractions`) {
     const rowToken = `extractions#${n++}`
@@ -191,8 +200,8 @@ if (active.some((p) => p.prefix === 'shots/')) {
 if (active.some((p) => p.prefix === 'nina/')) {
   await readSite(
     'nina_message_images',
-    () => sql`select pathname, blob_url from nina_message_images`,
-    ['pathname', 'blob_url'],
+    () => sql`select pathname, blob_url, thumb_pathname, thumb_url from nina_message_images`,
+    ['pathname', 'blob_url', 'thumb_pathname', 'thumb_url'],
   )
   await readSite(
     'nina_avatars',

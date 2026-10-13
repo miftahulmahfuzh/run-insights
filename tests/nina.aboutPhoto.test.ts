@@ -30,6 +30,7 @@ function photo(id: string, kind: 'upload' | 'generated' = 'upload'): NinaGallery
     id,
     messageId: 'msgAAAAAAAAA',
     url: `https://x.example/${id}.png`,
+    thumbUrl: null,
     kind,
     side,
     label: side === 'hers' ? 'Foto Nina' : 'Foto kamu',
@@ -41,6 +42,7 @@ const album: NinaAlbumPhoto[] = [
   {
     id: 'avatarAAAAAA',
     url: 'https://x.example/a.png',
+    thumbUrl: null,
     kind: 'avatar',
     label: 'Foto profil Nina',
     isCurrent: true,
@@ -174,6 +176,7 @@ describe('aboutViewerLists is the rule for which list the viewer renders', () =>
     const resolvedCurrentAvatar: NinaAlbumPhoto = {
       id: 'avatarOLD00001',
       url: 'https://x.example/old.png',
+      thumbUrl: null,
       kind: 'avatar',
       label: 'Foto profil Nina',
       isCurrent: true,
@@ -211,6 +214,7 @@ describe('aboutViewerLists is the rule for which list the viewer renders', () =>
     const resolvedAlbumPhoto: NinaAlbumPhoto = {
       id: 'avatarREF00001',
       url: 'https://x.example/ref.png',
+      thumbUrl: null,
       kind: 'avatar',
       label: 'Foto profil Nina',
       isCurrent: false,

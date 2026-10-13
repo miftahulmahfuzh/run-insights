@@ -1429,10 +1429,13 @@ export async function promoteNinaImageMeasurements(
  *
  * ── THE REFERENCE SITES ARE `scripts/blob-reap.mjs`'s, EXACTLY ──────────────────────────────
  * The reaper (`2c1e7ba`) counts references rather than reacting to a row disappearing, and it
- * enumerates six columns for the `nina/` prefix: `nina_message_images.pathname` / `.blob_url`,
- * `nina_avatars.pathname` / `.blob_url`, and `nina_avatars.thumb_pathname` / `.thumb_url`. This
- * asks the same six, so "nothing references these bytes" has ONE definition in the repo and a
- * photograph the reaper would keep is a photograph this will not delete. The URL columns are
+ * enumerates eight columns for the `nina/` prefix: `nina_message_images.pathname` / `.blob_url` /
+ * `.thumb_pathname` / `.thumb_url`, and `nina_avatars.pathname` / `.blob_url` /
+ * `.thumb_pathname` / `.thumb_url`. This asks the same eight, so "nothing references these bytes"
+ * has ONE definition in the repo and a photograph the reaper would keep is a photograph this will
+ * not delete. (Six until media-thumbnails phase 1 brought the derived thumbnail to
+ * `nina_message_images`; the two sites were widened in the same commit, before anything wrote one
+ * — see that column's header for why that ordering is a safety property.) The URL columns are
  * checked as well as the pathname columns because a URL is the only thing `del()` is ever handed,
  * and a row whose two spellings ever disagreed would otherwise be invisible to this question. The
  * album thumbnail is the case that makes it more than symmetry: a `thumb-<id>.<ext>` object cannot
@@ -1475,7 +1478,10 @@ export async function isBlobPathnameReferenced(
           eq(ninaMessageImages.userId, userId),
           or(
             eq(ninaMessageImages.pathname, pathname),
-            ...(blobUrl == null ? [] : [eq(ninaMessageImages.blobUrl, blobUrl)]),
+            eq(ninaMessageImages.thumbPathname, pathname),
+            ...(blobUrl == null
+              ? []
+              : [eq(ninaMessageImages.blobUrl, blobUrl), eq(ninaMessageImages.thumbUrl, blobUrl)]),
           ),
         ),
       )

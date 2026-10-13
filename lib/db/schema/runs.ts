@@ -303,6 +303,35 @@ export const runPhotos = pgTable(
     runId: text('run_id').references(() => runs.id, { onDelete: 'cascade' }),
     blobUrl: text('blob_url').notNull(),
     pathname: text('pathname').notNull(),
+    /**
+     * ── THE DERIVED THUMBNAIL (`thumb_url`, `thumb_pathname`) — media-thumbnails phase 1 ──────
+     *
+     * `nina_avatars.thumb_url`'s design (F34 R1) on a third table, and the semantics are that
+     * column's VERBATIM — see `lib/db/schema/nina/chat.ts`'s copy for the full argument, which
+     * this one deliberately does not restate: a SECOND small object beside the original, the
+     * original never re-encoded, two columns because `thumb_pathname` is the STORED pathname and
+     * a delete needs it, and both NULL a legal permanent state that a renderer answers by falling
+     * back to `blob_url`.
+     *
+     * **Why a screenshot needs one at all**, given a run shows a handful and not a grid of 48:
+     * `ScreenshotStrip` draws every photo of a run at `h-[168px]`, `/r/[id]` and the public
+     * `/s/[token]` share page both mount it, and a share link is the one surface in this app that
+     * a stranger's browser opens cold with nothing cached. The strip is small; the share page is
+     * unbounded. An Apple Watch screenshot is also the single largest class of original in the
+     * store — `739x1600` before `compressForExtraction` and still the heaviest thing a cold page
+     * fetches.
+     *
+     * **No backfill is assumed by this column.** Every row that predates it stores NULL, exactly
+     * as `content_hash` above does, and for the same stated reason; the sweep that fills them is a
+     * separate, resumable script and NULL stays correct forever if it never runs.
+     *
+     * These two columns are REFERENCE SITES for `scripts/blob-reap.mjs` — which deletes any blob
+     * no enumerated column names — and were added there in the same phase as this column, before
+     * anything wrote a thumbnail. See that script's header.
+     */
+    thumbUrl: text('thumb_url'),
+    /** The thumbnail's STORED Blob pathname — the only thing that lets a delete remove it too. */
+    thumbPathname: text('thumb_pathname'),
     kind: text('kind').$type<PhotoKind>().notNull(), // 'summary'|'splits'|'heartrate'|'other'
     width: integer('width'),
     height: integer('height'),

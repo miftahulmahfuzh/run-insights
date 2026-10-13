@@ -54,7 +54,7 @@ vi.mock('@/components/ui/useSavePhoto', async (importOriginal) => ({
 // screen owes it is the right LIST per section, the right index, a close that lands, and — since
 // 2026-10-01 — the right header CLUSTER for the photograph on screen. `rowPointer` is phase 3's
 // `ViewerPhoto` field; the real overlay hands the slot `photos[index]` and so does this.
-type ProbePhoto = { id?: string; rowPointer?: { kind: string; id: string } }
+type ProbePhoto = { id?: string; url?: string; rowPointer?: { kind: string; id: string } }
 vi.mock('@/components/ui/PhotoViewer', () => ({
   PhotoViewer: (props: {
     photos: ProbePhoto[]
@@ -62,7 +62,16 @@ vi.mock('@/components/ui/PhotoViewer', () => ({
     onClose: () => void
     headerAction?: (photo: ProbePhoto) => ReactNode
   }) => (
-    <div data-testid="viewer" data-count={props.photos.length} data-index={props.index}>
+    /* `data-url` is media-thumbnails phase 4's probe: the overlay is handed `ViewerPhoto`, whose
+       `url` must stay the ORIGINAL even once the grid switched to `thumb_url`. Reading it off the
+       slot the viewer actually opens on is the only way to assert that from here, since this stub
+       renders no <img> of its own. Additive — every pre-existing assertion reads count/index. */
+    <div
+      data-testid="viewer"
+      data-count={props.photos.length}
+      data-index={props.index}
+      data-url={props.photos[props.index]?.url ?? ''}
+    >
       {props.headerAction?.(props.photos[props.index]!)}
       <button type="button" data-testid="viewer-close" onClick={props.onClose}>
         close
@@ -99,6 +108,7 @@ function albumPhoto(id: string, isCurrent = false): NinaAlbumPhoto {
   return {
     id,
     url: `https://blob.example/album-${id}.jpg`,
+    thumbUrl: null,
     kind: 'avatar',
     label: 'Foto profil Nina',
     isCurrent,
@@ -111,6 +121,7 @@ function galleryPhoto(id: string, side: 'his' | 'hers' = 'his'): NinaGalleryPhot
     id,
     messageId: `msg-${id}`,
     url: `https://blob.example/chat-${id}.jpg`,
+    thumbUrl: null,
     kind: side === 'his' ? 'upload' : 'generated',
     side,
     label: side === 'his' ? 'Foto kamu' : 'Foto Nina',
@@ -796,5 +807,56 @@ describe('NinaAboutScreen — the copy-admin-link control (R1/R3/R4)', () => {
     expect(window.location.search).toBe(`?${NINA_ABOUT_PHOTO_PARAM}=chat.c1`)
     expect(viewer()).not.toBeNull()
     expect(routerPush).not.toHaveBeenCalled()
+  })
+})
+
+/* ============================================================================
+ * media-thumbnails phase 4 — the grid draws the tile, the viewer draws the original
+ *
+ * This is the assertion the whole plan exists to make true, and it has to be made HERE rather
+ * than against `toCell`: that function is module-private, and what matters is not what it returns
+ * but what ends up in a live `<img src>`. A regression that reverted it would be invisible to a
+ * mapper test, because `NinaAlbumPhoto` would still carry both fields.
+ * ==========================================================================*/
+describe('media-thumbnails: grid tiles use thumb_url, fullscreen uses the original', () => {
+  const ORIGINAL = 'https://blob.example/nina/u1/chat/im-big.png'
+  const THUMB = 'https://blob.example/nina/u1/chat/thumb-im-big.jpg'
+
+  function withThumb(id: string): NinaGalleryPhoto {
+    return { ...galleryPhoto(id, 'hers'), url: ORIGINAL, thumbUrl: THUMB }
+  }
+
+  it('the Media grid renders the 256 px tile, never the megabyte original', () => {
+    render(<NinaAboutScreen {...props({ gallery: [withThumb('c1')] })} />)
+    fireEvent.click(screen.getByRole('tab', { name: 'Media' }))
+
+    const sources = [...document.querySelectorAll('img')].map((i) => i.getAttribute('src'))
+    expect(sources).toContain(THUMB)
+    expect(sources).not.toContain(ORIGINAL)
+  })
+
+  it('a row with NO thumbnail still renders — it falls back to the original', () => {
+    const bare: NinaGalleryPhoto = { ...galleryPhoto('c1', 'hers'), url: ORIGINAL, thumbUrl: null }
+    render(<NinaAboutScreen {...props({ gallery: [bare] })} />)
+    fireEvent.click(screen.getByRole('tab', { name: 'Media' }))
+
+    const sources = [...document.querySelectorAll('img')].map((i) => i.getAttribute('src'))
+    expect(sources).toContain(ORIGINAL)
+  })
+
+  it('opening the photo fullscreen swaps the tile for the original', () => {
+    // The open photo is DERIVED from the URL, never mirrored into state (see the `next/navigation`
+    // mock at the top of this file), and `router.push` is a spy here — so the viewer is opened the
+    // way every other overlay test in this file opens it, by writing the param first.
+    at('chat', 'c1')
+    renderScreen({ gallery: [withThumb('c1'), galleryPhoto('c2', 'hers')] })
+
+    // The viewer is showing the photograph. A 256 px upscale is not a cheaper version of the
+    // right picture, it is the wrong one — so `ViewerPhoto.url` must stay the original.
+    expect(viewer()?.getAttribute('data-url')).toBe(ORIGINAL)
+    // And the tile behind it is still the cheap one: opening a photo must not be what makes the
+    // grid expensive.
+    const sources = [...document.querySelectorAll('img')].map((i) => i.getAttribute('src'))
+    expect(sources).not.toContain(ORIGINAL)
   })
 })

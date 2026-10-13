@@ -80,11 +80,20 @@ export const NINA_ADMIN_PAGE_SIZE = 120
 /**
  * How many of HER conversation photographs `/admin/photos` renders per page — this round's R2.
  *
- * ── DELIBERATELY NOT `NINA_ADMIN_PAGE_SIZE`, AND THE DIFFERENCE IS A MISSING COLUMN ─────────
+ * ── DELIBERATELY NOT `NINA_ADMIN_PAGE_SIZE`, AND THE DIFFERENCE WAS A MISSING COLUMN ────────
  * Eight lines up, 120 is defensible because `nina_avatars.thumb_url` exists: an album page is 120
- * derived 256 px JPEGs, a few megabytes. `nina_message_images` has NO thumbnail column, so this
- * grid loads originals, and hers are 768x1024 PNGs (`NINA_IMAGE_WIDTH`/`NINA_IMAGE_HEIGHT`, written
- * by `finishSelfie`) on the order of a megabyte each. 120 of those is not a page, it is a download.
+ * derived 256 px JPEGs, a few megabytes. `nina_message_images` had NO thumbnail column, so this
+ * grid loaded originals, and hers are 768x1024 PNGs (`NINA_IMAGE_WIDTH`/`NINA_IMAGE_HEIGHT`,
+ * written by `finishSelfie`) on the order of a megabyte each. 120 of those is not a page, it is a
+ * download.
+ *
+ * **media-thumbnails phase 1 added the column** (see the "NO THUMBNAIL IS BEING ADDED" note
+ * below, which is kept rather than deleted because it is the record of what the deferral cost).
+ * 48 is NOT being raised on the strength of it, for two reasons: a backfilled `thumb_url` is
+ * nullable and a row that has none still fetches an original here, so the ceiling must stay
+ * survivable in the un-backfilled case; and 48's OTHER justification is unchanged — it is about
+ * seven rows in the admin shell and roughly a week of generations at the six-a-day cap. The
+ * number was over-determined. Only one of its reasons expired.
  *
  * 48 is about seven rows in the admin shell's grid, and roughly a week of generations at phase 12's
  * six-a-day cap — so the common case is one page and the pager is there for the archive, which is
@@ -95,12 +104,24 @@ export const NINA_ADMIN_PAGE_SIZE = 120
  * for more, so no hand-edited limit can turn one page into the unpaginated read this constant
  * exists to prevent.
  *
- * ── NO THUMBNAIL IS BEING ADDED TO CLOSE THIS GAP, AND `next/image` IS NOT THE WAY OUT ──────
- * A `thumb_url` column is a migration, which invariant 10 forbids in this plan.
- * `components/nina/NinaPhotoGrid.tsx:56-58` already ruled out `next/image` for Blob-hosted photos
- * outright — it re-optimises finished files on a paid transform quota — and
- * `components/admin/explorer/PhotoGrid.tsx:29-34` reaffirmed it. So the cost here is known, paid,
- * and bounded by this number plus `loading="lazy"`.
+ * ── THE DEFERRAL THAT COST A PRODUCTION OUTAGE, KEPT AS WRITTEN ─────────────────────────────
+ * This note used to read: *"NO THUMBNAIL IS BEING ADDED TO CLOSE THIS GAP, AND `next/image` IS
+ * NOT THE WAY OUT. A `thumb_url` column is a migration, which invariant 10 forbids in this plan…
+ * So the cost here is known, paid, and bounded by this number plus `loading='lazy'`."*
+ *
+ * Both halves were right about the code and wrong about the bound. `next/image` is still not the
+ * way out — `components/nina/NinaPhotoGrid.tsx:56-58` ruled it out for Blob-hosted photos
+ * outright (it re-optimises finished files on a paid transform quota) and
+ * `components/admin/explorer/PhotoGrid.tsx:29-34` reaffirmed it; neither is being revisited. But
+ * *"known, paid, and bounded"* measured the cost PER PAGE VIEW and the quota is charged per
+ * MONTH. 48 x ~1 MB is ~48 MB a view, and a 10 GB Hobby allowance is ~208 views. On 2026-10-13
+ * the Vercel Blob store was suspended account-wide (`limits-exceeded-suspended`) and every
+ * photograph in production served `403`.
+ *
+ * media-thumbnails phase 1 added the column that invariant 10 had deferred. The lesson worth
+ * keeping is not "add the column sooner" — it is that a per-view cost with no per-month ceiling
+ * beside it is an unbounded cost, and `loading="lazy"` bounds what a tab fetches, never what a
+ * month does.
  */
 export const NINA_CHAT_PHOTO_PAGE_SIZE = 48
 
@@ -196,6 +217,8 @@ export function describeSubjectForSide(side: NinaPhotoSide): 'self' | 'runner' {
 export interface AvatarLike {
   id: string
   blobUrl: string
+  /** F34 R1's derived grid tile, or NULL. Structural, so `NinaAvatarRow` keeps assigning here. */
+  thumbUrl: string | null
   width: number | null
   height: number | null
   description: string | null
@@ -214,6 +237,16 @@ export interface ImageLike {
   messageId: string | null
   kind: string
   blobUrl: string
+  /**
+   * media-thumbnails phase 4's derived grid tile, or NULL.
+   *
+   * **Optional, unlike `AvatarLike.thumbUrl`**, and the asymmetry is deliberate: `AvatarLike` is
+   * only ever built from a row, while `ImageLike` is the structural shape a dozen fixtures and
+   * two in-memory callers assemble by hand. A required field here would be a required field in
+   * every one of them to say "no thumbnail", which is the default anyway. `galleryPhotos`
+   * coalesces, so a builder that omits it gets the same NULL a row with no thumbnail gets.
+   */
+  thumbUrl?: string | null
   createdAt: Date
   /**
    * The 2026-09-18 fullscreen-to-job-detail link — `nina_turns.id`, or NULL for an upload or a
@@ -245,6 +278,18 @@ export interface NinaAvatarView {
 export interface NinaAlbumPhoto {
   id: string
   url: string
+  /**
+   * The derived 256 px tile, or NULL — media-thumbnails phase 4.
+   *
+   * **This is a GRID field, and `url` stays the viewer's.** The split is the whole point: a tile
+   * is ~96 px and must not cost a megabyte, while the fullscreen viewer is showing the photograph
+   * and must not show a 256 px upscale of it. So `toCell` reads this and `ViewerPhoto` reads
+   * `url`, and neither falls back to the other's.
+   *
+   * NULL is legal and permanent — a row whose derivation failed, or one the backfill has not
+   * reached — and the grid answers it by rendering `url`, which is what it did before this plan.
+   */
+  thumbUrl: string | null
   kind: 'avatar'
   label: string
   isCurrent: boolean
@@ -261,6 +306,15 @@ export interface NinaGalleryPhoto {
    */
   messageId: string | null
   url: string
+  /**
+   * The derived 256 px tile, or NULL — media-thumbnails phase 4. `NinaAlbumPhoto.thumbUrl`'s
+   * semantics exactly: a GRID field, never the viewer's, NULL falls back to `url`.
+   *
+   * This is the arm the plan exists for. Hers are 768x1024 PNGs on the order of a megabyte, and
+   * `NINA_ABOUT_MEDIA_PAGE_SIZE` (48) of them is ~48 MB per page view — the arithmetic that
+   * suspended the Blob store on 2026-10-13.
+   */
+  thumbUrl: string | null
   kind: string
   side: NinaPhotoSide
   label: string
@@ -318,6 +372,10 @@ export function albumPhotos(rows: readonly AvatarLike[]): NinaAlbumPhoto[] {
       {
         id: 'fallback',
         url: NINA_AVATAR_FALLBACK_SRC,
+        /* The committed constant is a repo-relative path to an asset Vercel serves from
+         * `public/`, not a Blob object — it costs no transfer and has no derived twin. NULL, and
+         * the grid renders `url`, which is the same file it always drew. */
+        thumbUrl: null,
         kind: 'avatar',
         label: NINA_ALBUM_LABEL,
         isCurrent: true,
@@ -328,6 +386,9 @@ export function albumPhotos(rows: readonly AvatarLike[]): NinaAlbumPhoto[] {
   return rows.slice(0, NINA_ALBUM_MAX).map((row) => ({
     id: row.id,
     url: row.blobUrl,
+    /* F34 R1's derived tile, straight through. NULL on a pre-F34 row or a failed derivation, and
+     * `toCell` answers NULL by falling back to `url`. */
+    thumbUrl: row.thumbUrl,
     kind: 'avatar' as const,
     label: NINA_ALBUM_LABEL,
     isCurrent: row.isCurrent,
@@ -359,6 +420,9 @@ export function galleryPhotos(rows: readonly ImageLike[]): NinaGalleryPhoto[] {
       id: row.id,
       messageId: row.messageId,
       url: row.blobUrl,
+      /* media-thumbnails phase 4's derived tile. NULL until the backfill reaches this row, and
+       * `toCell` answers NULL by falling back to `url` — the pre-plan behaviour, unchanged. */
+      thumbUrl: row.thumbUrl ?? null,
       kind: row.kind,
       side,
       label: NINA_SIDE_LABEL[side],

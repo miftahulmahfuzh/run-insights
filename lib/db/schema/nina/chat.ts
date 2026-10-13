@@ -648,6 +648,45 @@ export const ninaMessageImages = pgTable(
     blobUrl: text('blob_url').notNull(),
     /** `nina/<userId>/…` (RU-7). The reaper's future handle on these — see Handoffs. */
     pathname: text('pathname').notNull(),
+    /**
+     * ── THE DERIVED THUMBNAIL (`thumb_url`, `thumb_pathname`) — media-thumbnails phase 1 ──────
+     *
+     * `nina_avatars.thumb_url`'s design, on this table, for the reason that column's header
+     * already argues and this table spent a quota proving. `lib/nina/album.ts:99` deferred it in
+     * writing — *"A `thumb_url` column is a migration, which invariant 10 forbids in this plan"* —
+     * and priced the consequence two lines up: hers are 768x1024 PNGs *"on the order of a megabyte
+     * each"*, so `NINA_CHAT_PHOTO_PAGE_SIZE` (48) of them is ~48 MB **per page view**. On
+     * 2026-10-13 that arithmetic suspended the Blob store account-wide at ~208 page views against
+     * a 10 GB Hobby allowance, and every photograph in production served `403`.
+     *
+     * Neither escape is being reopened: `components/nina/NinaPhotoGrid.tsx:56-58` refuses
+     * `next/image` on Blob-hosted photos (*"would re-optimise finished files on a paid transform
+     * quota"*), and the no-re-encode rule means the ORIGINAL still goes up whole. This is a
+     * SECOND, small object beside it.
+     *
+     * Two columns and not one, verbatim from `nina_avatars`: `thumb_url` is what a grid renders,
+     * `thumb_pathname` is the STORED pathname — the only thing that lets a delete remove both
+     * objects, because Blob appends its own random suffix and a derivable pathname is therefore a
+     * guess. Recording a URL without its pathname is how a table accumulates orphans only a store
+     * listing can find.
+     *
+     * **Both NULL is a legal, permanent state** — every pre-migration row, and any row whose
+     * derivation failed — and a renderer falls back to `blob_url`, which is correct if expensive
+     * and is what every grid does today anyway. That is what makes this migration safe on a
+     * populated table and the backfill resumable.
+     *
+     * ── THESE COLUMNS ARE REFERENCE SITES, AND MISSING ONE DELETES DATA ──────────────────────
+     * `scripts/blob-reap.mjs` deletes any blob no enumerated column names, and
+     * `isBlobPathnameReferenced` (`lib/nina/queries/images.ts`) is what stands between a
+     * Replace/Remove and deleting bytes somebody still renders. Both enumerate columns BY HAND and
+     * both must list these two. The reaper's own header records the near-miss from the album's
+     * round: *"Omitting these two columns would have deleted every thumbnail."* They were added to
+     * both sites in the same phase as this column, deliberately, and before anything wrote a
+     * thumbnail.
+     */
+    thumbUrl: text('thumb_url'),
+    /** The thumbnail's STORED Blob pathname — the only thing that lets a delete remove it too. */
+    thumbPathname: text('thumb_pathname'),
     width: integer('width'),
     height: integer('height'),
     bytes: integer('bytes'),

@@ -1,4 +1,9 @@
-import { longEdgeTargetFor } from '@/lib/photos/resizeTarget'
+import {
+  PHOTO_THUMB_CONTENT_TYPE,
+  PHOTO_THUMB_QUALITY,
+  PHOTO_THUMB_SHORT_EDGE_PX,
+  thumbnailTargetFor,
+} from '@/lib/photos/thumbnailSpec'
 
 /**
  * The derived thumbnail — the answer to "hundreds of profile pics" in a grid that may not use
@@ -27,35 +32,34 @@ import { longEdgeTargetFor } from '@/lib/photos/resizeTarget'
  * surface, and a three-hundred-file folder that forgets to release them will be killed by the tab's
  * memory ceiling long before it finishes. Hence the `finally`.
  *
- * ── THE TWO NUMBERS BELOW ARE THE CLIENT'S OWN ──────────────────────────────────────────────
- * Nothing on the server re-encodes anything, so no other module has to agree with the short edge or
- * the quality. Only three things cross the boundary and they are all phase 1's and phase 4's:
- * `adminAvatarThumbPathname`, the content type, and `ADMIN_AVATAR_THUMB_MAX_UPLOAD_BYTES` (which
- * Blob enforces at PUT time, not this file). That is why these live here and not in
- * `lib/admin/avatars.ts` — a constant is shared when it is *agreed on*, and these are not.
+ * ── THE TWO NUMBERS MOVED OUT, BECAUSE THEIR PREMISE EXPIRED ────────────────────────────────
+ * This header used to read: *"THE TWO NUMBERS BELOW ARE THE CLIENT'S OWN. Nothing on the server
+ * re-encodes anything, so no other module has to agree with the short edge or the quality… a
+ * constant is shared when it is **agreed on**, and these are not."* Correct then, and its own
+ * stated condition is what retired it.
  *
- * The reconciler agreed and deleted phase 1's draft `ADMIN_AVATAR_THUMB_EDGE_PX = 384`: it had
- * different semantics (long edge, not short), a different value, and no reader on the server. Two
- * constants naming one thing with two numbers is the failure this repo's "one home" rule exists to
- * prevent, and the home is here.
+ * media-thumbnails phase 2 added a SERVER encoder (`lib/photos/deriveThumbnail.ts`, sharp),
+ * because two write paths have no browser in them at all — her generated selfies come out of
+ * `scripts/nina-image-worker`, and the three backfills read originals out of Blob on a server. The
+ * numbers are agreed on now, by two encoders, so by that rule they moved to one home:
+ * `lib/photos/thumbnailSpec.ts`. The values are unchanged; only the address is.
+ *
+ * The failure the old note was guarding against is unchanged too, and is now guarded better: two
+ * encoders with two short edges would make a grid where a tile's sharpness depended on which path
+ * uploaded it, and nothing would ever flag it.
+ *
+ * The reconciler's earlier deletion of phase 1's draft `ADMIN_AVATAR_THUMB_EDGE_PX = 384` stands
+ * and is the same rule being applied: one thing, one number, one home.
  */
 
 /**
- * 256 px on the SHORT edge. The grid draws at ~96 px, which is `size-24` — exactly what
- * `AlbumManager.tsx:218` drew — so 256 covers a 2x display with room to spare, and it is the same
- * number as `ADMIN_AVATAR_MIN_EDGE_PX`: a file we accept at all is never upscaled by this.
+ * Re-exported under their F34 names so the existing call sites and tests keep reading the way they
+ * were written. These are aliases of `lib/photos/thumbnailSpec.ts`'s constants — **not** second
+ * definitions. A new caller should import the spec directly.
  */
-export const EXPLORER_THUMB_SHORT_EDGE_PX = 256
-
-/** 0.82 — visually clean at 96 px and lands a 256 px face around 15–25 KB. */
-export const EXPLORER_THUMB_QUALITY = 0.82
-
-/**
- * JPEG, always, whatever the original was. It is a display derivative, so transparency is
- * meaningless and the container that decodes fastest wins. It is also already in
- * `ADMIN_AVATAR_CONTENT_TYPES`, so the upload route's `allowedContentTypes` needs no new member.
- */
-export const EXPLORER_THUMB_CONTENT_TYPE = 'image/jpeg'
+export const EXPLORER_THUMB_SHORT_EDGE_PX = PHOTO_THUMB_SHORT_EDGE_PX
+export const EXPLORER_THUMB_QUALITY = PHOTO_THUMB_QUALITY
+export const EXPLORER_THUMB_CONTENT_TYPE = PHOTO_THUMB_CONTENT_TYPE
 
 export interface MeasuredFile {
   width: number
@@ -94,10 +98,9 @@ async function drawThumbnail(
 ): Promise<Blob | null> {
   if (typeof OffscreenCanvas === 'undefined') return null
   try {
-    const longEdge = longEdgeTargetFor(width, height, EXPLORER_THUMB_SHORT_EDGE_PX)
-    const scale = longEdge / Math.max(width, height)
-    const targetWidth = Math.max(1, Math.round(width * scale))
-    const targetHeight = Math.max(1, Math.round(height * scale))
+    // The box arithmetic is the spec's, so this encoder and the sharp one cannot disagree about
+    // what "256 px short edge, never upscaled" means. See `lib/photos/thumbnailSpec.ts`.
+    const { width: targetWidth, height: targetHeight } = thumbnailTargetFor(width, height)
 
     const canvas = new OffscreenCanvas(targetWidth, targetHeight)
     const context = canvas.getContext('2d')

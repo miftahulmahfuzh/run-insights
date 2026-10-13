@@ -24,6 +24,7 @@ function avatar(over: Partial<AvatarLike> = {}): AvatarLike {
   return {
     id: 'av000000000a',
     blobUrl: 'https://blob.example/nina/u1/avatar-av000000000a.jpg',
+    thumbUrl: null,
     width: 1024,
     height: 1365,
     description: 'selfie di Jalan Kemang Selatan sore-sore',
@@ -253,5 +254,49 @@ describe("/nina/about page sizes — each stride is its read's ceiling", () => {
     expect(NINA_ABOUT_PROFILE_PAGE_COOKIE).toBe('nina-about-ppage-99')
     // Two tabs, two keys — a shared name would let one tab's page number be read as the other's.
     expect(NINA_ABOUT_MEDIA_PAGE_COOKIE).not.toBe(NINA_ABOUT_PROFILE_PAGE_COOKIE)
+  })
+})
+
+/* ============================================================================
+ * media-thumbnails phase 4 — the derived tile reaches the mappers
+ *
+ * The grid/viewer SPLIT itself is asserted in `tests/nina.aboutPhoto.test.ts`, where `toCell`
+ * lives. These cover the half that is this file's: that both mappers carry `thumb_url` through
+ * rather than dropping it, and that NULL survives as NULL so the renderer's `?? url` is reachable.
+ * ==========================================================================*/
+describe('media-thumbnails: thumbUrl passes through the mappers', () => {
+  it('albumPhotos carries a derived thumbnail through', () => {
+    const [photo] = albumPhotos([
+      avatar({ thumbUrl: 'https://blob.example/nina/u1/thumb-av000000000a.jpg' }),
+    ])
+    expect(photo?.thumbUrl).toBe('https://blob.example/nina/u1/thumb-av000000000a.jpg')
+    // The original is untouched: the viewer reads this field and must not get the tile.
+    expect(photo?.url).toBe('https://blob.example/nina/u1/avatar-av000000000a.jpg')
+  })
+
+  it('albumPhotos keeps NULL as NULL, so the renderer can fall back', () => {
+    const [photo] = albumPhotos([avatar({ thumbUrl: null })])
+    expect(photo?.thumbUrl).toBeNull()
+  })
+
+  it('the synthetic fallback album entry has no thumbnail', () => {
+    // It is a `public/` asset, not a Blob object: no transfer to save and no derived twin.
+    const [photo] = albumPhotos([])
+    expect(photo?.url).toBe(NINA_AVATAR_FALLBACK_SRC)
+    expect(photo?.thumbUrl).toBeNull()
+  })
+
+  it('galleryPhotos carries a derived thumbnail through', () => {
+    const [photo] = galleryPhotos([
+      image({ thumbUrl: 'https://blob.example/nina/u1/chat/thumb-im000000000a.jpg' }),
+    ])
+    expect(photo?.thumbUrl).toBe('https://blob.example/nina/u1/chat/thumb-im000000000a.jpg')
+  })
+
+  it('galleryPhotos coalesces an OMITTED thumbUrl to null, not undefined', () => {
+    // `ImageLike.thumbUrl` is optional because a dozen fixtures build the shape by hand; the
+    // mapper's output type is not, so the coalesce has to happen here rather than at the renderer.
+    const [photo] = galleryPhotos([image({})])
+    expect(photo?.thumbUrl).toBeNull()
   })
 })

@@ -88,6 +88,22 @@ export const imageColumns = {
    * field after it rather than fail loudly. See the column's own header
    * (`lib/db/schema/nina/chat.ts`) for what it is. */
   turnId: ninaMessageImages.turnId,
+  /* media-thumbnails phase 4. The derived grid tile and its STORED pathname — the pair
+   * `nina_avatars` has carried since F34 R1 and this table went without, at a cost of ~48 MB per
+   * Media page view (`NINA_CHAT_PHOTO_PAGE_SIZE` x ~1 MB originals) that suspended the Blob store
+   * on 2026-10-13.
+   *
+   * APPENDED, and the three notes above say why in three different rounds' words: every
+   * `imageRow()` fixture under `tests/` is a POSITIONAL projection of this exact list, so a field
+   * inserted anywhere above silently re-assigns every field after it — including the two
+   * provenance ids the adoption guard reads — rather than failing loudly. The pair goes at the
+   * end, together, in that order.
+   *
+   * `thumbPathname` is projected and not merely `thumbUrl` because a delete needs it: it is the
+   * STORED pathname Blob returned, which carries a random suffix and is therefore not derivable
+   * from the row. See the column's header. */
+  thumbUrl: ninaMessageImages.thumbUrl,
+  thumbPathname: ninaMessageImages.thumbPathname,
 }
 
 /** Internal — shared with sibling query modules; never re-exported by the barrel. */

@@ -992,11 +992,27 @@ export function NinaAboutScreen({
   )
 }
 
-/** Both photo types are already `{ id, url, label }` plus, for the album, `isCurrent`. */
+/**
+ * Both photo types are already `{ id, url, label }` plus, for the album, `isCurrent`.
+ *
+ * ── THE GRID GETS `thumbUrl`; THE VIEWER KEEPS `url` ────────────────────────────────────────
+ * media-thumbnails phase 4, and this one line is where the saving actually happens. Everything
+ * else in the plan — the columns, the encoders, the backfills — exists to make `photo.thumbUrl`
+ * non-NULL so that this expression picks the 256 px tile instead of the original.
+ *
+ * `albumViewer` and `galleryViewer` above deliberately do NOT do this: the fullscreen viewer is
+ * showing the photograph, and a 256 px upscale of it is not a cheaper version of the right
+ * picture, it is the wrong one. A tile is ~96 px and must not cost a megabyte; the viewer is one
+ * image a human asked for. Two readers, two fields, no fallback between them.
+ *
+ * `?? photo.url` is the whole degradation story: a pre-backfill row, a derivation that failed, and
+ * the album's synthetic `fallback` entry (a `public/` asset with no Blob twin) all render exactly
+ * as they did before this plan.
+ */
 function toCell(photo: NinaAlbumPhoto | NinaGalleryPhoto): NinaGridCell {
   return {
     id: photo.id,
-    url: photo.url,
+    url: photo.thumbUrl ?? photo.url,
     label: photo.label,
     isCurrent: (photo as NinaAlbumPhoto).isCurrent === true,
   }
