@@ -310,6 +310,55 @@ export async function updateNinaAvatarBlob(
 }
 
 /**
+ * **The guarded thumbnail write, album side** — `updateNinaChatPhotoThumbnail`'s twin, and the
+ * same half of the same fix: `updateNinaAvatarBlob` retracts the pair at byte-swap time, this
+ * earns a new one for the bytes the row now serves.
+ *
+ * ── IT IS ADDRESSED BY ID, WHERE THE MEDIA ONE IS ADDRESSED BY PATHNAME ─────────────────────
+ * Not an inconsistency — the two tables have different populations sharing a pathname, and the
+ * doctrine has to be spelled where it differs. In `nina_message_images` every row serving these
+ * bytes is a row that should draw this tile, so pathname IS the address. In `nina_avatars` a row
+ * can share a pathname by being a POINTER at a Media original (`source_image_id` set), and a
+ * pointer takes NULL by a standing ruling — *"nothing generates a thumbnail for a link"*
+ * (`relinkNinaAvatarToImage`'s contract, and `updateNinaChatPhotoBlob`'s Decision D1). A
+ * pathname-addressed write here would quietly overturn that ruling on every album replace.
+ *
+ * So: this row, by id. Its chat references are `updateNinaChatPhotoThumbnail`'s to fill, through
+ * the pathname they now share — one derivation, two statements, every row that renders those
+ * bytes and is allowed to carry a tile.
+ *
+ * `pathname` is still in the WHERE, as the race guard: a second replace mid-flight moves the row
+ * to other bytes and this becomes a 0-row no-op rather than pinning v1's tile to a v2 row.
+ * `thumb_url IS NULL` keeps it strictly additive, so it can never orphan a tile a row already
+ * holds — `updateNinaChatPhotoThumbnail`'s header argues both at length.
+ *
+ * `source_image_id IS NULL` is the pointer refusal stated a second time, agreeing with
+ * `updateNinaAvatarBlob`'s own: a caller that hands this a pointer id writes nothing.
+ */
+export async function updateNinaAvatarThumbnail(
+  userId: string,
+  id: string,
+  pathname: string,
+  thumb: { blobUrl: string; pathname: string },
+): Promise<number> {
+  const written = await db
+    .update(ninaAvatars)
+    .set({ thumbUrl: thumb.blobUrl, thumbPathname: thumb.pathname })
+    .where(
+      and(
+        eq(ninaAvatars.userId, userId),
+        eq(ninaAvatars.id, id),
+        eq(ninaAvatars.pathname, pathname),
+        isNull(ninaAvatars.thumbUrl),
+        isNull(ninaAvatars.sourceImageId),
+      ),
+    )
+    .returning({ id: ninaAvatars.id })
+
+  return written.length
+}
+
+/**
  * R25. What the picture DEPICTS, so "itu lagi dimana?" has an answer. Three writers, three
  * origins: phase 12 writes from its own generation prompt, phase 14 and phase 15 write what
  * phase 6's `glm-4.6v` describe pre-pass came back with. Separate from

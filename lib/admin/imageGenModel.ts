@@ -173,7 +173,14 @@ export interface ImageReferenceOption {
   /** `referenceKey(...)` of this photograph. The exact string the save persists. */
   key: string
   url: string
-  /** `null` for a chat photograph — `nina_message_images` has no `thumb_url` column. */
+  /**
+   * The derived tile, or `null` when the row has none and the grid must draw the original.
+   *
+   * This read *"`null` for a chat photograph — `nina_message_images` has no `thumb_url` column"*
+   * until media-thumbnails added the pair (migration 0037) and `listNinaPhotoReferences` started
+   * projecting it (2026-10-14). Both sets carry a tile now; `null` means "not derived yet", not
+   * "not that kind of row".
+   */
   thumbUrl: string | null
 }
 

@@ -9,6 +9,7 @@ import type { AdminActionResult } from '@/lib/admin/ninaAlbumActions'
 import { scheduleDescribe } from '@/lib/admin/ninaAlbumDeferredDescribe'
 import { scheduleMediaDescribe } from '@/lib/admin/ninaMediaDeferredDescribe'
 import { requireAdmin } from '@/lib/admin/requireAdmin'
+import { scheduleReplacedThumbnail } from '@/lib/admin/ninaReplacedThumbnail'
 import { avatarIdSchema, avatarReplaceSchema, cropWriteSchema } from '@/lib/admin/schema'
 import { clampCrop, cropForWrite, isIdentityCrop, resolveCrop } from '@/lib/nina/crop'
 import {
@@ -284,6 +285,12 @@ export async function saveNinaAvatarCropAction(input: unknown): Promise<AdminAct
  * either old object, so both releases normally come back `'deleted'`. A `'shared'` answer now
  * means a row outside this photograph's own family names the bytes, for example a legacy album
  * copy Phase 3 has not repaired yet. That is still worth the note.
+ *
+ * ── AND A NEW TILE IS EARNED FOR THE NEW BYTES (the Replace regression, 2026-10-14) ─────────
+ * Nulling alone is only half the fix. It ends the WRONG picture — a tile rendered from the bytes
+ * that are gone — and leaves the DEGRADED one, a grid downloading the full original for this row
+ * forever. `scheduleReplacedThumbnail` is the other half, shared with the Media folder's Replace
+ * and with the Photoshop one; its module header has the whole argument.
  */
 export async function replaceNinaAvatarAction(input: unknown): Promise<AdminActionResult> {
   const { userId } = await requireAdmin()
@@ -334,6 +341,12 @@ export async function replaceNinaAvatarAction(input: unknown): Promise<AdminActi
   /* The write nulled description/keywords/embedding — re-earn the prose for the NEW bytes, same
    * reason `replaceChatPhotoAction` re-captions. */
   scheduleDescribe(userId, id)
+  /* And it nulled the thumbnail pair, which the release three lines up has just freed. Until the
+   * Replace regression (2026-10-14) nothing re-derived one, so an album photograph replaced here
+   * rendered its full-size original in every grid until the next `thumbs:backfill` — correct, and
+   * exactly the per-tile transfer the feature exists to stop. The pass also fills the chat
+   * references `updateNinaAvatarBlob` moved onto these bytes, through the pathname they share. */
+  scheduleReplacedThumbnail(userId, { kind: 'avatar', id })
 
   revalidatePath('/admin/nina')
   return { ok: true, id, ...(note === undefined ? {} : { note }) }

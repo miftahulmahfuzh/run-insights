@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { NINA_CHAT_PHOTO_PAGE_SIZE } from '@/lib/nina/album'
 
-import { installFakeDb, uninstallFakeDb, type FakeDb } from './support/fakeDb'
+import { installFakeDb, projectedRow, uninstallFakeDb, type FakeDb } from './support/fakeDb'
 
 /**
  * **F37 R1/R3's contract, asserted against generated SQL rather than against a spy.**
@@ -105,6 +105,63 @@ describe('the collection listings skip a reference (R1, R3)', () => {
     expect(fake.queries).toHaveLength(2)
     const where = whereOf(fake.sqlAt(1))
     for (const predicate of REFERENCE_SKIPPED) expect(where, predicate).toContain(predicate)
+  })
+})
+
+/* media-thumbnails follow-up (2026-10-14). Phase 4 shipped as "every grid reads the tile" and
+ * this read was the one that did not: its chat arm projected no `thumb_url` and the mapper bound
+ * `thumbUrl: null` for every media row, under a note that was true until migration 0037 added the
+ * column the day before. The "Ganti foto referensi" picker was consequently the last grid in the
+ * app still downloading a full original per tile. */
+describe('the reference picker reads the tile, from BOTH tables', () => {
+  it('projects thumb_url on the chat arm, not just the album one', async () => {
+    fake.enqueue([], [])
+    await queries.listNinaPhotoReferences('u1')
+
+    expect(fake.queries).toHaveLength(2)
+    // Drizzle strips the table qualifier inside a `select()` projection, so the column is matched
+    // bare and the TABLE is matched on the `from` — `tests/nina.softDelete.test.ts`'s rule.
+    for (const [index, table] of [
+      [0, 'nina_avatars'],
+      [1, 'nina_message_images'],
+    ] as const) {
+      const sql = fake.sqlAt(index)
+      expect(sql.slice(0, sql.indexOf(' from ')), table).toContain('"thumb_url"')
+      expect(sql, table).toContain(`from "${table}"`)
+    }
+  })
+
+  it('hands the grid the row’s own tile rather than a hard-coded null', async () => {
+    // The projection order is the `select({...})` key order: id, blobUrl, thumbUrl, width, …
+    fake.enqueue(
+      [],
+      [
+        projectedRow(
+          'img1AAAAAAAA',
+          'https://b/o.png',
+          'https://b/t.jpg',
+          768,
+          1024,
+          new Date(0),
+          null,
+        ),
+      ],
+    )
+    const page = await queries.listNinaPhotoReferences('u1')
+
+    expect(page.rows).toHaveLength(1)
+    expect(page.rows[0]).toMatchObject({ source: 'chat', thumbUrl: 'https://b/t.jpg' })
+  })
+
+  it('still answers null for a row whose derivation has not landed', async () => {
+    fake.enqueue(
+      [],
+      [projectedRow('img2AAAAAAAA', 'https://b/o.png', null, 768, 1024, new Date(0), null)],
+    )
+    const page = await queries.listNinaPhotoReferences('u1')
+
+    // NULL is a legal permanent state; the tile falls back to the original, as it always has.
+    expect(page.rows[0]).toMatchObject({ source: 'chat', thumbUrl: null })
   })
 })
 

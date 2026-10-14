@@ -267,6 +267,10 @@ const BARREL_VALUE_EXPORTS = [
   'setNinaSessionTitleIfUntitled',
   'updateNinaAvatarBlob',
   'updateNinaAvatarCrop',
+  // media-thumbnails Replace regression (2026-10-14): `updateNinaChatPhotoThumbnail`'s album-side
+  // twin, addressed by id rather than by pathname because `nina_avatars` can hold a POINTER at
+  // the same pathname and a pointer takes NULL. Documented growth; argued at the function.
+  'updateNinaAvatarThumbnail',
   'updateNinaChatPhotoBlob',
   'updateNinaChatPhotoDescription',
   // ghost-signature fix (2026-09-15): the pathname-guarded re-sign write behind

@@ -110,7 +110,14 @@ beforeEach(() => {
 
 describe('resolvePhotoshopReplace — row first, blob second', () => {
   it('album source: reads, writes, resolves, then releases the old object AND the old thumbnail', async () => {
-    await expect(resolvePhotoshopReplace(USER, JOB)).resolves.toEqual({ ok: true })
+    // The Replace regression (2026-10-14): the outcome NAMES the row it rewrote, because the
+    // write retracted that row's thumbnail pair and `resolvePhotoshopJobAction` has to schedule
+    // a re-derive for it. Two loose fields, never an object — the type's header says why.
+    await expect(resolvePhotoshopReplace(USER, JOB)).resolves.toEqual({
+      ok: true,
+      replacedKind: 'avatar',
+      replacedId: AVATAR,
+    })
 
     expect(order).toEqual(['read', 'write', 'resolve', 'release', 'release'])
     expect(releaseBlobIfUnreferenced).toHaveBeenNthCalledWith(1, USER, {
@@ -124,10 +131,14 @@ describe('resolvePhotoshopReplace — row first, blob second', () => {
     expect(resolveNinaPhotoshopJob).toHaveBeenCalledWith(USER, JOB, 'replaced')
   })
 
-  it('Media source: releases the old object only — a chat row has no thumbnail', async () => {
+  it('Media source: releases the old object only — this fixture row carries no thumbnail', async () => {
     getNinaPhotoshopJob.mockResolvedValue(job({ sourceKind: 'message_image', sourceId: IMAGE }))
 
-    await expect(resolvePhotoshopReplace(USER, JOB)).resolves.toEqual({ ok: true })
+    await expect(resolvePhotoshopReplace(USER, JOB)).resolves.toEqual({
+      ok: true,
+      replacedKind: 'image',
+      replacedId: IMAGE,
+    })
 
     expect(order).toEqual(['read', 'write', 'resolve', 'release'])
     expect(updateNinaChatPhotoBlob).toHaveBeenCalledWith(
@@ -181,6 +192,20 @@ describe('resolvePhotoshopReplace — row first, blob second', () => {
   it('a kept ("shared") object does not fail the replace', async () => {
     releaseBlobIfUnreferenced.mockResolvedValue('shared')
 
-    await expect(resolvePhotoshopReplace(USER, JOB)).resolves.toEqual({ ok: true })
+    await expect(resolvePhotoshopReplace(USER, JOB)).resolves.toEqual({
+      ok: true,
+      replacedKind: 'avatar',
+      replacedId: AVATAR,
+    })
+  })
+
+  it('a refusal names no row, so nothing is scheduled to re-derive a tile', async () => {
+    // `add` and `discard` never reach this function at all; a refused REPLACE is the case that
+    // could wrongly schedule one, and the fields are absent rather than null for that reason.
+    updateNinaAvatarBlob.mockResolvedValue(null)
+
+    const outcome = await resolvePhotoshopReplace(USER, JOB)
+    expect(outcome).not.toHaveProperty('replacedKind')
+    expect(outcome).not.toHaveProperty('replacedId')
   })
 })

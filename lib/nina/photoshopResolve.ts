@@ -13,7 +13,33 @@ import {
 import { getNinaPhotoshopJob, resolveNinaPhotoshopJob } from './photoshopJobs'
 
 export type NinaPhotoshopResolveOutcome =
-  | { ok: true }
+  | {
+      ok: true
+      /**
+       * media-thumbnails follow-up (2026-10-14). WHICH row a successful replace rewrote, so the
+       * action can schedule the tile pass for it — the replace retracted the row's thumbnail pair
+       * in the same statement as the byte swap, and something has to earn a new one.
+       *
+       * TWO LOOSE FIELDS rather than one `{ kind, id }` object, and that is about LAYERING, not
+       * taste. The consumer of this is `scheduleReplacedThumbnail`, which lives in `lib/admin/`
+       * because it is an `after()` scheduler; `lib/admin/*` imports from `lib/nina/*` throughout
+       * the repo and nothing goes the other way. Importing its parameter type here — even as a
+       * type — would make this file the single inverted edge. The action reassembles the object
+       * at the call site, where both layers are already in scope and `tsc` checks the match.
+       *
+       * Not reused from `lib/photos/pointer.ts`'s `PhotoPointerKind` either: that union carries
+       * a third case, `'shot'`, which the scheduler cannot serve (there is no `run_photos`
+       * replace path and no reader for one), and that module's own header is the argument —
+       * *"the union that is missing a case is the one that must not grow"*.
+       *
+       * Both are optional because `resolvePhotoshopAdd` and `resolvePhotoshopDiscard` share this
+       * type and neither replaces bytes under an existing row: an add writes a FRESH album row
+       * (whose own tile is a separate gap, filled by `npm run thumbs:backfill`) and a discard
+       * writes nothing at all. Absent means "nothing had its tile retracted".
+       */
+      replacedKind?: 'avatar' | 'image'
+      replacedId?: string
+    }
   | { ok: false; reason: 'not-found' | 'not-ready' | 'already-resolved' | 'source-unavailable' }
 
 /** The photo a job's `sourceKind`/`sourceId` names, resolved fresh — never cached, never carried
@@ -118,7 +144,15 @@ export async function resolvePhotoshopReplace(
   for (const ref of replacedObjects(before, patch.pathname)) {
     await releaseBlobIfUnreferenced(userId, ref)
   }
-  return { ok: true }
+  /* The write nulled this row's thumbnail pair (both tables do, since the Replace regression) and
+   * the loop above has just freed the old object. Naming the row here is what lets the ACTION
+   * schedule the re-derive: this module is a plain server module with no `after()` of its own,
+   * and the pass belongs on the same `after()` queue as every other deferred admin write. */
+  return {
+    ok: true,
+    replacedKind: job.sourceKind === 'avatar' ? 'avatar' : 'image',
+    replacedId: job.sourceId,
+  }
 }
 
 /** The objects a replace stopped naming: the original's own bytes (unless the job somehow handed
@@ -132,9 +166,9 @@ export async function resolvePhotoshopReplace(
  * and `updateNinaChatPhotoBlob` each null their row's pair in the same statement as the byte swap.
  * Before that fix this call was simply a no-op for a chat row — `isBlobPathnameReferenced` saw the
  * row still naming its own stale tile and answered `'shared'`, so nothing was deleted and nothing
- * broke, but the tile stayed on screen. A photoshop replace leaves the row tile-less; nothing
- * re-derives one here (`npm run thumbs:backfill` is what fills it), so the Media grid falls back
- * to the full-size original for that row until it runs. */
+ * broke, but the tile stayed on screen. The row is left tile-less for as long as it takes
+ * `scheduleReplacedThumbnail` to run — this function names the row it rewrote so the action can
+ * schedule that pass. */
 function replacedObjects(
   before: {
     blobUrl: string

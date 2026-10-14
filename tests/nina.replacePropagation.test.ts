@@ -357,6 +357,47 @@ describe('updateNinaChatPhotoThumbnail — one tile for every row serving those 
   })
 })
 
+/* The album-side twin. Same fix, same two halves, and the ADDRESS is the one deliberate
+ * difference between them — `nina_avatars` can hold a POINTER at the same pathname, and a pointer
+ * takes NULL by a standing ruling. */
+describe('updateNinaAvatarThumbnail — this album row, never a pointer sharing its bytes', () => {
+  const THUMB = {
+    blobUrl: `${STORE}/nina/${USER}/thumb-avatar-${AVATAR}-new.jpg`,
+    pathname: `nina/${USER}/thumb-avatar-${AVATAR}-new.jpg`,
+  }
+
+  it('writes the pair, addressed by id and guarded on the pathname and the empty tile', async () => {
+    fake.enqueue([{ id: AVATAR }])
+    await expect(
+      queries.updateNinaAvatarThumbnail(USER, AVATAR, NEW_PATHNAME, THUMB),
+    ).resolves.toBe(1)
+
+    const { sql, params } = fake.queries[0]!
+    expect(sql).toMatch(/^update "nina_avatars" set/)
+    expect(setOf(sql)).toContain('"thumb_url" = $')
+    expect(setOf(sql)).toContain('"thumb_pathname" = $')
+    const where = whereOf(sql)
+    expect(where).toContain('"user_id" = $')
+    expect(where).toContain('"id" = $')
+    expect(where).toContain('"pathname" = $')
+    expect(where).toContain('"thumb_url" is null')
+    expect(params).toContain(AVATAR)
+    expect(params).toContain(NEW_PATHNAME)
+    expect(params).toContain(THUMB.blobUrl)
+  })
+
+  it('refuses a POINTER, which owns no bytes and takes NULL by doctrine', async () => {
+    fake.enqueue([])
+    await expect(
+      queries.updateNinaAvatarThumbnail(USER, AVATAR, NEW_PATHNAME, THUMB),
+    ).resolves.toBe(0)
+
+    // The second agreeing check, `updateNinaAvatarBlob`'s own guard restated: a pathname-addressed
+    // write here would have silently given every pointer a tile.
+    expect(whereOf(fake.sqlAt(0))).toContain('"source_image_id" is null')
+  })
+})
+
 describe('after the batch, the release deletes the old object', () => {
   it('asks both tables about the OLD object and deletes it when nothing names it', async () => {
     await queries.updateNinaChatPhotoBlob(USER, IMAGE, PATCH)

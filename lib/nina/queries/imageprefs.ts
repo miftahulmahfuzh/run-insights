@@ -292,6 +292,14 @@ export async function listNinaPhotoReferences(
       .select({
         id: ninaMessageImages.id,
         blobUrl: ninaMessageImages.blobUrl,
+        /* media-thumbnails follow-up (2026-10-14). This projection did not exist and the mapper
+         * below bound `thumbUrl: null` for every media row, under the note *"`nina_message_images`
+         * has no `thumb_url` column… the plan's Scope rules out adding the column"* — true until
+         * migration 0037 added it the day before. The consequence was that the
+         * "Ganti foto referensi" picker was the one grid in the app still downloading a full
+         * original per tile, which phase 4 ("every grid reads the tile") had declared closed.
+         * `ninaPhotoRefPreloadUrls` reads the same field, so the adjacent pages warm as tiles too. */
+        thumbUrl: ninaMessageImages.thumbUrl,
         width: ninaMessageImages.width,
         height: ninaMessageImages.height,
         createdAt: ninaMessageImages.createdAt,
@@ -305,13 +313,9 @@ export async function listNinaPhotoReferences(
   /* `as const` on the discriminator rather than relying on the annotation's contextual type: this
    * is the one place a widened `string` would turn a compile error into a row the grid cannot key. */
   const album: NinaPhotoRef[] = albumRows.map((row) => ({ source: 'album' as const, ...row }))
-  /* `nina_message_images` has no `thumb_url` column, so the grid loads the original — which is what
-   * `ChatPhotoGrid` already knowingly does, and the plan's Scope rules out adding the column. */
-  const chat: NinaPhotoRef[] = chatRows.map((row) => ({
-    source: 'chat' as const,
-    thumbUrl: null,
-    ...row,
-  }))
+  /* Both arms now carry a real `thumbUrl`, so neither binds a literal. NULL still reaches the grid
+   * from a row whose derivation has not landed, and the tile renders `thumbUrl ?? blobUrl`. */
+  const chat: NinaPhotoRef[] = chatRows.map((row) => ({ source: 'chat' as const, ...row }))
 
   const deduped = dedupeNinaPhotoRefs(mergeNinaPhotoRefs(album, chat))
 

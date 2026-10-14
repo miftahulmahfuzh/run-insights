@@ -1,3 +1,4 @@
+import sharp from 'sharp'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { installFakeDb, projectedRow, uninstallFakeDb, type FakeDb } from './support/fakeDb'
@@ -695,5 +696,166 @@ describe('listNinaAlbumManifestAction', () => {
       'not an admin',
     )
     expect(fake.queries).toHaveLength(0)
+  })
+})
+
+/* ── replaceNinaAvatarAction — the Replace regression's second caller (2026-10-14) ─────────────
+ * `updateNinaAvatarBlob` has nulled this row's thumbnail pair since profpic-pointer-sync R3,
+ * because a tile rendered from the bytes that are gone is the wrong picture. Nulling alone left
+ * the row rendering its FULL-SIZE original in every grid until the next `thumbs:backfill` — the
+ * per-tile transfer the whole feature exists to stop. `scheduleReplacedThumbnail` is the other
+ * half, shared with the Media folder's Replace and with the Photoshop one.
+ *
+ * The derive runs FOR REAL here — `tests/nina.imagecall.test.ts`'s technique: `sharp` decodes a
+ * fixture this file builds, `put` is the module mock, and the global `fetch` stub serves the
+ * bytes. No network, no database, no vendor. */
+describe('replaceNinaAvatarAction earns a tile for the bytes it swapped in', () => {
+  const NEW_PATHNAME = `nina/${USER}/avatar-nEw123XYZ_-9-Tu6HvWq2m0k3rB8nQ1zXeRfYdGjL.jpg`
+  const NEW_URL = `${STORE}/${NEW_PATHNAME}`
+  const DERIVED_PATHNAME = `nina/${USER}/thumb-avatar-nEw123XYZ_-9-Tu6HvWq2m0k3rB8nQ1zXeRfYdGjL-Qq.jpg`
+  const DERIVED_URL = `${STORE}/${DERIVED_PATHNAME}`
+
+  /** A real JPEG, so the sharp pipeline under test actually decodes something. */
+  let jpeg: Buffer
+
+  function replaceInput() {
+    return {
+      id: ID,
+      blobUrl: NEW_URL,
+      pathname: NEW_PATHNAME,
+      width: 1024,
+      height: 1024,
+      bytes: 90_000,
+    }
+  }
+
+  /** The post-write row the `after()` pass re-reads: new bytes, and the pair the write retracted. */
+  function swappedRow(): unknown[] {
+    return avatarRow({
+      blobUrl: NEW_URL,
+      pathname: NEW_PATHNAME,
+      thumbUrl: null,
+      thumbPathname: null,
+    })
+  }
+
+  /** How many statements the ACTION had run by the time it returned — `passQueries()`'s origin. */
+  let beforePass = 0
+
+  /** The action's own statements: the pre-read, then `updateNinaAvatarBlob`'s batch. */
+  function enqueueReplace(): void {
+    fake.enqueue([avatarRow()]) // getNinaAvatar
+    fake.enqueue([swappedRow()]) // batch member 1's RETURNING; member 2 needs no rows
+  }
+
+  /** Only what the deferred tile pass itself ran. */
+  function passQueries(): FakeDb['queries'] {
+    return fake.queries.slice(beforePass)
+  }
+
+  /** Run the action and mark where its statements end. */
+  async function replace(): Promise<void> {
+    enqueueReplace()
+    await actions.replaceNinaAvatarAction(replaceInput())
+    beforePass = fake.queries.length
+  }
+
+  beforeEach(async () => {
+    jpeg = await sharp({
+      create: { width: 8, height: 8, channels: 3, background: { r: 200, g: 120, b: 90 } },
+    })
+      .jpeg()
+      .toBuffer()
+    fetchMock.mockResolvedValue(
+      new Response(new Uint8Array(jpeg), {
+        status: 200,
+        headers: { 'content-type': 'image/jpeg' },
+      }),
+    )
+    put.mockResolvedValue({ url: DERIVED_URL, pathname: DERIVED_PATHNAME })
+  })
+
+  it('schedules the tile pass AFTER the describe, and derives nothing on the action’s clock', async () => {
+    enqueueReplace()
+
+    const result = await actions.replaceNinaAvatarAction(replaceInput())
+
+    expect(result).toEqual({ ok: true, id: ID })
+    // Two deferred passes now: the prose (which the write also retracted) and the tile.
+    expect(afterCallbacks).toHaveLength(2)
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(put).not.toHaveBeenCalled()
+    // Both old objects were freed first — the original's and the tile's. `del` is the module mock.
+    expect(del).toHaveBeenCalledTimes(2)
+    expect(del).toHaveBeenNthCalledWith(1, BLOB_URL)
+    expect(del).toHaveBeenNthCalledWith(2, THUMB_URL)
+  })
+
+  it('derives from the NEW bytes and records the tile on the row and its chat references', async () => {
+    await replace()
+
+    fake.enqueue([swappedRow()]) // the pass's own re-read
+    fake.enqueue([{ id: ID }]) // updateNinaAvatarThumbnail RETURNING
+    fake.enqueue([]) // updateNinaChatPhotoThumbnail RETURNING — no chat reference re-shows it
+    await afterCallbacks[1]?.()
+
+    // The GET is of the object the ROW now serves, never of the payload's claim.
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe(NEW_URL)
+    // `thumb-` on the original's basename, under the same `nina/<userId>/` subtree the reaper walks.
+    expect(put).toHaveBeenCalledTimes(1)
+    expect(put.mock.calls[0]?.[0]).toBe(
+      `nina/${USER}/thumb-avatar-nEw123XYZ_-9-Tu6HvWq2m0k3rB8nQ1zXeRfYdGjL.jpg`,
+    )
+
+    // Two writes: the album row by id, then everything serving those bytes by pathname.
+    // Sliced to the PASS's own statements — the action's `updateNinaAvatarBlob` also sets
+    // `thumb_url` (to NULL), so a whole-run filter would count three and prove nothing.
+    const tileWrites = passQueries().filter((query) => query.sql.includes('"thumb_url" = $'))
+    expect(tileWrites).toHaveLength(2)
+    expect(tileWrites[0]?.sql).toContain('update "nina_avatars"')
+    expect(tileWrites[1]?.sql).toContain('update "nina_message_images"')
+    for (const write of tileWrites) {
+      expect(write.params).toContain(DERIVED_URL)
+      expect(write.params).toContain(DERIVED_PATHNAME)
+      expect(write.params).toContain(USER)
+    }
+    // Nothing was freed by the pass: a row took the tile.
+    expect(del).toHaveBeenCalledTimes(2) // still just the action's two
+  })
+
+  it('frees the tile it minted when the row moved again mid-flight', async () => {
+    await replace()
+    del.mockClear()
+
+    fake.enqueue([swappedRow()])
+    fake.enqueue([]) // updateNinaAvatarThumbnail — the pathname guard matched nothing
+    fake.enqueue([]) // updateNinaChatPhotoThumbnail — likewise
+    await afterCallbacks[1]?.()
+
+    // Row first, blob second, through the one reference-checked release: two SELECTs, then `del`.
+    expect(del).toHaveBeenCalledTimes(1)
+    expect(del).toHaveBeenCalledWith(DERIVED_URL)
+  })
+
+  it('a row already carrying a tile costs no GET, no encode and no PUT', async () => {
+    await replace()
+
+    fake.enqueue([avatarRow({ blobUrl: NEW_URL, pathname: NEW_PATHNAME })]) // THUMB_URL is set
+    await afterCallbacks[1]?.()
+
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(put).not.toHaveBeenCalled()
+  })
+
+  it('a failed GET leaves the row tile-less, which is legal and permanent', async () => {
+    await replace()
+
+    fetchMock.mockResolvedValue(new Response('nope', { status: 403 })) // a suspended store
+    fake.enqueue([swappedRow()])
+    await expect(afterCallbacks[1]?.()).resolves.toBeUndefined()
+
+    expect(put).not.toHaveBeenCalled()
+    expect(passQueries().some((query) => query.sql.includes('"thumb_url" = $'))).toBe(false)
   })
 })

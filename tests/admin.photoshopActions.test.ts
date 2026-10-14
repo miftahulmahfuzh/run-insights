@@ -32,6 +32,7 @@ const resolvePhotoshopAdd = vi.fn()
 const resolvePhotoshopDiscard = vi.fn()
 const resolvePhotoshopReplace = vi.fn()
 const firePhotoshopJob = vi.fn()
+const scheduleReplacedThumbnail = vi.fn()
 
 vi.mock('@/lib/admin/requireAdmin', () => ({ requireAdmin: () => requireAdmin() }))
 vi.mock('next/cache', () => ({ revalidatePath: (path: string) => revalidatePath(path) }))
@@ -48,6 +49,13 @@ vi.mock('@/lib/nina/photoshopResolve', () => ({
 }))
 vi.mock('@/lib/nina/photoshopRun', () => ({
   firePhotoshopJob: (...args: unknown[]) => firePhotoshopJob(...args),
+}))
+/* The Replace regression's `after()` pass. Mocked at the module, not through `next/server`: the
+ * real scheduler opens a database connection and a Blob GET, and what this file owns is the
+ * WIRING — whether the replace arm schedules it and the other two arms do not. Its behaviour is
+ * `tests/admin.chatPhotos.test.ts`'s. */
+vi.mock('@/lib/admin/ninaReplacedThumbnail', () => ({
+  scheduleReplacedThumbnail: (...args: unknown[]) => scheduleReplacedThumbnail(...args),
 }))
 
 type Actions = typeof import('@/lib/admin/photoshopActions')
@@ -99,6 +107,7 @@ beforeEach(async () => {
   resolvePhotoshopDiscard.mockReset()
   resolvePhotoshopReplace.mockReset()
   firePhotoshopJob.mockReset()
+  scheduleReplacedThumbnail.mockReset()
   actions = await import('@/lib/admin/photoshopActions')
 })
 
@@ -222,4 +231,68 @@ describe('runPhotoshopJobAction — a crop that cannot be trusted', () => {
       expect(firePhotoshopJob).toHaveBeenCalledTimes(1)
     })
   }
+})
+
+/* ── resolvePhotoshopJobAction — the Replace regression's third caller (2026-10-14) ────────────
+ * A photoshop replace swaps bytes under an existing row exactly as the Media and album Replaces
+ * do, so it retracts that row's thumbnail pair exactly as they do, and owes a new tile exactly as
+ * they do. It was the one of the three left out when the fix first landed: the row rendered its
+ * full-size original until the next `thumbs:backfill`. */
+describe('resolvePhotoshopJobAction schedules a tile for the row a replace rewrote', () => {
+  it('passes the row the resolver named, for an album source', async () => {
+    resolvePhotoshopReplace.mockResolvedValue({
+      ok: true,
+      replacedKind: 'avatar',
+      replacedId: 'ava123XYZ_-9',
+    })
+
+    await expect(
+      actions.resolvePhotoshopJobAction({ jobId: JOB_ID, action: 'replace' }),
+    ).resolves.toEqual({ ok: true })
+    expect(scheduleReplacedThumbnail).toHaveBeenCalledWith(USER, {
+      kind: 'avatar',
+      id: 'ava123XYZ_-9',
+    })
+  })
+
+  it('passes the row the resolver named, for a Media source', async () => {
+    resolvePhotoshopReplace.mockResolvedValue({
+      ok: true,
+      replacedKind: 'image',
+      replacedId: SOURCE_ID,
+    })
+
+    await actions.resolvePhotoshopJobAction({ jobId: JOB_ID, action: 'replace' })
+    expect(scheduleReplacedThumbnail).toHaveBeenCalledWith(USER, { kind: 'image', id: SOURCE_ID })
+  })
+
+  it('schedules nothing for add or discard — neither retracts a tile', async () => {
+    resolvePhotoshopAdd.mockResolvedValue({ ok: true })
+    resolvePhotoshopDiscard.mockResolvedValue({ ok: true })
+
+    await actions.resolvePhotoshopJobAction({ jobId: JOB_ID, action: 'add' })
+    await actions.resolvePhotoshopJobAction({ jobId: JOB_ID, action: 'discard' })
+
+    expect(scheduleReplacedThumbnail).not.toHaveBeenCalled()
+  })
+
+  it('schedules nothing when the replace itself was refused', async () => {
+    resolvePhotoshopReplace.mockResolvedValue({ ok: false, reason: 'source-unavailable' })
+
+    await expect(
+      actions.resolvePhotoshopJobAction({ jobId: JOB_ID, action: 'replace' }),
+    ).resolves.toEqual({
+      ok: false,
+      message: 'The original photo is gone, so nothing was written.',
+    })
+    expect(scheduleReplacedThumbnail).not.toHaveBeenCalled()
+  })
+
+  it('refuses a malformed job id above everything, scheduling nothing', async () => {
+    await expect(
+      actions.resolvePhotoshopJobAction({ jobId: 'not a job', action: 'replace' }),
+    ).resolves.toEqual({ ok: false, message: 'Unknown job.' })
+    expect(resolvePhotoshopReplace).not.toHaveBeenCalled()
+    expect(scheduleReplacedThumbnail).not.toHaveBeenCalled()
+  })
 })

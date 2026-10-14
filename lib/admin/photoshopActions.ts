@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 
+import { scheduleReplacedThumbnail } from '@/lib/admin/ninaReplacedThumbnail'
 import { requireAdmin } from '@/lib/admin/requireAdmin'
 import type { NinaPhotoshopResolution, NinaPhotoshopSourceKind } from '@/lib/db/schema'
 import { isValidId } from '@/lib/id'
@@ -246,6 +247,16 @@ export async function resolvePhotoshopJobAction(input: {
       : input.action === 'add'
         ? await resolvePhotoshopAdd(userId, input.jobId)
         : await resolvePhotoshopDiscard(userId, input.jobId)
+
+  /* media-thumbnails follow-up (2026-10-14). A replace retracted the row's thumbnail pair in the
+   * same statement as the byte swap — both tables do, since the Replace regression — so the row
+   * is rendering its full-size original until something derives a new tile. `resolvePhotoshopReplace`
+   * names the row it rewrote (its own header says why as two loose fields rather than an object);
+   * `add` and `discard` name nothing and schedule nothing. Before the response, like every other
+   * `after()` pass: the operator's click does not wait for a GET, an encode and a PUT. */
+  if (outcome.ok && outcome.replacedKind != null && outcome.replacedId != null) {
+    scheduleReplacedThumbnail(userId, { kind: outcome.replacedKind, id: outcome.replacedId })
+  }
 
   if (!outcome.ok) {
     const message =

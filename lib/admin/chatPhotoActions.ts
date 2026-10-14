@@ -19,6 +19,7 @@ import {
   type ChatPhotoActionResult,
   type ChatPhotoAddPlan,
 } from '@/lib/admin/chatPhotos'
+import { scheduleReplacedThumbnail } from '@/lib/admin/ninaReplacedThumbnail'
 import { requireAdmin } from '@/lib/admin/requireAdmin'
 import { isValidId, newId } from '@/lib/id'
 import { describeSubjectForSide, photoSideOf } from '@/lib/nina/album'
@@ -45,7 +46,6 @@ import {
   updateNinaChatPhotoBlob,
   updateNinaChatPhotoDescription,
   updateNinaChatPhotoPerceptualSignature,
-  updateNinaChatPhotoThumbnail,
   updateNinaMessage,
   type NinaImageRow,
   type NinaMessageRow,
@@ -56,7 +56,6 @@ import {
 } from '@/lib/admin/ninaMediaDeferredDescribe'
 import { resolveNinaWriteSession } from '@/lib/nina/sessionResolve'
 import { fetchAndSignImage } from '@/lib/nina/perceptualSign'
-import { storeThumbnailFromStoredUrl } from '@/lib/nina/thumbnailStore'
 import { NinaVisionTokenFloorError, describeNinaImages } from '@/lib/nina/vision'
 import { isValidContentHash } from '@/lib/photos/contentHash'
 import { findGlobalDuplicatePhoto } from '@/lib/photos/globalDuplicate'
@@ -251,7 +250,7 @@ export async function replaceChatPhotoAction(input: unknown): Promise<ChatPhotoA
    * tile for the NEW bytes so the Media grid stops downloading a full-size original for this row
    * within seconds rather than at the next backfill. Between the two cheap GETs and before the
    * captioner, which stays the last `after()` task this action hands over. */
-  scheduleChatPhotoThumbnail(userId, id)
+  scheduleReplacedThumbnail(userId, { kind: 'image', id })
   scheduleChatPhotoCaption(userId, id)
 
   /* ── THE NEW BYTES MAY ALREADY BE IN THE COLLECTION (dup-image-push-notify R1) ──────────────
@@ -1280,105 +1279,6 @@ function scheduleChatPhotoResign(userId: string, id: string): void {
       /* The outer net, `scheduleChatPhotoCaption`'s shape: the bytes are committed whatever this
        * pass does, and an unsigned row is one sweep run from correct. */
       console.warn('[admin] chat photo re-sign pass failed', { id, error: String(cause) })
-    }
-  })
-}
-
-/**
- * **Earn a grid tile for the bytes a replaced row now serves** — the other half of the Replace
- * regression (2026-10-14), and `scheduleChatPhotoResign`'s shape line for line.
- *
- * media-thumbnails shipped on 2026-10-13 and this was reported the next morning: *"when i
- * replaced one of the photos in Media, the thumbnail still showed the old photo. before
- * yesterday's update, we don't have this bug."* Both halves of that sentence are exactly right.
- * Migration 0037 gave `nina_message_images` a `thumb_url`/`thumb_pathname` pair, the backfill
- * filled 835 of them, and every grid switched from `blobUrl` to `thumbUrl ?? blobUrl` — so from
- * that day a Replace that moved the five byte columns and left the tile standing put the OLD
- * photograph on screen. Before it, there was no tile to be stale. Measured on production the
- * morning of the report: 16 rows carrying a thumbnail derived from an object the row no longer
- * served, every one of them with `last_replaced_at` set.
- *
- * `updateNinaChatPhotoBlob` retracts the pair in the same statement as the byte swap, which is
- * what ends the WRONG picture. This pass is what ends the DEGRADED one: without it a replaced
- * photograph falls back to its full-size original in the Media grid forever, which is ~1 MB per
- * tile per page view — the exact burn that suspended the Blob store and motivated the feature.
- *
- * ── SERVER-SIDE, FROM THE STORED OBJECT, AND THAT IS A RULING RATHER THAN A SHRUG ───────────
- * `lib/nina/actions/send.ts`'s own: *"not worth a second door into the Blob store: a
- * browser-uploaded thumbnail needs its own minted ticket for a `thumb-` pathname"*. The operator's
- * tab could derive this for free — it is holding the decoded bitmap — but buying that costs a new
- * pathname shape in the upload route's predicate, a thumbnail claim in two Zod schemas and a
- * second PUT the client can lie about. A GET of an object the admin encoder already bounded to
- * 1024 px / q0.90 is the cheaper half of that trade, and it is spent once per replace, ever.
- *
- * It is a second GET of the same object on the same click — `scheduleChatPhotoResign` fetched it
- * a moment ago to sign it. Folding the two into one fetch was considered and refused: they are
- * independent passes with independent degradation ladders, and coupling the twin scan to the tile
- * encoder would mean a sharp fault in either one losing both. Two small GETs on a human-paced,
- * operator-only path is the cheaper mistake.
- *
- * ── WHY THE ROW IS RE-READ AND THE PATHNAME COMES FROM IT ───────────────────────────────────
- * Not from the action's own payload. The row is the fact; the payload is a claim that was true
- * when the write ran. Re-reading also catches the row that went away between the click and the
- * callback, which is a miss rather than a failure.
- *
- * ── A REFERENCE IS NOT SKIPPED HERE, UNLIKE THE RE-SIGN ─────────────────────────────────────
- * The re-sign refuses a reference because a signature is a claim about bytes a row OWNS. A
- * thumbnail is not a claim, it is a derivative, and the doctrine is the opposite one: *the
- * thumbnail follows the BYTES*. `updateNinaChatPhotoThumbnail` therefore addresses rows by
- * PATHNAME, so this one derivation lands on the replaced original and on every reference the
- * batch moved onto it — one GET, one encode, one PUT, however many rows render those bytes.
- * Replace itself can never run on a reference (the action refuses one above), so the row read
- * here is always the original; the propagation is the statement's, not this function's.
- *
- * ── EVERY FAILURE IS A TILE-LESS ROW, WHICH IS LEGAL AND PERMANENT ──────────────────────────
- * The plan's invariant 2. `storeThumbnailFromStoredUrl` answers `null` for a failed GET, an
- * undecodable body, a sharp fault or a suspended store, and never throws; the row keeps NULL, the
- * grid renders the original exactly as it did before media-thumbnails, and
- * `npm run thumbs:backfill` fills it on the next sweep. A photograph must never be lost, delayed
- * or refused because its thumbnail could not be made.
- *
- * ── A LOST RACE FREES WHAT IT MINTED ────────────────────────────────────────────────────────
- * The operator can replace the photograph AGAIN while this GET is in flight. The write is
- * pathname-guarded, so it then matches nothing and answers 0 — and the object is already in the
- * store with no row that will ever name it. The re-sign has no equivalent problem (a refused
- * signature costs nothing), so this is the one place that has to clean up after itself, which it
- * does through the same reference-checked release everything else in this file deletes through.
- */
-function scheduleChatPhotoThumbnail(userId: string, id: string): void {
-  after(async () => {
-    try {
-      const row = await getNinaMessageImage(userId, id)
-      /* Gone between the click and the callback. A miss, not a failure. */
-      if (row == null) return
-      /* Already has one — a second pass over a row the first one filled. Nothing to do, and
-       * deriving anyway would PUT an object the additive write would refuse to record. */
-      if (row.thumbUrl != null) return
-
-      const thumb = await storeThumbnailFromStoredUrl(row.blobUrl, row.pathname)
-      if (thumb == null) {
-        /* The store or the encoder said no. `storeThumbnailFromStoredUrl` has already logged
-         * which; the row stays tile-less, which renders correctly and costs transfer. */
-        return
-      }
-
-      const written = await updateNinaChatPhotoThumbnail(userId, row.pathname, thumb)
-      if (written === 0) {
-        /* The row moved to a third set of bytes mid-flight, or something else filled the gap
-         * first. Either way nothing names this object, and the one reference-checked release in
-         * the repo is how it goes — a bare `del` here would be the copy that forgot the check. */
-        console.warn('[admin] a replaced photo moved again; freeing the tile nothing claimed', {
-          id,
-          pathname: thumb.pathname,
-        })
-        await releaseBlobIfUnreferenced(userId, thumb)
-        return
-      }
-      console.log('[admin] derived a grid tile for replaced bytes', { id, rows: written })
-    } catch (cause) {
-      /* The outer net, `scheduleChatPhotoResign`'s shape: the bytes are committed whatever this
-       * pass does, and a tile-less row is one backfill run from filled. */
-      console.warn('[admin] chat photo thumbnail pass failed', { id, error: String(cause) })
     }
   })
 }

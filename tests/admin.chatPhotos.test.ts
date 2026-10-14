@@ -890,7 +890,7 @@ describe('scheduleChatPhotoResign — re-sign the bytes a row now serves', () =>
   })
 })
 
-/* ── scheduleChatPhotoThumbnail — the Replace regression (2026-10-14) ──────────────────────────
+/* ── scheduleReplacedThumbnail — the Replace regression (2026-10-14) ───────────────────────────
  * media-thumbnails shipped the day before and the runner reported it the morning after:
  * *"when i replaced one of the photos in Media, the thumbnail still showed the old photo"*.
  * Migration 0037 gave `nina_message_images` a `thumb_url`/`thumb_pathname` pair and the backfill
@@ -903,7 +903,7 @@ describe('scheduleChatPhotoResign — re-sign the bytes a row now serves', () =>
  * Two halves, exactly `scheduleChatPhotoResign`'s: the byte swap RETRACTS the pair (asserted in
  * `tests/nina.replacePropagation.test.ts`) and this pass earns a new tile for the new bytes,
  * pathname-guarded so a racing second replace cannot pin v1's tile onto v2's row. */
-describe('scheduleChatPhotoThumbnail — a replaced photograph earns a new tile', () => {
+describe('scheduleReplacedThumbnail (through replaceChatPhotoAction) — a replaced photo earns a tile', () => {
   const THUMB = {
     blobUrl: `${STORE}/nina/${USER}/thumb-selfie-${ID}-${BLOB_SUFFIX}.jpg`,
     pathname: `nina/${USER}/thumb-selfie-${ID}-${BLOB_SUFFIX}.jpg`,
@@ -1019,8 +1019,8 @@ describe('scheduleChatPhotoThumbnail — a replaced photograph earns a new tile'
     await actions.replaceChatPhotoAction({ id: IMAGE_ID, ...goodBlob })
     await expect(runTheThumbnailCallback()).resolves.toBeUndefined()
     expect(console.warn).toHaveBeenCalledWith(
-      '[admin] chat photo thumbnail pass failed',
-      expect.objectContaining({ id: IMAGE_ID }),
+      '[admin] replaced photo thumbnail pass failed',
+      expect.objectContaining({ kind: 'image', id: IMAGE_ID }),
     )
   })
 })
