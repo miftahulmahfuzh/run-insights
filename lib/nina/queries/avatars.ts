@@ -288,6 +288,15 @@ export async function updateNinaAvatarBlob(
         description: null,
         perceptualHash: null,
         perceptualSig: null,
+        /* media-thumbnails, the Replace regression (2026-10-14). Member 1 nulls the ALBUM row's
+         * tile and has since profpic-pointer-sync R3; `nina_message_images` had no pair of its
+         * own to null until migration 0037, and the one it has now was derived from the bytes
+         * this statement is replacing. Every grid reads `thumbUrl ?? blobUrl`, so a reference
+         * left on it draws the pre-replace photograph. Nothing refills these: no tile is derived
+         * for an album replace (`replaceNinaAvatarAction` nulls and stops), so they degrade to
+         * the original exactly as member 1's own row does. */
+        thumbUrl: null,
+        thumbPathname: null,
       })
       .where(
         and(

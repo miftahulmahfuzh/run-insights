@@ -713,9 +713,17 @@ function mediaCollectionScope(userId: string) {
  *
  * The non-delta is the page size: `NINA_CHAT_PHOTO_PAGE_SIZE` stays the default AND the ceiling
  * even though the rows are no longer only hers. That is not an oversight — the constant's NUMBER
- * was chosen for the cost of a page of originals (`nina_message_images` has no thumbnail column,
- * so every tile loads its full blob — `lib/nina/album.ts:80-105`), and this grid pays exactly the
- * same cost per tile. The number travels with the cost, not with the predicate.
+ * was chosen for the cost of a page of originals, and this grid pays exactly the same cost per
+ * tile. The number travels with the cost, not with the predicate.
+ *
+ * **That cost has since fallen by ~89% and the number has NOT moved with it.** The clause above
+ * read *"`nina_message_images` has no thumbnail column, so every tile loads its full blob"* —
+ * true until media-thumbnails (migration 0037, 2026-10-13) added the pair and the backfill
+ * measured 186.3 MB of originals down to 20.5 MB of tiles. A page is now ~48 tiles of ~20 KB
+ * where it was ~48 MB. Raising the ceiling is therefore defensible for the first time, and is
+ * deliberately NOT done here: a NULL tile still renders its full original, so the worst case the
+ * number was chosen for is still reachable — a page of freshly replaced or newly added rows whose
+ * derivation has not landed. The number moves when that worst case does, not before.
  *
  * **Sort key, media-recency-sort (2026-09-19): `COALESCE(last_replaced_at, created_at) DESC`,
  * not `created_at DESC` alone.** A photo nobody has touched since it was added sorts by when it
@@ -1051,6 +1059,15 @@ export async function updateNinaChatPhotoBlob(
     description: null,
     perceptualHash: null,
     perceptualSig: null,
+    /* The contract is "mirror the original's POST-write values", and statement 1 has just nulled
+     * its tile. A reference renders the keeper's bytes, so it renders the keeper's tile — the
+     * thumbnail follows the BYTES (`lib/nina/thumbnailStore.ts`'s rule, and the backfill's: 1,304
+     * rows named 1,037 objects). Left standing, a reference would draw the pre-replace photograph
+     * in every bubble and grid while the original drew the new one. `scheduleChatPhotoThumbnail`
+     * refills them in the same statement it refills the original, because it addresses rows by
+     * PATHNAME. */
+    thumbUrl: null,
+    thumbPathname: null,
   }
 
   const pointersAtThisOriginal = db
@@ -1099,6 +1116,30 @@ export async function updateNinaChatPhotoBlob(
          */
         perceptualHash: null,
         perceptualSig: null,
+        /*
+         * media-thumbnails, the Replace regression (2026-10-14). The pair is a DERIVATIVE of the
+         * bytes this statement just swapped — `thumb-<original's basename>`, 256 px of the OLD
+         * photograph — and every grid in the app reads `thumbUrl ?? blobUrl`, so a tile left
+         * standing here is not a stale optimisation, it is the wrong picture on screen. That is
+         * exactly how it was reported the morning after media-thumbnails shipped: *"when i
+         * replaced one of the photos in Media, the thumbnail still showed the old photo"*.
+         * Measured the same morning: 16 rows carrying a tile derived from an object the row no
+         * longer served, all 16 with `last_replaced_at` set.
+         *
+         * Same statement as the nulls above it, for the same reason: there must be no window in
+         * which the row points at new bytes and renders an old tile. `updateNinaAvatarBlob` has
+         * nulled its own pair since profpic-pointer-sync R3 and its header gives the identical
+         * argument; this table simply did not HAVE the columns until migration 0037, a day
+         * younger than this function.
+         *
+         * NULL is a legal permanent state (the plan's invariant 2) — the renderer falls back to
+         * the original — and `replaceChatPhotoAction` earns a tile for the NEW bytes in `after()`
+         * (`scheduleChatPhotoThumbnail`), so the degradation lasts seconds rather than until the
+         * next backfill run. The caller holds the row it read before this write, and it releases
+         * that thumbnail.
+         */
+        thumbUrl: null,
+        thumbPathname: null,
         /*
          * media-recency-sort, 2026-09-19. `created_at` stays untouched (this function's own header
          * argues why); this is the column the Media view's sort key reads instead —
@@ -1205,6 +1246,65 @@ export async function updateNinaChatPhotoPerceptualSignature(
     .returning({ id: ninaMessageImages.id })
 
   return updated.length > 0
+}
+
+/**
+ * **The guarded thumbnail write** — one derived tile, onto every row that serves the bytes it was
+ * derived from.
+ *
+ * The other half of the Replace regression (2026-10-14). `updateNinaChatPhotoBlob` retracts the
+ * pair at byte-swap time because the tile described the old photograph; this writes the tile for
+ * the new one, from `replaceChatPhotoAction`'s `after()`.
+ *
+ * ── IT IS ADDRESSED BY PATHNAME, NOT BY ID, AND THAT IS THE WHOLE DOCTRINE ──────────────────
+ * *"The thumbnail follows the BYTES, not the row"* (`lib/nina/thumbnailStore.ts`, and the
+ * backfill, whose unit of work is the OBJECT: 1,304 rows named 1,037 objects because
+ * `resolveAttachment` copies `blob_url` onto a new row without copying bytes). A replace moves the
+ * original AND every reference onto one new object in one batch, and all of them have just had
+ * their tile retracted. One pathname-addressed statement refills exactly that set — the original
+ * and its references — with the one tile that was derived once. An id-addressed write would leave
+ * every reference drawing a full-size original, and deriving per row would spend a GET, a sharp
+ * pass and a PUT on bytes already measured.
+ *
+ * ── THE PATHNAME IS ALSO THE RACE GUARD ─────────────────────────────────────────────────────
+ * `updateNinaChatPhotoPerceptualSignature`'s rule, for the same reason and against the same race:
+ * the operator can replace the photograph AGAIN while the first pass's GET is in flight, and
+ * pinning v1's tile onto a v2 row would put the wrong picture on screen — which is the defect this
+ * whole fix exists to end. The row has moved to another pathname by then, so the statement matches
+ * nothing and answers 0. The caller treats 0 as "that tile belongs to nobody" and frees it.
+ *
+ * ── `thumb_url IS NULL` MAKES IT STRICTLY ADDITIVE ──────────────────────────────────────────
+ * A row that already carries a tile keeps it. Overwriting one would silently orphan the object it
+ * named — this function has no way to release it, and the column is the only record a `thumb-`
+ * object exists (its stored pathname carries Blob's random suffix and is not derivable). So this
+ * can only ever fill a gap, which also makes it idempotent under a retry.
+ *
+ * Owner-scoped like every other statement in this file, even though a pathname already contains
+ * the user id: an id from a client is a claim, and `nina/<userId>/` is part of the string being
+ * compared, not a proof about the caller.
+ *
+ * Returns how many rows took the tile. No `isOriginalPhoto()` clause, deliberately — a REFERENCE
+ * is precisely one of the rows this is for, and it is the one write in this file where that is
+ * true, because a tile is a fact about bytes rather than a claim about provenance.
+ */
+export async function updateNinaChatPhotoThumbnail(
+  userId: string,
+  pathname: string,
+  thumb: { blobUrl: string; pathname: string },
+): Promise<number> {
+  const written = await db
+    .update(ninaMessageImages)
+    .set({ thumbUrl: thumb.blobUrl, thumbPathname: thumb.pathname })
+    .where(
+      and(
+        eq(ninaMessageImages.userId, userId),
+        eq(ninaMessageImages.pathname, pathname),
+        isNull(ninaMessageImages.thumbUrl),
+      ),
+    )
+    .returning({ id: ninaMessageImages.id })
+
+  return written.length
 }
 
 /**

@@ -410,6 +410,9 @@ const scheduleMediaDescribe = vi.fn()
 const updateNinaChatPhotoBlob = vi.fn()
 const updateNinaChatPhotoDescription = vi.fn()
 const updateNinaChatPhotoPerceptualSignature = vi.fn()
+const updateNinaChatPhotoThumbnail = vi.fn()
+const releaseBlobIfUnreferenced = vi.fn()
+const storeThumbnailFromStoredUrl = vi.fn()
 const fetchAndSignImage = vi.fn()
 const promoteNinaImageDependents = vi.fn()
 const updateNinaMessage = vi.fn()
@@ -468,9 +471,20 @@ vi.mock('@/lib/nina/queries', () => ({
   updateNinaChatPhotoDescription: (...args: unknown[]) => updateNinaChatPhotoDescription(...args),
   updateNinaChatPhotoPerceptualSignature: (...args: unknown[]) =>
     updateNinaChatPhotoPerceptualSignature(...args),
+  updateNinaChatPhotoThumbnail: (...args: unknown[]) => updateNinaChatPhotoThumbnail(...args),
   updateNinaMessage: (...args: unknown[]) => updateNinaMessage(...args),
 }))
-vi.mock('@/lib/nina/blobRelease', () => ({ releaseBlobIfUnreferenced: vi.fn() }))
+vi.mock('@/lib/nina/blobRelease', () => ({
+  releaseBlobIfUnreferenced: (...args: unknown[]) => releaseBlobIfUnreferenced(...args),
+}))
+/*
+ * The one writer of a `thumb-*` object, mocked so no test PUTs a blob or loads `sharp` — the
+ * posture `@/lib/nina/perceptualSign` below is mocked with, for the same two reasons.
+ */
+vi.mock('@/lib/nina/thumbnailStore', () => ({
+  storeThumbnailFromStoredUrl: (...args: unknown[]) => storeThumbnailFromStoredUrl(...args),
+  storeThumbnailFromBytes: vi.fn(),
+}))
 vi.mock('@/lib/nina/provenancePromotion', () => ({
   promoteNinaImageDependents: (...args: unknown[]) => promoteNinaImageDependents(...args),
   promoteNinaAvatarDependents: vi.fn(),
@@ -529,6 +543,10 @@ vi.mock('@/lib/push/duplicateImage', () => ({
 type Actions = typeof import('@/lib/admin/chatPhotoActions')
 let actions: Actions
 
+/** The tile derived from the bytes the row served before a Replace — the object a Replace has to
+ * stop naming and then free. */
+const oldThumbPathname = `nina/${USER}/thumb-selfie-oldOLDoldOL-${BLOB_SUFFIX}.jpg`
+
 /** The row `getNinaMessageImage` hands the callback: no description yet, so the eyes run. */
 const imageRow = {
   id: IMAGE_ID,
@@ -543,6 +561,11 @@ const imageRow = {
   prompt: null,
   sortOrder: 0,
   createdAt: new Date(0),
+  /* media-thumbnails phase 1 gave the table this pair, and the Replace regression is what the
+   * fixture carrying it exists to catch: these describe the bytes the row serves BEFORE the
+   * swap. */
+  thumbUrl: `${STORE}/${oldThumbPathname}` as string | null,
+  thumbPathname: oldThumbPathname as string | null,
 }
 
 async function runTheAfterCallback(): Promise<void> {
@@ -582,6 +605,9 @@ beforeEach(async () => {
   updateNinaChatPhotoBlob.mockResolvedValue({ id: IMAGE_ID })
   updateNinaChatPhotoDescription.mockResolvedValue({ id: IMAGE_ID })
   updateNinaChatPhotoPerceptualSignature.mockResolvedValue(true)
+  updateNinaChatPhotoThumbnail.mockResolvedValue(1)
+  releaseBlobIfUnreferenced.mockResolvedValue('deleted')
+  storeThumbnailFromStoredUrl.mockResolvedValue(null)
   fetchAndSignImage.mockResolvedValue(null)
   notifyNinaPush.mockResolvedValue(undefined)
   findGlobalDuplicatePhoto.mockResolvedValue(null)
@@ -782,7 +808,8 @@ describe('scheduleChatPhotoResign — re-sign the bytes a row now serves', () =>
     fetchAndSignImage.mockResolvedValue(SIGNATURE)
     const result = await actions.replaceChatPhotoAction({ id: IMAGE_ID, ...goodBlob })
     expect(result).toEqual({ ok: true, id: IMAGE_ID })
-    expect(afterCallbacks).toHaveLength(2)
+    // Three passes since the Replace regression: re-sign, re-thumbnail, caption — in that order.
+    expect(afterCallbacks).toHaveLength(3)
 
     await runTheResignCallback()
     expect(fetchAndSignImage).toHaveBeenCalledWith(storedUrl)
@@ -863,6 +890,141 @@ describe('scheduleChatPhotoResign — re-sign the bytes a row now serves', () =>
   })
 })
 
+/* ── scheduleChatPhotoThumbnail — the Replace regression (2026-10-14) ──────────────────────────
+ * media-thumbnails shipped the day before and the runner reported it the morning after:
+ * *"when i replaced one of the photos in Media, the thumbnail still showed the old photo"*.
+ * Migration 0037 gave `nina_message_images` a `thumb_url`/`thumb_pathname` pair and the backfill
+ * filled 835 of them; every grid in the app then switched to `thumbUrl ?? url`. `updateNinaChat-
+ * PhotoBlob` was written before the columns existed, so a Replace moved the five byte columns and
+ * left the tile — and the tile is what the grid draws. Measured on production the morning of the
+ * report: 16 rows carrying a thumbnail derived from an object the row no longer served, and every
+ * one of them had `last_replaced_at` set.
+ *
+ * Two halves, exactly `scheduleChatPhotoResign`'s: the byte swap RETRACTS the pair (asserted in
+ * `tests/nina.replacePropagation.test.ts`) and this pass earns a new tile for the new bytes,
+ * pathname-guarded so a racing second replace cannot pin v1's tile onto v2's row. */
+describe('scheduleChatPhotoThumbnail — a replaced photograph earns a new tile', () => {
+  const THUMB = {
+    blobUrl: `${STORE}/nina/${USER}/thumb-selfie-${ID}-${BLOB_SUFFIX}.jpg`,
+    pathname: `nina/${USER}/thumb-selfie-${ID}-${BLOB_SUFFIX}.jpg`,
+  }
+
+  /**
+   * The pass re-READS the row, and by the time it runs `updateNinaChatPhotoBlob` has nulled the
+   * pair in the same statement as the byte swap. The fixture carries the PRE-write tile (that is
+   * what the release assertions are about), so the post-write shape is installed here — which is
+   * the whole sequence the fix consists of, in two lines.
+   */
+  async function runTheThumbnailCallback(): Promise<void> {
+    getNinaMessageImage.mockResolvedValue({ ...imageRow, thumbUrl: null, thumbPathname: null })
+    const cb = afterCallbacks[1]
+    if (cb == null) throw new Error('no thumbnail callback was scheduled')
+    return cb()
+  }
+
+  it('derives from the NEW object and writes the pair against the new pathname', async () => {
+    storeThumbnailFromStoredUrl.mockResolvedValue(THUMB)
+
+    const result = await actions.replaceChatPhotoAction({ id: IMAGE_ID, ...goodBlob })
+    expect(result).toEqual({ ok: true, id: IMAGE_ID })
+    // Nothing was derived on the response path: the operator's click does not wait for a tile.
+    expect(storeThumbnailFromStoredUrl).not.toHaveBeenCalled()
+
+    await runTheThumbnailCallback()
+
+    expect(storeThumbnailFromStoredUrl).toHaveBeenCalledWith(storedUrl, storedPathname)
+    expect(updateNinaChatPhotoThumbnail).toHaveBeenCalledWith(USER, storedPathname, THUMB)
+  })
+
+  it('frees the tile the replaced bytes left behind, now that no row names it', async () => {
+    await actions.replaceChatPhotoAction({ id: IMAGE_ID, ...goodBlob })
+
+    // ROW FIRST, BLOB SECOND: the write nulled the pair, so this release is asked about an object
+    // the collection has stopped pointing at. `replaceNinaAvatarAction`'s spelling, verbatim.
+    expect(releaseBlobIfUnreferenced).toHaveBeenCalledWith(USER, {
+      blobUrl: `${STORE}/${oldThumbPathname}`,
+      pathname: oldThumbPathname,
+    })
+  })
+
+  it('releases nothing extra when the replaced row never had a tile', async () => {
+    // A pre-media-thumbnails row, and a genuinely different old object so the ORIGINAL's own
+    // release does fire — otherwise this would pass for the wrong reason.
+    const oldPathname = `nina/${USER}/selfie-oldOLDoldOL-${BLOB_SUFFIX}.jpg`
+    getNinaMessageImage.mockResolvedValue({
+      ...imageRow,
+      pathname: oldPathname,
+      blobUrl: `${STORE}/${oldPathname}`,
+      thumbUrl: null,
+      thumbPathname: null,
+    })
+
+    await actions.replaceChatPhotoAction({ id: IMAGE_ID, ...goodBlob })
+
+    // Only the original's own object is asked about. NULL means "there is nothing to delete".
+    expect(releaseBlobIfUnreferenced).toHaveBeenCalledTimes(1)
+    expect(releaseBlobIfUnreferenced).toHaveBeenCalledWith(
+      USER,
+      expect.objectContaining({ pathname: oldPathname }),
+    )
+  })
+
+  it('a derivation that fails leaves the row tile-less — the legal permanent state, never an error', async () => {
+    storeThumbnailFromStoredUrl.mockResolvedValue(null)
+
+    await actions.replaceChatPhotoAction({ id: IMAGE_ID, ...goodBlob })
+    await expect(runTheThumbnailCallback()).resolves.toBeUndefined()
+
+    expect(updateNinaChatPhotoThumbnail).not.toHaveBeenCalled()
+  })
+
+  it('a lost race frees the tile it just minted rather than orphaning it', async () => {
+    // The row moved to a third set of bytes while this GET was in flight, so the pathname-guarded
+    // write matched nothing. The object was already PUT; nothing will ever name it.
+    storeThumbnailFromStoredUrl.mockResolvedValue(THUMB)
+    updateNinaChatPhotoThumbnail.mockResolvedValue(0)
+
+    await actions.replaceChatPhotoAction({ id: IMAGE_ID, ...goodBlob })
+    releaseBlobIfUnreferenced.mockClear()
+    await runTheThumbnailCallback()
+
+    expect(releaseBlobIfUnreferenced).toHaveBeenCalledWith(USER, THUMB)
+  })
+
+  it('a row gone between the click and the callback is a miss, not a failure', async () => {
+    await actions.replaceChatPhotoAction({ id: IMAGE_ID, ...goodBlob })
+    const cb = afterCallbacks[1]!
+    getNinaMessageImage.mockResolvedValue(null)
+    await expect(cb()).resolves.toBeUndefined()
+
+    expect(storeThumbnailFromStoredUrl).not.toHaveBeenCalled()
+    expect(updateNinaChatPhotoThumbnail).not.toHaveBeenCalled()
+  })
+
+  it('derives nothing for a row that already has a tile — no PUT the write would refuse', async () => {
+    // A second pass over a row the first one filled. The additive write would decline it anyway;
+    // returning before the GET is what keeps the decline from costing an orphaned object.
+    storeThumbnailFromStoredUrl.mockResolvedValue(THUMB)
+    await actions.replaceChatPhotoAction({ id: IMAGE_ID, ...goodBlob })
+    const cb = afterCallbacks[1]!
+    await expect(cb()).resolves.toBeUndefined()
+
+    expect(storeThumbnailFromStoredUrl).not.toHaveBeenCalled()
+    expect(updateNinaChatPhotoThumbnail).not.toHaveBeenCalled()
+  })
+
+  it('never rejects out of after(), whatever the store does', async () => {
+    storeThumbnailFromStoredUrl.mockRejectedValue(new Error('store is blocked'))
+
+    await actions.replaceChatPhotoAction({ id: IMAGE_ID, ...goodBlob })
+    await expect(runTheThumbnailCallback()).resolves.toBeUndefined()
+    expect(console.warn).toHaveBeenCalledWith(
+      '[admin] chat photo thumbnail pass failed',
+      expect.objectContaining({ id: IMAGE_ID }),
+    )
+  })
+})
+
 describe('addChatPhotoAction write-time dedup (media-dedupe P3)', () => {
   const HASH = 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'
   /** A RUNNER-upload pathname — valid for the store, INVALID for the admin predicate. */
@@ -911,7 +1073,6 @@ describe('addChatPhotoAction write-time dedup (media-dedupe P3)', () => {
 
   it('releases the fresh loser bytes after the reference row is in (row first, blob second)', async () => {
     findNinaImageByContentHash.mockResolvedValue(KEEPER)
-    const { releaseBlobIfUnreferenced } = await import('@/lib/nina/blobRelease')
 
     await actions.addChatPhotoAction({ ...goodBlob, contentHash: HASH })
 
@@ -925,7 +1086,6 @@ describe('addChatPhotoAction write-time dedup (media-dedupe P3)', () => {
     // The pre-check path: the client never PUT, so the payload echoes the keeper's object — a
     // RUNNER-upload pathname here, which the admin predicate would refuse. The pin is why the
     // guard is skipped, and the echo is why nothing may be released.
-    const { releaseBlobIfUnreferenced } = await import('@/lib/nina/blobRelease')
     getNinaMessageImage.mockResolvedValue({
       ...KEEPER,
       pathname: keeperUploadPathname,
@@ -1413,10 +1573,6 @@ const queriesMock = (await import('@/lib/nina/queries')) as unknown as Record<
   string,
   ReturnType<typeof vi.fn>
 >
-const { releaseBlobIfUnreferenced } = (await import('@/lib/nina/blobRelease')) as unknown as {
-  releaseBlobIfUnreferenced: ReturnType<typeof vi.fn>
-}
-
 /** The mock factory's vi.fn by name — a missing name is a suite bug, and fails loudly here. */
 function handle(name: string): ReturnType<typeof vi.fn> {
   const fn = queriesMock[name]

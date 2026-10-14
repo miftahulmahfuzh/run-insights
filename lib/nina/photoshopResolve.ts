@@ -122,10 +122,19 @@ export async function resolvePhotoshopReplace(
 }
 
 /** The objects a replace stopped naming: the original's own bytes (unless the job somehow handed
- * back the same pathname — deleting what the row now serves would be unrecoverable) and an album
- * row's thumbnail, which `updateNinaAvatarBlob` just nulled. A chat row has no thumbnail columns,
- * hence the optional pair. `thumb_pathname ?? thumb_url` is `deleteNinaAvatarAction`'s spelling for
- * the same question. */
+ * back the same pathname — deleting what the row now serves would be unrecoverable) and the row's
+ * derived thumbnail, which the write just nulled. `thumb_pathname ?? thumb_url` is
+ * `deleteNinaAvatarAction`'s spelling for the same question.
+ *
+ * The pair is optional because this is handed either table's row and `nina_message_images` had no
+ * thumbnail columns when this was written. It has carried them since media-thumbnails (migration
+ * 0037), so BOTH arms reach the second ref now, and both are correct to: `updateNinaAvatarBlob`
+ * and `updateNinaChatPhotoBlob` each null their row's pair in the same statement as the byte swap.
+ * Before that fix this call was simply a no-op for a chat row — `isBlobPathnameReferenced` saw the
+ * row still naming its own stale tile and answered `'shared'`, so nothing was deleted and nothing
+ * broke, but the tile stayed on screen. A photoshop replace leaves the row tile-less; nothing
+ * re-derives one here (`npm run thumbs:backfill` is what fills it), so the Media grid falls back
+ * to the full-size original for that row until it runs. */
 function replacedObjects(
   before: {
     blobUrl: string

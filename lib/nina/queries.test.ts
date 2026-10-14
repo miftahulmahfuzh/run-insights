@@ -272,6 +272,10 @@ const BARREL_VALUE_EXPORTS = [
   // ghost-signature fix (2026-09-15): the pathname-guarded re-sign write behind
   // `scheduleChatPhotoResign` — documented growth, argued at the function's own header.
   'updateNinaChatPhotoPerceptualSignature',
+  // media-thumbnails Replace regression (2026-10-14): the pathname-guarded tile write behind
+  // `scheduleChatPhotoThumbnail`, the other half of the byte swap's thumbnail retraction.
+  // Documented growth, argued at the function's own header.
+  'updateNinaChatPhotoThumbnail',
   'updateNinaMemoryFact',
   'updateNinaMessage',
   'updateNinaShortcut',

@@ -418,10 +418,14 @@ type NinaPhotoRefSource = Exclude<NinaImageReferenceSource, 'none'>
 /**
  * One selectable photograph, from either set, in the ONE shape the grid draws.
  *
- * `thumbUrl` is nullable because the two sets disagree: `nina_avatars` has a derived thumbnail and
- * `nina_message_images` has no `thumb_url` column at all. A tile renders `thumbUrl ?? blobUrl`,
- * which is what `ChatPhotoGrid` already knowingly does — and the plan's Scope rules out adding the
- * column.
+ * `thumbUrl` is nullable, and the reason has CHANGED without the shape needing to. It read: *"the
+ * two sets disagree: `nina_avatars` has a derived thumbnail and `nina_message_images` has no
+ * `thumb_url` column at all… the plan's Scope rules out adding the column"* — true when written,
+ * and media-thumbnails (migration 0037, 2026-10-13) is the plan that added it. Both sets carry the
+ * pair now. It stays nullable because NULL is a legal permanent state on both of them: a
+ * derivation can fail, a row can predate the backfill, and a Replace retracts the tile for the
+ * seconds before `scheduleChatPhotoThumbnail` earns a new one. A tile renders `thumbUrl ?? blobUrl`
+ * either way, which is what `ChatPhotoGrid` already knowingly does.
  *
  * There is no `description`, no `filename`, no `folder` and no `prompt`, and that is R10 held in the
  * type: *"a simple photos grid without any captions (just like ios album app)"*. A field the grid

@@ -82,6 +82,22 @@ describe('updateNinaChatPhotoBlob — the original and everything that re-shows 
     expect(sql).toContain('returning')
   })
 
+  /* media-thumbnails, the Replace regression (2026-10-14). Migration 0037 gave
+   * `nina_message_images` the pair a day AFTER this statement was written, and the grids read
+   * `thumbUrl ?? url` — so a replace that moved the five byte columns and left the tile standing
+   * served the OLD photograph at 256 px from every grid in the app. Measured on production that
+   * day: 16 rows, every one of them a Replace, carrying a thumbnail derived from an object the row
+   * no longer serves. Same statement as the five columns, for the reason every other null here
+   * gives: there must be no window in which the row shows new bytes under an old tile. */
+  it('member 1 retracts the thumbnail pair with the bytes it described', async () => {
+    await queries.updateNinaChatPhotoBlob(USER, IMAGE, PATCH)
+
+    const set = setOf(fake.sqlAt(0))
+    for (const column of ['thumb_url', 'thumb_pathname']) {
+      expect(set, column).toContain(`"${column}" = `)
+    }
+  })
+
   it('member 2 moves every album pointer at this original to the new bytes', async () => {
     await queries.updateNinaChatPhotoBlob(USER, IMAGE, PATCH)
 
@@ -160,6 +176,11 @@ describe('updateNinaChatPhotoBlob — the original and everything that re-shows 
       'description',
       'perceptual_hash',
       'perceptual_sig',
+      /* The reference contract mirrors the original's POST-write values, and member 1 has just
+       * nulled its tile. A reference left on the old one shows the pre-replace photograph in
+       * every bubble and every grid that draws it. */
+      'thumb_url',
+      'thumb_pathname',
     ]) {
       expect(set, column).toContain(`"${column}" = `)
     }
@@ -177,6 +198,8 @@ describe('updateNinaChatPhotoBlob — the original and everything that re-shows 
     expect(sql).toMatch(/^update "nina_message_images" set/)
     expect(setOf(sql)).toContain('"pathname" = $')
     expect(setOf(sql)).toContain('"perceptual_sig" = $')
+    expect(setOf(sql)).toContain('"thumb_url" = $')
+    expect(setOf(sql)).toContain('"thumb_pathname" = $')
     expect(whereOf(sql)).toContain(
       '"nina_message_images"."source_avatar_id" in (select "id" from "nina_avatars" where',
     )
@@ -259,6 +282,11 @@ describe('updateNinaAvatarBlob — the album original and its chat references, i
       'description',
       'perceptual_hash',
       'perceptual_sig',
+      /* Member 1 nulls the ALBUM row's tile; this member must null the chat reference's too.
+       * `nina_message_images` had no such pair when this statement was written (migration 0037 is
+       * a day younger than it), and the one it has now described the pre-replace bytes. */
+      'thumb_url',
+      'thumb_pathname',
     ]) {
       expect(set, column).toContain(`"${column}" = `)
     }
@@ -275,6 +303,57 @@ describe('updateNinaAvatarBlob — the album original and its chat references, i
   it('returns null on a miss (a pointer, or not his)', async () => {
     fake.enqueue([])
     await expect(queries.updateNinaAvatarBlob(USER, AVATAR, ALBUM_PATCH)).resolves.toBeNull()
+  })
+})
+
+/* media-thumbnails, the Replace regression (2026-10-14). The byte swap retracts the tile; this is
+ * the write that earns a new one for the bytes the row now serves. It is addressed by PATHNAME and
+ * not by id, which is the whole doctrine in one WHERE clause: the thumbnail follows the BYTES, so
+ * every row rendering those bytes — the replaced original and every reference the batch moved onto
+ * it — takes the one tile that was derived from them. */
+describe('updateNinaChatPhotoThumbnail — one tile for every row serving those bytes', () => {
+  const THUMB = {
+    blobUrl: `${STORE}/nina/${USER}/thumb-selfie-${IMAGE}-new.jpg`,
+    pathname: `nina/${USER}/thumb-selfie-${IMAGE}-new.jpg`,
+  }
+
+  it('writes the pair onto every row of this user that serves the new pathname', async () => {
+    fake.enqueue([{ id: IMAGE }])
+    await queries.updateNinaChatPhotoThumbnail(USER, NEW_PATHNAME, THUMB)
+
+    const { sql, params } = fake.queries[0]!
+    expect(sql).toMatch(/^update "nina_message_images" set/)
+    expect(setOf(sql)).toContain('"thumb_url" = $')
+    expect(setOf(sql)).toContain('"thumb_pathname" = $')
+    expect(params).toContain(THUMB.blobUrl)
+    expect(params).toContain(THUMB.pathname)
+  })
+
+  it('is owner-scoped and pathname-guarded, so a racing second replace writes nothing', async () => {
+    fake.enqueue([])
+    await queries.updateNinaChatPhotoThumbnail(USER, NEW_PATHNAME, THUMB)
+
+    const { sql, params } = fake.queries[0]!
+    const where = whereOf(sql)
+    expect(where).toContain('"user_id" = $')
+    expect(where).toContain('"pathname" = $')
+    expect(params).toContain(USER)
+    expect(params).toContain(NEW_PATHNAME)
+  })
+
+  it('never overwrites a tile a row already has, so no object is orphaned by this write', async () => {
+    fake.enqueue([])
+    await queries.updateNinaChatPhotoThumbnail(USER, NEW_PATHNAME, THUMB)
+
+    expect(whereOf(fake.sqlAt(0))).toContain('"thumb_url" is null')
+  })
+
+  it('answers how many rows took the tile, so a lost race is visible to the caller', async () => {
+    fake.enqueue([{ id: IMAGE }, { id: 'refBBBBBBBBB' }])
+    await expect(queries.updateNinaChatPhotoThumbnail(USER, NEW_PATHNAME, THUMB)).resolves.toBe(2)
+
+    fake.enqueue([])
+    await expect(queries.updateNinaChatPhotoThumbnail(USER, NEW_PATHNAME, THUMB)).resolves.toBe(0)
   })
 })
 
