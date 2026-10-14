@@ -315,13 +315,21 @@ export async function updateNinaAvatarBlob(
  * earns a new one for the bytes the row now serves.
  *
  * ── IT IS ADDRESSED BY ID, WHERE THE MEDIA ONE IS ADDRESSED BY PATHNAME ─────────────────────
- * Not an inconsistency — the two tables have different populations sharing a pathname, and the
- * doctrine has to be spelled where it differs. In `nina_message_images` every row serving these
- * bytes is a row that should draw this tile, so pathname IS the address. In `nina_avatars` a row
- * can share a pathname by being a POINTER at a Media original (`source_image_id` set), and a
- * pointer takes NULL by a standing ruling — *"nothing generates a thumbnail for a link"*
- * (`relinkNinaAvatarToImage`'s contract, and `updateNinaChatPhotoBlob`'s Decision D1). A
- * pathname-addressed write here would quietly overturn that ruling on every album replace.
+ * Not an inconsistency — the two tables have different populations sharing a pathname. In
+ * `nina_message_images` every row serving these bytes is a row that should draw this tile, so
+ * pathname IS the address. In `nina_avatars` a row can share a pathname by being a POINTER at a
+ * Media original (`source_image_id` set), and every WRITE path binds a pointer's pair to NULL —
+ * *"nothing generates a thumbnail for a link"* (`relinkNinaAvatarToImage`'s contract, and
+ * `updateNinaChatPhotoBlob`'s Decision D1).
+ *
+ * **That is a write-time rule and not a steady state, which is worth knowing before trusting it.**
+ * `scripts/backfill-thumbnails.mjs` takes `WHERE thumb_url IS NULL` with no provenance filter, so
+ * it fills pointers like anything else: measured on production 2026-10-14, 227 of 227 pointers
+ * carried a tile. That is the right outcome — a pointer renders the original's bytes, so the
+ * original's tile is its tile — but it means a Media Replace leaves its pointers tile-less only
+ * until the next sweep, not permanently. The address here stays `id` anyway: an album original's
+ * pathname is `avatar-*` and a pointer's is the Media row's, so the two populations do not in
+ * fact collide, and binding to the id says which row this is about instead of inferring it.
  *
  * So: this row, by id. Its chat references are `updateNinaChatPhotoThumbnail`'s to fill, through
  * the pathname they now share — one derivation, two statements, every row that renders those
