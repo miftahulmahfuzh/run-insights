@@ -20,6 +20,14 @@ vi.mock('@/lib/admin/ninaAlbumActions', () => ({
   searchNinaAvatarsAction: (input: unknown) => searchNinaAvatarsAction(input),
 }))
 
+// Stubbed for the PASTE tests only — the re-encode itself cannot run here (see the header); what
+// is under test is that a pasted clipboard image reaches it and becomes the query photograph.
+const encodeSearchQueryImage = vi.fn()
+
+vi.mock('./searchQueryImage', () => ({
+  encodeSearchQueryImage: (file: File) => encodeSearchQueryImage(file),
+}))
+
 beforeEach(() => {
   vi.resetAllMocks()
 })
@@ -124,5 +132,46 @@ describe('the search row', () => {
     // The words are not the search: clearing them is not "resume browsing".
     expect(onClear).not.toHaveBeenCalled()
     expect(screen.queryByRole('button', { name: 'Kosongkan pencarian' })).not.toBeInTheDocument()
+  })
+})
+
+describe('pasting an image into the row (2026-10-22)', () => {
+  function clipboardWith(files: File[], text = ''): Partial<DataTransfer> {
+    return {
+      items: files.map((file) => ({
+        kind: 'file',
+        type: file.type,
+        getAsFile: () => file,
+      })) as unknown as DataTransferItemList,
+      files: files as unknown as FileList,
+      getData: () => text,
+    }
+  }
+
+  it('adopts a pasted image as the query photograph and searches with it', async () => {
+    encodeSearchQueryImage.mockResolvedValue('data:image/jpeg;base64,AAAA')
+    searchNinaAvatarsAction.mockResolvedValue({ ok: true, hits: [], searched: 3, mode: 'image' })
+    const onResults = vi.fn()
+    const pasted = new File(['png-bytes'], 'image.png', { type: 'image/png' })
+
+    render(<PhotoSearchBar active={false} onResults={onResults} onClear={vi.fn()} />)
+    fireEvent.paste(screen.getByRole('searchbox'), { clipboardData: clipboardWith([pasted]) })
+
+    expect(await screen.findByText('Pasted image')).toBeInTheDocument()
+    expect(encodeSearchQueryImage).toHaveBeenCalledWith(pasted)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }))
+    await waitFor(() => expect(onResults).toHaveBeenCalledTimes(1))
+    expect(searchNinaAvatarsAction).toHaveBeenCalledWith({
+      text: undefined,
+      imageDataUri: 'data:image/jpeg;base64,AAAA',
+    })
+  })
+
+  it('leaves a text-only paste alone', () => {
+    render(<PhotoSearchBar active={false} onResults={vi.fn()} onClear={vi.fn()} />)
+    fireEvent.paste(screen.getByRole('searchbox'), { clipboardData: clipboardWith([], 'red') })
+    expect(encodeSearchQueryImage).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: 'Remove the search photo' })).toBeNull()
   })
 })

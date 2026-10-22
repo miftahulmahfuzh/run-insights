@@ -55,8 +55,11 @@ describe('the search row sits above "Album" (R1)', () => {
     expect(toolbar).toBeGreaterThan(searchBar)
   })
 
-  it('is absent on the Media arm rather than disabled', () => {
-    expect(codeLines(explorer)).toContain('{!isMediaView && (')
+  it('is on the Media arm too — the search is unified across both collections', () => {
+    const body = codeLines(explorer)
+    const searchBar = body.indexOf('<PhotoSearchBar')
+    expect(body.slice(searchBar - 40, searchBar)).not.toContain('!isMediaView')
+    expect(body).not.toContain('isMediaView ? null : search')
   })
 
   it('is a client component with a search landmark', () => {

@@ -82,12 +82,34 @@ export function PhotoSearchBar({
     // So re-picking the same file fires `change` again — `FileExplorer.onPickFolder`'s line.
     event.target.value = ''
     if (file == null) return
+    await adoptImage(file, file.name)
+  }
 
+  /**
+   * Ctrl-V / Cmd-V of an image straight into the bar — 2026-10-22, in his words: *"i 'copy this
+   * image' in browser (another tab), i pasted into image search bar directly"*. A browser's "Copy
+   * image" puts the pixels on the clipboard as a file (`image/png` in Chrome and Firefox), so it
+   * arrives here exactly like a picked one and takes the same encode. Bound on the FORM, so a paste
+   * with focus on the field or on either button lands; a paste with no image on the clipboard is
+   * left alone, so pasting words into the field still types them.
+   */
+  function onPaste(event: React.ClipboardEvent<HTMLFormElement>) {
+    if (busy) return
+    const file = imageFromClipboard(event.clipboardData)
+    if (file == null) return
+    event.preventDefault()
+    void adoptImage(
+      file,
+      file.name === '' || file.name === 'image.png' ? 'Pasted image' : file.name,
+    )
+  }
+
+  async function adoptImage(file: File, name: string) {
     setBusy(true)
     setError(null)
     try {
       const dataUri = await encodeSearchQueryImage(file)
-      setQueryImage({ dataUri, name: file.name })
+      setQueryImage({ dataUri, name })
     } catch (cause) {
       setQueryImage(null)
       setError(cause instanceof Error ? cause.message : 'That photo could not be read.')
@@ -135,6 +157,7 @@ export function PhotoSearchBar({
       role="search"
       aria-label="Search the album"
       onSubmit={(event) => void onSubmit(event)}
+      onPaste={onPaste}
       className="mb-4 space-y-2"
     >
       <div className="flex flex-wrap items-center gap-2">
@@ -154,7 +177,7 @@ export function PhotoSearchBar({
             value={text}
             disabled={busy}
             onChange={(event) => setText(event.target.value)}
-            placeholder="Describe the photo you are looking for"
+            placeholder="Describe the photo, or paste one"
             aria-label="Describe the photo you are looking for"
             className={cn('[&::-webkit-search-cancel-button]:hidden', text !== '' && 'pr-11')}
           />
@@ -245,6 +268,25 @@ export function PhotoSearchBar({
       )}
     </form>
   )
+}
+
+/**
+ * The first image FILE on a paste, or `null`. `items` and not `files` first: Chrome's "Copy image"
+ * exposes the bitmap as a `kind: 'file'` item, and some older WebKit builds populate `items` but
+ * leave `files` empty. `files` is the fallback for the reverse.
+ */
+function imageFromClipboard(data: DataTransfer | null): File | null {
+  if (data == null) return null
+  for (const item of Array.from(data.items ?? [])) {
+    if (item.kind === 'file' && item.type.startsWith('image/')) {
+      const file = item.getAsFile()
+      if (file != null) return file
+    }
+  }
+  for (const file of Array.from(data.files ?? [])) {
+    if (file.type.startsWith('image/')) return file
+  }
+  return null
 }
 
 /**

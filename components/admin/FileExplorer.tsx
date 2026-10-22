@@ -173,13 +173,13 @@ export function FileExplorer({
   const isMediaView = view === 'media'
 
   /**
-   * The search that is actually driving the pane. `null` on the Media arm even when a search has
-   * landed: the feature is the ALBUM's (the plan's first Decision — Media is a separate arm
-   * throughout this codebase), so the results are simply not on screen there. Derived rather than
-   * cleared by an effect, so switching to Media and back does not throw away a search the operator
-   * ran, and there is no effect to reason about.
+   * The search that is actually driving the pane — on BOTH arms. It used to be `null` on Media
+   * (the search was the album's alone), but media-album-unified-search R1 made the one action
+   * behind the bar rank `nina_avatars` and `nina_message_images` together, so the field answers on
+   * Media too, and 2026-10-22's ask was the bar there as well. One state for both arms: a search run
+   * on the album is still on screen after switching to Media, and the reverse.
    */
-  const activeSearch = isMediaView ? null : search
+  const activeSearch = search
 
   const folderInputRef = useRef<HTMLInputElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -436,16 +436,13 @@ export function FileExplorer({
           folder tree's root row (`FolderTree`, in the grid further down) — so one element in one
           place satisfies the requirement for both, and no sibling has to know about it.
 
-          Album-only. The Media arm's photographs are a different table with no description column
-          (the plan's first Decision), so a search field over it would be a field that cannot
-          answer — absent, not disabled. */}
-      {!isMediaView && (
-        <PhotoSearchBar
-          active={activeSearch !== null}
-          onResults={onSearchResults}
-          onClear={() => setSearch(null)}
-        />
-      )}
+          On BOTH arms. Since media-album-unified-search R1 the one action behind it ranks the album
+          and the Media collection together, so the field answers wherever it is shown. */}
+      <PhotoSearchBar
+        active={activeSearch !== null}
+        onResults={onSearchResults}
+        onClear={() => setSearch(null)}
+      />
 
       {/* ── TOOLBAR ─────────────────────────────────────────────────────────────────────────
           Two rows below `lg` — crumbs over controls — and one flex line at `lg`, unchanged from
