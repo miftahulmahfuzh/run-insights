@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 
+import { replaceChatPhotoAction } from '@/lib/admin/chatPhotoActions'
 import { ADMIN_CHAT_PHOTOS_PATH } from '@/lib/admin/chatPhotos'
 import { chatPhotoSetAvatarSchema } from '@/lib/admin/chatPhotoSchema'
 import { isAdminAvatarRequestPathname } from '@/lib/admin/avatars'
@@ -275,9 +276,11 @@ export async function saveNinaAvatarCropAction(input: unknown): Promise<AdminAct
  * the Media folder's Replace), mirrored onto this table.
  *
  * A pointer row (`sourceImageId` set) owns no bytes of its own to replace, because it shows the
- * Media row's object. So it is refused before any write is attempted. Without that refusal,
- * `updateNinaAvatarBlob`'s own `sourceImageId IS NULL` guard would report it as a bare
- * "not in the album".
+ * Media row's object. So the replace is FORWARDED to that Media row (`replaceChatPhotoAction`),
+ * whose `updateNinaChatPhotoBlob` already moves every album pointer to the new bytes — the
+ * operator replaces from wherever they are looking, and both places show the new photo. The
+ * client uploads a pointer's file through `uploadChatPhoto` for exactly this reason: the Media
+ * action only accepts a chat-photo pathname, and re-validates every claim with its own schema.
  *
  * ── THE OLD FILE AND THE OLD THUMBNAIL ARE BOTH RELEASED (profpic-pointer-sync R3) ──────────
  * `updateNinaAvatarBlob` moves every chat reference to the new bytes and nulls this row's
@@ -299,17 +302,16 @@ export async function replaceNinaAvatarAction(input: unknown): Promise<AdminActi
   if (!parsed.success) return { ok: false, error: 'That upload did not describe a photo.' }
   const { id, blobUrl, pathname, width, height, bytes, contentHash } = parsed.data
 
-  if (!isAdminAvatarRequestPathname(pathname, userId)) {
-    return { ok: false, error: 'That file did not land in her photo folder.' }
-  }
-
   const existing = await getNinaAvatar(userId, id)
   if (existing == null) return { ok: false, error: 'That photo is not in the album.' }
   if (existing.sourceImageId != null) {
-    return {
-      ok: false,
-      error: 'That one points at a Media photo. Replace the original there instead.',
-    }
+    /* `ChatPhotoActionResult` and `AdminActionResult` are the same four optional fields; the
+     * delegate's revalidate is `ADMIN_CHAT_PHOTOS_PATH`, which IS `/admin/nina`. */
+    return replaceChatPhotoAction({ ...parsed.data, id: existing.sourceImageId })
+  }
+
+  if (!isAdminAvatarRequestPathname(pathname, userId)) {
+    return { ok: false, error: 'That file did not land in her photo folder.' }
   }
 
   const claimedHash = isValidContentHash(contentHash) ? contentHash : null

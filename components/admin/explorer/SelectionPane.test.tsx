@@ -74,6 +74,9 @@ vi.mock('@/lib/admin/ninaAlbumActions', () => ({
 const { uploadAvatarPhoto } = vi.hoisted(() => ({ uploadAvatarPhoto: vi.fn() }))
 vi.mock('./avatarUpload', () => ({ uploadAvatarPhoto }))
 
+const { uploadChatPhoto } = vi.hoisted(() => ({ uploadChatPhoto: vi.fn() }))
+vi.mock('./chatPhotoUpload', () => ({ uploadChatPhoto }))
+
 // `imageReferenceActions` opens with `requireAdmin()` -> the same auth chain -> `next/server` the
 // comment below rules out for `MediaPane` — mocked at its own boundary for the same reason.
 const { setNinaImageReferenceAction } = vi.hoisted(() => ({
@@ -345,6 +348,40 @@ describe('AlbumSelectionPane (via SelectionPane)', () => {
       }),
     )
     expect(fileInput.value).toBe('')
+  })
+
+  it('uploads a pointer row in Media shape, so the server can forward it to the original', async () => {
+    uploadChatPhoto.mockResolvedValue({
+      blobUrl: 'https://blob.example/selfie-new.jpg',
+      pathname: 'nina/u1/selfie-new.jpg',
+      width: 768,
+      height: 1024,
+      bytes: 999,
+      contentHash: 'b'.repeat(64),
+    })
+    const { container } = render(
+      <SelectionPane {...baseProps()} photo={albumPhoto({ id: 'pointer', isPointer: true })} />,
+    )
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement
+
+    await userEvent.upload(fileInput, new File(['x'], 'new.jpg', { type: 'image/jpeg' }))
+
+    await waitFor(() =>
+      expect(replaceNinaAvatarAction).toHaveBeenCalledWith({
+        id: 'pointer',
+        blobUrl: 'https://blob.example/selfie-new.jpg',
+        pathname: 'nina/u1/selfie-new.jpg',
+        width: 768,
+        height: 1024,
+        bytes: 999,
+        contentHash: 'b'.repeat(64),
+      }),
+    )
+    expect(uploadChatPhoto).toHaveBeenCalledWith(
+      'user1',
+      expect.objectContaining({ name: 'new.jpg' }),
+    )
+    expect(uploadAvatarPhoto).not.toHaveBeenCalled()
   })
 
   it('shows an inline error when the replace action refuses', async () => {

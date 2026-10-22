@@ -147,7 +147,7 @@ export const NINA_BODY_AVATAR = `She is voluptuous — big boobs and very long c
  * The face paragraph's first sentence — everything before the hair, which the 2026-09-18
  * hairstyle preset carved out of what used to be one fixed second sentence here.
  */
-const NINA_FACE_PREFIX = 'A white, beautiful, tall, caucasian woman in her late twenties.'
+const NINA_FACE_PREFIX = 'A white, beautiful, tall, caucasian woman in her early twenties.'
 
 /**
  * The face paragraph's middle sentence — everything between the hair and the expression. Split out

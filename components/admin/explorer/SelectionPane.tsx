@@ -34,6 +34,7 @@ import { cn } from '@/lib/cn'
 import { isIdentityCrop, resolveCrop, type NinaCrop } from '@/lib/nina/crop'
 
 import { uploadAvatarPhoto } from './avatarUpload'
+import { uploadChatPhoto } from './chatPhotoUpload'
 import { isMediaRow, MediaPane } from './MediaPane'
 import { PhotoDescription } from './PhotoDescription'
 import type { AlbumExplorerPhoto, ExplorerPhoto } from './model'
@@ -194,7 +195,12 @@ function AlbumSelectionPane({
     setError(null)
     setReplaceNote(null)
     try {
-      const uploaded = await uploadAvatarPhoto(userId, file)
+      /* A pointer's bytes belong to the Media row it links to, and the server forwards its
+       * replace there — so its file goes up in Media's shape. Never deduped, for
+       * `uploadChatPhoto`'s own "Replace must never pass it" reason. */
+      const uploaded = photo.isPointer
+        ? await uploadChatPhoto(userId, file)
+        : await uploadAvatarPhoto(userId, file)
       const result = await replaceNinaAvatarAction({ id: photo.id, ...uploaded })
       if (!result.ok) setError(result.error ?? 'That replacement did not stick.')
       else if (result.note != null) setReplaceNote(result.note)
