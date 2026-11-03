@@ -4,6 +4,7 @@ import {
   formatClockSec,
   formatDistanceM,
   formatDuration,
+  formatElevation,
   formatKcal,
   formatPace,
   formatPercent,
@@ -53,6 +54,9 @@ export const RECORD_LABELS: Record<RecordKey, string> = {
  * `formatDuration` must never be reached for it — the identical number as a duration is `7:07:00`.
  */
 export function formatRecordValue(key: RecordKey, value: number): string {
+  /* `most_elevation` shares the unit `'m'` with `longest_distance`, but a climb is read in metres:
+     `formatDistanceM` printed a 118 m climb as `0.12 km` while the run page said `118 m`. */
+  if (key === 'most_elevation') return formatElevation(value)
   switch (recordDefinition(key)?.unit) {
     case 'm':
       return formatDistanceM(value)

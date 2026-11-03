@@ -22,6 +22,13 @@ tree in September 2026, readable in git history.
   `logs`) save numbered evidence outside the repo, and `features/` maps eight user-facing features
   to journeys proven against a live run.
 
+### Fixed
+
+- **The elevation record printed in kilometres.** `/me`, the record dialog and Nina's context
+  showed "Most elevation 0.12 km" for a 118 m climb, because `formatRecordValue` sent both
+  `unit: 'm'` records (distance and elevation) through `formatDistanceM`. It now prints `118 m`,
+  as the run page always did. Found by the new verify skill's first pass.
+
 ### Changed
 
 - **One numbered pager for every paginated surface** (`numbered-pagination`, 5 phases). Every

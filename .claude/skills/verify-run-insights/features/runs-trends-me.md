@@ -22,7 +22,8 @@ Bottom tabs **Runs**, **Trends**, **Me**.
 $V api RUN GET /
 # demo: "Week of 17 Aug 2026 · 3 runs · 37.20 km", "Wed 19 Aug ⧉ 3 screenshots", "21.20 km · 2:21:20"
 $V api RUN GET /me
-# demo: "Runs 26", eleven "[<record> — <value>. Show the record.]" lines, "Badges 20 earned 2 to find"
+# demo: "Runs 25", eleven "[<record> — <value>. Show the record.]" lines ("Longest distance 21.20 km",
+#   "Most elevation 118 m"), "Badges 20 earned 2 to find"
 $V cron RUN rollup
 # with no recent run: {"ok":true,"users":0,"generated":0,...,"weekKey":"2026-W45","monthKey":"2026-11"}
 # after review-commit.mjs re-dated a run to this week: {"users":1,"generated":2,"failed":0}
@@ -37,11 +38,9 @@ Cost: 0 for the pages; `cron rollup` spends up to 2 llm calls per active runner 
 
 ## Gotchas
 
-- **Product bug, found 2026-11-03:** `/me` shows "Most elevation 0.12 km" for a 118 m climb.
-  `lib/records/labels.ts:57` formats every record with `unit: 'm'` through `formatDistanceM`, and
-  `most_elevation` shares that unit with `longest_distance`. The run page shows the same climb as
-  "118 m". Until fixed, this line is the expected (wrong) output; do not edit the entry to match a
-  fix that has not landed, and update it when it does.
+- "Most elevation" prints in metres (`118 m`), like the run page. It printed `0.12 km` until
+  2026-11-04 (`formatRecordValue` sent both `unit: 'm'` records through `formatDistanceM`); a
+  regression shows up here first, and in `tests/records.labels.test.ts`.
 - The rollup and Nina crons see nobody on plain demo data (newest run 20 Aug 2026, 60-day window).
   Commit a re-dated run first (review-commit.md).
 - `/trends` before a rollup says "The written analysis is not ready for this one yet. Every number on
