@@ -30,6 +30,10 @@ TEST_DATABASE_URL=<pooled-url> npm run test:int   # VITEST_INTEGRATION=1, real P
 npm run test:live                                 # LLM_LIVE_TEST=1, all live suites — costs money
 npm run test:live:vision / :narrate / :nina / :nina-vision / :nina-image   # one live suite at a time
 
+.claude/skills/verify-run-insights/scripts/verify.sh up   # a throwaway app on its own Postgres + Blob stand-in,
+                                # real z.ai under a 25-call budget; never production. See the skill's
+                                # SKILL.md and features/README.md (the feature map plans cite as Proof)
+
 npm run db:migrate             # drizzle/ → the ONE Neon database (see Architecture below)
 npm run db:generate            # after editing lib/db/schema/*.ts
 npm run db:smoke                # is Neon reachable, no schema changes

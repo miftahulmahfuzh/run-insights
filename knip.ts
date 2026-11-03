@@ -48,6 +48,10 @@ const config: KnipConfig = {
     // design-brief.md, and gen-og-default.mjs mirror its values by hand). Nothing can import a
     // design reference, so "unused file" is the wrong verdict for it by construction.
     'docs/design/tokens.css',
+    // The verify skill's helpers are started by its verify.sh by path (`node standin.mjs`,
+    // `NODE_OPTIONS=--import preload.mjs`, steps files handed to ui.mjs), never imported, so
+    // "unused file" is the wrong verdict for them by construction.
+    '.claude/skills/verify-run-insights/**',
   ],
 }
 

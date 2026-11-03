@@ -10,6 +10,18 @@ tree in September 2026, readable in git history.
 
 ## [Unreleased]
 
+### Added
+
+- **A verification skill, `.claude/skills/verify-run-insights`.** `verify.sh up` starts a throwaway
+  copy of the checkout: its own Postgres database (pgvector, every `drizzle/` migration), a loopback
+  stand-in that speaks Neon's HTTP protocol and the Vercel Blob API, a seeded runner (the capture
+  harness's demo seeder, with its 25 runs committed through the real review screen) and a minted
+  session. The z.ai models run for real under a per-run call budget; OpenRouter stays off unless
+  `--openrouter`; the production database, the production Blob store, web push, Google, Vercel and
+  GitHub are unreachable from a run. Drive commands (`api`, `upload`, `ui`, `cron`, `sql`, `blobs`,
+  `logs`) save numbered evidence outside the repo, and `features/` maps eight user-facing features
+  to journeys proven against a live run.
+
 ### Changed
 
 - **One numbered pager for every paginated surface** (`numbered-pagination`, 5 phases). Every
