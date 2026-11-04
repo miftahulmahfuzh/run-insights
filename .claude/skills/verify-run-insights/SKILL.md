@@ -221,6 +221,14 @@ wrong is a product bug: report it, do not edit the entry to match.
   `run_committed` openers; the first visit to a demo run's `/r/<id>` generates one, for 1 call); the
   demo commit pass reuses the harness seeder but not `shoot.mjs` itself, whose browser is not fenced
   and would fetch the fake store's URLs from the real Vercel host.
+- **The browser reaches the Blob stand-in over HTTPS + HTTP/2.** `@vercel/blob/client`'s `upload()`
+  streams its PUT body whenever the caller passes `onUploadProgress`, and Chromium streams a request
+  body only over HTTP/2: against plain HTTP/1.1 the PUT fails (`net::ERR_ALPN_NEGOTIATION_FAILED`)
+  while the token step answers 200. No caller here passes it yet, but the first progress bar would
+  have read as a broken upload. `NEXT_PUBLIC_VERCEL_BLOB_API_URL` therefore points at the stand-in's
+  h2 listener (a per-run self-signed certificate only the run's Playwright context accepts); the
+  server and the `upload` drive keep plain HTTP. Measured 2026-11-04: a streamed PUT from the run's
+  browser stored over h2 and failed over HTTP/1.1.
 - **Egress control is best effort.** The preload wraps `globalThis.fetch` (Next wraps it later, so
   the guard stays underneath) and the Anthropic SDK, the vision client, OpenRouter and the Blob SDK's
   reads all go through it. Code on `node:http(s)` directly (web-push) is not covered. The server has

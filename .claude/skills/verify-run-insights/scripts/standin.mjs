@@ -9,6 +9,11 @@
 //   *    /blob/...           the Vercel Blob API (`put`, `del`, `head`, `list`, `copy`, `rename`,
 //                            and the browser's client-token PUT), stored under <blob-dir>; a client
 //                            token's signature and options are enforced the way Vercel does
+//                            Also served over HTTPS + HTTP/2 on RI_STANDIN_TLS_PORT for the browser:
+//                            the Blob client streams its PUT body when the caller passes
+//                            onUploadProgress, and Chromium streams a request body only over HTTP/2
+//                            (over HTTP/1.1 it fails with ERR_ALPN_NEGOTIATION_FAILED). Vercel's real
+//                            API is HTTP/2, so the browser gets the same here.
 //   GET  /files/<pathname>   a stored blob's bytes (preload.mjs and ui.mjs route the fake store's
 //                            https://<store-id>.public.blob.vercel-storage.com/... URLs here)
 //   POST /budget/take?pool=  one paid call (pool llm = z.ai, pool openrouter = OpenRouter); 200
@@ -22,6 +27,7 @@
 // this run's database.
 import { createRequire } from 'node:module'
 import { createServer } from 'node:http'
+import { createSecureServer } from 'node:http2'
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
 import {
   existsSync,
@@ -417,7 +423,7 @@ const json = (req, res, status, body) =>
     .writeHead(status, { 'content-type': 'application/json', ...cors(req) })
     .end(JSON.stringify(body))
 
-const server = createServer((req, res) => {
+function handle(req, res) {
   const url = new URL(req.url, `http://127.0.0.1:${port}`)
   if (req.method === 'OPTIONS') {
     res.writeHead(204, cors(req)).end()
@@ -515,7 +521,24 @@ const server = createServer((req, res) => {
       json(req, res, 400, err)
     }
   })
-})
+}
+
+const server = createServer(handle)
+
+const tlsPort = Number(process.env.RI_STANDIN_TLS_PORT ?? 0)
+if (tlsPort) {
+  // A per-run self-signed certificate for 127.0.0.1; only the run's own browser accepts it.
+  createSecureServer(
+    {
+      key: readFileSync(process.env.RI_STANDIN_TLS_KEY),
+      cert: readFileSync(process.env.RI_STANDIN_TLS_CERT),
+      allowHTTP1: true,
+    },
+    handle,
+  ).listen(tlsPort, '127.0.0.1', () =>
+    console.log(`standin listening on https://127.0.0.1:${tlsPort} (h2, for the browser)`),
+  )
+}
 
 const wss = new WS.WebSocketServer({ noServer: true })
 server.on('upgrade', (req, socket, head) => {

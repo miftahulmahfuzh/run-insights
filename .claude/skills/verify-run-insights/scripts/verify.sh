@@ -119,7 +119,9 @@ write_web_env() {
     cat "$dir/secrets/llm.env"
     echo "BLOB_READ_WRITE_TOKEN=vercel_blob_rw_${STORE_ID}_$(cat "$dir/secrets/blob")"
     echo "VERCEL_BLOB_API_URL=$sp/blob"
-    echo "NEXT_PUBLIC_VERCEL_BLOB_API_URL=$sp/blob"
+    # The browser's twin (inlined into the client bundle) is the stand-in's HTTPS + HTTP/2 listener:
+    # with onUploadProgress the Blob client streams its PUT body, which Chromium sends only over h2.
+    echo "NEXT_PUBLIC_VERCEL_BLOB_API_URL=https://127.0.0.1:$(cat "$dir/standin_tls_port")/blob"
     echo "CRON_SECRET=$(cat "$dir/secrets/cron")"
     echo "OPENROUTER_API_KEY=$(cat "$dir/secrets/openrouter")"
     cat "$dir/secrets/vapid.env"
@@ -240,6 +242,12 @@ cmd_up() {
   migrate "$dir" "$dir/app" "$db"
 
   free_port >"$dir/standin_port"
+  free_port >"$dir/standin_tls_port"
+  # A self-signed certificate for the stand-in's browser-facing HTTPS listener, minted per run and
+  # accepted only by the run's own Playwright context (ignoreHTTPSErrors); nothing else trusts it.
+  openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj /CN=127.0.0.1 -addext subjectAltName=IP:127.0.0.1 \
+    -keyout "$dir/secrets/tls.key" -out "$dir/secrets/tls.crt" >/dev/null 2>&1 || die "openssl could not mint the stand-in's certificate"
+  RI_STANDIN_TLS_PORT="$(cat "$dir/standin_tls_port")" RI_STANDIN_TLS_KEY="$dir/secrets/tls.key" RI_STANDIN_TLS_CERT="$dir/secrets/tls.crt" \
   RI_STANDIN_RW_TOKEN="vercel_blob_rw_${STORE_ID}_$(cat "$dir/secrets/blob")" setsid node "$HERE/standin.mjs" "$dir/app" "$(cat "$dir/standin_port")" "$PG_PORT" "$db" "$dir/blobs" "$STORE_ID" \
     "$dir/budget.json" "$llm" "$openrouter" </dev/null >"$dir/standin.log" 2>&1 &
   echo "standin $!" >>"$dir/pgids"
@@ -550,7 +558,7 @@ stop_run() {
   if docker inspect "$PG_CONTAINER" >/dev/null 2>&1 && [ -n "$(meta "$dir" db)" ]; then
     psql_run -c "drop database if exists $(meta "$dir" db) with (force)" >/dev/null || true
   fi
-  rm -rf "$dir/app" "$dir/blobs" "$dir/home" "$dir/secrets" "$dir/web.env" "$dir/cookie" "$dir/port" "$dir/standin_port"
+  rm -rf "$dir/app" "$dir/blobs" "$dir/home" "$dir/secrets" "$dir/web.env" "$dir/cookie" "$dir/port" "$dir/standin_port" "$dir/standin_tls_port"
   : >"$dir/pgids"; echo stopped >"$dir/state"
   echo "verify: stopped $(basename "$dir"); evidence kept in $dir/evidence ($(find "$dir/evidence" -type f | wc -l) files)"
 }

@@ -46,6 +46,9 @@ end state for an offline run.
 - The stand-in enforces what Vercel enforces for a client token: the signature, the pathname, the
   expiry, `maximumSizeInBytes` (600 000 for shots), `allowedContentTypes` and the random suffix.
   A blob the stand-in refused would have been refused in production too.
+- `upload.mjs`'s PUTs go to the stand-in's HTTPS + HTTP/2 listener (SKILL.md Gotchas). A
+  `request failed ... ERR_ALPN_NEGOTIATION_FAILED` in a transcript means the client bundle was built
+  against a plain-HTTP Blob URL.
 - Every `/api/upload` logs "onUploadCompleted provided but no callbackUrl could be determined": the
   completion webhook needs a public URL. The handler only logs, so nothing depends on it.
 - The shipped fixtures read clean (no consistency checks). The flagged fixture with a real misread

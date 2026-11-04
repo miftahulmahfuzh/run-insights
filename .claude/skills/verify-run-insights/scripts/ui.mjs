@@ -54,6 +54,9 @@ const context = await browser.newContext({
   colorScheme: theme === 'light' ? 'light' : 'dark',
   recordVideo: { dir: path.join(evidence, '.video'), size: { width: Number(width), height: 844 } },
   permissions: [],
+  // The stand-in's browser-facing Blob listener has a per-run self-signed certificate. This
+  // context reaches nothing but loopback and the fake store anyway (see the route below).
+  ignoreHTTPSErrors: true,
 })
 await context.addCookies([
   {
