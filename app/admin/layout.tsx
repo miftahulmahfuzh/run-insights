@@ -1,7 +1,10 @@
 import type { Metadata, Viewport } from 'next'
 
 import { AdminNav } from '@/components/admin/AdminNav'
+import { PhotoBudgetBanner } from '@/components/admin/PhotoBudgetBanner'
+import { isOverPhotoBudget, NINA_PHOTO_SAFE_COUNT } from '@/lib/admin/photoBudget'
 import { requireAdmin } from '@/lib/admin/requireAdmin'
+import { countNinaStoredPhotos } from '@/lib/nina/queries'
 import { ADMIN_INSTALL, APPLE_WEB_APP } from '@/lib/pwa'
 
 /**
@@ -165,7 +168,8 @@ export const viewport: Viewport = {
 }
 
 export default async function AdminLayout({ children }: LayoutProps<'/admin'>) {
-  await requireAdmin()
+  const { userId } = await requireAdmin()
+  const photoCount = await readPhotoCount(userId)
 
   return (
     <div className="min-h-dvh bg-paper-2">
@@ -173,8 +177,27 @@ export default async function AdminLayout({ children }: LayoutProps<'/admin'>) {
         <AdminNav />
         {/* `min-w-0` is load-bearing: without it a wide album grid blows out the grid track
             instead of scrolling inside it. */}
-        <main className="min-w-0">{children}</main>
+        <main className="min-w-0">
+          {photoCount != null && isOverPhotoBudget(photoCount) && (
+            <PhotoBudgetBanner count={photoCount} safeCount={NINA_PHOTO_SAFE_COUNT} />
+          )}
+          {children}
+        </main>
       </div>
     </div>
   )
+}
+
+/**
+ * The storage banner's count, or `null` when it cannot be read. A warning must never be the reason
+ * `/admin` is down: this layout wraps every admin page, so a failed count drops the banner and
+ * logs, and the page renders as if nothing were wrong.
+ */
+async function readPhotoCount(userId: string): Promise<number | null> {
+  try {
+    return await countNinaStoredPhotos(userId)
+  } catch (error) {
+    console.error('[admin] photo budget count failed', error)
+    return null
+  }
 }

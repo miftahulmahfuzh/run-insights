@@ -1473,3 +1473,22 @@ export async function deleteNinaFolderSubtree(userId: string, folder: string): P
     .returning({ folder: ninaFolders.folder })
   return removed.length
 }
+
+/**
+ * How many photographs of hers the Blob store actually holds: DISTINCT pathnames across the album
+ * and the chat collection, not rows. A reference row (`resolveAttachment`, the F37 shape) copies
+ * `blob_url`/`pathname` without copying bytes, so counting rows would charge one object twice —
+ * 1,316 rows named 1,002 objects when `NINA_PHOTO_SAFE_COUNT` was measured. `UNION` (not
+ * `UNION ALL`) is what dedupes across the two tables. `/admin`'s layout reads it for the banner.
+ */
+export async function countNinaStoredPhotos(userId: string): Promise<number> {
+  const result = await db.execute<{ n: number }>(sql`
+    select count(*)::int as n from (
+      select ${ninaAvatars.pathname} from ${ninaAvatars} where ${ninaAvatars.userId} = ${userId}
+      union
+      select ${ninaMessageImages.pathname} from ${ninaMessageImages}
+      where ${ninaMessageImages.userId} = ${userId}
+    ) as stored
+  `)
+  return Number(result.rows[0]?.n ?? 0)
+}

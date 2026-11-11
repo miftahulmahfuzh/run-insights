@@ -109,6 +109,8 @@ const BARREL_VALUE_EXPORTS = [
   // media-album-unified-search phase 2 (R1/R2): the MEDIA twin of `countNinaAvatarDescribeBacklog`
   // — `lib/nina/queries/imageEmbeddings.ts`'s header.
   'countNinaMessageImageDescribeBacklog',
+  // The /admin storage banner's count: distinct stored objects across both photo tables.
+  'countNinaStoredPhotos',
   'countNinaTurnsSince',
   'countUnreadNinaMessages',
   'createNinaSession',
