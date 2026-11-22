@@ -4,6 +4,8 @@
 **Last Updated**: 2026-09-12 — initial creation. Every constant, signature, consumer and route
 below was re-read from the tree at commit `6759f26` on this date; the reverse-dependency counts
 are measured, not remembered, and carry the same stamp.
+2026-11-22 — added *The chart estimator* (`lib/extract/chart/`, plan set
+`workout-details-estimate` phase 1, P1-LEX-K7CD); every other section is unchanged from 2026-09-12.
 **Documentation Created**: 2026-09-12 (token-maxxing session `pkg-readme-extract-photos`)
 
 ## Why one map for three packages
@@ -48,7 +50,9 @@ against Vercel Hobby's 60 s function ceiling**.
   about (`constants.ts`, pure and import-free on purpose); the pick planner and kind-swap logic
   as pure functions (`planPicked.ts`, `reassignKind.ts`, `rejectionReason.ts`); and the single
   read `readExtractionResult` that both the poll endpoint and the `/x/…` server render use, with
-  the lazy stale-pending self-heal inside it (`readExtraction.ts`).
+  the lazy stale-pending self-heal inside it (`readExtraction.ts`). Plus `chart/`, the pure
+  Workout Details chart estimator (distance and per-km splits from chart pixels) and its one
+  server-only decoder — see *The chart estimator*.
 - `lib/photos` — bytes and gestures. Browser-side compression for both photo pipelines
   (`compressForExtraction`, `compressForNina`), the short-edge arithmetic the compressors exist
   to get right (`resizeTarget`), the three-host sha-256 every dedup layer agrees on
@@ -253,6 +257,74 @@ and are documented here because they share the package:
 logic: `vitest` runs `environment: 'node'` and there is no `TouchEvent`, no share sheet and no
 download bar — the impure halves stay in the components, and everything decidable without a
 browser is decided here, where it can be proved.
+
+## The chart estimator: `lib/extract/chart/`
+
+Some runs reach the app with only Apple Fitness's **Workout Details** screen — no splits table.
+That screen prints a duration, a pace range and an HR range, and draws a Pace bar chart and a
+Heart Rate chart. `chart/` turns those pixels into an estimated distance and per-km splits. The
+vision model only transcribes the printed numbers; every estimated number is arithmetic here
+("the LLM never computes"). Plan: `lib/extract/.workflows/plan/` (set `workout-details-estimate`);
+phase 1 built the module, phase 3 wires it into `lib/llm/runExtractionJob.ts`.
+
+| File | Purity | Role |
+|---|---|---|
+| `pixels.ts` | pure | `RgbImage` (`{ width, height, data: Uint8Array }`, 3 bytes/px, row-major, no alpha), `isTealAt`, `isRedAt`, `isUsableImage`. |
+| `locate.ts` | pure | `locatePaceChart(image)` → `PaceChartBand \| null`, `locateHrChart(image, paceTop)` → `HrChartBand \| null`, `slotColumns`, `SLOT_COUNT` (90). Finds charts by colour and band shape, never by fixed rows. |
+| `measure.ts` | pure | `measurePaceSlots(band)` (tallest bar per slot), `measureHrSlots(image, pace, hr, hrMin, hrMax)` (red-mark midpoint per slot, gaps linearly interpolated; null when no slot has a mark). |
+| `estimate.ts` | pure | `estimateFromCharts(image, input)` — the contract. |
+| `decode.ts` | **`server-only`** | `decodeToRgb(jpegOrPng: Buffer): Promise<RgbImage>` — the one `sharp` call. |
+
+```ts
+estimateFromCharts(image: RgbImage, input: ChartEstimateInput): ChartEstimate | null
+// ChartEstimateInput: { durationSec, paceSlowestSecPerKm, paceFastestSecPerKm,
+//                       hrMinBpm: number | null, hrMaxBpm: number | null, knownDistanceKm: number | null }
+// ChartEstimate:      { distanceKm (2 dp), distanceWasEstimated, splits: EstimatedSplit[], slotCount: 90 }
+// EstimatedSplit:     { km, timeSec, paceSecPerKm, hrBpm: number | null, cadenceSpm: null, partial }
+```
+
+**Rules of the module:**
+
+1. **Only `decode.ts` touches a codec, and nothing in `chart/` imports it.** `sharp` is native and
+   server-only, so the estimator stays testable under `environment: 'node'` and bundle-safe.
+   `decodeToRgb` **throws** on bytes `sharp` cannot decode — it is the I/O edge, and the caller
+   (the extraction job) catches it and finishes without an estimate.
+2. **`estimateFromCharts` never throws.** Unusable inputs (non-finite or non-positive duration,
+   slowest pace not slower than fastest), a non-details screen (no pace band found), or any
+   internal error → `null`. The extraction must always be able to finish without an estimate.
+3. **The method.** The pace chart is 90 equal time slots; a slot's value is its tallest teal bar.
+   Shortest bar = slowest printed pace, tallest = fastest, and height is linear in **speed**
+   (1/pace), not in pace — linear-in-pace was measured worse. Distance = Σ speed × slot duration;
+   each whole-km boundary is interpolated inside the slot that crosses it. HR per split is the
+   time-weighted mean of its slots; HR is only read when the printed range is valid (min > 0,
+   max > min), else `hrBpm` is null. `cadenceSpm` is always null.
+4. **A known distance wins.** With `knownDistanceKm` set, speeds are scaled to total it exactly,
+   `distanceKm` equals it, and `distanceWasEstimated` is false.
+5. **Partial row = CHK-4's rule, strictly.** A final partial row exists only when the 2-decimal
+   remainder is **> 0.05 km** (`lib/review/checks.ts` `partialConsistency`); a smaller remainder
+   is folded away — no row, and its seconds join no full row — so an estimate never trips the
+   review screen's partial advisory.
+6. **Every locator threshold is a fraction of the image width**, so the 739 px original and the
+   560 px JPEG q80 the browser uploads run the same code. The slot grid is computed from the
+   chart's x-extent, never from detected bar edges (JPEG splits and merges bars).
+7. **The colour predicates are measured, not guessed.** Teal: `g > 130 && b > 130 && g − r > 50
+   && |g − b| < 40` — no red ceiling (JPEG lightens 2 px bars to ~(141, 214, 220)), and the
+   `|g − b|` term keeps out the Elevation chart's green edges. Red: `r > 170 && g < 110 && b < 90`.
+   The locator, not the predicate, separates the pace chart from the other teal on the screen
+   (route line, "Average" text, the Cadence chart below it — which has no clean gap under its
+   baseline).
+8. **Contract exports carry `@public`** (`ChartEstimateInput`, `EstimatedSplit`, `ChartEstimate`,
+   the `RgbImage` re-export) because nothing outside tests imports them until phase 3; drop the
+   tag once the job imports them, or knip will not notice if they go dead again.
+
+**Fixtures and tests.** Source PNGs (739 px) live in `research/fixtures/workout-details/`
+(its `README.md` records the ground truth); the 560 px JPEG q80 variants under its `shipped/`
+are produced by `python3 scripts/shipped-image-recipe.py workout-details`, which mirrors the
+browser recipe. The route map is painted over on both details screens for privacy.
+`tests/extract.chartEstimate.test.ts` covers accuracy against the 2026-11-20 Splits ground truth
+at both sizes, the estimate's shape, the null paths (non-details screens, bad inputs, noise
+images), locator robustness (a painted-in route band, the Cadence chart, the "Average" text) and
+`decodeToRgb`. Measured accuracy figures live, dated, in the fixtures README, not here.
 
 ## Exported API
 
