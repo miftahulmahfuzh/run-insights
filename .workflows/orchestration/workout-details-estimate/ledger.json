@@ -1,0 +1,70 @@
+{
+  "branch": "feature/workout-details-estimate",
+  "coordinator": "orch-workout-details-estimate",
+  "coordinator_session_id": "eb9e49a9-84fc-47d3-ab0b-fcd9ee7ae24a",
+  "created": "2026-11-22T16:51:03+07:00",
+  "phases": [
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [],
+      "difficulty": "HARD",
+      "n": 1,
+      "note": null,
+      "package": "lib/extract/chart",
+      "plan": ".workflows/plan/workout-details-estimate/phase-1.md",
+      "reported_at": null,
+      "satisfies": [
+        "R2"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Chart estimator"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [],
+      "difficulty": "NORMAL",
+      "n": 2,
+      "note": null,
+      "package": "lib/db`, `lib/records`, `components/runs`, `app/r`, `lib/llm/facts.ts",
+      "plan": ".workflows/plan/workout-details-estimate/phase-2.md",
+      "reported_at": null,
+      "satisfies": [
+        "R4"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Estimated flags: columns, records, run page"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [
+        1,
+        2
+      ],
+      "difficulty": "HARD",
+      "n": 3,
+      "note": null,
+      "package": "lib/extract`, `lib/llm`, `lib/review`, `components/extract`, `components/review",
+      "plan": ".workflows/plan/workout-details-estimate/phase-3.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1",
+        "R2",
+        "R3",
+        "R4"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "details` kind end to end: upload, reading, merge, review, commit"
+    }
+  ],
+  "plan": "/home/miftah/run-insights/.workflows/orchestration/workout-details-estimate/PLAN.md",
+  "repo": "/home/miftah/run-insights",
+  "slug": "workout-details-estimate",
+  "updated": "2026-11-22T16:51:03+07:00",
+  "worktree": "/home/miftah/.worktrees/run-insights/workout-details-estimate"
+}
