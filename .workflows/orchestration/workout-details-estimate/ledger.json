@@ -6,19 +6,19 @@
   "phases": [
     {
       "card": null,
-      "commit": null,
+      "commit": "763cd53ac63718400de47f766fadd3b1d3830235",
       "depends_on": [],
       "difficulty": "HARD",
       "n": 1,
-      "note": null,
+      "note": "chart estimator in lib/extract/chart + fixtures in research/fixtures/workout-details (PNGs were tracked: commit carries the renames); task filed under lib/extract with new package code LEX (phase 3 should reuse LEX and this todos.md); Fri 560px 6.08 km, splits within 9 s, HR within 1 bpm; proof: verified-first-pass vitest on committed fixture bytes (19/19, npm test 7001, build, 7 guards)",
       "package": "lib/extract/chart",
       "plan": ".workflows/plan/workout-details-estimate/phase-1.md",
-      "reported_at": null,
+      "reported_at": "2026-11-22T16:58:45+07:00",
       "satisfies": [
         "R2"
       ],
-      "status": "spawned",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-LEX-K7CD",
       "title": "Chart estimator"
     },
     {
@@ -65,6 +65,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/workout-details-estimate/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "workout-details-estimate",
-  "updated": "2026-11-22T16:51:26+07:00",
+  "updated": "2026-11-22T16:58:45+07:00",
   "worktree": "/home/miftah/.worktrees/run-insights/workout-details-estimate"
 }
