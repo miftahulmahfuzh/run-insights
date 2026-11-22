@@ -21,6 +21,10 @@ import {
  * ordering, and no partial value until the call returns. `2 of 3 screenshots` would be precisely
  * the fabricated progress the design's own principle forbids.
  *
+ * (A Workout Details screenshot is the one exception to "ONE vision call": it is read by a second,
+ * one-image call beside the main one and its pace chart is measured by code. The copy says so
+ * rather than claiming one pass.)
+ *
  * So this screen states four true things instead:
  *
  *   1. all the screenshots are read in ONE pass — the interesting truth, not a limitation to hide;
@@ -47,6 +51,7 @@ export function ExtractingSkeleton({
   onRetry: () => void
 }) {
   const overdue = elapsedSec > TYPICAL_EXTRACTION_SECONDS * 1.6
+  const hasDetails = photos.some((photo) => photo.kind === 'details')
 
   return (
     <div>
@@ -68,6 +73,12 @@ export function ExtractingSkeleton({
             <>
               Nothing has been saved. You can wait a little longer and check again, or start over
               with the same screenshots.
+            </>
+          ) : hasDetails ? (
+            <>
+              Your screens are read together, and the Workout Details pace chart is measured, not
+              guessed. Usually about {TYPICAL_EXTRACTION_SECONDS} seconds
+              {overdue ? ' — this one is running long.' : '.'}
             </>
           ) : (
             <>

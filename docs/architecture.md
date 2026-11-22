@@ -165,33 +165,52 @@ never rename*). Migrations `0015`–`0017` are `retire_*` migrations that walked
 tuning/wardrobe/imageprefs revision columns — the schema, like everything else here, carries
 its reversals in place rather than pretending they didn't happen.
 
+`0038_*` (workout-details-estimate, phase 2) adds `runs.distance_estimated` and
+`runs.splits_estimated`, both `boolean NOT NULL DEFAULT false`: additive, no backfill (every earlier
+run reads `false`), and applied to production during that phase, before any code selecting the
+columns could deploy, because a bare `select()` of `runs` names every column.
+
 ---
 
 ## 5. The run pipeline
 
 ```
 /upload          1–3 screenshots, per-tile kind (default order = DEVICE hand-off order:
-                 heartrate → splits → summary, F29; wrong label = one-tap swap, F16b)
+                 heartrate → splits → summary, F29; wrong label = one-tap swap, F16b).
+                 4th kind "Workout Details" (`details`): Apple's Workout Details screen, tapped
+                 in place of Splits when the watch printed no split table; never a default
    │ client: compressForExtraction — JPEG q80, short edge 560 (long-edge arithmetic,
    │         resizeTarget.ts; verified in pixels by scripts/shipped-image-recipe.py)
    ▼
 POST /api/upload    Blob client-upload handshake; kind rides the signed token
    ▼
 POST /api/extract   requireUserIdApi() → insert extractions(status='pending') → 202 in <500ms
+   │                (a `details` run_photos row is inserted excluded_from_share — route map)
    │                after(() => runExtractionJob(id))   [maxDuration = 60, literal]
    ▼
 runExtractionJob    fetch blob URLs (SSRF-guarded: host must be *.public.blob.vercel-storage.com)
-   │                → data URIs → callVision  ── THE TOKEN-FLOOR GUARD ──
-   │                usage.prompt_tokens ≥ 500 × imageCount, checked BEFORE the text is ever
-   │                read; the measured drop signature is 141 tokens (endpoint 200s and silently
-   │                drops images, and the model invents plausible numbers). Trip ⇒ fail fast,
-   │                no repair.
-   │                → Zod (lib/schema/extractedSession.ts, FIELD_SOURCES provenance null-out:
-   │                  fields from a screen that wasn't uploaded are discarded, not flagged;
-   │                  normalizeClockTime repairs "5.32 PM"→"17:32" and nulls ambiguous bare times)
-   │                → one TEXT-ONLY repair round-trip (imageCount: 0 — measured: a repair that
-   │                  inherited 3-image floor would always die), budget-gated by elapsed time
+   │                ┌─ PRIMARY (summary/splits/heartrate only — a details image never joins it):
+   │                │  data URIs → callVision  ── THE TOKEN-FLOOR GUARD ──
+   │                │  usage.prompt_tokens ≥ 500 × imageCount, checked BEFORE the text is ever
+   │                │  read; the measured drop signature is 141 tokens (endpoint 200s and silently
+   │                │  drops images, and the model invents plausible numbers). Trip ⇒ fail fast,
+   │                │  no repair. Prompt byte-frozen (sha-256 pinned by extraction.frozen.test.ts)
+   │                │  → Zod (lib/schema/extractedSession.ts, FIELD_SOURCES provenance null-out:
+   │                │    fields from a screen that wasn't uploaded are discarded, not flagged;
+   │                │    normalizeClockTime repairs "5.32 PM"→"17:32" and nulls ambiguous bare times)
+   │                │  → one TEXT-ONLY repair round-trip (imageCount: 0 — measured: a repair that
+   │                │    inherited 3-image floor would always die), budget-gated by elapsed time
+   │                ├─ DETAILS, IN PARALLEL (lib/llm/readDetails.ts): its own one-image call
+   │                │  (prompts/details.ts, printed numbers only, floor 500 × 1, no repair) + the
+   │                │  sharp decode → lib/extract/detailsMerge.ts: printed values fill nulls only;
+   │                │  no splits screenshot ⇒ lib/extract/chart estimateFromCharts (pure) → estimated
+   │                │  splits fill the empty table, the estimated distance fills a null distance
+   │                │  (a transcribed distance scales the splits instead). Any failure here = no
+   │                │  estimate, never a failed extraction.
+   │                └─ raw_response = { vendor, parsedSession, attempts, details?: { vendor,
+   │                   printed, estimate: { distanceKm, splits } } }
    │                → terminal row: ok | repaired | failed (token_floor|transport|timeout|validation)
+   │                  — the primary decides; a details-only upload is decided by its reading
    ▼
 GET /api/extract/[id]   poll (2s→3s→5s backoff); lazy self-heal flips >90s 'pending' to
    │                    failed/stale_timeout — no queue, no cron
@@ -200,11 +219,16 @@ GET /api/extract/[id]   poll (2s→3s→5s backoff); lazy self-heal flips >90s '
    │                ConsistencyBanner: four arithmetic cross-checks (splits Σ=duration,
    │                zones Σ=duration, distance×pace=duration, partial-km) derived from the
    │                data, not from model confidence — the fixture's real observed miss (436
-   │                vs 396) trips CHK-1.
+   │                vs 396) trips CHK-1. CHK-1 is skipped for chart-estimated splits (they are
+   │                the printed duration spread over the chart, not a transcription).
+   │                "Estimated from the pace chart" labels the estimated distance (gone once the
+   │                runner types another) and estimated splits (lib/review/estimated.ts).
    │                Every field editable; sheets pin the source screenshot (whole image,
    │                section-based provenance — R-45 rejected bounding boxes)
    ▼
-commitReview        validate → commitExtractedRun (born-reviewed run + splits + zones,
+commitReview        validate → derive distanceEstimated/splitsEstimated ON THE SERVER from the
+   │                stored estimate vs the validated draft (never from the browser) →
+   │                commitExtractedRun (born-reviewed run + splits + zones,
    │                photo backfill, DuplicateRunError mapping) → corrections log →
    │                onRunCommitted (lib/derived/invalidate.ts):
    │                  records: full recompute (delete+insert)   [failures logged, never
@@ -212,7 +236,8 @@ commitReview        validate → commitExtractedRun (born-reviewed run + splits 
    │                  insights: scope sweep so stale prose never renders
    │                  nina:    run_committed proactivity trigger fires from after()
    ▼
-/r/[id]   hero, provenance mark, intent chips, narrative card (suspended, never blocking),
+/r/[id]   hero, provenance mark (+ "distance/splits estimated from the pace chart" when
+          runs.distance_estimated / splits_estimated), intent chips, narrative card (suspended, never blocking),
           pace+HR dual-axis chart (the app's ONE sanctioned dual axis, argued in F08 §12),
           zone bar (zero-JS), splits table (the chart's accessible twin)
 ```
@@ -247,7 +272,13 @@ outside state updaters with a per-generation guard (F17 — StrictMode double-fi
   `lib/flags/copy.ts` gives each one English sentence. Boundary tests pin every threshold from
   both sides.
 - **Records** — 11 keys (`RECORD_CATALOG`), recomputed wholesale on every commit; ties break to
-  the earlier run; `previousValue` snapshots the displaced value; a derived table with no row
+  the earlier run; `previousValue` snapshots the displaced value;
+  a run whose distance or splits were chart-estimated from a Workout Details screenshot
+  (`runs.distance_estimated` / `splits_estimated`) is dropped in `qualifies` from every key that
+  depends on the estimated value — `longest_distance`, `fastest_pace_5k`, `fastest_pace_10k`,
+  `best_paced_run` for the distance; `fastest_km_split`, `best_paced_run` for the splits — so a ~1%
+  estimate never mints a PB (badges are not gated);
+  a derived table with no row
   for a new key is a known gap ⇒ `scripts/backfill-record-keys.mjs` (insert-only, dry-run
   default) ships for the twelfth key.
 - **Badges** — 22-key catalog (`badge('key','Title','scope')`), pure rules, ledger storage,
@@ -258,7 +289,10 @@ outside state updaters with a per-generation guard (F17 — StrictMode double-fi
   sidecars, style version (v2 everywhere — F25 measured that appending ANY addendum to the
   style block destroys subject adherence), and the shared anchor.
 - **Insights** — `getOrCreateInsight` per scope; `facts_hash` over canonicalized facts +
-  `promptVersion` (bump in the same commit as any prompt edit); weekly/monthly carry
+  `promptVersion` (bump in the same commit as any prompt edit);
+  a run with an estimated value carries `session.estimated` in its facts, present only when a
+  flag is true, so every unflagged run's `facts_hash` is unchanged;
+  weekly/monthly carry
   `trendSincePrevious` (set arithmetic computed in TS, never by the model) and `recentRuns`
   (F28: last 8 reviewed runs before this one, `daysBefore` precomputed); timeouts sized by
   measurement (session 25/18/45s, period 28/20/50s); cron stops itself at 55 s; total LLM

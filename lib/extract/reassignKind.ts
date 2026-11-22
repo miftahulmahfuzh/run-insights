@@ -5,19 +5,16 @@ import { MAX_IMAGES, SCREEN_KINDS, type ScreenKind } from './constants'
  *
  * ── WHY THIS EXISTS ─────────────────────────────────────────────────────────────────────────
  * F04's picker kept the kinds distinct by *disabling* every kind another tile already held. The
- * arithmetic runs out: `MAX_IMAGES === SCREEN_KINDS.length === 3`, so on a full three-screen
- * upload every kind is claimed, every non-selected button is disabled, and the control freezes
- * solid at exactly the moment a mislabel is most likely — the defaults came from pick order
- * (`DEFAULT_KIND_BY_INDEX`, which was then the Fitness app's order), which is not the order the OS
- * photo picker hands files over in. A heart-rate screen arrived labelled Summary and there was no
- * way back. F29 later pointed that default at the device's actual order, so the mislabel is now
- * rare rather than routine — the swap below is still what makes it fixable when it happens.
- * See docs/plans/archive/F16b-upload-kind-swap.md §1; the invariant test below pins the equality that
- * makes the subtraction approach unsalvageable.
+ * arithmetic ran out: there were exactly as many kinds as slots (three), so on a full three-screen
+ * upload every kind was claimed, every non-selected button was disabled, and the control froze
+ * solid at exactly the moment a mislabel is most likely. A heart-rate screen arrived labelled
+ * Summary and there was no way back. See docs/plans/archive/F16b-upload-kind-swap.md §1.
  *
- * Swapping keeps the invariant true after every single tap, so there is never an invalid state to
- * render, explain, or dig back out of — and it matches what actually went wrong, since two screens
- * are mislabelled *as each other*. One tap fixes both.
+ * Since the Workout Details kind landed there are four kinds for three slots, so a free kind always
+ * exists and subtraction would no longer freeze outright — but swapping stays the right rule for the
+ * reason that made it right in the first place: two screens are mislabelled *as each other*, and one
+ * tap fixes both. Swapping keeps the invariant true after every single tap, so there is never an
+ * invalid state to render, explain, or dig back out of.
  *
  * ── WHY IT IS HERE AND NOT IN THE COMPONENT ─────────────────────────────────────────────────
  * `vitest.config.ts` runs `environment: 'node'` with an `include` matching `*.test.ts` only. Logic
@@ -59,7 +56,7 @@ interface Reassignment<T extends KindHolder> {
  * Never mutates its input, and never returns a set containing a duplicate kind.
  *
  * The holder lookup is a `find`, not a filter-all: the invariant is maintained by construction —
- * `onPick` only ever assigns a kind no tile holds (there is always one free, by the equality
+ * `onPick` only ever assigns a kind no tile holds (there is always one free, by the inequality
  * asserted below), and this function preserves distinctness — so a second holder cannot exist. A
  * loop here would be dead code pretending to be a safety net.
  */
@@ -85,9 +82,9 @@ export function reassignKind<T extends KindHolder>(
 }
 
 /**
- * The equality the whole design rests on: with as many kinds as slots, a free kind always exists,
- * so `onPick` can never seat a tile on a kind that is taken. Exported so the suite can assert it
- * rather than assume it — if a fourth screen kind ever lands, that test fails loudly instead of
- * the picker quietly wedging again.
+ * The inequality the design rests on: with at least as many kinds as slots, a free kind always
+ * exists, so `onPick` can never seat a tile on a kind that is taken. It was an equality
+ * (`MAX_IMAGES === SCREEN_KINDS.length`) until the Workout Details kind made it four kinds for three
+ * slots; `>=` is what the picker actually needs. Exported so the suite asserts it rather than assumes it.
  */
-export const KINDS_MATCH_SLOTS = MAX_IMAGES === SCREEN_KINDS.length
+export const A_FREE_KIND_ALWAYS_EXISTS = SCREEN_KINDS.length >= MAX_IMAGES

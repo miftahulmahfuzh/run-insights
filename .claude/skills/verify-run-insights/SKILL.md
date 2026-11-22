@@ -136,6 +136,7 @@ touches; the index lists what each journey spends. Measured costs:
 | --- | --- |
 | `up` (seeding is refused, unspent) | 0-2 (in-flight work that lands after arming) |
 | upload + vision read | 1 (2 if the repair pass fires) |
+| upload with a Workout Details screenshot | 2 (the primary read and the details read, in parallel; 1 if it is the only image) |
 | commit a run | 2-3 (session narrative on `/r/<id>`, Nina's `run_committed` reaction in `after()`) |
 | one Nina chat turn | 3-5 (one per tool round) |
 | `cron rollup` with an active runner | up to 2 (week, month) |

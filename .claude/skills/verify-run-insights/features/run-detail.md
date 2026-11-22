@@ -10,6 +10,13 @@
 - Findings with severities (decoupling, cadence fade, fast first kilometre).
 - The pace / heart-rate chart: the one chart allowed a dual y-axis, pace inverted.
 - Time in zone, zone table, splits with fastest/slowest and the partial final kilometre.
+- The provenance line under the stat grid ("⌁ Read from screenshot · reviewed 20 Aug"). A run whose
+  distance or splits were estimated from the Workout Details pace chart says which, right after
+  the source: "distance estimated from the pace chart", "splits estimated from the pace chart",
+  or "distance and splits estimated from the pace chart" (`runs.distance_estimated` /
+  `runs.splits_estimated`). Such a run holds no record that depends on the estimated value
+  (`longest_distance`, `fastest_pace_5k`, `fastest_pace_10k`, `best_paced_run` for distance;
+  `fastest_km_split`, `best_paced_run` for splits).
 - Edit at `/r/<id>/edit`; share icon (see share.md).
 
 ## How to get to it (user POV)
@@ -38,6 +45,15 @@ $V ui RUN .claude/skills/verify-run-insights/features/steps/run-detail.mjs -- <R
 #   (1 llm call; re-running it on the same run: present, 0 calls). PNGs: top, chart, analysis.
 ```
 
+The estimated mark. Until a Workout Details upload commits one, no demo run is flagged. Flag one
+in the run's own throwaway database (never production), then read the page:
+
+```sh
+docker exec run-insights-pg-verify psql -X -q -U postgres -d "v_$(echo "$RUN" | tr -- - _)" \
+  -c "update runs set splits_estimated = true where id = '<RUN_ID>'"
+$V api RUN GET /r/<RUN_ID>    # "Read from screenshot · splits estimated from the pace chart · reviewed …"
+```
+
 Cost: 1 llm call the first time a run is viewed (0 when the commit already wrote it, or on a
 re-view: the hash hits).
 
@@ -49,3 +65,5 @@ re-view: the hash hits).
   spends 1 call. Pick the runs a change touches, not all 25.
 - Offline, the analysis card shows the not-ready state; every number on the page is still final,
   because none of them come from the model.
+- Records are recomputed only by a commit or a "Save corrections" edit, so a flag set by hand in
+  the run's database moves no record until one of those runs (`/r/<id>/edit` → Save corrections).

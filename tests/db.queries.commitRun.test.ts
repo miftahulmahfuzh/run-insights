@@ -124,6 +124,34 @@ describe('commitExtractedRun', () => {
     expect(fake.queries.some((x) => x.sql.includes('from "extractions"'))).toBe(false)
     expect(fake.queries.some((x) => x.sql.startsWith('update "run_photos"'))).toBe(false)
   })
+
+  it('R4: writes both estimated flags as false when the caller says nothing about them', async () => {
+    fake.enqueue([[1]])
+    fake.enqueue([], [], [], [])
+
+    await q.commitExtractedRun('u1', INPUT)
+
+    const insert = fake.queries.find((x) => x.sql.startsWith('insert into "runs"'))!
+    expect(insert.sql).toContain('"distance_estimated"')
+    expect(insert.sql).toContain('"splits_estimated"')
+    // `runs` has no other boolean column, so the two bound booleans are exactly the two flags.
+    expect(insert.params.filter((p) => typeof p === 'boolean')).toEqual([false, false])
+  })
+
+  it('R4.1: persists distanceEstimated / splitsEstimated exactly as the commit passes them', async () => {
+    fake.enqueue([[1]])
+    fake.enqueue([], [], [], [])
+
+    await q.commitExtractedRun('u1', { ...INPUT, distanceEstimated: false, splitsEstimated: true })
+
+    const insert = fake.queries.find((x) => x.sql.startsWith('insert into "runs"'))!
+    const columns = insert.sql.slice(insert.sql.indexOf('(') + 1, insert.sql.indexOf(')'))
+    const names = columns.split(',').map((c) => c.trim().replaceAll('"', ''))
+    const booleans = insert.params.filter((p) => typeof p === 'boolean')
+    // Column order in the INSERT is the table's column order, and distance_ precedes splits_.
+    expect(names.indexOf('distance_estimated')).toBeLessThan(names.indexOf('splits_estimated'))
+    expect(booleans).toEqual([false, true])
+  })
 })
 
 describe('the R-5 duplicate guard', () => {

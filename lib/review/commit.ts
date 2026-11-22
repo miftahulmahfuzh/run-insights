@@ -15,6 +15,7 @@ import type { RecordKey } from '@/lib/records/types'
 import type { CorrectionEvent } from '@/lib/db/schema'
 import { onRunCommitted } from '@/lib/derived/invalidate'
 import { checkIdForFieldPath, failingChecks } from './checks'
+import { distanceIsEstimated, splitsAreEstimated } from './estimated'
 import { diffCorrections, mergeCorrections } from './draft'
 import { loadExtractionReview, loadRunEdit, type ReviewContext } from './loadReview'
 import {
@@ -152,7 +153,9 @@ export async function commitReview(
   /* 2 — attribute each edit to the check that pointed at it, if any. Computed against the
    * BASELINE's failing checks, not the corrected draft's: by the time a number is fixed, the
    * check that flagged it has stopped firing. */
-  const baselineFailures = failingChecks(context.baseline)
+  const baselineFailures = failingChecks(context.baseline, {
+    splitsEstimated: splitsAreEstimated(context.estimated, context.baseline.splits.length),
+  })
   const phase = phaseFor(context)
   const corrections = diffCorrections(context.baseline, draft, {
     phase,
@@ -161,10 +164,17 @@ export async function commitReview(
   })
   const changedFieldPaths = Object.keys(corrections)
 
-  /* 3 — the write. */
+  /* 3 — the write. The estimated flags are derived HERE, from the baseline the server just re-read
+   * (the stored extraction's estimate, or the stored run's flags) against the validated draft —
+   * invariant 5: no flag is read from the browser. Same rule the review screen labels with
+   * (`lib/review/estimated.ts`), so what the runner saw labelled is what the run stores. */
   const runInput = toRunInput(draft, {
     source: phase === 'manual' ? 'manual' : 'screenshot',
     extractionId: context.extractionId,
+    estimated: {
+      distanceEstimated: distanceIsEstimated(context.estimated, draft.distanceKm),
+      splitsEstimated: splitsAreEstimated(context.estimated, draft.splits.length),
+    },
   })
 
   let committedRunId: string

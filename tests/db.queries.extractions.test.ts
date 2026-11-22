@@ -221,6 +221,18 @@ describe('photos, R-1’s two-parent lifecycle', () => {
     expect(fake.queries).toHaveLength(1)
   })
 
+  it('stores a Workout Details screenshot excluded from shares — it shows the route map (A6)', async () => {
+    fake.enqueue([[1]], [])
+    await q.attachExtractionPhotos('u1', 'x1', [
+      { blobUrl: 'a', pathname: 'a', kind: 'summary' },
+      { blobUrl: 'd', pathname: 'd', kind: 'details' },
+    ])
+    expect(fake.sqlAt(1)).toContain('"excluded_from_share"')
+    const { params } = fake.queries[1]!
+    expect(params.filter((p: unknown) => p === true)).toHaveLength(1)
+    expect(params.filter((p: unknown) => p === false)).toHaveLength(1)
+  })
+
   it('listExtractionPhotos scopes through the extraction and orders by sort_order', async () => {
     const { runPhotos } = await import('@/lib/db/schema')
     fake.enqueue([tableRow(runPhotos, { id: 'p1', extractionId: 'x1' })])

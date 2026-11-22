@@ -13,7 +13,7 @@
 #   verify.sh doctor RUN                 is this run worth driving? (read-only)
 #   verify.sh api RUN METHOD PATH [JSON] signed-in HTTP call; request + response saved as evidence
 #   verify.sh upload RUN [KIND=]IMAGE.jpg...
-#                                        the upload screen's exact sequence: token, Blob PUT, POST
+#                                        the upload screen's exact sequence: token, Blob PUT, POST (kinds summary, splits, heartrate, details)
 #                                        /api/extract, then poll until the vision read settles
 #   verify.sh cron RUN rollup|nina       call a Vercel cron route with the run's own CRON_SECRET
 #   verify.sh ui RUN STEPS.mjs [--width N] [--theme light|dark] [-- ARG...]
@@ -420,7 +420,7 @@ cmd_cron() {
 
 cmd_upload() {
   local dir; dir="$(run_dir "${1:-}")"; shift
-  [ $# -ge 1 ] || die "upload: at least one IMAGE.jpg (optionally KIND=IMAGE.jpg; kinds summary, splits, heartrate)"
+  [ $# -ge 1 ] || die "upload: at least one IMAGE.jpg (optionally KIND=IMAGE.jpg; kinds summary, splits, heartrate, details)"
   local out base sp
   out="$(next_evidence "$dir" upload "$(basename "${1#*=}")" txt)"
   base="$(base_of "$dir")"; sp="http://127.0.0.1:$(cat "$dir/standin_port")"

@@ -309,6 +309,7 @@ export default async function RunPage({ params }: PageProps<'/r/[id]'>) {
             reviewedAt={run.reviewedAt}
             correctedAt={run.correctedAt}
             correctedFieldCount={correctedFieldCount}
+            estimated={{ distance: run.distanceEstimated, splits: run.splitsEstimated }}
           />
         </div>
 

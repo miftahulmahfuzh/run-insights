@@ -4,6 +4,12 @@
 **Last Updated**: 2026-09-12 — initial creation. Every constant, signature, consumer and route
 below was re-read from the tree at commit `6759f26` on this date; the reverse-dependency counts
 are measured, not remembered, and carry the same stamp.
+2026-11-22 — added *The chart estimator* (`lib/extract/chart/`, plan set
+`workout-details-estimate` phase 1, P1-LEX-K7CD); every other section is unchanged from 2026-09-12.
+2026-11-22 — the fourth upload kind `details` end to end (same set, phase 3, P1-LEX-A001):
+`PRIMARY_SCREEN_KINDS`, `detailsMerge.ts`, *The `details` kind* section, the
+`KINDS_MATCH_SLOTS` → `A_FREE_KIND_ALWAYS_EXISTS` rename. The reverse-dependency counts below are
+still the 2026-09-12 measurement.
 **Documentation Created**: 2026-09-12 (token-maxxing session `pkg-readme-extract-photos`)
 
 ## Why one map for three packages
@@ -48,7 +54,10 @@ against Vercel Hobby's 60 s function ceiling**.
   about (`constants.ts`, pure and import-free on purpose); the pick planner and kind-swap logic
   as pure functions (`planPicked.ts`, `reassignKind.ts`, `rejectionReason.ts`); and the single
   read `readExtractionResult` that both the poll endpoint and the `/x/…` server render use, with
-  the lazy stale-pending self-heal inside it (`readExtraction.ts`).
+  the lazy stale-pending self-heal inside it (`readExtraction.ts`). Plus `chart/`, the pure
+  Workout Details chart estimator (distance and per-km splits from chart pixels) and its one
+  server-only decoder — see *The chart estimator* — and `detailsMerge.ts`, the pure rules for how
+  a Workout Details reading and its estimate enter the parsed session (see *The `details` kind*).
 - `lib/photos` — bytes and gestures. Browser-side compression for both photo pipelines
   (`compressForExtraction`, `compressForNina`), the short-edge arithmetic the compressors exist
   to get right (`resizeTarget`), the three-host sha-256 every dedup layer agrees on
@@ -82,8 +91,11 @@ against Vercel Hobby's 60 s function ceiling**.
    │  createExtraction + attachExtractionPhotos → 202 {extractionId}
    ▼
  after(): runExtractionJob()                                       lib/llm (neighbour)
-   │  fetch blobs back as data URIs → ONE vision call → Zod
-   │  → (optional text-only repair) → terminal extractions row
+   │  fetch blobs back as data URIs → ONE primary vision call → Zod
+   │  → (optional text-only repair)
+   │  ∥ a `details` image: its own one-image call + pixel decode
+   │    → mergeWorkoutDetails() (chart estimate)                     lib/extract (pure)
+   │  → terminal extractions row
    ▼
  /x/[extractionId] (server render) ──► readExtractionResult()      lib/extract
    │  pending? → ExtractionGate                                    components/extract
@@ -138,7 +150,10 @@ Steps, with the seams spelled out:
    `ok` / `repaired` / `failed` row. Its budget arithmetic (`JOB_DEADLINE_MS` 55 s,
    `PRIMARY_TIMEOUT_MS` 45 s, `REPAIR_TIMEOUT_MS` 36 s, `MIN_REPAIR_BUDGET_MS` 28 s) lives in
    `lib/extract/constants.ts` and is documented there, including what it honestly implies on
-   Hobby: the repair is best-effort and usually skipped.
+   Hobby: the repair is best-effort and usually skipped. The primary call carries only the
+   `PRIMARY_SCREEN_KINDS` images; a `details` image is read by a second call started at the same
+   instant and merged afterwards (*The `details` kind*), and nothing on that side can turn an
+   otherwise-ok extraction into `failed`.
 8. **Wait.** `/x/[extractionId]` renders server-side. `pending` → `ExtractionGate`
    (`components/extract/ExtractionGate.tsx`) mounts `useExtractionStatus`
    (`components/extract/useExtractionStatus.ts`): poll `GET /api/extract/[id]` at 2 s, 3 s from
@@ -177,11 +192,14 @@ Steps, with the seams spelled out:
    on target, never upscales, and is symmetric in orientation. The two compressors share it and
    are otherwise deliberately NOT parameterised into one (see rule 12).
 4. **Kinds are declared by the runner, never inferred.** Not by the model, not from pixels
-   (plan §5.3). `KindSelector` renders all three kinds live on every tile; distinctness is kept
-   by **swapping, never subtracting** — `reassignKind` hands the displaced kind to whoever held
-   the new one, so a full three-screen upload never freezes, and `KINDS_MATCH_SLOTS`
-   (`MAX_IMAGES === SCREEN_KINDS.length`) is exported so the suite can pin the equality the
-   design rests on. The server re-enforces distinctness in `ExtractRequestSchema`.
+   (plan §5.3). `KindSelector` renders every kind in `SCREEN_KINDS` live on every tile;
+   distinctness is kept by **swapping, never subtracting** — `reassignKind` hands the displaced
+   kind to whoever held the new one, because two screens mislabelled *as each other* are fixed by
+   one tap. `A_FREE_KIND_ALWAYS_EXISTS` (`SCREEN_KINDS.length >= MAX_IMAGES`) is exported so the
+   suite can pin the inequality the picker needs: a free kind always exists, so `onPick` never
+   seats a tile on a taken kind. (It was the equality `KINDS_MATCH_SLOTS` while there were exactly
+   as many kinds as slots.) `details` is never a default — only the runner knows a splits table is
+   missing. The server re-enforces distinctness in `ExtractRequestSchema`.
 5. **The kind is baked into the signed upload token, so changing a kind re-compresses and
    re-PUTs from the original bytes.** `changeKind` bumps the tile's `gen`, clears its blob, and
    restarts `process` for exactly the ids `reassignKind` reports in `changed` — both tiles of a
@@ -254,19 +272,169 @@ logic: `vitest` runs `environment: 'node'` and there is no `TouchEvent`, no shar
 download bar — the impure halves stay in the components, and everything decidable without a
 browser is decided here, where it can be proved.
 
+## The chart estimator: `lib/extract/chart/`
+
+Some runs reach the app with only Apple Fitness's **Workout Details** screen — no splits table.
+That screen prints a duration, a pace range and an HR range, and draws a Pace bar chart and a
+Heart Rate chart. `chart/` turns those pixels into an estimated distance and per-km splits. The
+vision model only transcribes the printed numbers; every estimated number is arithmetic here
+("the LLM never computes"). Plan: `lib/extract/.workflows/plan/` (set `workout-details-estimate`);
+phase 1 built the module; phase 3 wired it in through `detailsMerge.ts` (next section), called
+from `lib/llm/runExtractionJob.ts`, with `decodeToRgb` called from `lib/llm/readDetails.ts`.
+
+| File | Purity | Role |
+|---|---|---|
+| `pixels.ts` | pure | `RgbImage` (`{ width, height, data: Uint8Array }`, 3 bytes/px, row-major, no alpha), `isTealAt`, `isRedAt`, `isUsableImage`. |
+| `locate.ts` | pure | `locatePaceChart(image)` → `PaceChartBand \| null`, `locateHrChart(image, paceTop)` → `HrChartBand \| null`, `slotColumns`, `SLOT_COUNT` (90). Finds charts by colour and band shape, never by fixed rows. |
+| `measure.ts` | pure | `measurePaceSlots(band)` (tallest bar per slot), `measureHrSlots(image, pace, hr, hrMin, hrMax)` (red-mark midpoint per slot, gaps linearly interpolated; null when no slot has a mark). |
+| `estimate.ts` | pure | `estimateFromCharts(image, input)` — the contract. |
+| `decode.ts` | **`server-only`** | `decodeToRgb(jpegOrPng: Buffer): Promise<RgbImage>` — the one `sharp` call. |
+
+```ts
+estimateFromCharts(image: RgbImage, input: ChartEstimateInput): ChartEstimate | null
+// ChartEstimateInput: { durationSec, paceSlowestSecPerKm, paceFastestSecPerKm,
+//                       hrMinBpm: number | null, hrMaxBpm: number | null, knownDistanceKm: number | null }
+// ChartEstimate:      { distanceKm (2 dp), distanceWasEstimated, splits: EstimatedSplit[], slotCount: 90 }
+// EstimatedSplit:     { km, timeSec, paceSecPerKm, hrBpm: number | null, cadenceSpm: null, partial }
+```
+
+**Rules of the module:**
+
+1. **Only `decode.ts` touches a codec, and nothing in `chart/` imports it.** `sharp` is native and
+   server-only, so the estimator stays testable under `environment: 'node'` and bundle-safe.
+   `decodeToRgb` **throws** on bytes `sharp` cannot decode — it is the I/O edge, and the caller
+   (the extraction job) catches it and finishes without an estimate.
+2. **`estimateFromCharts` never throws.** Unusable inputs (non-finite or non-positive duration,
+   slowest pace not slower than fastest), a non-details screen (no pace band found), or any
+   internal error → `null`. The extraction must always be able to finish without an estimate.
+3. **The method.** The pace chart is 90 equal time slots; a slot's value is its tallest teal bar.
+   Shortest bar = slowest printed pace, tallest = fastest, and height is linear in **speed**
+   (1/pace), not in pace — linear-in-pace was measured worse. Distance = Σ speed × slot duration;
+   each whole-km boundary is interpolated inside the slot that crosses it. HR per split is the
+   time-weighted mean of its slots; HR is only read when the printed range is valid (min > 0,
+   max > min), else `hrBpm` is null. `cadenceSpm` is always null.
+4. **A known distance wins.** With `knownDistanceKm` set, speeds are scaled to total it exactly,
+   `distanceKm` equals it, and `distanceWasEstimated` is false.
+5. **Partial row = CHK-4's rule, strictly.** A final partial row exists only when the 2-decimal
+   remainder is **> 0.05 km** (`lib/review/checks.ts` `partialConsistency`); a smaller remainder
+   is folded away — no row, and its seconds join no full row — so an estimate never trips the
+   review screen's partial advisory.
+6. **Every locator threshold is a fraction of the image width**, so the 739 px original and the
+   560 px JPEG q80 the browser uploads run the same code. The slot grid is computed from the
+   chart's x-extent, never from detected bar edges (JPEG splits and merges bars).
+7. **The colour predicates are measured, not guessed.** Teal: `g > 130 && b > 130 && g − r > 50
+   && |g − b| < 40` — no red ceiling (JPEG lightens 2 px bars to ~(141, 214, 220)), and the
+   `|g − b|` term keeps out the Elevation chart's green edges. Red: `r > 170 && g < 110 && b < 90`.
+   The locator, not the predicate, separates the pace chart from the other teal on the screen
+   (route line, "Average" text, the Cadence chart below it — which has no clean gap under its
+   baseline).
+8. **Contract exports carry `@public`** (`ChartEstimateInput`, `EstimatedSplit`, `ChartEstimate`,
+   the `RgbImage` re-export) from the time nothing outside tests imported them. Production code
+   now does (`detailsMerge.ts`, `lib/llm/readDetails.ts`), so drop each tag whose symbol has a
+   real importer — a stale `@public` hides the export from knip if it goes dead again.
+
+**Fixtures and tests.** Source PNGs (739 px) live in `research/fixtures/workout-details/`
+(its `README.md` records the ground truth); the 560 px JPEG q80 variants under its `shipped/`
+are produced by `python3 scripts/shipped-image-recipe.py workout-details`, which mirrors the
+browser recipe. The route map is painted over on both details screens for privacy.
+`tests/extract.chartEstimate.test.ts` covers accuracy against the 2026-11-20 Splits ground truth
+at both sizes, the estimate's shape, the null paths (non-details screens, bad inputs, noise
+images), locator robustness (a painted-in route band, the Cadence chart, the "Average" text) and
+`decodeToRgb`. Measured accuracy figures live, dated, in the fixtures README, not here.
+
+## The `details` kind: Workout Details as a splits stand-in
+
+`details` ("Workout Details") is the fourth `ScreenKind`. The runner taps it on the tile holding
+that screen, usually in place of a Splits screenshot the watch never produced. It travels the
+same upload path as the other three: the picker offers it, `/api/upload` and `POST /api/extract`
+accept it, and its `run_photos` row is born `excluded_from_share` (it shows the route map; the
+runner can still include it from the share panel). From the job onward it takes
+its own route:
+
+```
+runExtractionJob (lib/llm)
+  ├─ primary images (PRIMARY_SCREEN_KINDS only) → extractSession()      unchanged, byte-frozen prompt
+  └─ details image  → readWorkoutDetails()       lib/llm/readDetails.ts — never throws
+                        ├─ callVisionDetails()   one image, prompts/details.ts → DetailsPrintedSchema
+                        └─ decodeToRgb()         lib/extract/chart/decode.ts
+  both settled → mergeWorkoutDetails()           lib/extract/detailsMerge.ts — pure
+               → raw_response.parsedSession + raw_response.details { vendor, printed, estimate }
+review: ReviewContext.estimated → "Estimated from the pace chart" labels
+commit: distanceIsEstimated / splitsAreEstimated (lib/review/estimated.ts)
+        → runs.distance_estimated / runs.splits_estimated, derived on the server
+```
+
+**`lib/extract/detailsMerge.ts`** (pure; no I/O, no `server-only`):
+
+```ts
+mergeWorkoutDetails(input: MergeInput): { session: ExtractedSession; estimate: EstimatedValues | null }
+// MergeInput: { session, printed: DetailsPrinted | null, image: RgbImage | null, hasSplitsScreen: boolean }
+fillFromPrinted(session, printed): ExtractedSession             // A7
+estimateInputFor(session, printed, hasSplitsScreen): ChartEstimateInput | null
+applyEstimate(session, estimate: ChartEstimate | null): { session; estimate }
+```
+
+The merge rules, in the order they apply:
+
+1. **Printed values fill nulls only (A7).** Duration, distance, elevation gain, average HR and
+   average pace from the details screen fill a field the other screens left null; they never
+   overwrite a transcribed value.
+2. **A real splits screenshot wins outright (A1).** With `hasSplitsScreen` (taken from OUR upload
+   records, never from the model) no estimate is attempted. No estimate is attempted either when
+   the reading failed, or the duration or the printed pace range is missing.
+3. **A transcribed distance is handed to the estimator, not replaced (A2).** It goes in as
+   `knownDistanceKm`, the estimator scales its splits to it, and the distance stays the
+   transcribed one. Only when `distanceKm` is still null does the estimated distance fill it.
+4. **Estimated splits fill an EMPTY `splits` array only.** Rows are rounded to integer seconds,
+   an HR outside 40–230 becomes null, cadence is null, and one unusable row voids the whole table
+   (a table with a hole is worse than none; the reviewer can still type rows).
+5. **`estimate` records exactly what was written:** `distanceKm` is the estimated distance
+   written into the session (null when the distance was transcribed), `splits` is true when the
+   session's splits are chart estimates. Nothing written → `estimate: null`.
+6. **The result is re-validated against `RawExtractedSession`.** A merged session the schema
+   refuses falls back to the printed-only fill, then to the untouched input, with
+   `estimate: null` — a Workout Details screen is never the reason an extraction is worse.
+
+**Status, decided by the job (`lib/llm/runExtractionJob.ts`), not here:** primary ok/repaired →
+the primary's status, with the estimate only if the details side all worked; primary failed →
+`failed` with the primary's code, the reading kept in `raw_response.details` for audit; a
+details-only upload → `ok` from the printed values plus the estimate, or `failed` with the
+reading's own code when the reading itself failed. The job wraps the merge in one try, so a merge
+throw costs the estimate only.
+
+**Rules of the kind:**
+
+- **`details` never joins the primary request.** `PromptImage`, the prompt's image labels, the
+  repair text and `FIELD_SOURCES` are keyed on `PrimaryScreenKind`, so the type system refuses a
+  `details` image there. The primary prompt is pinned by a hash test
+  (`lib/llm/prompts/extraction.frozen.test.ts`); code that compares against the number of kinds
+  inside the prompt builder must use `PRIMARY_SCREEN_KINDS.length`, never `SCREEN_KINDS.length`,
+  or every three-image request silently changes its intro sentence.
+- **The two calls run in parallel, never in series.** The 60 s ceiling cannot hold a second
+  vision call after the primary. The details call has no repair round-trip and no timeout
+  constant of its own: it gets the same remaining budget as the primary.
+- **Every estimated number comes from `lib/extract/chart/*` or a screen** — the details model
+  only transcribes printed values (`DetailsPrintedSchema` in `lib/schema/detailsPrinted.ts`,
+  where a printed `0` reads as "no value" and an inverted range nulls the pair).
+- **"Still estimated?" has one rule** (`lib/review/estimated.ts`), used by both the review labels
+  and `commitReview`, so the label the runner saw and the flag the run stores cannot disagree.
+  The flags are derived on the server from the stored baseline, never read from the browser.
+
 ## Exported API
 
 ### `lib/extract/constants.ts` — the vocabulary (types + every tunable)
 
-Types: `ScreenKind` (`'summary' | 'splits' | 'heartrate'`), `ExtractionErrorCode`
+Types: `ScreenKind` (`'summary' | 'splits' | 'heartrate' | 'details'`), `PrimaryScreenKind`
+(`'summary' | 'splits' | 'heartrate'`), `ExtractionErrorCode`
 (`'token_floor' | 'transport' | 'timeout' | 'validation' | 'stale_timeout'`).
 
 | Symbol | Value / shape | Why it is what it is |
 |---|---|---|
-| `SCREEN_KINDS` | `['summary','splits','heartrate']` | The kinds extraction understands. `run_photos.kind` also allows `'other'` (roadmap); F04 never produces it. |
-| `SCREEN_KIND_LABEL` | Record → `'Summary' / 'Splits' / 'Heart rate'` | One place, so prompt, picker and review strip cannot drift. |
-| `DEFAULT_KIND_BY_INDEX` | `['heartrate','splits','summary']` `satisfies` | Default by PICK order (the device's order, F29). **Deliberately a literal, not an alias of `SCREEN_KINDS`** — re-aliasing restores the Fitness-app-order defect. |
-| `MAX_IMAGES` / `MIN_IMAGES` | 3 / 1 | The measured envelope; a fourth image was never scored. |
+| `PRIMARY_SCREEN_KINDS` | `['summary','splits','heartrate']` | The three screens the extraction prompt was MEASURED on (108/108). The primary request, its labels, the repair text and `FIELD_SOURCES` are keyed on it. Do not add to it without re-running the scorer. |
+| `SCREEN_KINDS` | `[...PRIMARY_SCREEN_KINDS, 'details']` | Every kind a runner can upload. `details` is read by its own one-image call and never joins the primary request. `run_photos.kind` also allows `'other'` (roadmap); F04 never produces it. |
+| `SCREEN_KIND_LABEL` | Record → `'Summary' / 'Splits' / 'Heart rate' / 'Workout Details'` | One place, so picker and review strip cannot drift. |
+| `DEFAULT_KIND_BY_INDEX` | `['heartrate','splits','summary']` `satisfies readonly PrimaryScreenKind[]` | Default by PICK order (the device's order, F29). **Deliberately a literal, not an alias of `SCREEN_KINDS`** — re-aliasing restores the Fitness-app-order defect. **Never `details`, by type**: only the runner knows a splits table is missing. |
+| `MAX_IMAGES` / `MIN_IMAGES` | 3 / 1 | The measured envelope; a fourth image was never scored. Four kinds, three slots. |
 | `TARGET_SHORT_EDGE_PX` / `TARGET_QUALITY` | 560 / 0.8 | MEASURED — the scored recipe. Input tokens track pixels, not bytes; only the resize saves money. |
 | `TARGET_MAX_MB` / `COMPRESSION_MAX_ITERATION` | 0.5 / 1 | Ceiling, not target; one pass, protecting the scored recipe. |
 | `COMPRESSION_LIB_URL` | `'/vendor/browser-image-compression.js'` | Self-hosted (`scripts/copy-image-compression-worker.mjs`); the library default is a third-party CDN on every upload's hot path. |
@@ -295,7 +463,11 @@ The pick decision as a total function: room, rejections, kind defaults, and **th
 (`error` is `string | null`, never an array — last message wins, which is what lets the caller
 write `setFormError(plan.error)` unconditionally; `null` clears). Mints nothing random and
 touches no browser API, so every branch is deterministic with no test doubles. `KindHolder` here
-is `{ kind }` only — structurally, and deliberately, the minimum.
+is `{ kind }` only — structurally, and deliberately, the minimum. The fallback search for a
+taken default scans `DEFAULT_KIND_BY_INDEX`, never `SCREEN_KINDS` — scanning the canonical list
+could fall back to `details` or to the Fitness app's order. It is total by pigeonhole: the array
+holds `MAX_IMAGES` distinct kinds, and while a pick is being seated fewer than `MAX_IMAGES` are
+in use.
 
 ### `lib/extract/reassignKind.ts`
 
@@ -309,8 +481,9 @@ Swap, not subtract (rule 4). `changed` is the load-bearing half: one id (free ki
 or none (no-op) — it is exactly the set the picker must re-compress and re-PUT. Never mutates
 input; never returns duplicate kinds. The holder lookup is a `find` not a filter, because
 distinctness is maintained by construction (a second holder cannot exist; a loop would be dead
-code pretending to be a safety net). `KINDS_MATCH_SLOTS` is exported for the suite to pin the
-equality that makes the design possible. Note the **two distinct `KindHolder` interfaces** (this
+code pretending to be a safety net). `A_FREE_KIND_ALWAYS_EXISTS` (`SCREEN_KINDS.length >=
+MAX_IMAGES`) is exported for the suite to pin the inequality that makes the design possible.
+Note the **two distinct `KindHolder` interfaces** (this
 file's adds `id`); they are structural, not shared, on purpose.
 
 ### `lib/extract/rejectionReason.ts`
@@ -374,10 +547,10 @@ is stored as NULL, not rewritten.
 | Export | Kind | Contract |
 |---|---|---|
 | `UploadPicker` | component (`'use client'`) | The whole `/upload` picker. Owns the per-tile state machine (`compressing → uploading → ready \| error`), `filesRef` (originals out of state, so a kind change can re-run from them), the `(id:gen)` `started` guard, `patchIfCurrent`, preview-URL cleanup on unmount. Compression starts on pick, not on submit. |
-| `KindSelector` | component | Segmented radiogroup, three live options, nothing dimmed (rule 4). Knows nothing of its neighbours — distinctness lives in `reassignKind` + the server schema. |
+| `KindSelector` | component | Radiogroup over every `SCREEN_KINDS` entry, all live, nothing dimmed (rule 4); a 2×2 grid since `details` landed, so "Workout Details" fits beside the preview without truncating. Knows nothing of its neighbours — distinctness lives in `reassignKind` + the server schema. |
 | `useExtractionStatus` | hook | The poll. Requires the server render's `initial` (a reload lands right, and `createdAt` anchors the elapsed counter — a `Date.now()` origin in render is impure and jumps). Returns `{ result, pollError, gaveUp, elapsedSec, refresh }`. |
 | `pollDelayFor(attempts)` | fn | The backoff schedule as a pure function (2 s → 3 s @4 → 5 s @10). |
-| `ExtractingSkeleton` | component | The honest progress screen (R-41): one-pass truth, ~35 s median, live elapsed, participants not sequence; `gaveUp` → "Check again" / "Start over". |
+| `ExtractingSkeleton` | component | The honest progress screen (R-41): one-pass truth, ~35 s median, live elapsed, participants not sequence; `gaveUp` → "Check again" / "Start over". With a `details` photo it drops the "one pass" claim (a second call runs) and says the pace chart is measured, not guessed; `UploadPicker`'s ready line does the same. |
 | `ExtractionGate` | component | Pending-only mount. On terminal → `router.refresh()` once (ref-guarded) and holds "Opening the numbers…" until the server re-render takes over. |
 
 ## Dependencies
@@ -388,7 +561,8 @@ is stored as NULL, not rewritten.
 **Internal (inbound):** `lib/extract` ← nothing but its own tests; `lib/photos/compressForNina`
 → `lib/nina/images` (the Nina recipe constants); `lib/extract/readExtraction` → `lib/db/queries`
 (`getExtraction`, `listExtractionPhotos`, `failStalePendingExtractions`) and type-only →
-`lib/llm/runExtractionJob`. **Internal (outbound, the neighbours this map deliberately does not
+`lib/llm/runExtractionJob`; `lib/extract/detailsMerge` → `lib/extract/chart/estimate` and
+`lib/schema` (`detailsPrinted`, `extractedSession`). **Internal (outbound, the neighbours this map deliberately does not
 own):** `lib/llm` (the job, the prompt, the vision call), `lib/db` (the rows), `lib/schema`
 (the wire DTO + error copy), `lib/review/loadReview` (the review branch).
 
@@ -413,6 +587,10 @@ constants is the workhorse):**
   `tests/live/vision.live.test.ts`, `app/api/upload/route.test.ts`,
   `app/api/extract/[id]/route.test.ts`, `lib/llm/extract.test.ts`,
   `lib/photos/resizeTarget.test.ts`, `lib/schema/extractionResult.test.ts`.
+- Added since the measurement (2026-11-22, not re-counted): `lib/llm/runExtractionJob.ts` imports
+  `mergeWorkoutDetails` and `PRIMARY_SCREEN_KINDS`; `lib/llm/readDetails.ts` imports
+  `decodeToRgb` and the `RgbImage` type; `lib/llm/prompts/extraction.ts`, `lib/llm/vision.ts` and
+  `lib/schema/extractedSession.ts` now key on `PrimaryScreenKind`.
 
 **`lib/photos` (11 importing files):**
 
@@ -445,6 +623,7 @@ pure function, and the components are thin impure shells around it.
 - **Behavioural halves, proved as pure logic:** `tests/extract.planPicked.test.ts` (room,
   rejection copy quoted verbatim, kind defaults + fallback search, totality of the free-kind
   invariant), `tests/extract.reassignKind.test.ts` (the swap table, `changed`, no-mutation),
+  `tests/extract.detailsMerge.test.ts` (A1/A2/A7, the empty-splits rule, the schema fallback),
   `lib/photos/{contentHash,gallery,resizeTarget,save}.test.ts`, `tests/ui.photoViewer.test.ts`.
 - **Source-property halves, proved as text scans:** `tests/extract.onPickPurity.test.ts` ("can
   an effect run inside a state updater?" — asserted for EVERY `setTiles` call in the file,
@@ -469,6 +648,8 @@ pure function, and the components are thin impure shells around it.
 | PUT | network / token expiry (10 min) | tile `error` | retryable; no blob written |
 | submit | schema violation (dup kinds, 4th image, foreign URL) | 400 → `formError` | nothing created |
 | job | `token_floor` / `transport` / `timeout` / `validation` | terminal `failed` row → review screen, blank form, runner-facing copy | nothing saved; manual entry keyed to this extraction |
+| job (details side) | details reading / decode / estimator / merge fails, other screens present | nothing visible: the primary's status stands, no estimate, `raw_response.details` records what happened | the run is reviewed without estimated values |
+| job (details only) | the reading itself fails | terminal `failed` with the reading's code | same blank form + Retry as any failure; a reading that worked but charts that could not be measured is still `ok` |
 | invocation death | killed at the wall / deploy recycle / OOM | row stays `pending` → self-heal flips it on the first read after 90 s → `failed`/`stale_timeout` | the one case the job cannot cover (rule 9 of the map) |
 | poll | single fetch failure | quiet "still working" line | polling continues; not a failed extraction |
 | poll | 90 s, no terminal status | `gaveUp` → Check again / Start over | same poll server-side closes the row |
@@ -489,6 +670,10 @@ mutex-style shared mutable state exists anywhere in the three packages.
   `longEdgeTargetFor`.
 - **`DEFAULT_KIND_BY_INDEX` is not `SCREEN_KINDS` and must never be re-aliased.** The order is
   the device's pick order (F29); the alias was the Fitness-app-order defect.
+- **`SCREEN_KINDS` is not `PRIMARY_SCREEN_KINDS`.** Anything about the measured prompt (labels,
+  provenance, "were all screens uploaded?") keys on the primary three; anything about what a
+  runner may upload keys on all four. Using the wrong one either types `details` into the frozen
+  prompt or hides it from the picker.
 - **Two `KindHolder` interfaces exist** (`planPicked`'s has no `id`). Structural, deliberate,
   documented at both sites.
 - **The stored regex ≠ the request regex.** Validating an echoed pathname against the wrong one

@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { env } from '@/lib/env'
-import type { ScreenKind } from '@/lib/extract/constants'
+import type { PrimaryScreenKind } from '@/lib/extract/constants'
 import {
   EXTRACTION_SYSTEM_PROMPT,
   buildExtractionUserContent,
@@ -10,6 +10,7 @@ import {
   type PromptImage,
   type VisionContentPart,
 } from './prompts/extraction'
+import { DETAILS_SYSTEM_PROMPT, buildDetailsUserContent } from './prompts/details'
 
 /**
  * The `glm-4.6v` client. One `fetch`, no SDK (roadmap §3): `@anthropic-ai/sdk` cannot be pointed
@@ -207,7 +208,7 @@ export function callVisionPrimaryWithFetch(
  */
 export function callVisionRepairWithFetch(
   fetchImpl: FetchLike,
-  input: { kinds: ScreenKind[]; malformedText: string; issues: string },
+  input: { kinds: PrimaryScreenKind[]; malformedText: string; issues: string },
   opts: { timeoutMs: number },
 ): Promise<VisionResult> {
   return callVisionWithFetch(
@@ -230,8 +231,35 @@ export function callVisionPrimary(
 }
 
 export function callVisionRepair(
-  input: { kinds: ScreenKind[]; malformedText: string; issues: string },
+  input: { kinds: PrimaryScreenKind[]; malformedText: string; issues: string },
   opts: { timeoutMs: number },
 ): Promise<VisionResult> {
   return callVisionRepairWithFetch(fetch, input, opts)
+}
+
+/**
+ * The Workout Details screen's printed numbers — ONE image, so the token floor is
+ * `TOKEN_FLOOR_PER_IMAGE × 1`. The floor matters as much here as on the primary call: a dropped
+ * image would come back as an invented pace range, and the pace range scales every estimated split.
+ */
+export function callVisionDetailsWithFetch(
+  fetchImpl: FetchLike,
+  image: { dataUri: string },
+  opts: { timeoutMs: number },
+): Promise<VisionResult> {
+  return callVisionWithFetch(
+    fetchImpl,
+    [
+      { role: 'system', content: DETAILS_SYSTEM_PROMPT },
+      { role: 'user', content: buildDetailsUserContent(image.dataUri) },
+    ],
+    { timeoutMs: opts.timeoutMs, imageCount: 1 },
+  )
+}
+
+export function callVisionDetails(
+  image: { dataUri: string },
+  opts: { timeoutMs: number },
+): Promise<VisionResult> {
+  return callVisionDetailsWithFetch(fetch, image, opts)
 }

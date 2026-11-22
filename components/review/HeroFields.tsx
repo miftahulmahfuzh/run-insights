@@ -39,6 +39,7 @@ export function HeroFields({
   editedPaths,
   errors,
   onChange,
+  distanceEstimated,
   distanceRef,
 }: {
   draft: ReviewDraft
@@ -46,6 +47,11 @@ export function HeroFields({
   editedPaths: ReadonlySet<string>
   errors: Record<string, string>
   onChange: (patch: Partial<ReviewDraft>) => void
+  /**
+   * True while the distance is still the one measured off the Workout Details pace chart
+   * (`lib/review/estimated.ts`). The label goes the moment the runner types another distance.
+   */
+  distanceEstimated: boolean
   distanceRef?: React.Ref<HTMLInputElement>
 }) {
   const chipFor = (path: string) =>
@@ -78,6 +84,11 @@ export function HeroFields({
             aria-label="Distance in kilometres"
             className="pr-10"
           />
+          {distanceEstimated && (
+            <p className="mt-1.5 text-[11px] font-medium text-ink-3">
+              Estimated from the pace chart
+            </p>
+          )}
         </HeroField>
 
         <HeroField

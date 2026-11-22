@@ -63,7 +63,12 @@ because the endpoint silently drops images and hallucinates otherwise) → the c
 `GET /api/extract/[id]` → **mandatory review** at `/x/[extractionId]` (not `/r/[id]/review` — no
 `runs` row exists pre-commit) → `commitExtractedRun` (runs are *born reviewed*; there is no
 draft-run state) → `onRunCommitted` fires records recompute, badge evaluation, insight
-invalidation, and Nina's `run_committed` trigger.
+invalidation, and Nina's `run_committed` trigger. A fourth upload kind, **Workout Details**
+(`details`), stands in for a missing splits table: it never joins the primary request (whose
+prompt is byte-frozen and hash-pinned); its own one-image call reads its printed numbers in
+parallel, `lib/extract/chart/*` measures its pace/HR charts into an estimated distance and splits,
+review labels them "Estimated from the pace chart", and `commitReview` derives
+`runs.distance_estimated` / `splits_estimated` on the server.
 
 **"The LLM never computes" is the load-bearing rule**, enforced two ways:
 - `lib/metrics/*` is pure TypeScript, no I/O; every number a model narrates was computed here first

@@ -52,6 +52,7 @@ function context(overrides: Partial<ReviewContext> = {}): ReviewContext {
     rawVendorResponse: { vendor: { choices: [] }, attempts: 1 },
     existingCorrections: null,
     sourceImages: [],
+    estimated: { distanceKm: null, splits: false },
     committedRunId: null,
     ...overrides,
   }

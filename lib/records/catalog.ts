@@ -1,4 +1,22 @@
-import type { RecordDefinition, RecordKey } from './types'
+import type { RecordCandidate, RecordDefinition, RecordKey } from './types'
+
+/**
+ * R4.3 — an ESTIMATE never mints a record that depends on it. A run whose distance or splits were
+ * reconstructed from the Workout Details pace chart is ~1% off, and "a ~1% error must not mint a
+ * false PB" (the runner's decision). Each key that reads the estimated quantity, directly or through
+ * a qualifier, ANDs the matching predicate into its `qualifies`:
+ *
+ *   distance → longest_distance, fastest_pace_5k, fastest_pace_10k (avg pace = duration / distance,
+ *              and the floor reads the distance), best_paced_run (its 5 km floor)
+ *   splits   → fastest_km_split, best_paced_run (decoupling is computed from the splits)
+ *
+ * The run still competes for every other key: its duration, energy, elevation, max HR and start time
+ * were printed by the watch. `highest_cadence` also has a 5 km floor but is NOT listed in R4.3; a
+ * chart-estimated run carries no cadence (the estimator leaves it null), so it cannot qualify anyway.
+ * `tests/records.catalog.test.ts` pins this table for all eleven keys.
+ */
+const measuredDistance = (c: RecordCandidate): boolean => !c.distanceEstimated
+const measuredSplits = (c: RecordCandidate): boolean => !c.splitsEstimated
 
 /**
  * Roadmap §4.5, as data. **This list is the contract** — F08 renders exactly these keys and F09's
@@ -18,7 +36,7 @@ export const RECORD_CATALOG: readonly RecordDefinition[] = [
     key: 'longest_distance',
     unit: 'm',
     direction: 'max',
-    qualifies: () => true,
+    qualifies: (c) => measuredDistance(c),
     valueOf: (c) => c.distanceM,
   },
   {
@@ -40,14 +58,14 @@ export const RECORD_CATALOG: readonly RecordDefinition[] = [
     key: 'fastest_pace_5k',
     unit: 's_per_km',
     direction: 'min',
-    qualifies: (c) => c.distanceM >= 5000,
+    qualifies: (c) => measuredDistance(c) && c.distanceM >= 5000,
     valueOf: (c) => c.avgPaceSec,
   },
   {
     key: 'fastest_pace_10k',
     unit: 's_per_km',
     direction: 'min',
-    qualifies: (c) => c.distanceM >= 10000,
+    qualifies: (c) => measuredDistance(c) && c.distanceM >= 10000,
     valueOf: (c) => c.avgPaceSec,
   },
 
@@ -57,7 +75,7 @@ export const RECORD_CATALOG: readonly RecordDefinition[] = [
     key: 'fastest_km_split',
     unit: 's_per_km',
     direction: 'min',
-    qualifies: (c) => c.fastestFullKmPaceSec != null,
+    qualifies: (c) => measuredSplits(c) && c.fastestFullKmPaceSec != null,
     valueOf: (c) => c.fastestFullKmPaceSec,
   },
 
@@ -99,7 +117,8 @@ export const RECORD_CATALOG: readonly RecordDefinition[] = [
     key: 'best_paced_run',
     unit: 'bp',
     direction: 'min',
-    qualifies: (c) => c.distanceM >= 5000 && c.decouplingBp != null,
+    qualifies: (c) =>
+      measuredDistance(c) && measuredSplits(c) && c.distanceM >= 5000 && c.decouplingBp != null,
     valueOf: (c) => c.decouplingBp,
   },
 

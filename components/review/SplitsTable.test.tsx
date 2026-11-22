@@ -27,6 +27,7 @@ function renderTable(
   overrides: {
     splits?: DraftSplit[]
     flagged?: boolean
+    estimated?: boolean
     editedPaths?: ReadonlySet<string>
     errors?: Record<string, string>
   } = {},
@@ -36,6 +37,7 @@ function renderTable(
   const base = {
     photos: [] as never[],
     flagged: overrides.flagged ?? false,
+    estimated: overrides.estimated ?? false,
     editedPaths: overrides.editedPaths ?? new Set<string>(),
     errors: overrides.errors ?? {},
   }
@@ -245,5 +247,17 @@ describe('SplitsTable — the row sheet', () => {
     fireEvent.keyDown(screen.getByRole('dialog', { name: 'Km 2' }), { key: 'Escape' })
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+})
+
+describe('SplitsTable — rows measured off the pace chart', () => {
+  it('labels the rows as estimated while there are rows (R3.1)', () => {
+    renderTable({ estimated: true })
+    expect(screen.getByText(/^Estimated from the pace chart:/)).toBeInTheDocument()
+  })
+
+  it('says nothing once every row is gone, or for a transcribed table', () => {
+    renderTable({ estimated: true, splits: [] })
+    expect(screen.queryByText(/^Estimated from the pace chart:/)).not.toBeInTheDocument()
   })
 })

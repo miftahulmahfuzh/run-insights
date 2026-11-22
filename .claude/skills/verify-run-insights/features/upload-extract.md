@@ -5,7 +5,16 @@
 - `/upload`: pick 1-3 Fitness-app screenshots; each is compressed in the browser (560 px / q80
   recipe, `lib/photos/compressForExtraction.ts`), content-hashed, and PUT straight to Blob with a
   client token from `POST /api/upload` (the route never sees image bytes).
-- Kind per tile (summary, splits, heart rate), carried inside the signed token.
+- Kind per tile (summary, splits, heart rate, **Workout Details**), carried inside the signed
+  token. Workout Details (`details`) is Apple's Workout Details screen, tapped in place of Splits
+  when the watch printed no split table; it is never a default. Its `run_photos` row is stored
+  `excluded_from_share = true` (it shows the route map).
+- A `details` image never joins the primary `glm-4.6v` request (its prompt is byte-frozen). A
+  separate one-image call reads its printed numbers in parallel, `lib/extract/chart/*` measures the
+  pace and heart-rate charts, and the job writes an estimated distance (only when none was
+  transcribed) and estimated per-km splits (only when no splits screenshot was uploaded) into the
+  parsed session, recording them in `raw_response.details.estimate`. A failure on that side means
+  no estimate, never a failed extraction.
 - `POST /api/extract` inserts a `pending` extraction and returns 202 in under 500 ms; `after()` runs
   `glm-4.6v` on the images in the background (the token-floor guard checks
   `prompt_tokens >= 500 x images` before trusting any field).
@@ -37,6 +46,20 @@ refused and 0 spent; `upload.mjs` ends on "We could not read these screenshots a
 reader could not be reached. Nothing was saved." That is the outage state, and it is the right
 end state for an offline run.
 
+With a Workout Details screenshot. Use the committed shipped-recipe JPEGs (560 px, q80: what a
+browser upload sends), not the 739 px PNGs beside them:
+
+```sh
+FX=$PWD/research/fixtures/workout-details/shipped
+$V upload RUN summary=$FX/2026-11-22-summary.jpg details=$FX/2026-11-22-details.jpg heartrate=$FX/2026-11-22-heartrate.jpg
+# "status":"ok", distanceKm ~6.1, 7 splits (6 full + a partial). Budget: 2 llm calls.
+$V sql RUN "select status, raw_response->'details'->'estimate' from extractions where id='<EXTRACTION_ID>'"
+# ok | {"splits": true, "distanceKm": 6.1}
+$V ui RUN .claude/skills/verify-run-insights/features/steps/upload-details.mjs -- \
+  heartrate=$FX/2026-11-22-heartrate.jpg details=$FX/2026-11-22-details.jpg summary=$FX/2026-11-22-summary.jpg
+# the browser path: picks three, taps "Workout Details" on tile 2, logs EXTRACTION=<id> and the labels
+```
+
 ## Gotchas
 
 - `upload` replays `UploadPicker`'s calls with the raw fixture bytes (71/60/56 KB); `upload.mjs`
@@ -53,3 +76,7 @@ end state for an offline run.
   completion webhook needs a public URL. The handler only logs, so nothing depends on it.
 - The shipped fixtures read clean (no consistency checks). The flagged fixture with a real misread
   is the seeded extraction whose `raw_response.vendor.seeded` is null (see review-commit.md).
+- An upload with a Workout Details screenshot costs **2** llm calls (the primary read and the
+  details read run in parallel); a Workout Details screenshot alone costs 1.
+- `upload` sends the file's bytes as they are, so pass `research/fixtures/workout-details/shipped/*.jpg`,
+  not the PNGs, or the run reads a 739 px image production never sees.

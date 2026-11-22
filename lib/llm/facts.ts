@@ -122,6 +122,46 @@ export interface FlagFact {
  * Session
  * ==========================================================================*/
 
+/**
+ * R4 — the run's distance and/or splits were reconstructed from the pace chart on the watch's
+ * Workout Details screen (`lib/extract/chart/*`), not printed by the watch.
+ *
+ * `note` is a plain sentence rather than a prompt rule, ON PURPOSE: a rule in
+ * `lib/llm/prompts/narrate.ts` would need a `SESSION_PROMPT_VERSION` bump, which is folded into every
+ * session `facts_hash` and would invalidate every cached session insight in the database — for runs
+ * that have nothing to do with estimates. The sentence travels with the facts it qualifies instead,
+ * and only flagged runs carry it.
+ */
+interface EstimatedFacts {
+  distance: boolean
+  splits: boolean
+  note: string
+}
+
+const ESTIMATED_NOTE = {
+  both:
+    "The distance and the per-km splits were estimated from the pace chart on the watch's " +
+    'Workout Details screen, not measured by the watch. Call them estimates whenever you use ' +
+    'them, including the average pace and every figure computed from the splits, and never ' +
+    'present them as measured.',
+  distance:
+    "The distance was estimated from the pace chart on the watch's Workout Details screen, not " +
+    'measured by the watch. Call it an estimate whenever you use it, including the average pace, ' +
+    'and never present it as measured.',
+  splits:
+    "The per-km splits were estimated from the pace chart on the watch's Workout Details screen, " +
+    'not measured by the watch. Call them estimates whenever you use them, including every figure ' +
+    'computed from them, and never present them as measured.',
+} as const
+
+/** null when nothing was estimated — the caller then emits NO key, never `estimated: null`. */
+function estimatedFacts(distance: boolean, splits: boolean): EstimatedFacts | null {
+  if (distance && splits) return { distance, splits, note: ESTIMATED_NOTE.both }
+  if (distance) return { distance, splits, note: ESTIMATED_NOTE.distance }
+  if (splits) return { distance, splits, note: ESTIMATED_NOTE.splits }
+  return null
+}
+
 interface SessionFacts {
   /** A display label only — "Thu, 20 Aug 2026". Never used for date math by anyone. */
   date: string
@@ -140,6 +180,15 @@ interface SessionFacts {
    * product's core tenet forbids.
    */
   intent: RunIntent | null
+  /**
+   * R4. PRESENT ONLY WHEN SOMETHING WAS ESTIMATED — the one deliberately optional key in this file,
+   * and the opposite of `ProfileFacts`' "required `| null`" rule for the same underlying reason:
+   * an absent key and a present one canonicalise differently. Every run committed before R4 (and
+   * every run since with both flags false) must keep its exact `facts_hash`, or every cached
+   * session insight would regenerate for nothing (R4.4). `tests/llm.facts.test.ts` pins the
+   * canonical run's hash to its pre-R4 value.
+   */
+  estimated?: EstimatedFacts
 }
 
 interface ComputedFacts {
@@ -219,6 +268,10 @@ interface SessionRunFacts {
   elevationM: number | null
   activeKcal: number | null
   intent: RunIntent | null
+  /** `runs.distance_estimated` (R4). Required: every caller decides. */
+  distanceEstimated: boolean
+  /** `runs.splits_estimated` (R4). */
+  splitsEstimated: boolean
 }
 
 /**
@@ -318,6 +371,7 @@ function recentRunFacts(runs: readonly RecentRunInput[], occurredOn: string): Re
 export function buildSessionFacts(input: BuildSessionFactsInput): SessionNarrateFacts {
   const { run, metrics, splits, flags } = input
   const now = input.now ?? new Date()
+  const estimated = estimatedFacts(run.distanceEstimated, run.splitsEstimated)
 
   /*
    * `metrics.hrMaxUsed`, NOT a second `resolveHrMax` call. The denominator that produced
@@ -340,6 +394,8 @@ export function buildSessionFacts(input: BuildSessionFactsInput): SessionNarrate
       elevationGainM: run.elevationM,
       activeKcal: run.activeKcal,
       intent: run.intent,
+      // Spread, never `estimated: null`: see `SessionFacts.estimated` for why the key must be ABSENT.
+      ...(estimated ? { estimated } : {}),
     },
     computed: {
       avgHrPctOfMax: round1(metrics.avgHrPctMax),

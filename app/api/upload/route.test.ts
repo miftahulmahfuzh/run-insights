@@ -142,6 +142,13 @@ describe('the shots branch', () => {
     }
   })
 
+  it('mints a token for a Workout Details screenshot (R1.1)', async () => {
+    await post(shotBody())
+
+    const token = await mint(SHOT_PATHNAME, JSON.stringify({ kind: 'details' }))
+    expect(JSON.parse(token.tokenPayload ?? '{}')).toMatchObject({ kind: 'details' })
+  })
+
   it('refuses a kind the client payload schema does not know', async () => {
     await post(shotBody())
 

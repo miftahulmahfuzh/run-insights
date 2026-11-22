@@ -5,6 +5,11 @@
 - `/x/<extractionId>`: the reader's numbers, every field editable, "Nothing has been saved yet."
 - Consistency checks from arithmetic ("1 thing worth checking: Splits total 1:19:10, the run is
   1:18:36 (34s off)"), with a **Jump** link; they warn, they never block.
+- Values measured off the Workout Details pace chart are labelled **Estimated from the pace chart**
+  (under the distance, above the splits table). The distance label goes away once the runner types
+  another distance. CHK-1 (splits Σ = duration) is skipped for estimated splits. On save,
+  `commitReview` derives `runs.distance_estimated` / `runs.splits_estimated` on the server from the
+  stored extraction, never from the browser.
 - **Confirm & save** -> `commitReviewAction` writes the run with splits and zones in one batch
   (runs are born reviewed; there is no draft run), then `onRunCommitted` recomputes the 11 records,
   evaluates the badge rules, sweeps stale insights, and fires Nina's `run_committed` reaction in
@@ -40,6 +45,14 @@ $V ui RUN .claude/skills/verify-run-insights/features/steps/review-commit.mjs --
 
 Cost: 2-3 llm calls per commit (the narrative, then Nina's reaction, which can take two rounds and
 lands up to a minute after the redirect).
+
+An extraction with a Workout Details screenshot (see upload-extract.md):
+
+```sh
+$V ui RUN .claude/skills/verify-run-insights/features/steps/review-details.mjs -- <EXTRACTION_ID> [DISTANCE_KM|-] [YYYY-MM-DD]
+# logs "distance label: 1", "splits label: 1", "split rows: 7"; with a distance, "distance label now: 0"
+$V sql RUN "select distance_m, distance_estimated, splits_estimated from runs where extraction_id='<EXTRACTION_ID>'"
+```
 
 ## Gotchas
 

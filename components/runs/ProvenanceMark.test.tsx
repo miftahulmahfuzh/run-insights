@@ -4,6 +4,9 @@ import { describe, expect, it } from 'vitest'
 
 import { ProvenanceMark } from './ProvenanceMark'
 
+/** R4: the eight pre-R4 cases below describe runs nothing was estimated on. */
+const NOT_ESTIMATED = { distance: false, splits: false }
+
 /**
  * The saved-screen honesty line. What the tests pin, in the order the docstring argues it:
  *
@@ -24,6 +27,7 @@ describe('ProvenanceMark', () => {
         reviewedAt={null}
         correctedAt={null}
         correctedFieldCount={0}
+        estimated={NOT_ESTIMATED}
       />,
     ).container
     expect(scanned.textContent).toContain('Read from screenshot')
@@ -35,6 +39,7 @@ describe('ProvenanceMark', () => {
         reviewedAt={null}
         correctedAt={null}
         correctedFieldCount={0}
+        estimated={NOT_ESTIMATED}
       />,
     ).container
     expect(manual.textContent).toContain('Entered by hand')
@@ -47,6 +52,7 @@ describe('ProvenanceMark', () => {
         reviewedAt={null}
         correctedAt={null}
         correctedFieldCount={0}
+        estimated={NOT_ESTIMATED}
       />,
     )
 
@@ -63,6 +69,7 @@ describe('ProvenanceMark', () => {
         reviewedAt={null}
         correctedAt={null}
         correctedFieldCount={count}
+        estimated={NOT_ESTIMATED}
       />,
     )
 
@@ -79,6 +86,7 @@ describe('ProvenanceMark', () => {
         reviewedAt={new Date('2026-08-20T02:00:00+07:00')}
         correctedAt={null}
         correctedFieldCount={0}
+        estimated={NOT_ESTIMATED}
       />,
     )
 
@@ -94,6 +102,7 @@ describe('ProvenanceMark', () => {
         reviewedAt={null}
         correctedAt={new Date('2026-08-20T20:30:00Z')}
         correctedFieldCount={0}
+        estimated={NOT_ESTIMATED}
       />,
     )
 
@@ -108,6 +117,7 @@ describe('ProvenanceMark', () => {
         reviewedAt={new Date('2026-08-20T02:00:00+07:00')}
         correctedAt={new Date('2026-08-22T10:00:00+07:00')}
         correctedFieldCount={2}
+        estimated={NOT_ESTIMATED}
       />,
     )
 
@@ -124,10 +134,43 @@ describe('ProvenanceMark', () => {
         reviewedAt={null}
         correctedAt={null}
         correctedFieldCount={0}
+        estimated={NOT_ESTIMATED}
       />,
     )
 
     const glyph = screen.getByText('⌁', { exact: false })
     expect(glyph).toHaveAttribute('aria-hidden', 'true')
+  })
+
+  it('R4.2: nothing estimated, no estimate clause', () => {
+    render(
+      <ProvenanceMark
+        source="screenshot"
+        reviewedAt={null}
+        correctedAt={null}
+        correctedFieldCount={0}
+        estimated={NOT_ESTIMATED}
+      />,
+    )
+    expect(screen.queryByText(/estimated/)).not.toBeInTheDocument()
+  })
+
+  it.each([
+    [{ distance: true, splits: false }, 'distance estimated from the pace chart'],
+    [{ distance: false, splits: true }, 'splits estimated from the pace chart'],
+    [{ distance: true, splits: true }, 'distance and splits estimated from the pace chart'],
+  ])('R4.2: %o names what was estimated, right after the source', (estimated, clause) => {
+    const { container } = render(
+      <ProvenanceMark
+        source="screenshot"
+        reviewedAt={new Date('2026-08-20T02:00:00+07:00')}
+        correctedAt={null}
+        correctedFieldCount={1}
+        estimated={estimated}
+      />,
+    )
+    expect(container.textContent).toBe(
+      `⌁ Read from screenshot · ${clause} · 1 field corrected · reviewed 20 Aug`,
+    )
   })
 })

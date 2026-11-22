@@ -67,6 +67,7 @@
     "icon:assets": "python3 tools/make_icon_assets.py",
     "pretest:live:vision": "node scripts/check-node-version.mjs",
     "test:live:vision": "LLM_LIVE_TEST=1 vitest run tests/live/vision.live.test.ts",
+    "test:live:vision-details": "LLM_LIVE_TEST=1 vitest run tests/live/visionDetails.live.test.ts",
     "pretest:live:narrate": "node scripts/check-node-version.mjs",
     "test:live:narrate": "LLM_LIVE_TEST=1 vitest run tests/live/narrate.live.test.ts",
     "pretest:live:nina": "node scripts/check-node-version.mjs",

@@ -129,7 +129,7 @@ export type ExtractionCorrections = Record<string, CorrectionEvent[]>
 export type ExtractionBlobRefRow = {
   url: string
   pathname: string
-  /** 'summary' | 'splits' | 'heartrate' — F04 never writes 'other' into an extraction. */
+  /** 'summary' | 'splits' | 'heartrate' | 'details' — F04 never writes 'other' into an extraction. */
   kind: PhotoKind
   width?: number | null
   height?: number | null
@@ -213,6 +213,23 @@ export const runs = pgTable(
     note: text('note'),
     source: text('source').$type<RunSource>().notNull(), // 'screenshot'|'manual'
     extractionId: text('extraction_id').references(() => extractions.id),
+    /**
+     * R4 (workout-details-estimate). TRUE when `distance_m` is not a number the watch printed but
+     * one computed by `lib/extract/chart/*` from the pace bar chart on Apple's Workout Details
+     * screen (measured ~1% off). FALSE for every run committed before this column existed, which is
+     * what the DEFAULT says and what R4.4 requires: no backfill, no run is retroactively doubted.
+     *
+     * Read by `lib/records/catalog.ts`, which drops such a run from every key whose value or
+     * qualifier depends on the distance, by `ProvenanceMark` on `/r/[id]`, and by the session
+     * narrative's facts. Written only by `commitExtractedRun` / `applyRunCorrections`; the value is
+     * derived on the server from the extraction row (phase 3, `lib/review/commit.ts`), never taken
+     * from the browser's draft.
+     */
+    distanceEstimated: boolean('distance_estimated').notNull().default(false),
+    /** R4. TRUE when the `run_splits` rows were estimated from the pace chart, not transcribed from a
+     *  Splits screenshot. Independent of `distanceEstimated`: a run whose Summary printed the
+     *  distance but had no split table has a measured distance and estimated splits. */
+    splitsEstimated: boolean('splits_estimated').notNull().default(false),
     /**
      * Roadmap D16 / R-13. Written exactly once, by the review commit. Under R-1 a `runs` row is
      * only ever INSERTed by that commit, so in practice every row has it set — the column stays
@@ -332,7 +349,7 @@ export const runPhotos = pgTable(
     thumbUrl: text('thumb_url'),
     /** The thumbnail's STORED Blob pathname — the only thing that lets a delete remove it too. */
     thumbPathname: text('thumb_pathname'),
-    kind: text('kind').$type<PhotoKind>().notNull(), // 'summary'|'splits'|'heartrate'|'other'
+    kind: text('kind').$type<PhotoKind>().notNull(), // 'summary'|'splits'|'heartrate'|'details'|'other'
     width: integer('width'),
     height: integer('height'),
     bytes: integer('bytes'),
@@ -384,7 +401,7 @@ export const runPhotos = pgTable(
   ],
 )
 
-export type PhotoKind = 'summary' | 'splits' | 'heartrate' | 'other'
+export type PhotoKind = 'summary' | 'splits' | 'heartrate' | 'details' | 'other'
 
 export const insights = pgTable(
   'insights',

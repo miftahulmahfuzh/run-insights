@@ -59,6 +59,25 @@ export interface CheckableDraft {
   hrZones: DraftZone[]
 }
 
+/** What the checks need to know beyond the numbers. */
+export interface CheckOptions {
+  /**
+   * True when the draft's splits are chart estimates (`lib/extract/chart/*`, from a Workout
+   * Details screenshot). CHK-1 then passes unconditionally: the estimator spreads the printed
+   * duration across the rows, so they sum to it (or fall short by a folded-away remainder of at
+   * most 0.05 km, ~25 s), and the check could only ever fire on that, on rounding or on a duration
+   * edited afterwards — none of which any split row can be corrected for, so it would be a nag
+   * about an estimate, not a pointer at a misread.
+   *
+   * CHK-3 and CHK-4 run as usual. CHK-3 passes vacuously when no average pace was printed (Apple
+   * prints `--'--"` without a distance); when one was, it checks the estimated distance against
+   * Apple's own average, which is real signal.
+   */
+  splitsEstimated: boolean
+}
+
+const NO_ESTIMATE: CheckOptions = { splitsEstimated: false }
+
 const pass = (id: CheckId): CheckResult => ({ id, ok: true, message: '', fieldPaths: [] })
 
 /** `4710` and `4716` → `'6s'`; `2483` and `4716` → `'37:13'`. Seconds read badly past a minute. */
@@ -246,17 +265,22 @@ export function partialConsistency(splits: DraftSplit[], distanceKm: number | nu
  * The suite, and the attribution helper the commit action uses
  * ==========================================================================*/
 
-export function runAllChecks(draft: CheckableDraft): CheckResult[] {
+export function runAllChecks(
+  draft: CheckableDraft,
+  options: CheckOptions = NO_ESTIMATE,
+): CheckResult[] {
   return [
-    splitsSumVsDuration(draft.splits, draft.durationSec),
+    options.splitsEstimated
+      ? pass('splits_sum_vs_duration')
+      : splitsSumVsDuration(draft.splits, draft.durationSec),
     zonesSumVsDuration(draft.hrZones, draft.durationSec),
     distancePaceVsDuration(draft.distanceKm, draft.avgPaceSecPerKm, draft.durationSec),
     partialConsistency(draft.splits, draft.distanceKm),
   ]
 }
 
-export function failingChecks(draft: CheckableDraft): CheckResult[] {
-  return runAllChecks(draft).filter((c) => !c.ok)
+export function failingChecks(draft: CheckableDraft, options: CheckOptions): CheckResult[] {
+  return runAllChecks(draft, options).filter((c) => !c.ok)
 }
 
 /**
@@ -306,6 +330,6 @@ export function isFlagged(flagged: ReadonlySet<FieldPath>, path: FieldPath): boo
 }
 
 /** `runAllChecks` over a full draft — the review screen's one call site. */
-export function checkDraft(draft: ReviewDraft): CheckResult[] {
-  return runAllChecks(draft)
+export function checkDraft(draft: ReviewDraft, options: CheckOptions): CheckResult[] {
+  return runAllChecks(draft, options)
 }

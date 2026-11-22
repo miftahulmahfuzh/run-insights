@@ -39,6 +39,10 @@ export interface NewPhotoInput {
  * **`ids` comes back in INPUT ORDER**, and that is a contract rather than an accident: the ids
  * are minted here, one per `photos[i]`, and `POST /api/extract` zips them back against the claims
  * it sent to know which row carries which hash for the duplicate scan. Do not reorder the map.
+ *
+ * **A Workout Details screenshot is born excluded from shares** (assumption A6): it shows the
+ * runner's route map. `excluded_from_share` (R-11) exists for exactly this; the runner can still
+ * include it from the share panel, which is the same toggle every other photo has.
  */
 export async function attachExtractionPhotos(
   userId: string,
@@ -58,6 +62,7 @@ export async function attachExtractionPhotos(
     bytes: photo.bytes ?? null,
     sortOrder: photo.sortOrder ?? i,
     contentHash: isValidContentHash(photo.contentHash) ? photo.contentHash : null,
+    excludedFromShare: photo.kind === 'details',
   }))
   await db.insert(runPhotos).values(rows)
   return { ids: rows.map((r) => r.id) }

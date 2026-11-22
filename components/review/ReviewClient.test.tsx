@@ -49,6 +49,7 @@ vi.mock('./HeroFields', () => ({
     editedPaths: ReadonlySet<string>
     errors: Record<string, string>
     onChange: (patch: Partial<ReviewDraft>) => void
+    distanceEstimated: boolean
   }) => (
     <div
       data-testid="section-hero"
@@ -57,10 +58,14 @@ vi.mock('./HeroFields', () => ({
         flagged: [...props.flaggedPaths],
         edited: [...props.editedPaths],
         errors: props.errors,
+        distanceEstimated: props.distanceEstimated,
       })}
     >
       <button type="button" onClick={() => props.onChange({ durationSec: 4800 })}>
         edit-duration
+      </button>
+      <button type="button" onClick={() => props.onChange({ distanceKm: 6.05 })}>
+        edit-distance
       </button>
     </div>
   ),
@@ -86,10 +91,14 @@ vi.mock('./MoreDetails', () => ({
   MoreDetails: () => <div data-testid="section-more" />,
 }))
 vi.mock('./SplitsTable', () => ({
-  SplitsTable: (props: { splits: unknown[]; flagged: boolean }) => (
+  SplitsTable: (props: { splits: unknown[]; flagged: boolean; estimated: boolean }) => (
     <div
       data-testid="section-splits"
-      data-props={JSON.stringify({ count: props.splits.length, flagged: props.flagged })}
+      data-props={JSON.stringify({
+        count: props.splits.length,
+        flagged: props.flagged,
+        estimated: props.estimated,
+      })}
     />
   ),
 }))
@@ -117,6 +126,7 @@ function context(overrides: Partial<ReviewContext> = {}): ReviewContext {
     rawVendorResponse: { vendor: { choices: [] } },
     existingCorrections: null,
     sourceImages: [],
+    estimated: { distanceKm: null, splits: false },
     committedRunId: null,
     ...overrides,
   }
@@ -356,5 +366,40 @@ describe('ReviewClient — what a failed commit looks like', () => {
 
     expect(screen.getByRole('alert')).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Open that run' })).not.toBeInTheDocument()
+  })
+})
+
+describe('ReviewClient — chart-estimated values (Workout Details)', () => {
+  function estimatedContext() {
+    const session = { ...JSON.parse(JSON.stringify(TRUTH)), distanceKm: 6.1 }
+    return context({
+      baseline: hydrateDraftFromExtraction(session as never, NOW),
+      estimated: { distanceKm: 6.1, splits: true },
+    })
+  }
+
+  it('labels the estimated distance and splits while the draft holds them (R3.1)', () => {
+    renderClient({ context: estimatedContext() })
+    expect(propsOf(section('hero')).distanceEstimated).toBe(true)
+    expect(propsOf(section('splits')).estimated).toBe(true)
+  })
+
+  it('drops the distance label the moment the runner types another distance; splits keep theirs', () => {
+    renderClient({ context: estimatedContext() })
+    fireEvent.click(screen.getByRole('button', { name: 'edit-distance' }))
+    expect(propsOf(section('hero')).distanceEstimated).toBe(false)
+    expect(propsOf(section('splits')).estimated).toBe(true)
+  })
+
+  it('does not run the splits-sum check against estimated splits', () => {
+    renderClient({ context: estimatedContext() })
+    fireEvent.click(screen.getByRole('button', { name: 'edit-duration' }))
+    expect(propsOf(section('banner')).failing).not.toContain('splits_sum_vs_duration')
+  })
+
+  it('labels nothing on an ordinary extraction', () => {
+    renderClient()
+    expect(propsOf(section('hero')).distanceEstimated).toBe(false)
+    expect(propsOf(section('splits')).estimated).toBe(false)
   })
 })

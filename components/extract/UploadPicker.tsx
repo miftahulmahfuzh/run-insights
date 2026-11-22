@@ -283,6 +283,11 @@ export function UploadPicker() {
 
   const ready = tiles.length > 0 && tiles.every((t) => t.state === 'ready' && t.blob)
   const kindsChosen = tiles.map((t) => SCREEN_KIND_LABEL[t.kind]).join(' · ')
+  // A Workout Details tile is read by a second call beside the main one, so "all N in one pass"
+  // would no longer be true — say what actually happens instead.
+  const readingLine = tiles.some((t) => t.kind === 'details')
+    ? `${kindsChosen} — read in about ${TYPICAL_EXTRACTION_SECONDS} seconds, with the pace chart measured rather than read.`
+    : `${kindsChosen} — reading all ${tiles.length} in one pass takes about ${TYPICAL_EXTRACTION_SECONDS} seconds.`
 
   const submit = async () => {
     const images = tiles.map((t) => t.blob).filter((b): b is ExtractionBlobRef => b !== null)
@@ -322,8 +327,9 @@ export function UploadPicker() {
         <Card className="text-center">
           <p className="mb-1.5 text-[17px] font-semibold text-ink">Pick your screenshots</p>
           <p className="mx-auto mb-6 max-w-[32ch] text-[13px] font-medium text-ink-2">
-            The summary, the splits table, the heart-rate screen. Any one of them on its own is fine
-            — more screens just means more of the run gets read.
+            The summary, the splits table, the heart-rate screen — or, when the watch gave you no
+            splits table, the Workout Details screen in its place. Any one of them on its own is
+            fine — more screens just means more of the run gets read.
           </p>
           <Button fullWidth onClick={() => inputRef.current?.click()}>
             Choose images
@@ -386,9 +392,7 @@ export function UploadPicker() {
             Read this run
           </Button>
           <p className="mt-2.5 text-center text-[12px] font-medium text-ink-3">
-            {ready
-              ? `${kindsChosen} — reading all ${tiles.length} in one pass takes about ${TYPICAL_EXTRACTION_SECONDS} seconds.`
-              : 'Waiting for the uploads to finish.'}
+            {ready ? readingLine : 'Waiting for the uploads to finish.'}
           </p>
         </div>
       )}

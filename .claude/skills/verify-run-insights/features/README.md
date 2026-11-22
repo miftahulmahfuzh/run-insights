@@ -9,8 +9,8 @@ table says OpenRouter.
 
 | Feature | File | Surfaces | Paid calls |
 | --- | --- | --- | --- |
-| Upload and the vision read: screenshots to Blob, `glm-4.6v` in the background, the poll | [upload-extract.md](upload-extract.md) | upload, ui, api, sql, blobs | 1 (2 with repair) |
-| The mandatory review and commit: `/x/<id>`, consistency checks, Confirm & save, records, badges, Nina's reaction | [review-commit.md](review-commit.md) | ui, sql | 2-3 per commit |
+| Upload and the vision read: screenshots to Blob, `glm-4.6v` in the background (plus a parallel Workout Details read), the poll | [upload-extract.md](upload-extract.md) | upload, ui, api, sql, blobs | 1 (2 with repair; 2 with a Workout Details screenshot) |
+| The mandatory review and commit: `/x/<id>`, consistency checks, "Estimated from the pace chart" labels, Confirm & save, records, badges, Nina's reaction | [review-commit.md](review-commit.md) | ui, sql | 2-3 per commit |
 | A run's page: metrics, pace/HR chart, zones, splits, the written analysis | [run-detail.md](run-detail.md) | api, ui, sql | 1 per run not yet narrated |
 | Runs list, Trends, Me (records and badge shelf), the nightly rollup | [runs-trends-me.md](runs-trends-me.md) | api, cron, sql | 0; rollup up to 2 |
 | Sharing a run: the link, the signed-out public page | [share.md](share.md) | ui, sql | 0 |

@@ -207,3 +207,22 @@ describe('isFlagged', () => {
     expect(isFlagged(flagged, 'hrZones.0.minBpm')).toBe(false)
   })
 })
+
+describe('chart-estimated splits (Workout Details)', () => {
+  it('CHK-1 never fires on estimated splits — they are the duration spread over the chart', () => {
+    const off = SPLITS.map((s, i) => (i === 0 ? { ...s, timeSec: s.timeSec + 120 } : s))
+    const estimated = runAllChecks(draft({ splits: off }), { splitsEstimated: true })
+    expect(estimated.find((r) => r.id === 'splits_sum_vs_duration')!.ok).toBe(true)
+    // The control: the same rows, transcribed, are a misread CHK-1 must point at.
+    expect(
+      runAllChecks(draft({ splits: off })).find((r) => r.id === 'splits_sum_vs_duration')!.ok,
+    ).toBe(false)
+  })
+
+  it('CHK-3 has nothing to compare when an estimated distance meets no printed average pace', () => {
+    const results = runAllChecks(draft({ distanceKm: 6.1, avgPaceSecPerKm: null }), {
+      splitsEstimated: true,
+    })
+    expect(results.find((r) => r.id === 'distance_pace_vs_duration')!.ok).toBe(true)
+  })
+})

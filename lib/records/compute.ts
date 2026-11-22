@@ -88,6 +88,8 @@ export function toRecordCandidate(run: RecordRunRow): RecordCandidate {
     // is. The parse happens HERE and not in `catalog.ts`, next to the other two derived fields, so
     // the catalog stays a table of comparisons over numbers with no string handling in it.
     startedAtSec: clockToSeconds(run.startedAt),
+    distanceEstimated: run.distanceEstimated,
+    splitsEstimated: run.splitsEstimated,
   }
 }
 

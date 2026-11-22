@@ -55,6 +55,14 @@ export interface RecordCandidate {
   decouplingBp: number | null
   /** `runs.started_at` as seconds past midnight, 0..86399. null when the screenshot had no time. */
   startedAtSec: number | null
+  /**
+   * R4.3 — `runs.distance_estimated`. When true, the catalog excludes this run from every key whose
+   * value or qualifier reads the distance (or the pace derived from it). Required, not optional: a
+   * builder that forgot it would silently let an estimate compete.
+   */
+  distanceEstimated: boolean
+  /** R4.3 — `runs.splits_estimated`. When true, excluded from every key computed from the splits. */
+  splitsEstimated: boolean
 }
 
 export interface RecordDefinition {
@@ -95,4 +103,8 @@ export interface RecordRunRow extends SessionInput {
   elevationM: number | null
   avgCadence: number | null
   maxHr: number | null
+  /** `runs.distance_estimated` (R4). */
+  distanceEstimated: boolean
+  /** `runs.splits_estimated` (R4). */
+  splitsEstimated: boolean
 }

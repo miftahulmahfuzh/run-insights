@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
 import { MAX_IMAGES, SCREEN_KINDS, type ScreenKind } from '@/lib/extract/constants'
-import { KINDS_MATCH_SLOTS, reassignKind, type KindHolder } from '@/lib/extract/reassignKind'
+import {
+  A_FREE_KIND_ALWAYS_EXISTS,
+  reassignKind,
+  type KindHolder,
+} from '@/lib/extract/reassignKind'
 
 /**
  * **The toggle that locked itself.** Card #3 / F16.
@@ -17,17 +21,15 @@ import { KINDS_MATCH_SLOTS, reassignKind, type KindHolder } from '@/lib/extract/
 
 const tile = (id: string, kind: ScreenKind): KindHolder => ({ id, kind })
 
-describe('the equality the design rests on', () => {
+describe('the inequality the design rests on', () => {
   /**
-   * This is the assertion that makes subtraction unsalvageable and swapping necessary. It is also
-   * what guarantees `onPick` can always seat a new tile on a free kind, which is why
-   * `reassignKind` looks up a single holder with `find` rather than looping over all of them.
-   *
-   * If a fourth screen kind ever lands, this fails loudly instead of the picker quietly wedging.
+   * What guarantees `onPick` can always seat a new tile on a free kind, and why `reassignKind`
+   * looks up a single holder with `find`. It was an equality (three kinds, three slots) until the
+   * Workout Details kind landed; the picker only ever needed at least as many kinds as slots.
    */
-  it('has exactly as many screen kinds as image slots', () => {
-    expect(SCREEN_KINDS.length).toBe(MAX_IMAGES)
-    expect(KINDS_MATCH_SLOTS).toBe(true)
+  it('has at least as many screen kinds as image slots', () => {
+    expect(SCREEN_KINDS.length).toBeGreaterThanOrEqual(MAX_IMAGES)
+    expect(A_FREE_KIND_ALWAYS_EXISTS).toBe(true)
   })
 })
 
@@ -148,9 +150,9 @@ describe('reassignKind — exhaustive invariant', () => {
   )
 
   it('enumerates every arrangement and tap', () => {
-    // 3 + 6 + 6 = 15 arrangements; 1·3 + 2·3·2 + 3·3·3 taps over them.
-    expect(arrangements).toHaveLength(15)
-    expect(taps).toHaveLength(9 + 36 + 54)
+    // Four kinds over 1-3 tiles: 4 + 12 + 24 = 40 arrangements; 1·4·4 + 12·2·4 + 24·3·4 taps.
+    expect(arrangements).toHaveLength(40)
+    expect(taps).toHaveLength(16 + 96 + 288)
   })
 
   it('always leaves the kinds distinct', () => {

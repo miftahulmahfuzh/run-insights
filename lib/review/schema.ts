@@ -216,7 +216,16 @@ export const CommitReviewPayloadSchema = CommitReviewEnvelopeSchema.extend({
  */
 export function toRunInput(
   draft: ReviewDraftInput,
-  options: { source: RunSource; extractionId: string | null },
+  options: {
+    source: RunSource
+    extractionId: string | null
+    /**
+     * Derived by `commitReview` on the server from the stored extraction (or the stored run),
+     * never from the browser. Omitted = the query layer's default (false on create, unchanged on
+     * edit).
+     */
+    estimated?: { distanceEstimated: boolean; splitsEstimated: boolean }
+  },
 ): NewRunInput {
   const distanceM = Math.round(draft.distanceKm * 1000)
   const avgPaceSec =
@@ -246,6 +255,7 @@ export function toRunInput(
     note: draft.note,
     source: options.source,
     extractionId: options.extractionId,
+    ...(options.estimated ?? {}),
     splits: draft.splits.map((s) => ({
       km: s.km,
       timeSec: s.timeSec,
