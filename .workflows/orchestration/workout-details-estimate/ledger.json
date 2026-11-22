@@ -3,6 +3,12 @@
   "coordinator": "orch-workout-details-estimate",
   "coordinator_session_id": "eb9e49a9-84fc-47d3-ab0b-fcd9ee7ae24a",
   "created": "2026-11-22T16:51:03+07:00",
+  "landed": {
+    "at": "2026-11-22T17:35:18+07:00",
+    "base": "main",
+    "commit": "20fde91625ad657a81abd3070f68f4160ea04718",
+    "machine": "pc"
+  },
   "phases": [
     {
       "card": null,
@@ -65,6 +71,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/workout-details-estimate/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "workout-details-estimate",
-  "updated": "2026-11-22T17:26:36+07:00",
+  "updated": "2026-11-22T17:35:18+07:00",
   "worktree": "/home/miftah/.worktrees/run-insights/workout-details-estimate"
 }
