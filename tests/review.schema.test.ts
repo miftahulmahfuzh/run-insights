@@ -211,6 +211,22 @@ describe('toRunInput — D5’s unit conversion, once', () => {
       'Outdoor Run',
     )
   })
+
+  it('carries the server-derived estimated flags through to the run input', () => {
+    const input = toRunInput(parsed(), {
+      source: 'screenshot',
+      extractionId: 'x',
+      estimated: { distanceEstimated: true, splitsEstimated: false },
+    })
+    expect(input.distanceEstimated).toBe(true)
+    expect(input.splitsEstimated).toBe(false)
+  })
+
+  it('omits the flags when none were derived — the query layer’s default applies', () => {
+    const input = toRunInput(parsed(), { source: 'screenshot', extractionId: 'x' })
+    expect(input).not.toHaveProperty('distanceEstimated')
+    expect(input).not.toHaveProperty('splitsEstimated')
+  })
 })
 
 describe('fieldErrorsOf', () => {

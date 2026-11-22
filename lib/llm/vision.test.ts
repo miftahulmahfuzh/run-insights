@@ -3,12 +3,15 @@ import { describe, expect, it, vi } from 'vitest'
 import { TRUTH } from '../../research/schema.mjs'
 import type { PromptImage } from './prompts/extraction'
 import {
+  callVisionDetailsWithFetch,
   callVisionPrimaryWithFetch,
   callVisionRepairWithFetch,
   TOKEN_FLOOR_PER_IMAGE,
   VisionTokenFloorError,
   VisionTransportError,
 } from './vision'
+import { createHash } from 'node:crypto'
+import { DETAILS_SYSTEM_PROMPT } from './prompts/details'
 
 /**
  * ════════════════════════════════════════════════════════════════════════════════════════════
@@ -274,5 +277,61 @@ describe('transport failures', () => {
       (e: unknown) => e,
     )) as VisionTransportError
     expect((error.detail as Error).name).toBe('TimeoutError')
+  })
+})
+
+describe('the Workout Details call', () => {
+  const DETAILS = { dataUri: 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAA==' }
+
+  it('trips the floor at 500 for its ONE image — the measured drop signature never parses', async () => {
+    const doFetch = fakeFetch(DROPPED_IMAGE_RESPONSE)
+    const error = await callVisionDetailsWithFetch(doFetch, DETAILS, { timeoutMs: 5_000 }).catch(
+      (e: unknown) => e,
+    )
+    expect(error).toBeInstanceOf(VisionTokenFloorError)
+    expect((error as VisionTokenFloorError).imageCount).toBe(1)
+  })
+
+  it('passes at exactly the one-image floor', async () => {
+    const doFetch = fakeFetch({
+      choices: [{ message: { content: '{}' }, finish_reason: 'stop' }],
+      usage: { prompt_tokens: TOKEN_FLOOR_PER_IMAGE, completion_tokens: 2 },
+    })
+    const result = await callVisionDetailsWithFetch(doFetch, DETAILS, { timeoutMs: 5_000 })
+    expect(result.promptTokens).toBe(TOKEN_FLOOR_PER_IMAGE)
+  })
+
+  it('sends its own prompt and exactly one image — never the frozen extraction prompt', async () => {
+    const doFetch = fakeFetch({
+      choices: [{ message: { content: '{}' }, finish_reason: 'stop' }],
+      usage: { prompt_tokens: 1100, completion_tokens: 2 },
+    })
+    await callVisionDetailsWithFetch(doFetch, DETAILS, { timeoutMs: 5_000 })
+    const body = JSON.parse(String(doFetch.mock.calls[0]![1]!.body)) as {
+      messages: Array<{ role: string; content: unknown }>
+    }
+    expect(body.messages[0]).toEqual({ role: 'system', content: DETAILS_SYSTEM_PROMPT })
+    const parts = body.messages[1]!.content as Array<{ type: string }>
+    expect(parts.filter((p) => p.type === 'image_url')).toHaveLength(1)
+  })
+})
+
+describe('the primary request carries the frozen prompt (R1.3)', () => {
+  it('sends EXTRACTION_SYSTEM_PROMPT byte for byte — the same sha-256 as origin/main @ 7e285b3', async () => {
+    const doFetch = fakeFetch({
+      choices: [{ message: { content: VALID_EXTRACTION_JSON }, finish_reason: 'stop' }],
+      usage: { prompt_tokens: 3277, completion_tokens: 940 },
+    })
+    await callVisionPrimaryWithFetch(doFetch, THREE, { timeoutMs: 5_000 })
+    const body = JSON.parse(String(doFetch.mock.calls[0]![1]!.body)) as {
+      messages: Array<{ role: string; content: unknown }>
+    }
+    const system = body.messages[0]!.content as string
+    expect(createHash('sha256').update(system, 'utf8').digest('hex')).toBe(
+      '23c82197c6ae148b42a9a3a157ba505431d33da01a6e75a0d17d995868633411',
+    )
+    const parts = body.messages[1]!.content as Array<{ type: string; text?: string }>
+    expect(parts.filter((p) => p.type === 'image_url')).toHaveLength(3)
+    expect(parts.some((p) => p.text?.includes('WORKOUT DETAILS'))).toBe(false)
   })
 })

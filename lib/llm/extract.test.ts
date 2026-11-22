@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import { TRUTH } from '../../research/schema.mjs'
-import { MIN_REPAIR_BUDGET_MS, type ScreenKind } from '@/lib/extract/constants'
+import { MIN_REPAIR_BUDGET_MS, type PrimaryScreenKind } from '@/lib/extract/constants'
 import { extractSession, type ExtractDeps } from './extract'
 import type { PromptImage } from './prompts/extraction'
 import { VisionTokenFloorError, VisionTransportError, type VisionResult } from './vision'
@@ -19,7 +19,7 @@ const IMAGES: PromptImage[] = [
   { kind: 'splits', dataUri: 'data:image/jpeg;base64,BBB' },
   { kind: 'heartrate', dataUri: 'data:image/jpeg;base64,CCC' },
 ]
-const ALL_KINDS: ReadonlySet<ScreenKind> = new Set(['summary', 'splits', 'heartrate'])
+const ALL_KINDS: ReadonlySet<PrimaryScreenKind> = new Set(['summary', 'splits', 'heartrate'])
 const BUDGET = 50_000
 
 function visionResult(text: string, over: Partial<VisionResult> = {}): VisionResult {

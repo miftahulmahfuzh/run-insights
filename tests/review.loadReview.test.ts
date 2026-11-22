@@ -92,6 +92,8 @@ function runDetailRow(overrides: Record<string, unknown> = {}) {
     note: null,
     source: 'screenshot',
     extractionId: EXTRACTION_ID,
+    distanceEstimated: false,
+    splitsEstimated: false,
     reviewedAt: new Date('2026-08-20T09:20:00Z'),
     correctedAt: null,
     createdAt: new Date(),
@@ -307,5 +309,57 @@ describe('loadRunEdit — /r/[id]/edit, the baseline is what is stored', () => {
     expect(context!.rawVendorResponse).toBeNull()
     expect(context!.existingCorrections).toBeNull()
     expect(context!.sourceImages).toEqual([])
+  })
+})
+
+describe('ReviewContext.estimated — which values the chart produced', () => {
+  it('review mode reads the stored extraction’s estimate', async () => {
+    queries.getExtraction.mockResolvedValue(
+      extractionRow({
+        rawResponse: {
+          vendor: null,
+          parsedSession: { ...truthSession(), distanceKm: 6.1 },
+          attempts: 1,
+          details: { vendor: null, printed: null, estimate: { distanceKm: 6.1, splits: true } },
+        },
+      }),
+    )
+    const context = await loadExtractionReview(USER, EXTRACTION_ID, NOW)
+    expect(context!.estimated).toEqual({ distanceKm: 6.1, splits: true })
+  })
+
+  it('review mode without a Workout Details screenshot estimates nothing', async () => {
+    const context = await loadExtractionReview(USER, EXTRACTION_ID, NOW)
+    expect(context!.estimated).toEqual({ distanceKm: null, splits: false })
+  })
+
+  it('a failed extraction estimates nothing, whatever its details block says', async () => {
+    queries.getExtraction.mockResolvedValue(
+      extractionRow({
+        status: 'failed',
+        errorCode: 'transport',
+        rawResponse: {
+          vendor: null,
+          parsedSession: null,
+          attempts: 1,
+          details: { vendor: null, printed: null, estimate: { distanceKm: 6.1, splits: true } },
+        },
+      }),
+    )
+    const context = await loadExtractionReview(USER, EXTRACTION_ID, NOW)
+    expect(context!.estimated).toEqual({ distanceKm: null, splits: false })
+  })
+
+  it('edit mode reads the run’s stored flags, against the stored distance', async () => {
+    queries.getRunDetail.mockResolvedValue(
+      runDetailRow({ distanceEstimated: true, splitsEstimated: true }),
+    )
+    const context = await loadRunEdit(USER, RUN_ID)
+    expect(context!.estimated).toEqual({ distanceKm: 10.67, splits: true })
+  })
+
+  it('edit mode of an unflagged run estimates nothing', async () => {
+    const context = await loadRunEdit(USER, RUN_ID)
+    expect(context!.estimated).toEqual({ distanceKm: null, splits: false })
   })
 })

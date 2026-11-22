@@ -35,6 +35,7 @@ export function SplitsTable({
   splits,
   photos,
   flagged,
+  estimated,
   editedPaths,
   errors,
   onChange,
@@ -44,6 +45,8 @@ export function SplitsTable({
   photos: ReviewPhoto[]
   /** True when CHK-1 or CHK-4 is pointing at this block. */
   flagged: boolean
+  /** True while these rows are the chart's estimate (`lib/review/estimated.ts`). */
+  estimated: boolean
   /** Dot-paths already corrected by hand in this session — the `edited` chip (R-46). */
   editedPaths: ReadonlySet<string>
   errors: Record<string, string>
@@ -101,6 +104,12 @@ export function SplitsTable({
 
       {errors['splits'] && (
         <p className="mb-3 text-[11px] font-semibold text-red">{errors['splits']}</p>
+      )}
+      {estimated && splits.length > 0 && (
+        <p className="mb-3 text-[11px] font-medium text-ink-3">
+          Estimated from the pace chart: no splits table was uploaded, so these rows were measured
+          off the Workout Details bars. Check them against your watch.
+        </p>
       )}
 
       {splits.length === 0 ? (
@@ -189,6 +198,7 @@ export function SplitsTable({
           index={editing}
           split={splits[editing]!}
           photos={photos}
+          estimated={estimated}
           errors={errors}
           onChange={(patch) => update(editing, patch)}
           onDelete={() => remove(editing)}
@@ -203,6 +213,7 @@ function SplitSheet({
   index,
   split,
   photos,
+  estimated,
   errors,
   onChange,
   onDelete,
@@ -211,6 +222,7 @@ function SplitSheet({
   index: number
   split: DraftSplit
   photos: ReviewPhoto[]
+  estimated: boolean
   errors: Record<string, string>
   onChange: (patch: Partial<DraftSplit>) => void
   onDelete: () => void
@@ -235,7 +247,8 @@ function SplitSheet({
         </div>
       }
     >
-      <SheetSource photos={photos} section="splits" />
+      {/* An estimated row came from the Workout Details screenshot, so that is the evidence to pin. */}
+      <SheetSource photos={photos} section={estimated ? 'details' : 'splits'} />
 
       <div className="space-y-4">
         <SheetField label="Kilometre" error={errors[path('km')]}>

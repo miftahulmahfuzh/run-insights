@@ -117,6 +117,18 @@ describe('ExtractingSkeleton — the waiting screen', () => {
     renderSkeleton({ elapsedSec: 120 })
     expect(screen.getByText('120s')).toBeInTheDocument()
   })
+
+  it('does not claim one pass when a Workout Details screenshot is read beside the others', () => {
+    renderSkeleton({
+      photos: [photo('summary', 'summary.jpg'), photo('details', 'details.jpg')],
+    })
+
+    expect(
+      screen.getByText(/Workout Details pace chart is measured, not guessed/),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/in one pass/)).not.toBeInTheDocument()
+    expect(screen.getByText('Workout Details')).toBeInTheDocument()
+  })
 })
 
 describe('ExtractingSkeleton — given up (the 90 s rule)', () => {

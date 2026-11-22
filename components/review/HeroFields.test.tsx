@@ -32,6 +32,7 @@ function renderFields(
     flaggedPaths?: ReadonlySet<string>
     editedPaths?: ReadonlySet<string>
     errors?: Record<string, string>
+    distanceEstimated?: boolean
   } = {},
 ) {
   const onChange = vi.fn()
@@ -42,6 +43,7 @@ function renderFields(
       editedPaths={overrides.editedPaths ?? new Set()}
       errors={overrides.errors ?? {}}
       onChange={onChange}
+      distanceEstimated={overrides.distanceEstimated ?? false}
     />,
   )
   return { onChange }
@@ -91,6 +93,7 @@ describe('HeroFields — the seven fields', () => {
         editedPaths={new Set(['distanceKm'])}
         errors={{}}
         onChange={() => {}}
+        distanceEstimated={false}
       />,
     )
     expect(screen.getByText('edited')).toBeInTheDocument()
@@ -103,6 +106,7 @@ describe('HeroFields — the seven fields', () => {
         editedPaths={new Set(['distanceKm'])}
         errors={{}}
         onChange={() => {}}
+        distanceEstimated={false}
       />,
     )
     expect(screen.getByText('check')).toBeInTheDocument()
@@ -220,10 +224,23 @@ describe('HeroFields — the editing wiring', () => {
         editedPaths={new Set()}
         errors={{}}
         onChange={() => {}}
+        distanceEstimated={false}
         distanceRef={ref}
       />,
     )
 
     expect(ref.current).toBe(screen.getByLabelText('Distance in kilometres'))
+  })
+})
+
+describe('HeroFields — a distance measured off the pace chart', () => {
+  it('labels the distance as estimated while it still is (R3.1)', () => {
+    renderFields({ distanceEstimated: true })
+    expect(screen.getByText('Estimated from the pace chart')).toBeInTheDocument()
+  })
+
+  it('says nothing for a transcribed distance', () => {
+    renderFields({ distanceEstimated: false })
+    expect(screen.queryByText('Estimated from the pace chart')).not.toBeInTheDocument()
   })
 })

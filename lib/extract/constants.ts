@@ -11,20 +11,32 @@
  * `docs/plans/archive/F04-ingest-extraction.md` §4.6.
  */
 
-/* ── The three screens ───────────────────────────────────────────────────────────────────── */
+/* ── The screens ─────────────────────────────────────────────────────────────────────────── */
 
 /**
- * The screen kinds extraction understands. `run_photos.kind` also allows `'other'` (roadmap
- * §4.3); F04 never produces it — a photo that fed no extraction is F05/user territory.
+ * The three screens the extraction prompt was MEASURED on (108/108, `research/run-extract.mjs`).
+ * `lib/llm/prompts/extraction.ts` keys its image labels, `PromptImage` and the repair text on this,
+ * and `FIELD_SOURCES` its provenance table — so a fourth kind can never be typed into the primary
+ * request. Do not add to it without re-running the scorer.
  */
-export const SCREEN_KINDS = ['summary', 'splits', 'heartrate'] as const
+export const PRIMARY_SCREEN_KINDS = ['summary', 'splits', 'heartrate'] as const
+export type PrimaryScreenKind = (typeof PRIMARY_SCREEN_KINDS)[number]
+
+/**
+ * Every screen kind a runner can upload. `details` is Apple's "Workout Details" screen, the stand-in
+ * for a missing splits table: it is read by its own one-image call (`lib/llm/prompts/details.ts`) and
+ * its charts are measured by `lib/extract/chart/*`; it never joins the primary request.
+ * `run_photos.kind` also allows `'other'` (roadmap §4.3); F04 never produces it.
+ */
+export const SCREEN_KINDS = [...PRIMARY_SCREEN_KINDS, 'details'] as const
 export type ScreenKind = (typeof SCREEN_KINDS)[number]
 
-/** Human labels. One place, so the prompt, the picker and the review strip cannot drift. */
+/** Human labels. One place, so the picker and the review strip cannot drift. */
 export const SCREEN_KIND_LABEL: Record<ScreenKind, string> = {
   summary: 'Summary',
   splits: 'Splits',
   heartrate: 'Heart rate',
+  details: 'Workout Details',
 }
 
 /**
@@ -39,15 +51,18 @@ export const SCREEN_KIND_LABEL: Record<ScreenKind, string> = {
  * the OS photo picker hands files over in. Re-aliasing this to `SCREEN_KINDS` to tidy it up would
  * restore the defect. See docs/plans/archive/F29-default-kind-order.md.
  *
- * `satisfies` rather than a `readonly ScreenKind[]` annotation, so the elements are checked against
- * `ScreenKind` while the tuple stays literal — a widened annotation would let a mistyped
- * permutation past the invariant test that pins this against `SCREEN_KINDS`.
+ * **Never `details`, by type.** The Workout Details screen replaces a missing splits table, which
+ * only the runner knows about, so it is always chosen by a tap (the middle tile, usually). The
+ * `PrimaryScreenKind` constraint makes a default of `details` a compile error rather than a habit.
+ *
+ * `satisfies` rather than an annotation, so the elements are checked while the tuple stays literal
+ * — a widened annotation would let a mistyped entry past the invariant test that pins this.
  */
 export const DEFAULT_KIND_BY_INDEX = [
   'heartrate',
   'splits',
   'summary',
-] as const satisfies readonly ScreenKind[]
+] as const satisfies readonly PrimaryScreenKind[]
 
 export const MAX_IMAGES = 3
 export const MIN_IMAGES = 1

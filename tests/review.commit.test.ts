@@ -233,6 +233,8 @@ describe('the post-review edit (R-8)', () => {
       note: null,
       source: 'screenshot',
       extractionId: EXTRACTION_ID,
+      distanceEstimated: false,
+      splitsEstimated: false,
       reviewedAt: new Date('2026-08-20T09:20:00Z'),
       correctedAt: null,
       createdAt: new Date(),
@@ -317,6 +319,30 @@ describe('the post-review edit (R-8)', () => {
     const [, , , splits, zones] = queries.applyRunCorrections.mock.calls[0]!
     expect(splits).toHaveLength(10)
     expect(zones).toHaveLength(5)
+  })
+
+  it('derives the estimated flags for an edit from the stored run: kept stays, changed clears (A5)', async () => {
+    const stored = await queries.getRunDetail(USER, RUN_ID)
+    queries.getRunDetail.mockResolvedValue({
+      ...stored,
+      distanceEstimated: true,
+      splitsEstimated: true,
+    })
+
+    await commitReview(USER, payload(baselineDraft(), RUN_ID), { now })
+    expect(queries.applyRunCorrections.mock.calls[0]![2]).toMatchObject({
+      distanceEstimated: true,
+      splitsEstimated: true,
+    })
+
+    const changed = baselineDraft()
+    changed.distanceKm = 10.5
+    changed.splits = []
+    await commitReview(USER, payload(changed, RUN_ID), { now })
+    expect(queries.applyRunCorrections.mock.calls[1]![2]).toMatchObject({
+      distanceEstimated: false,
+      splitsEstimated: false,
+    })
   })
 })
 
@@ -450,5 +476,89 @@ describe('failure modes', () => {
     expect(queries.commitExtractedRun).toHaveBeenCalledTimes(1)
     expect(error).toHaveBeenCalled()
     error.mockRestore()
+  })
+})
+
+describe('chart-estimated values — the flags are derived on the server (R4.1, R3.2)', () => {
+  function sundaySession(): ExtractedSession {
+    return { ...truthSession(), distanceKm: 6.1 }
+  }
+  function estimatedRow(
+    estimate: { distanceKm: number | null; splits: boolean },
+    session: ExtractedSession,
+  ) {
+    return extractionRow({
+      rawResponse: {
+        vendor: null,
+        parsedSession: session,
+        attempts: 1,
+        details: { vendor: null, printed: null, estimate },
+      },
+    })
+  }
+
+  it('persists both flags when the estimated distance and splits are confirmed as they are', async () => {
+    queries.getExtraction.mockResolvedValue(
+      estimatedRow({ distanceKm: 6.1, splits: true }, sundaySession()),
+    )
+    await commitReview(USER, payload(hydrateDraftFromExtraction(sundaySession(), NOW)), { now })
+
+    const [, input] = queries.commitExtractedRun.mock.calls[0]!
+    expect(input.distanceEstimated).toBe(true)
+    expect(input.splitsEstimated).toBe(true)
+  })
+
+  it('stores the runner’s distance, not flagged, when they changed the estimate (R3.2)', async () => {
+    queries.getExtraction.mockResolvedValue(
+      estimatedRow({ distanceKm: 6.1, splits: true }, sundaySession()),
+    )
+    const draft = hydrateDraftFromExtraction(sundaySession(), NOW)
+    draft.distanceKm = 6.05
+    await commitReview(USER, payload(draft), { now })
+
+    const [, input] = queries.commitExtractedRun.mock.calls[0]!
+    expect(input.distanceM).toBe(6050)
+    expect(input.distanceEstimated).toBe(false)
+    expect(input.splitsEstimated).toBe(true)
+  })
+
+  it('flags only the splits when the distance was transcribed', async () => {
+    queries.getExtraction.mockResolvedValue(
+      estimatedRow({ distanceKm: null, splits: true }, truthSession()),
+    )
+    await commitReview(USER, payload(baselineDraft()), { now })
+
+    const [, input] = queries.commitExtractedRun.mock.calls[0]!
+    expect(input.distanceEstimated).toBe(false)
+    expect(input.splitsEstimated).toBe(true)
+  })
+
+  it('clears the splits flag when the runner removed every estimated row', async () => {
+    queries.getExtraction.mockResolvedValue(
+      estimatedRow({ distanceKm: 6.1, splits: true }, sundaySession()),
+    )
+    const draft = hydrateDraftFromExtraction(sundaySession(), NOW)
+    draft.splits = []
+    await commitReview(USER, payload(draft), { now })
+
+    const [, input] = queries.commitExtractedRun.mock.calls[0]!
+    expect(input.splitsEstimated).toBe(false)
+  })
+
+  it('ignores any flag the browser sends — only the stored extraction decides (invariant 5)', async () => {
+    const draft = { ...baselineDraft(), distanceEstimated: true, splitsEstimated: true }
+    await commitReview(
+      USER,
+      {
+        ...payload(draft as unknown as ReviewDraft),
+        distanceEstimated: true,
+        splitsEstimated: true,
+      },
+      { now },
+    )
+
+    const [, input] = queries.commitExtractedRun.mock.calls[0]!
+    expect(input.distanceEstimated).toBe(false)
+    expect(input.splitsEstimated).toBe(false)
   })
 })

@@ -15,8 +15,9 @@ import {
   MIN_REPAIR_BUDGET_MS,
   REPAIR_TIMEOUT_MS,
   TARGET_SHORT_EDGE_PX,
+  type PrimaryScreenKind,
 } from '@/lib/extract/constants'
-import { makeExtractedSessionSchema, type ScreenKind } from '@/lib/schema/extractedSession'
+import { makeExtractedSessionSchema } from '@/lib/schema/extractedSession'
 
 /**
  * ════════════════════════════════════════════════════════════════════════════════════════════
@@ -49,7 +50,7 @@ const DEFAULT_FIXTURE_DIR = 'research/fixtures/screenshots/shipped'
 const FIXTURE_DIR = process.env.RI_FIXTURE_DIR ?? DEFAULT_FIXTURE_DIR
 /** `.jpg` in the default directory (the shipped recipe); an override may hold `.png` originals. */
 const EXT = existsSync(path.join(FIXTURE_DIR, '1.jpg')) ? 'jpg' : 'png'
-const FILES: Array<{ file: string; kind: ScreenKind }> = [
+const FILES: Array<{ file: string; kind: PrimaryScreenKind }> = [
   { file: `1.${EXT}`, kind: 'summary' },
   { file: `2.${EXT}`, kind: 'splits' },
   { file: `3.${EXT}`, kind: 'heartrate' },
@@ -61,7 +62,7 @@ const haveFixtures =
 const haveKey = hasRealLlmKey(process.env.LLM_API_KEY)
 const runnable = haveFixtures && haveKey
 
-const ALL_KINDS: ReadonlySet<ScreenKind> = new Set(['summary', 'splits', 'heartrate'])
+const ALL_KINDS: ReadonlySet<PrimaryScreenKind> = new Set(['summary', 'splits', 'heartrate'])
 
 /**
  * Loads the fixtures as data URIs, with the media type matching what is on disk. By default these

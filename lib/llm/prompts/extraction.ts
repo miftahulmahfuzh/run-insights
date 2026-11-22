@@ -1,4 +1,4 @@
-import { SCREEN_KINDS, type ScreenKind } from '@/lib/extract/constants'
+import { PRIMARY_SCREEN_KINDS, type PrimaryScreenKind } from '@/lib/extract/constants'
 
 /**
  * The production extraction prompt.
@@ -109,7 +109,7 @@ export const EXTRACTION_SHAPE = `{
   "postWorkoutHr": [ { "label": string, "bpm": number } ]
 }`
 
-const IMAGE_LABEL: Record<ScreenKind, string> = {
+const IMAGE_LABEL: Record<PrimaryScreenKind, string> = {
   summary: 'SUMMARY screen',
   splits: 'SPLITS screen (transcribe every row)',
   heartrate: 'HEART RATE screen',
@@ -120,7 +120,7 @@ type VisionImagePart = { type: 'image_url'; image_url: { url: string } }
 export type VisionContentPart = VisionTextPart | VisionImagePart
 
 export interface PromptImage {
-  kind: ScreenKind
+  kind: PrimaryScreenKind
   /** `data:image/jpeg;base64,…` — §2.2: a data URI, never a hosted URL. */
   dataUri: string
 }
@@ -139,7 +139,7 @@ export interface PromptImage {
 export function buildExtractionUserContent(images: PromptImage[]): VisionContentPart[] {
   const given = images.map((i) => IMAGE_LABEL[i.kind]).join(', ')
   const intro =
-    images.length === SCREEN_KINDS.length
+    images.length === PRIMARY_SCREEN_KINDS.length
       ? 'These are screenshots of ONE running workout: the summary, the full splits table, and the heart-rate detail.'
       : `These are ${images.length} screenshot(s) of ONE running workout. You are given: ${given}. No other screen exists for this workout.`
 
@@ -165,7 +165,7 @@ export function buildExtractionUserContent(images: PromptImage[]): VisionContent
  * rule 8 still binds and the model does not "helpfully" invent the absent screen's fields on the
  * second attempt.
  */
-export function buildRepairRequestText(kinds: ScreenKind[]): string {
+export function buildRepairRequestText(kinds: PrimaryScreenKind[]): string {
   const given = kinds.map((k) => IMAGE_LABEL[k]).join(', ')
   return (
     `Earlier in this conversation you were shown ${kinds.length} screenshot(s) of ONE running ` +

@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { SCREEN_KINDS, type ScreenKind } from '@/lib/extract/constants'
+import { SCREEN_KINDS, type PrimaryScreenKind, type ScreenKind } from '@/lib/extract/constants'
 
 /**
  * The shape one extracted workout arrives in, and the provenance guard that decides which of its
@@ -198,7 +198,7 @@ type ExtractedSessionField = keyof ExtractedSession
  * must not be reachable through a legitimate upload. RULE 6a in the prompt tells the model the
  * same thing.
  */
-export const FIELD_SOURCES: Record<ExtractedSessionField, readonly ScreenKind[]> = {
+export const FIELD_SOURCES: Record<ExtractedSessionField, readonly PrimaryScreenKind[]> = {
   activityType: ['summary'],
   goal: ['summary'],
   dateLabel: ['summary'],

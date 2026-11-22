@@ -129,7 +129,7 @@ export type ExtractionCorrections = Record<string, CorrectionEvent[]>
 export type ExtractionBlobRefRow = {
   url: string
   pathname: string
-  /** 'summary' | 'splits' | 'heartrate' — F04 never writes 'other' into an extraction. */
+  /** 'summary' | 'splits' | 'heartrate' | 'details' — F04 never writes 'other' into an extraction. */
   kind: PhotoKind
   width?: number | null
   height?: number | null
@@ -349,7 +349,7 @@ export const runPhotos = pgTable(
     thumbUrl: text('thumb_url'),
     /** The thumbnail's STORED Blob pathname — the only thing that lets a delete remove it too. */
     thumbPathname: text('thumb_pathname'),
-    kind: text('kind').$type<PhotoKind>().notNull(), // 'summary'|'splits'|'heartrate'|'other'
+    kind: text('kind').$type<PhotoKind>().notNull(), // 'summary'|'splits'|'heartrate'|'details'|'other'
     width: integer('width'),
     height: integer('height'),
     bytes: integer('bytes'),
@@ -401,7 +401,7 @@ export const runPhotos = pgTable(
   ],
 )
 
-export type PhotoKind = 'summary' | 'splits' | 'heartrate' | 'other'
+export type PhotoKind = 'summary' | 'splits' | 'heartrate' | 'details' | 'other'
 
 export const insights = pgTable(
   'insights',

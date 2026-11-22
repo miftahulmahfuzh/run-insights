@@ -5,7 +5,7 @@ import {
   PRIMARY_TIMEOUT_MS,
   REPAIR_TIMEOUT_MS,
   type ExtractionErrorCode,
-  type ScreenKind,
+  type PrimaryScreenKind,
 } from '@/lib/extract/constants'
 import {
   describeZodIssues,
@@ -71,7 +71,7 @@ function failure(
 }
 
 /** Maps a thrown vision error onto its error code. `null` means "not one of ours — rethrow". */
-function codeForVisionError(cause: unknown): ExtractionErrorCode | null {
+export function codeForVisionError(cause: unknown): ExtractionErrorCode | null {
   if (cause instanceof VisionTokenFloorError) return 'token_floor'
   if (cause instanceof VisionTransportError) {
     // AbortSignal.timeout() rejects with a TimeoutError DOMException, wrapped by the transport
@@ -98,7 +98,7 @@ function codeForVisionError(cause: unknown): ExtractionErrorCode | null {
 export async function extractSession(
   deps: ExtractDeps,
   images: PromptImage[],
-  kindsPresent: ReadonlySet<ScreenKind>,
+  kindsPresent: ReadonlySet<PrimaryScreenKind>,
   budgetMs: number,
 ): Promise<ExtractOutcome> {
   const startedAt = deps.now()

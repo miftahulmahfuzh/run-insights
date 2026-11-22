@@ -59,7 +59,7 @@ describe('planPicked — room arithmetic', () => {
   })
 
   it('refuses outright when three tiles are already up, and says so', () => {
-    const plan = planPicked(holders(...SCREEN_KINDS), [file('d.jpg')])
+    const plan = planPicked(holders('summary', 'details', 'heartrate'), [file('d.jpg')])
     expect(plan.accepted).toEqual([])
     expect(plan.error).toBe('Three screenshots is the most one run can have.')
   })
@@ -161,25 +161,30 @@ describe('planPicked — kind defaults', () => {
   })
 
   /**
-   * The equality every "find a free kind" search here depends on, asserted directly the way F16
-   * asserts it. If a fourth screen kind ever lands, this fails loudly instead of a pick quietly
-   * reusing a kind another tile holds.
+   * The fact every "find a free kind" search here depends on, asserted directly the way F16
+   * asserts its own. It used to read `MAX_IMAGES === SCREEN_KINDS.length`; the Workout Details kind
+   * made it four kinds for three slots, and what the search needs was only ever `>=`.
    */
-  it('has exactly as many kinds as slots', () => {
-    expect(MAX_IMAGES).toBe(SCREEN_KINDS.length)
+  it('always has a free kind for the next tile', () => {
+    expect(SCREEN_KINDS.length).toBeGreaterThanOrEqual(MAX_IMAGES)
   })
 
   /**
-   * And since F29 the default order is its own literal rather than an alias of `SCREEN_KINDS`, the
-   * length equality above is no longer enough on its own: the fallback search scans
-   * `DEFAULT_KIND_BY_INDEX`, so it is total only if that array is a *permutation* of the canonical
-   * kinds, not merely three entries long. A mistyped or duplicated kind fails here rather than as a
-   * pick silently reusing a kind another tile holds.
+   * The fallback search scans `DEFAULT_KIND_BY_INDEX`, so it is total only if that array holds
+   * `MAX_IMAGES` DISTINCT screen kinds (pigeonhole: fewer than `MAX_IMAGES` are in use whenever a
+   * pick is seated). It is no longer a permutation of every kind — Workout Details is never a
+   * default, because only the runner knows the splits table is missing.
    */
-  it('defaults through a permutation of every kind, exactly once each', () => {
+  it('defaults through MAX_IMAGES distinct screen kinds, never Workout Details', () => {
     expect(DEFAULT_KIND_BY_INDEX).toHaveLength(MAX_IMAGES)
     expect(new Set(DEFAULT_KIND_BY_INDEX).size).toBe(DEFAULT_KIND_BY_INDEX.length)
-    expect([...DEFAULT_KIND_BY_INDEX].sort()).toEqual([...SCREEN_KINDS].sort())
+    for (const kind of DEFAULT_KIND_BY_INDEX) expect(SCREEN_KINDS).toContain(kind)
+    expect(DEFAULT_KIND_BY_INDEX).not.toContain('details')
+  })
+
+  it('keeps the device order around a tile the runner relabelled Workout Details', () => {
+    const plan = planPicked(holders('details'), [file('b.jpg'), file('c.jpg')])
+    expect(plan.accepted.map((a) => a.kind)).toEqual(['splits', 'summary'])
   })
 })
 

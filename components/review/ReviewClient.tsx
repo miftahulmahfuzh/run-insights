@@ -8,6 +8,7 @@ import { errorCopy } from '@/lib/schema/extractionResult'
 import { checkDraft, flaggedPaths as collectFlagged, isFlagged } from '@/lib/review/checks'
 import { commitStatusLine } from '@/lib/review/copy'
 import { diffCorrections, type ReviewDraft } from '@/lib/review/draft'
+import { distanceIsEstimated, splitsAreEstimated } from '@/lib/review/estimated'
 import type { ReviewContext } from '@/lib/review/loadReview'
 import type { CommitReviewState } from '@/lib/review/schema'
 import { ConsistencyBanner } from './ConsistencyBanner'
@@ -67,7 +68,15 @@ export function ReviewClient({
   const distanceRef = React.useRef<HTMLInputElement>(null)
   const errorSummaryRef = React.useRef<HTMLDivElement>(null)
 
-  const checks = React.useMemo(() => checkDraft(draft), [draft])
+  // The chart-estimate labels, by the same rule `commitReview` stores the flags with — so the
+  // label disappears for the distance the moment the runner types another one.
+  const distanceEstimated = distanceIsEstimated(context.estimated, draft.distanceKm)
+  const splitsEstimated = splitsAreEstimated(context.estimated, draft.splits.length)
+
+  const checks = React.useMemo(
+    () => checkDraft(draft, { splitsEstimated }),
+    [draft, splitsEstimated],
+  )
   const flagged = React.useMemo(() => collectFlagged(checks), [checks])
 
   /**
@@ -129,6 +138,7 @@ export function ReviewClient({
         editedPaths={editedPaths}
         errors={fieldErrors}
         onChange={patch}
+        distanceEstimated={distanceEstimated}
         distanceRef={distanceRef}
       />
 
@@ -150,6 +160,7 @@ export function ReviewClient({
         splits={draft.splits}
         photos={context.photos}
         flagged={isFlagged(flagged, 'splits')}
+        estimated={splitsEstimated}
         editedPaths={editedPaths}
         errors={fieldErrors}
         onChange={(splits) => patch({ splits })}

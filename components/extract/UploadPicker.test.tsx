@@ -270,6 +270,28 @@ describe('UploadPicker — fixing a mislabel swaps instead of subtracting', () =
     expect(radioOf(groups()[1]!, 'Splits')).toBeChecked()
   })
 
+  it('relabels a tile as Workout Details: it re-uploads with the details kind signed in, and says the chart is measured', async () => {
+    await twoReadyTiles()
+
+    // Workout Details is free, so only tile 2 (defaulted to Splits) redoes.
+    fireEvent.click(radioOf(groups()[1]!, 'Workout Details'))
+    await flush()
+    await flush()
+    await flush()
+
+    expect(radioOf(groups()[0]!, 'Heart rate')).toBeChecked()
+    expect(radioOf(groups()[1]!, 'Workout Details')).toBeChecked()
+    expect(upload).toHaveBeenCalledTimes(3)
+    expect(upload.mock.calls[2]![2]).toMatchObject({
+      clientPayload: JSON.stringify({ kind: 'details' }),
+    })
+    expect(
+      screen.getByText(
+        `Heart rate · Workout Details — read in about ${TYPICAL_EXTRACTION_SECONDS} seconds, with the pace chart measured rather than read.`,
+      ),
+    ).toBeInTheDocument()
+  })
+
   it('swaps a held kind: both tiles redo from the original bytes and the labels exchange', async () => {
     await twoReadyTiles()
 

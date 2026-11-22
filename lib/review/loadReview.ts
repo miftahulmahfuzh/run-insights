@@ -13,6 +13,7 @@ import type {
   PhotoKind,
 } from '@/lib/db/schema'
 import type { RawResponseColumn } from '@/lib/llm/runExtractionJob'
+import type { EstimatedValues } from '@/lib/schema/detailsPrinted'
 import { draftFromRun, hydrateDraftFromExtraction, type ReviewDraft } from '@/lib/review/draft'
 
 /**
@@ -75,6 +76,14 @@ export interface ReviewContext {
    * again" a single POST of a value we already hold rather than a re-upload.
    */
   sourceImages: ExtractionBlobRefRow[]
+  /**
+   * Which baseline values were measured off the Workout Details pace chart rather than read off a
+   * screen. Review mode: the extraction's stored `raw_response.details.estimate`. Edit mode: the
+   * run's stored `distance_estimated` / `splits_estimated`. Drives the review screen's
+   * "Estimated from the pace chart" labels and, on the server, `commitReview`'s flags — re-read
+   * on every commit, never taken from the browser.
+   */
+  estimated: EstimatedValues
   /** Set when this extraction has already produced a run — the screen redirects rather than re-commit. */
   committedRunId: string | null
 }
@@ -98,6 +107,8 @@ export async function loadExtractionReview(
   // A `failed` extraction has no session to hydrate from, by contract — §8's blank draft is what
   // `hydrateDraftFromExtraction(null)` returns, so the manual path needs no separate branch.
   const session = status === 'ok' || status === 'repaired' ? (raw?.parsedSession ?? null) : null
+  // An estimate describes the session it was merged into; with no session there is nothing estimated.
+  const estimate = session ? (raw?.details?.estimate ?? null) : null
 
   return {
     mode: 'review',
@@ -116,6 +127,7 @@ export async function loadExtractionReview(
     rawVendorResponse: raw?.vendor ?? null,
     existingCorrections: extraction.corrections ?? null,
     sourceImages: extraction.blobUrls ?? [],
+    estimated: { distanceKm: estimate?.distanceKm ?? null, splits: estimate?.splits ?? false },
     committedRunId,
   }
 }
@@ -127,12 +139,13 @@ export async function loadRunEdit(userId: string, runId: string): Promise<Review
 
   const extraction = detail.extractionId ? await getExtraction(userId, detail.extractionId) : null
   const raw = extraction?.rawResponse as RawResponseColumn | null | undefined
+  const baseline = draftFromRun(detail, detail.splits, detail.zones)
 
   return {
     mode: 'edit',
     extractionId: detail.extractionId,
     runId,
-    baseline: draftFromRun(detail, detail.splits, detail.zones),
+    baseline,
     photos: detail.photos.map((p) => ({
       url: p.blobUrl,
       thumbUrl: p.thumbUrl,
@@ -145,6 +158,12 @@ export async function loadRunEdit(userId: string, runId: string): Promise<Review
     rawVendorResponse: raw?.vendor ?? null,
     existingCorrections: extraction?.corrections ?? null,
     sourceImages: extraction?.blobUrls ?? [],
+    // The stored flags (phase 2's columns). A flagged distance is "the distance stored now", so an
+    // edit that keeps it keeps the flag and an edit that changes it clears it — same rule as review.
+    estimated: {
+      distanceKm: detail.distanceEstimated ? baseline.distanceKm : null,
+      splits: detail.splitsEstimated,
+    },
     committedRunId: runId,
   }
 }

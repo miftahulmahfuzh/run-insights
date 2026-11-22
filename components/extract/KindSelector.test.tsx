@@ -68,16 +68,24 @@ describe('KindSelector', () => {
 
     // The historical defect rendered kinds other tiles held as `disabled` at 35% opacity. This
     // control cannot know its neighbours, so its own DOM is the invariant: nothing disabled here.
-    expect(screen.getByRole('radio', { name: 'Splits' })).toBeEnabled()
-    expect(screen.getByRole('radio', { name: 'Heart rate' })).toBeEnabled()
-    expect(screen.getByRole('radio', { name: 'Summary' })).toBeEnabled()
+    for (const kind of SCREEN_KINDS) {
+      expect(screen.getByRole('radio', { name: SCREEN_KIND_LABEL[kind] })).toBeEnabled()
+    }
   })
 
-  it('honours the submitting guard by disabling all three', () => {
+  it('honours the submitting guard by disabling every kind', () => {
     renderSelector({ disabled: true })
 
-    for (const label of ['Summary', 'Splits', 'Heart rate']) {
-      expect(screen.getByRole('radio', { name: label })).toBeDisabled()
+    for (const kind of SCREEN_KINDS) {
+      expect(screen.getByRole('radio', { name: SCREEN_KIND_LABEL[kind] })).toBeDisabled()
     }
+  })
+
+  it('offers Workout Details and reports it as the details kind', () => {
+    const { onChange } = renderSelector({ value: 'splits' })
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Workout Details' }))
+
+    expect(onChange).toHaveBeenCalledWith('details')
   })
 })
