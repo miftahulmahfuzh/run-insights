@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Regenerate research/fixtures/screenshots/shipped/ from the canonical PNGs.
+"""Regenerate a fixture set's shipped/ JPEGs from its canonical PNGs.
+
+Two sets, picked by the first argument (default `canonical`, the original behaviour):
+
+  canonical         research/fixtures/screenshots/{1,2,3}.png -> screenshots/shipped/
+  workout-details   research/fixtures/workout-details/*.png   -> workout-details/shipped/
+                    (the chart estimator's fixtures, lib/extract/chart/; WORKOUT_DETAILS_ESTIMATE
+                    phase 1)
 
 The three `.jpg` files under `shipped/` are what the browser actually uploads: 560 px on the
 SHORT edge, JPEG quality 80 — the recipe `research/downscale.mjs` scored at 108/108 and the one
@@ -21,9 +28,11 @@ differ slightly from the measured table (183 KB total here vs the 170 KB
 `research/downscale.mjs` recorded); the PIXEL DIMENSIONS, which are what drive token cost and
 accuracy, are identical.
 
-    python3 scripts/shipped-image-recipe.py
+    python3 scripts/shipped-image-recipe.py                    # canonical
+    python3 scripts/shipped-image-recipe.py workout-details    # the chart estimator's set
 """
 
+import sys
 from pathlib import Path
 
 from PIL import Image
@@ -36,8 +45,24 @@ TARGET_SHORT_EDGE_PX = 560  # TARGET_SHORT_EDGE_PX
 TARGET_QUALITY = 80  # TARGET_QUALITY (0.8)
 
 ROOT = Path(__file__).resolve().parent.parent
-SRC = ROOT / "research" / "fixtures" / "screenshots"
-OUT = SRC / "shipped"
+FIXTURES = ROOT / "research" / "fixtures"
+
+# set name -> (source directory, PNG stems). Each set writes <source>/shipped/<stem>.jpg.
+SETS = {
+    "canonical": (FIXTURES / "screenshots", ("1", "2", "3")),
+    "workout-details": (
+        FIXTURES / "workout-details",
+        (
+            "2026-11-20-details",
+            "2026-11-20-heartrate",
+            "2026-11-20-splits",
+            "2026-11-20-summary",
+            "2026-11-22-details",
+            "2026-11-22-heartrate",
+            "2026-11-22-summary",
+        ),
+    ),
+}
 
 
 def long_edge_target_for(width: int, height: int, short_edge_target: int) -> int:
@@ -49,10 +74,15 @@ def long_edge_target_for(width: int, height: int, short_edge_target: int) -> int
 
 
 def main() -> None:
-    OUT.mkdir(parents=True, exist_ok=True)
+    set_name = sys.argv[1] if len(sys.argv) > 1 else "canonical"
+    if set_name not in SETS:
+        raise SystemExit(f"unknown set {set_name!r}; expected one of {sorted(SETS)}")
+    src, names = SETS[set_name]
+    out = src / "shipped"
+    out.mkdir(parents=True, exist_ok=True)
     total = 0
-    for name in ("1", "2", "3"):
-        source = SRC / f"{name}.png"
+    for name in names:
+        source = src / f"{name}.png"
         image = Image.open(source).convert("RGB")
         width, height = image.size
 
@@ -64,7 +94,7 @@ def main() -> None:
         scale = target_long / max(width, height)
         resized = image.resize((round(width * scale), round(height * scale)), Resampling.LANCZOS)
 
-        destination = OUT / f"{name}.jpg"
+        destination = out / f"{name}.jpg"
         resized.save(destination, "JPEG", quality=TARGET_QUALITY)
 
         kb = destination.stat().st_size / 1024
@@ -75,7 +105,9 @@ def main() -> None:
         )
         print(f"{name}: {width}x{height} -> {resized.size[0]}x{resized.size[1]}  short {short}  {kb:.0f} KB")
 
-    print(f"total {total:.0f} KB  (research/downscale.mjs measured 170 KB with the browser encoder)")
+    print(f"total {total:.0f} KB")
+    if set_name == "canonical":
+        print("(research/downscale.mjs measured 170 KB with the browser encoder)")
 
 
 if __name__ == "__main__":
