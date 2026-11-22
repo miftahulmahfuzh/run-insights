@@ -97,4 +97,15 @@ describe('getRunDetail', () => {
     expect(detail?.zones).toHaveLength(1)
     expect(detail?.photos).toHaveLength(1)
   })
+
+  it('R4.1: reads both estimated flags back off the run row', async () => {
+    const { runs } = await import('@/lib/db/schema')
+    fake.enqueue([tableRow(runs, { id: 'r1', splitsEstimated: true })], [], [], [])
+
+    const detail = await q.getRunDetail('u1', 'r1')
+
+    expect(detail?.splitsEstimated).toBe(true)
+    expect(detail?.distanceEstimated).toBe(false)
+    expect(fake.sqlAt(0)).toContain('"distance_estimated"')
+  })
 })

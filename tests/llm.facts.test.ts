@@ -36,6 +36,9 @@ function canonicalFacts(
     recentRuns?: RecentRunInput[]
     /** RULING C5: the one override that exists to prove `facts_hash` moved with the payload. */
     profile?: typeof PROFILE
+    /** R4. Default false, which must hash exactly as the pre-R4 builder did. */
+    distanceEstimated?: boolean
+    splitsEstimated?: boolean
   } = {},
 ) {
   const metrics = computeSessionMetrics(canonicalSession, ESTIMATED_HR_MAX)
@@ -56,6 +59,8 @@ function canonicalFacts(
       elevationM: canonicalRecordRun.elevationM,
       activeKcal: canonicalRecordRun.activeKcal,
       intent: overrides.intent === undefined ? null : overrides.intent,
+      distanceEstimated: overrides.distanceEstimated ?? false,
+      splitsEstimated: overrides.splitsEstimated ?? false,
     },
     metrics,
     flags,
@@ -280,6 +285,43 @@ describe('the intent write-back invalidates the cache (Task 11)', () => {
 
   it('is stable when nothing is answered — two builds of the same run are one cache entry', () => {
     expect(factsHash(canonicalFacts())).toBe(factsHash(canonicalFacts()))
+  })
+})
+
+describe('R4 — estimated distance / splits reach the narrator, and nobody else’s cache moves', () => {
+  /** `factsHash(canonicalFacts())` measured on base 7e285b3, before R4 existed (phase 2, step 0). */
+  const PRE_R4_CANONICAL_HASH = '2af4e7bc127fd8607cc29b58d7e1fe26ebe0163879e5e8d69c1852d52c129140'
+
+  it('R4.4: an unflagged run hashes byte-for-byte as it did before the flags existed', () => {
+    const facts = canonicalFacts()
+    expect('estimated' in facts.session).toBe(false)
+    expect(factsHash(facts)).toBe(PRE_R4_CANONICAL_HASH)
+  })
+
+  it.each([
+    [true, false, /^The distance was estimated/],
+    [false, true, /^The per-km splits were estimated/],
+    [true, true, /^The distance and the per-km splits were estimated/],
+  ])(
+    'distance=%s splits=%s: the session says which, in a sentence the model can quote',
+    (distanceEstimated, splitsEstimated, opening) => {
+      const facts = canonicalFacts({ distanceEstimated, splitsEstimated })
+      expect(facts.session.estimated).toMatchObject({
+        distance: distanceEstimated,
+        splits: splitsEstimated,
+      })
+      expect(facts.session.estimated!.note).toMatch(opening)
+      expect(facts.session.estimated!.note).toContain('not measured')
+      // A flagged run is a different fact set: its cached insight (which called the numbers
+      // measured) must miss.
+      expect(factsHash(facts)).not.toBe(PRE_R4_CANONICAL_HASH)
+    },
+  )
+
+  it('carries no number of its own — the note is words, so it cannot become a figure to quote', () => {
+    const { note } = canonicalFacts({ distanceEstimated: true, splitsEstimated: true }).session
+      .estimated!
+    expect(note).not.toMatch(/\d/)
   })
 })
 

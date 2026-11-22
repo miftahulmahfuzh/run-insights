@@ -173,6 +173,7 @@ describe('ProvenanceMark answers "can I trust this row?" without colour', () => 
         reviewedAt,
         correctedAt: null,
         correctedFieldCount: 0,
+        estimated: { distance: false, splits: false },
       }),
     )
     expect(html).toContain('Read from screenshot · reviewed 20 Aug')
@@ -186,6 +187,7 @@ describe('ProvenanceMark answers "can I trust this row?" without colour', () => 
         reviewedAt,
         correctedAt: new Date('2026-08-22T02:00:00Z'),
         correctedFieldCount: 2,
+        estimated: { distance: false, splits: false },
       }),
     )
     expect(html).toContain('2 fields corrected')
@@ -200,6 +202,7 @@ describe('ProvenanceMark answers "can I trust this row?" without colour', () => 
         reviewedAt,
         correctedAt: null,
         correctedFieldCount: 0,
+        estimated: { distance: false, splits: false },
       }),
     )
     expect(html).toContain('Entered by hand')

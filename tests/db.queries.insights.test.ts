@@ -148,6 +148,23 @@ describe('applyRunCorrections — R-8', () => {
     expect(error).toBeInstanceOf(q.DuplicateRunError)
     expect((error as InstanceType<Queries['DuplicateRunError']>).existingRunId).toBe('r_other')
   })
+
+  it('R4: an edit that omits the estimated flags does not touch them', async () => {
+    fake.enqueue([['r1']])
+    await q.applyRunCorrections('u1', 'r1', { distanceM: 10670 })
+    const { sql } = fake.only()
+    expect(sql).not.toContain('"distance_estimated"')
+    expect(sql).not.toContain('"splits_estimated"')
+  })
+
+  it('R4: an edit that passes a flag writes exactly that flag', async () => {
+    fake.enqueue([['r1']])
+    await q.applyRunCorrections('u1', 'r1', { distanceEstimated: false })
+    const { sql, params } = fake.only()
+    expect(sql).toContain('"distance_estimated" = $')
+    expect(sql).not.toContain('"splits_estimated"')
+    expect(params).toContain(false)
+  })
 })
 
 describe('deleteRun', () => {

@@ -6,7 +6,9 @@ columns, `nina_avatars` gains the `source_image_id` pointer at a Media original,
 `NINA_EMBEDDING_DIMENSIONS` moves to its own leaf module; migration `0026`. See Notes for the
 documentation history). Amended 2026-09-19 (`P1-DB-A008` — `nina_photoshop_jobs` gains the four
 nullable crop columns, all-four-null meaning "no crop"; migration `0035_first_loa`, generated and
-**not applied**)
+**not applied**). Amended 2026-11-22 (`P1-DB-A009` — `runs` gains the two R4 estimate flags
+`distance_estimated` / `splits_estimated`, boolean NOT NULL DEFAULT false; migration
+`0038_brown_the_liberteens`, **applied to production 2026-11-22 — never regenerate or rename it**)
 
 ## Overview
 
@@ -126,7 +128,7 @@ R-13, R-22, R-28 — ten in all). Where a module and a feature plan disagree, th
 | `verificationTokens` | `verificationToken` | Auth.js email verification token | PK `(identifier, token)` |
 | `profiles` | `profiles` | The one runner's measured/derived facts | PK `user_id` |
 | `extractions` | `extractions` | Immutable audit record of one vision-model call | `extractions_user_created_idx` |
-| `runs` | `runs` | One committed run — the core fact table | `runs_user_occurred_started_unq`, `runs_user_occurred_idx`, `runs_user_maxhr_idx` |
+| `runs` | `runs` | One committed run — the core fact table. Carries the two R4 provenance flags `distance_estimated` / `splits_estimated` (boolean NOT NULL DEFAULT false; true = the value was reconstructed from the Workout Details pace chart, not printed by the watch) | `runs_user_occurred_started_unq`, `runs_user_occurred_idx`, `runs_user_maxhr_idx` |
 | `runSplits` | `run_splits` | Per-km split for a run | PK `(run_id, km)` |
 | `runZones` | `run_zones` | Per-HR-zone duration for a run | PK `(run_id, zone)` |
 | `runPhotos` | `run_photos` | Mutable photo lifecycle for a run's screenshots | `run_photos_extraction_idx`, `run_photos_run_idx` |
@@ -378,6 +380,31 @@ The module is organised in numbered sections:
 | 7 | Photos — R-1's two-parent lifecycle |
 | 8 | Profile, insights, records, badges, shares |
 | 9 | The one unscoped read (`getRunByShareToken`) |
+
+#### The R4 estimate flags (`runs.distance_estimated` / `runs.splits_estimated`)
+
+Two independent booleans: a run can have a measured distance and estimated splits (Summary printed
+the distance, no Splits screenshot). The rules that govern them, all in `queries/runs.ts`:
+
+- **`NewRunInput.distanceEstimated` / `splitsEstimated` are its only optional members, on
+  purpose.** `applyRunCorrections` takes `Partial<NewRunInput>`, and there an omitted flag must
+  mean "leave the stored value alone" — a required field could not say that.
+- **Insert: omitted means `false`, written explicitly.** `commitExtractedRun` destructures both
+  flags and writes `?? false` rather than leaning on the column DEFAULT, so the INSERT itself
+  states the decision.
+- **Correction: omitted = unchanged, explicit = written.** Drizzle drops `undefined` from a SET, so
+  an edit that does not name a flag leaves it; an explicit `false` clears it.
+- **The value is derived on the server from the extraction row, never taken from the browser's
+  draft.** The writer is the review commit in `lib/review/commit.ts` (workout-details-estimate
+  phase 3). As of 2026-11-22 no product code sets either flag true yet; every existing row reads
+  false by the DEFAULT, with no backfill (R4.4 — no run is retroactively doubted).
+- **Readers outside this package:** `lib/records/catalog.ts` (R4.3 — `distance_estimated` excludes
+  the run from `longest_distance`, `fastest_pace_5k`, `fastest_pace_10k`, `best_paced_run`;
+  `splits_estimated` from `fastest_km_split`, `best_paced_run`; the run still competes for every
+  other key), `components/runs/ProvenanceMark.tsx` on `/r/[id]` (an "estimated" clause shown only
+  for a flagged run), and `lib/llm/facts.ts` (`session.estimated`, present only when a flag is
+  true). `lib/records/types.ts` makes both fields **required** on the record candidate, so a
+  builder that forgets them fails typecheck instead of letting an estimate compete.
 
 #### Errors
 
@@ -780,6 +807,19 @@ reads back NULL, which is the correct value (those jobs had no crop). Nothing in
 the four columns yet — they are written and read back by `lib/nina/photoshopJobs.ts` and otherwise
 inert.
 
+**2026-11-22 (`P1-DB-A009`): the journal's tip is `0038_brown_the_liberteens` — 39 entries,
+`0000`–`0038` (counted from `drizzle/meta/_journal.json` that day) — and it was applied to
+production during the phase, ahead of the merge.** Two statements, both
+`ALTER TABLE "runs" ADD COLUMN … boolean DEFAULT false NOT NULL`: additive, no backfill, so code
+that predates the columns keeps inserting (the DEFAULT fills them) and it may lead its deploy. The
+rule this one adds: **an already-applied migration is never regenerated or renamed, not even on a
+numbering collision.** A regenerated file has a new hash and `when`, so the migrator would re-run
+`ADD COLUMN` against columns that exist and fail, and the drift guard would call the old ledger row
+foreign. If another set lands its own `0038` first, keep this file byte-identical and resolve the
+numbering by hand with the ledger in view. Until the set merges, the guard's **live** half run from
+any other `main` checkout reports the two columns as undeclared and the `0038` hash as unknown;
+that is expected, and CI (static half only) is unaffected.
+
 **`0011_rare_blockbuster` was the one stranded entry, and on 2026-09-13 it was repaired by hand.**
 For six days it sat journalled-but-unapplied: its journal `when` (1788786634959) is older than the
 ledger watermark (1789176119493), and the migrator applies an entry only beyond that watermark, so
@@ -919,7 +959,9 @@ not re-derive this by hand either — the counts are what the guard prints on a 
 ### Deploy state of the journal
 
 Kept short because it is the fact most likely to have changed since this page was written (and
-six times has): see **Migrations → Deploy state** above — as of 2026-09-19 the journal holds 36
+seven times has): see **Migrations → Deploy state** above — as of 2026-11-22 the journal holds 39
+entries (`0000`–`0038`), and its tip `0038_brown_the_liberteens` (the two `runs` estimate flags) is
+applied to production and must stay byte-identical. Earlier: as of 2026-09-19 the journal held 36
 entries (`0000`–`0035`), and its tip `0035_first_loa` (the four nullable `nina_photoshop_jobs` crop
 columns) is generated-but-unapplied pending a manual `npm run db:migrate`; it is additive, so
 unlike a drop it may lead its deploy. Earlier: as of 2026-09-18 the journal held 32
@@ -967,3 +1009,4 @@ history, and the decisions worth keeping are folded into the sections above. The
 | 2026-09-17 | P2-DB-A002 (media-album-unified-search p1 of 4) | `nina_message_images` + the album's three search columns and an HNSW `vector_cosine_ops` index; `nina_avatars` + `source_image_id` (FK → `nina_message_images.id`, the schema's first `ON DELETE RESTRICT`) and its plain btree; `NINA_EMBEDDING_DIMENSIONS` moved to the leaf module `schema/nina/embedding.ts` to break the `avatars` ⇄ `chat` cycle the new FK creates, barrel surface unchanged; nothing writes any of the four columns in this phase | `0026_media_album_unified_search` (applied; additive-only, generated, no hand-edits) |
 | 2026-09-19 | P1-DB-A008 (photoshop-aspect-ratio-crop p2) | `nina_photoshop_jobs` + the four nullable crop columns (`crop_ratio_label`, `crop_scale numeric(5,3)`, `crop_x`, `crop_y`), all-four-null = no crop, no index, no backfill; `NinaPhotoshopJobArgs` in `lib/nina/photoshopJobs.ts` gained the four optional fields, `openNinaPhotoshopJob` writes them (`?? null`) and `claimNinaPhotoshopJob` reads them back; `scripts/photoshop.ts`'s raw INSERT kept column-list parity with explicit NULLs. Nothing acts on the columns yet | `0035_first_loa` (generated, **not applied** — additive, so it may lead its deploy; see Migrations → Deploy state) |
 | 2026-09-18 | prompt-length removal | `nina_image_prefs` − `prompt_length` (19 → 18 columns) — the sliding-bar control the operator never used, gone from schema, admin panel and prompt assembly | `0031_greedy_jocasta` (generated, **not applied** — a `DROP COLUMN` waits for the code deploy; see Migrations → Deploy state) |
+| 2026-11-22 | P1-DB-A009 (workout-details-estimate p2) | `runs` + `distance_estimated` / `splits_estimated` (boolean NOT NULL DEFAULT false, no index, no backfill); `NewRunInput` gains both as optional fields, `commitExtractedRun` writes `?? false`, `applyRunCorrections` leaves an omitted flag unchanged; consumers in `lib/records` (R4.3 exclusion), `ProvenanceMark` and `lib/llm/facts.ts`. Nothing sets a flag true until phase 3 | `0038_brown_the_liberteens` (applied 2026-11-22 — never regenerate or rename) |

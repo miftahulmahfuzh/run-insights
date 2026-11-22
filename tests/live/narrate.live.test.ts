@@ -53,6 +53,8 @@ function canonicalFacts() {
       elevationM: canonicalRecordRun.elevationM,
       activeKcal: canonicalRecordRun.activeKcal,
       intent: null,
+      distanceEstimated: false,
+      splitsEstimated: false,
     },
     metrics,
     flags: evaluateSessionFlags(metrics, canonicalSession.splits.find((s) => !s.partial) ?? null),
