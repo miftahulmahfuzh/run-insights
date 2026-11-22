@@ -6,7 +6,7 @@
 **Worktree:** `/home/miftah/.worktrees/run-insights/workout-details-estimate`
 **Branch:** `feature/workout-details-estimate` (base: `origin/main` @ `7e285b3`)
 **Phases:** 3
-**Status:** phase 1/3 complete
+**Status:** phase 2/3 complete
 **Coordinator:** —
 
 ---

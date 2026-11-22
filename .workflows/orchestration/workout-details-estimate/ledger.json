@@ -23,19 +23,19 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "7eece0c",
       "depends_on": [],
       "difficulty": "NORMAL",
       "n": 2,
-      "note": null,
+      "note": "runs.distance_estimated/splits_estimated + R4.3 record gates + run-page mark + session.estimated; migration drizzle/0038_brown_the_liberteens.sql ALREADY APPLIED to production (84 runs, 0 flagged) - never regenerate/rename; ran in isolated worktree -p2 on branch phase-2-workout-details-estimate; plan J3 steps-file log locator /^Read from screenshot/ cannot match (glyph prefix), criteria checked by sql/api; proof: verified-first-pass /home/miftah/.local/state/run-insights-verify/1122-165805-143532/evidence",
       "package": "lib/db`, `lib/records`, `components/runs`, `app/r`, `lib/llm/facts.ts",
       "plan": ".workflows/plan/workout-details-estimate/phase-2.md",
-      "reported_at": null,
+      "reported_at": "2026-11-22T17:03:42+07:00",
       "satisfies": [
         "R4"
       ],
-      "status": "spawned",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-DB-A009",
       "title": "Estimated flags: columns, records, run page"
     },
     {
@@ -65,6 +65,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/workout-details-estimate/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "workout-details-estimate",
-  "updated": "2026-11-22T16:58:45+07:00",
+  "updated": "2026-11-22T17:03:42+07:00",
   "worktree": "/home/miftah/.worktrees/run-insights/workout-details-estimate"
 }
