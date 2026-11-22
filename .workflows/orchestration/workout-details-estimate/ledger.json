@@ -57,7 +57,7 @@
         "R3",
         "R4"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": null,
       "title": "details` kind end to end: upload, reading, merge, review, commit"
     }
@@ -65,6 +65,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/workout-details-estimate/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "workout-details-estimate",
-  "updated": "2026-11-22T17:03:42+07:00",
+  "updated": "2026-11-22T17:06:56+07:00",
   "worktree": "/home/miftah/.worktrees/run-insights/workout-details-estimate"
 }
