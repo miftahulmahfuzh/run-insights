@@ -43,6 +43,8 @@ export const dbRecordsGateway: RecordsGateway = {
       elevationM: run.elevationM,
       avgCadence: run.avgCadence,
       maxHr: run.maxHr,
+      distanceEstimated: run.distanceEstimated,
+      splitsEstimated: run.splitsEstimated,
     }))
   },
 

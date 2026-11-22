@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { isRecordKey, RECORD_CATALOG, RECORD_KEYS, recordDefinition } from '@/lib/records/catalog'
 import { toRecordCandidate } from '@/lib/records/compute'
+import type { RecordKey } from '@/lib/records/types'
 import { runA, runB, runC } from './fixtures/recordCandidates'
 
 /**
@@ -155,5 +156,42 @@ describe('qualifiers exclude, one key at a time', () => {
     const noSplits = { ...A, fastestFullKmPaceSec: null }
     expect(qualifies('fastest_km_split', noSplits)).toBe(false)
     expect(qualifies('fastest_pace_5k', noSplits)).toBe(true)
+  })
+})
+
+describe('R4.3 — an estimated quantity never mints a record that depends on it', () => {
+  const qualifies = (key: RecordKey, c: typeof A) => recordDefinition(key)!.qualifies(c)
+
+  /** Which flag excludes which key. Every catalog key is listed, so a twelfth key fails here until
+   *  somebody decides whether an estimate may hold it. */
+  const EXCLUDED_BY: Record<RecordKey, { distance: boolean; splits: boolean }> = {
+    longest_distance: { distance: true, splits: false },
+    longest_duration: { distance: false, splits: false },
+    fastest_pace_5k: { distance: true, splits: false },
+    fastest_pace_10k: { distance: true, splits: false },
+    fastest_km_split: { distance: false, splits: true },
+    most_kcal: { distance: false, splits: false },
+    most_elevation: { distance: false, splits: false },
+    highest_cadence: { distance: false, splits: false },
+    highest_max_hr: { distance: false, splits: false },
+    best_paced_run: { distance: true, splits: true },
+    earliest_start: { distance: false, splits: false },
+  }
+
+  it('the table names every catalog key, and no other', () => {
+    expect(Object.keys(EXCLUDED_BY).sort()).toEqual([...RECORD_KEYS].sort())
+  })
+
+  it('run A, unflagged, qualifies for all eleven keys — the baseline the flags subtract from', () => {
+    for (const key of RECORD_KEYS) expect(qualifies(key, A), key).toBe(true)
+  })
+
+  it.each([...RECORD_KEYS])('%s is excluded by exactly the estimates it depends on', (key) => {
+    expect(qualifies(key, { ...A, distanceEstimated: true }), 'distance estimated').toBe(
+      !EXCLUDED_BY[key].distance,
+    )
+    expect(qualifies(key, { ...A, splitsEstimated: true }), 'splits estimated').toBe(
+      !EXCLUDED_BY[key].splits,
+    )
   })
 })

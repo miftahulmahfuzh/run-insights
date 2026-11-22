@@ -265,6 +265,8 @@ export async function loadSessionFacts(
       elevationM: run.elevationM,
       activeKcal: run.activeKcal,
       intent: run.intent,
+      distanceEstimated: run.distanceEstimated,
+      splitsEstimated: run.splitsEstimated,
     },
     metrics,
     flags,

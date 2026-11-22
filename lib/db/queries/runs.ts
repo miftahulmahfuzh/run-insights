@@ -47,6 +47,11 @@ import {
  * sets it), `avgPaceSec` is required because it is derived once in TypeScript at commit time
  * (roadmap D5), and there are no optional numeric strings — F05's Zod schema has already turned
  * the extraction into integers.
+ *
+ * `distanceEstimated` / `splitsEstimated` (R4) are the only optional members, and deliberately so:
+ * through `applyRunCorrections` (whose patch is `Partial<…>` of this type) an omitted flag must
+ * mean "leave the stored value alone", which a required field could not express. On insert,
+ * omitted means `false` — `commitExtractedRun` writes that explicitly.
  */
 export interface NewRunInput {
   occurredOn: DateISO
@@ -71,6 +76,10 @@ export interface NewRunInput {
   note: string | null
   source: 'screenshot' | 'manual'
   extractionId: string | null
+  /** R4 — `runs.distance_estimated`. Derived on the server from the extraction (phase 3). */
+  distanceEstimated?: boolean
+  /** R4 — `runs.splits_estimated`. Derived on the server from the extraction (phase 3). */
+  splitsEstimated?: boolean
   splits: Omit<NewRunSplit, 'runId'>[]
   zones: Omit<NewRunZone, 'runId'>[]
 }
@@ -96,11 +105,20 @@ export async function commitExtractedRun(
   options: { reviewedAt?: Date } = {},
 ): Promise<{ runId: string }> {
   const runId = newRunId()
-  const { splits, zones, ...runFields } = input
+  const { splits, zones, distanceEstimated, splitsEstimated, ...runFields } = input
   const reviewedAt = options.reviewedAt ?? new Date()
 
   const statements: Statement[] = [
-    db.insert(runs).values({ id: runId, userId, reviewedAt, ...runFields }),
+    db.insert(runs).values({
+      id: runId,
+      userId,
+      reviewedAt,
+      ...runFields,
+      // Written, not left to the column DEFAULT: the INSERT then states what was decided about
+      // this run, and a reader of the SQL log does not have to know the schema to see it.
+      distanceEstimated: distanceEstimated ?? false,
+      splitsEstimated: splitsEstimated ?? false,
+    }),
   ]
   if (splits.length > 0) {
     statements.push(db.insert(runSplits).values(splits.map((s) => ({ ...s, runId }))))
@@ -161,6 +179,10 @@ async function findRunByOccurredAndStarted(
  * km renumbered by a correction cannot be safely upserted against its old composite key, and a
  * split the human deleted must actually disappear. Passing `undefined` leaves them untouched;
  * passing `[]` deletes them.
+ *
+ * The R4 flags follow the same rule as every other patch key: an omitted `distanceEstimated` /
+ * `splitsEstimated` is not written (drizzle drops `undefined` from a SET), so an edit that does not
+ * mention them leaves them as they were; an explicit `false` clears one.
  */
 export async function applyRunCorrections(
   userId: string,

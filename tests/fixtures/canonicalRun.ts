@@ -84,4 +84,6 @@ export const canonicalRecordRun: RecordRunRow = {
   elevationM: 15,
   avgCadence: 144,
   maxHr: 189,
+  distanceEstimated: false,
+  splitsEstimated: false,
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { computeRecords, toRecordCandidate } from '@/lib/records/compute'
-import type { RecordKey } from '@/lib/records/types'
+import type { RecordKey, RecordRunRow } from '@/lib/records/types'
 import { recordRuns, runA, runB, runC } from './fixtures/recordCandidates'
 
 /** §7.4's worked table, key by key. */
@@ -137,5 +137,36 @@ describe('purity', () => {
     const snapshot = JSON.stringify(candidates)
     computeRecords(candidates)
     expect(JSON.stringify(candidates)).toBe(snapshot)
+  })
+})
+
+describe('R4.3 end to end — estimated runs through toRecordCandidate and computeRecords', () => {
+  const recordsOf = (runs: RecordRunRow[]) =>
+    new Map(computeRecords(runs.map(toRecordCandidate)).map((r) => [r.key, r]))
+
+  it('a distance-estimated run gives up the four distance keys and keeps every other', () => {
+    const out = recordsOf([{ ...runA, distanceEstimated: true }, runB, runC])
+    expect(out.get('longest_distance')).toMatchObject({ runId: runB.runId, value: 6000 })
+    // A was the SOLE 10 km+ run, so with its distance estimated the key has no holder at all.
+    expect(out.has('fastest_pace_10k')).toBe(false)
+    expect(out.get('fastest_pace_5k')).toMatchObject({ runId: runB.runId, value: 300 })
+    expect(out.get('best_paced_run')).toMatchObject({ runId: runB.runId, value: 0 })
+    // What the watch printed still counts.
+    expect(out.get('longest_duration')).toMatchObject({ runId: runA.runId, value: 4716 })
+    expect(out.get('highest_max_hr')).toMatchObject({ runId: runA.runId, value: 189 })
+    expect(out.get('most_kcal')).toMatchObject({ runId: runA.runId, value: 646 })
+  })
+
+  it('a splits-estimated run gives up fastest_km_split and best_paced_run, nothing else', () => {
+    const out = recordsOf([
+      runA,
+      { ...runB, splitsEstimated: true },
+      { ...runC, splitsEstimated: true },
+    ])
+    expect(out.get('fastest_km_split')).toMatchObject({ runId: runA.runId, value: 396 })
+    expect(out.get('best_paced_run')).toMatchObject({ runId: runA.runId, value: 1235 })
+    // B's distance was measured, so its whole-run pace still holds the 5 km+ key.
+    expect(out.get('fastest_pace_5k')).toMatchObject({ runId: runB.runId, value: 300 })
+    expect(out.get('earliest_start')).toMatchObject({ runId: runB.runId, value: 18_720 })
   })
 })

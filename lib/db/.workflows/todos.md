@@ -2,7 +2,7 @@
 
 **Package Path**: `lib/db`
 **Package Code**: DB
-**Last Updated**: 2026-09-19
+**Last Updated**: 2026-11-22
 **Total Active Tasks**: 0
 
 ## Quick Stats
@@ -12,7 +12,7 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 11
+- Completed: 12
 - Archived: 7
 
 ---
@@ -38,6 +38,28 @@
 (all seven completed tasks were archived on 2026-09-12 — see Archive; full
 per-task detail — Context, Drift, Decided, Files — survives in git history and
 in `.workflows/package_readme.md`)
+
+- [x] **P1-DB-A009** Phase 2: Estimated flags: columns, records, run page
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns runs.distance_estimated / runs.splits_estimated (boolean NOT NULL DEFAULT false) + generated drizzle/0038 migration; NewRunInput + commitExtractedRun; lib/records exclusion per R4.3; the "estimated" clause in ProvenanceMark on /r/[id]; lib/llm/facts.ts session.estimated; features/run-detail.md. Exit: both columns in production with default false and zero flagged rows; flagged runs hold none of the R4.3 records; unflagged history's records equal base's; mark shown only for flagged runs; typecheck, lint, format, npm test, build, db:check and all seven guards green.
+  - **Status**: completed
+  - **Plan Set**: `/home/miftah/run-insights/.workflows/orchestration/workout-details-estimate/PLAN.md` (phase 2 of 3)
+  - **Satisfies**: R4 — DECIDED BY USER: persist that a run's splits/distance were estimated — a new column on the production DB (additive migration), run page shows an "estimated" mark, and estimated runs are excluded from pace records (a ~1% error must not mint a false PB). · criteria: R4.1, R4.2, R4.3, R4.4
+  - **Depends on**: none
+  - **Plan**: `.workflows/plan/P1-DB-A009.md`
+  - **Completed**: 2026-11-22 17:01
+  - **Method**: /implement
+  - **Files**: .claude/skills/verify-run-insights/features/run-detail.md, app/r/[id]/page.tsx, components/runs/ProvenanceMark.test.tsx, components/runs/ProvenanceMark.tsx, drizzle/0038_brown_the_liberteens.sql, drizzle/meta/0038_snapshot.json, drizzle/meta/_journal.json, lib/db/.workflows/todos.md, lib/db/.workflows/plan/P1-DB-A009.md, lib/db/queries/runs.ts, lib/db/schema/runs.ts, lib/insights/load.ts, lib/llm/facts.ts, lib/records/catalog.ts, lib/records/compute.ts, lib/records/gateway.ts, lib/records/types.ts, tests/db.queries.commitRun.test.ts, tests/db.queries.insights.test.ts, tests/db.queries.runDetail.test.ts, tests/db.schema.test.ts, tests/fixtures/canonicalRun.ts, tests/fixtures/recordCandidates.ts, tests/live/narrate.live.test.ts, tests/llm.facts.test.ts, tests/records.catalog.test.ts, tests/records.compute.test.ts, tests/records.gateway.test.ts, tests/views.render.test.ts
+  - **Proof**: verified-first-pass — 6 journeys, evidence /home/miftah/.local/state/run-insights-verify/1122-165805-143532/evidence (J2 base half: /home/miftah/.local/state/run-insights-verify/1122-165658-137981/evidence)
+  - **Drift**:
+    - Ran in the swarm's isolated worktree workout-details-estimate-p2 / branch phase-2-workout-details-estimate, not the index's shared worktree; plan paths substituted.
+    - Generated migration is drizzle/0038_brown_the_liberteens.sql (exactly the two ADD COLUMN statements). ALREADY APPLIED TO PRODUCTION 2026-11-22 — must never be regenerated or renamed; on a numbering collision keep the file byte-identical.
+    - J3's steps file (scratch only, not committed) failed on its final LOG line: locator /^Read from screenshot/ cannot match because the <p> text begins with the '⌁ ' glyph span. The save itself landed ('saved: /r/<id>'); every J3 pass criterion was checked by sql/api and the failure screenshot shows the mark. A plan-script defect, no code change.
+    - Production J1: both columns boolean NOT NULL DEFAULT false, 84 runs, 0 flagged; ci:schema-drift-guard live half OK (39/39 migrations).
+  - **Decided**:
+    - Index names the shared set worktree but the swarm spawned this phase in its own isolated worktree → implemented here (rung 6: swarm convention)
+    - Step 3 created only phase 2's task (P1-DB-A009), not phases 1/3 → concurrent phase sessions each mint their own (rung 6)
 
 - [x] **P1-DB-A008** Phase 2: Schema + job-args plumbing
   - **Difficulty**: NORMAL

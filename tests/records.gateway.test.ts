@@ -67,6 +67,24 @@ describe('dbRecordsGateway.fetchReviewedRuns', () => {
     expect(rows[0]!.recovery).toEqual({ endHrBpm: 185, hrAt1MinBpm: 162 })
     expect(rows[0]!.avgPaceSec).toBe(442)
   })
+
+  it('R4: carries both estimated flags from the run row onto the record input', async () => {
+    const { runs } = schema
+    fake.enqueue(
+      [
+        tableRow(runs, { id: 'r1', distanceEstimated: true, splitsEstimated: true }),
+        tableRow(runs, { id: 'r2' }),
+      ],
+      [],
+      [],
+    )
+
+    const rows = await gateway.dbRecordsGateway.fetchReviewedRuns('u1')
+    expect(rows.map((r) => [r.distanceEstimated, r.splitsEstimated])).toEqual([
+      [true, true],
+      [false, false],
+    ])
+  })
 })
 
 describe('dbRecordsGateway.readCurrent', () => {

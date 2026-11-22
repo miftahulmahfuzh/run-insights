@@ -48,6 +48,8 @@ export const runB: RecordRunRow = {
   elevationM: 5,
   avgCadence: 170,
   maxHr: 170,
+  distanceEstimated: false,
+  splitsEstimated: false,
 }
 
 /** Too short for `fastest_pace_5k`, `fastest_pace_10k`, `highest_cadence` and `best_paced_run`. */
@@ -68,6 +70,8 @@ export const runC: RecordRunRow = {
   elevationM: 2,
   avgCadence: 180,
   maxHr: 175,
+  distanceEstimated: false,
+  splitsEstimated: false,
 }
 
 export const recordRuns: RecordRunRow[] = [runA, runB, runC]

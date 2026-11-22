@@ -196,6 +196,8 @@ describe('runs', () => {
         'note',
         'source',
         'extraction_id',
+        'distance_estimated', // R4
+        'splits_estimated', // R4
         'reviewed_at',
         'corrected_at', // R-8
         'created_at',
@@ -219,6 +221,8 @@ describe('runs', () => {
         'distance_m',
         'avg_pace_sec',
         'source',
+        'distance_estimated', // R4 — NOT NULL DEFAULT false
+        'splits_estimated', // R4
         'created_at',
         'updated_at',
       ].sort(),
@@ -230,6 +234,14 @@ describe('runs', () => {
 
   it('defaults activity_type to Outdoor Run', () => {
     expect(columnMap(schema.runs).get('activity_type')?.default).toBe('Outdoor Run')
+  })
+
+  it('R4: both estimated flags are boolean NOT NULL DEFAULT false, so every pre-existing run is not estimated', () => {
+    for (const column of ['distance_estimated', 'splits_estimated']) {
+      expect(sqlType(schema.runs, column), column).toBe('boolean')
+      expect(columnMap(schema.runs).get(column)?.notNull, column).toBe(true)
+      expect(columnMap(schema.runs).get(column)?.default, column).toBe(false)
+    }
   })
 
   it('R-5: the dedupe guard is a unique index over an EXPRESSION, not a plain column list', () => {

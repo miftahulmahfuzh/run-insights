@@ -267,6 +267,13 @@
       "when": 1791871986512,
       "tag": "0037_wild_thunderbird",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1795341162297,
+      "tag": "0038_brown_the_liberteens",
+      "breakpoints": true
     }
   ]
 }
