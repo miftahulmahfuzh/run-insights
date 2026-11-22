@@ -40,31 +40,31 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "5107b1b0d90e1f375f99981f77c0ad1847c23037",
       "depends_on": [
         1,
         2
       ],
       "difficulty": "HARD",
       "n": 3,
-      "note": null,
+      "note": "details kind end to end on phase-3-workout-details-estimate; gates green (7121 tests, build, 7 guards); proof: verified-first-pass ~/.local/state/run-insights-verify/1122-171358-200782/evidence (J6/J7/neighbor used one re-run after a z.ai blip). Findings left per plan: CHK-4 pace advisory fires on an untouched small-remainder estimate (Sunday 6.07 km); details duration read once came back 3054 vs 3046 and is preferred over Summary's",
       "package": "lib/extract`, `lib/llm`, `lib/review`, `components/extract`, `components/review",
       "plan": ".workflows/plan/workout-details-estimate/phase-3.md",
-      "reported_at": null,
+      "reported_at": "2026-11-22T17:26:36+07:00",
       "satisfies": [
         "R1",
         "R2",
         "R3",
         "R4"
       ],
-      "status": "spawned",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-LEX-A001",
       "title": "details` kind end to end: upload, reading, merge, review, commit"
     }
   ],
   "plan": "/home/miftah/run-insights/.workflows/orchestration/workout-details-estimate/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "workout-details-estimate",
-  "updated": "2026-11-22T17:06:56+07:00",
+  "updated": "2026-11-22T17:26:36+07:00",
   "worktree": "/home/miftah/.worktrees/run-insights/workout-details-estimate"
 }

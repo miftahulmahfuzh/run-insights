@@ -6,7 +6,7 @@
 **Worktree:** `/home/miftah/.worktrees/run-insights/workout-details-estimate`
 **Branch:** `feature/workout-details-estimate` (base: `origin/main` @ `7e285b3`)
 **Phases:** 3
-**Status:** phase 2/3 complete
+**Status:** complete
 **Coordinator:** —
 
 ---
@@ -142,7 +142,7 @@ interface RawResponseColumn {
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
 | 1 | Chart estimator | R2 | `lib/extract/chart` | 10 entries (5 new TS, 1 test, 1 script edit, 23 on disk with 14 fixtures + README) | — | HARD | `.workflows/plan/workout-details-estimate/phase-1.md` | `P1-LEX-K7CD` | — |
 | 2 | Estimated flags: columns, records, run page | R4 | `lib/db`, `lib/records`, `components/runs`, `app/r`, `lib/llm/facts.ts` | 25 entries (~27 files incl. generated migration) | — | NORMAL | `.workflows/plan/workout-details-estimate/phase-2.md` | P1-DB-A009 | — |
-| 3 | `details` kind end to end: upload, reading, merge, review, commit | R1, R2, R3, R4 | `lib/extract`, `lib/llm`, `lib/review`, `components/extract`, `components/review` | 60 entries (+ 8 verified no-change) | 1, 2 | HARD | `.workflows/plan/workout-details-estimate/phase-3.md` | — | — |
+| 3 | `details` kind end to end: upload, reading, merge, review, commit | R1, R2, R3, R4 | `lib/extract`, `lib/llm`, `lib/review`, `components/extract`, `components/review` | 60 entries (+ 8 verified no-change) | 1, 2 | HARD | `.workflows/plan/workout-details-estimate/phase-3.md` | `P1-LEX-A001` | — |
 
 Phases 1 and 2 share no file and no symbol and run concurrently. Phase 3 spans four Rs because it is the wiring phase: it is the only place the estimator (R2), the flags (R4), the upload kind (R1) and the labels (R3) meet, and splitting it by R would leave a `details` kind that uploads but is never read. The one file two phases edit, `lib/db/schema/runs.ts`, is edited by phase 2 first (the two columns) and then by phase 3 in other hunks, quoted as it stands after phase 2.
 
