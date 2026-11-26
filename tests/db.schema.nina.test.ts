@@ -534,10 +534,10 @@ describe('nina_folders', () => {
 })
 
 describe('nina_chat_sessions — F35 R2', () => {
-  it('is a table with exactly the six columns the feature was planned against', () => {
+  it('is a table with exactly the six columns the feature was planned against, plus note_at', () => {
     expect(cfg(schema.ninaChatSessions).name).toBe('nina_chat_sessions')
     expect(names(schema.ninaChatSessions)).toEqual(
-      ['id', 'user_id', 'title', 'title_source', 'pinned_at', 'created_at'].sort(),
+      ['id', 'user_id', 'title', 'title_source', 'pinned_at', 'note_at', 'created_at'].sort(),
     )
     expect(columns(schema.ninaChatSessions).get('id')?.primary).toBe(true)
   })

@@ -213,8 +213,8 @@ export function NinaSidebarTrigger({ className }: { className?: string }) {
 
 /*
  * ── THE RAIL (R5) ────────────────────────────────────────────────────────────────────────────
- * Four icon controls pinned to the panel's bottom edge: `>` (close, the chat page trigger's own
- * chevron), `up` (the chat page's bar toggle, R2 — shared state, see the button below), `+`
+ * Four icon controls pinned to the panel's bottom edge: `<` (close, the chat page trigger's
+ * chevron mirrored), `up` (the chat page's bar toggle, R2 — shared state, see the button below), `+`
  * (`NewChatButton`, icon-only now) and the wand ("Proses foto"). They replace the two full-width
  * rows that cost 44 px + margins each on an XS Max — the owner's III.1 — and they sit at the
  * panel's bottom because the panel already ends at the keyboard's measured top edge (the `bottom`
@@ -760,7 +760,7 @@ export function NinaSidebar({
               </p>
             </div>
             {/* A real dismiss control with a name, `Sheet`'s reason for its own. 44 px. The rail's
-                `>` is its mirror at the other end of the panel, not its replacement. */}
+                `<` is its mirror at the other end of the panel, not its replacement. */}
             <button
               type="button"
               onClick={() => closeRef.current()}
@@ -796,7 +796,7 @@ export function NinaSidebar({
 
       {/*
         ── THE RAIL (R5): FOUR ICONS, PINNED TO THE PANEL'S BOTTOM EDGE ─────────────────────────
-        The owner's list, in his order: `>` closes, `up` toggles the main bar (R2 — the chat page's
+        The owner's list, in his order: `<` closes, `up` toggles the main bar (R2 — the chat page's
         own reveal, shared state), `+` starts a chat, the wand opens "Proses foto". Two full-width
         rows bought this — they cost 44 px plus margins each on the small glass and the list behind
         them paid for it.
@@ -821,8 +821,9 @@ export function NinaSidebar({
       >
         <div className="mx-auto flex w-full max-w-[470px] items-center justify-center gap-1.5 px-5 py-2">
           {/*
-            `>` — the trigger's own chevron (`m9 6 6 6-6 6`, strokeWidth 2.4), doing the opposite
-            job from the same shape: the chat page's `>` opens this panel, this one closes it. A
+            `<` — the trigger's chevron MIRRORED (`m15 6-6 6 6 6`, strokeWidth 2.4), because it does
+            the opposite job: the chat page's `>` opens this panel, this `<` closes it. It was the
+            same `>` shape until the owner asked for the direction to say "back". A
             button on closeRef, not a Link — it navigates nowhere. Same accessible name as the
             header ✕ (two honest names for one action), and the glyph is 20 px (`size-5`) — TabBar's
             glyph scale — where the chat pair's 14 px sits in a 32 px disc.
@@ -835,7 +836,7 @@ export function NinaSidebar({
           >
             <svg viewBox="0 0 24 24" className="size-5" fill="none" aria-hidden="true">
               <path
-                d="m9 6 6 6-6 6"
+                d="m15 6-6 6 6 6"
                 stroke="currentColor"
                 strokeWidth="2.4"
                 strokeLinecap="round"

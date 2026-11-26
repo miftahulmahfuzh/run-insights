@@ -207,6 +207,9 @@ export function ninaFlightView(
   rows: readonly NinaFlightRow[],
   nowMs: number,
   liveClaimCreatedAt: Date | null = null,
+  /** A note session: nothing answers there, so a trailing runner row is the resting state and only
+   *  a live claim (a turn already running when he switched the chat over) counts as in flight. */
+  noteSession = false,
 ): NinaFlightView {
   const newest = rows.length === 0 ? null : (rows[rows.length - 1] ?? null)
   /* The poll's own freshness line (`lib/nina/actions/poll.ts`), pointed at the claim instead of the row —
@@ -214,7 +217,7 @@ export function ninaFlightView(
   const claimLive =
     liveClaimCreatedAt !== null && nowMs - liveClaimCreatedAt.getTime() < NINA_TURN_STALE_MS
   return {
-    awaiting: claimLive || ninaAwaitingByMessage(newest, nowMs),
+    awaiting: claimLive || (!noteSession && ninaAwaitingByMessage(newest, nowMs)),
     cursor: newest?.seq ?? 0,
   }
 }

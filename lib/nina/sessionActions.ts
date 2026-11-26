@@ -12,6 +12,7 @@ import {
   listNinaSessions,
   removeNinaSession,
   renameNinaSession,
+  setNinaSessionNote,
   setNinaSessionPinned,
 } from './queries'
 
@@ -101,7 +102,9 @@ export async function createNinaChatSession(): Promise<NinaSessionCreateResult> 
   const userId = await requireUserId()
 
   const sessions = await listNinaSessions(userId)
-  const newestId = mostRecentSessionId(sessions)
+  /* Note sessions are skipped: `+` asks for a chat, and re-opening an empty NOTE would hand him a
+   * session where she never answers. */
+  const newestId = mostRecentSessionId(sessions.filter((session) => session.noteAt === null))
   if (newestId !== null) {
     const anyMessage = await listNinaMessages(userId, { limit: 1, sessionId: newestId })
     if (anyMessage.length === 0) {
@@ -222,6 +225,22 @@ export async function setNinaChatSessionPinned(input: {
  * passing it. An optional field defaulting to "not the open one" would silently strand him on a
  * deleted session exactly once — the case that matters most.
  */
+/**
+ * The note toggle — `setNinaChatSessionPinned`'s shape. `note: true` makes the chat a place he
+ * writes and nothing answers; `false` makes it an ordinary chat again.
+ */
+export async function setNinaChatSessionNote(input: {
+  sessionId: string
+  note: boolean
+}): Promise<NinaSessionActionResult> {
+  const userId = await requireUserId()
+  if (!isValidId(input?.sessionId)) return { ok: false, next: null }
+
+  const ok = await setNinaSessionNote(userId, input.sessionId, input?.note === true)
+  if (ok) revalidatePath('/nina')
+  return { ok, next: null }
+}
+
 export async function removeNinaChatSession(input: {
   sessionId: string
   activeSessionId: string | null

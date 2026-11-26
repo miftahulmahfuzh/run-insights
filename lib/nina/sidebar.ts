@@ -52,6 +52,8 @@ export interface SidebarSession {
   /** `/nina?s=<id>`, built on the server so the parameter's spelling lives in one place. */
   href: string
   pinned: boolean
+  /** A note session — he writes, nothing answers. The row wears a mark and its toggle reads on. */
+  note: boolean
   /** `'Today'`, `'3 Sep'`, or null when nothing has been said in this chat yet. */
   dayLabel: string | null
 }

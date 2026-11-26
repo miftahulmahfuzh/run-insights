@@ -274,6 +274,13 @@
       "when": 1795341162297,
       "tag": "0038_brown_the_liberteens",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1795660096469,
+      "tag": "0039_thick_hulk",
+      "breakpoints": true
     }
   ]
 }

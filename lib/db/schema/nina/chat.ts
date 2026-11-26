@@ -339,6 +339,16 @@ export const ninaChatSessions = pgTable(
     titleSource: text('title_source').$type<NinaSessionTitleSource>(),
     /** R4. NULL = unpinned. See the header for why this is an instant. */
     pinnedAt: timestamp('pinned_at', { withTimezone: true, mode: 'date' }),
+    /**
+     * NULL = an ordinary chat. Set = a NOTE session: he writes, nothing answers. The owner's
+     * use: the place he keeps notes, instead of a WhatsApp thread that only ever sent him a
+     * one-time code. An instant for `pinned_at`'s reason — it costs nothing and answers "when".
+     *
+     * The column is the whole switch, and it is read where a reply could START, never where one
+     * is rendered: `sendNinaMessage`, `resendNinaMessage`, `reviveNinaChatTurn`, and
+     * `ensureNinaSession` (so her proactive messages and finished photographs never land here).
+     */
+    noteAt: timestamp('note_at', { withTimezone: true, mode: 'date' }),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
   },
   (t) => [

@@ -115,6 +115,8 @@ export interface NinaSessionRow {
   title: string | null
   titleSource: NinaSessionTitleSource | null
   pinnedAt: Date | null
+  /** NULL = an ordinary chat; set = a note session, where nothing answers him. */
+  noteAt: Date | null
   createdAt: Date
 }
 

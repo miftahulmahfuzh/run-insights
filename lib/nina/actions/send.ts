@@ -132,6 +132,15 @@ export interface SendNinaMessageResult {
    * say which of the two happened, and phase 7's integration test drives its assertions off it.
    */
   turnId: string | null
+  /**
+   * **His message landed in a NOTE session, so nothing is coming.**
+   *
+   * The one field the client DOES branch on: after an ordinary send it raises the typing indicator
+   * and starts polling for her bubbles, and in a note session both would be a lie that lasts until
+   * the poll's give-up. Reported by the server rather than assumed from a prop because the row is
+   * the authority — a chat he switched to a note on another device is a note for this send too.
+   */
+  note: boolean
 }
 
 const REFUSED: SendNinaMessageResult = {
@@ -140,6 +149,7 @@ const REFUSED: SendNinaMessageResult = {
   sessionId: null,
   cursor: null,
   turnId: null,
+  note: false,
 }
 
 /**
@@ -654,6 +664,9 @@ export async function sendNinaMessage(input: {
    * `null`, which is what the refusal needs and is `queries.ts`'s standing rule.
    */
   let sessionId: string
+  /* Set only on the owned-session branch: `resolveNinaWriteSession` never returns a note session
+   * (`ensureNinaSession` filters them), so a session-less send is always an ordinary chat. */
+  let noteSession = false
   if (input?.sessionId == null) {
     /* He has no sessions — a runner who has never messaged, or R11's runner who removed his last
      * one. Same policy the cron uses (assumption A3), so the message lands somewhere findable and
@@ -670,6 +683,7 @@ export async function sendNinaMessage(input: {
       requestedSessionId === null ? null : await getNinaSession(userId, requestedSessionId)
     if (owned === null) return REFUSED
     sessionId = owned.id
+    noteSession = owned.noteAt != null
   }
 
   let runnerMessageId: string
@@ -701,6 +715,8 @@ export async function sendNinaMessage(input: {
    * before the ordinary turn machinery runs, which is the whole point: nothing here calls `glm-5.3`.
    */
   if (
+    /* A note session answers nothing — "foto lu" written into one is a note that says "foto lu". */
+    !noteSession &&
     isNinaPhotoShortcut(text) &&
     images.length === 0 &&
     attached === null &&
@@ -756,6 +772,7 @@ export async function sendNinaMessage(input: {
         sessionId,
         cursor: runnerSeq,
         turnId: null,
+        note: false,
       }
     }
   }
@@ -1085,11 +1102,24 @@ export async function sendNinaMessage(input: {
     console.log('[nina] superseded a thinking turn', { userId, sessionId })
   }
 
+  /*
+   * ── THE NOTE SESSION: NO CLAIM, SO NO TURN, SO NO MODEL CALL ─────────────────────────────────
+   * Everything above still ran — his row, his photos and his attached run are stored exactly as in
+   * a chat, which is what makes a note a note and not a discarded message. The sweep and the cancel
+   * ran too, deliberately: a chat he switched to a note while she was still thinking has that
+   * thinking turn superseded by his first note, so nothing answers after the switch.
+   *
+   * What is skipped is the one thing that makes her speak. With no claim opened, `turnId` stays
+   * null and the `startNinaBackgroundTurn` below is not reached — no context load, no `glm-5.3`
+   * call, no distillation into her memory, no auto-title.
+   */
   let turnId: string | null = null
-  try {
-    turnId = await openNinaChatTurn(userId, { sessionId, runnerMessageId, depth: 0 })
-  } catch (cause) {
-    console.warn('[nina] could not open a chat turn', { error: String(cause) })
+  if (!noteSession) {
+    try {
+      turnId = await openNinaChatTurn(userId, { sessionId, runnerMessageId, depth: 0 })
+    } catch (cause) {
+      console.warn('[nina] could not open a chat turn', { error: String(cause) })
+    }
   }
 
   /*
@@ -1146,7 +1176,14 @@ export async function sendNinaMessage(input: {
     })
   }
 
-  return { ok: true, userMessageId: runnerMessageId, sessionId, cursor: runnerSeq, turnId }
+  return {
+    ok: true,
+    userMessageId: runnerMessageId,
+    sessionId,
+    cursor: runnerSeq,
+    turnId,
+    note: noteSession,
+  }
 }
 
 /**

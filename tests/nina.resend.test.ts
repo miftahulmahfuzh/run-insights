@@ -214,6 +214,25 @@ describe('resendNinaMessage authenticates first and refuses before it claims', (
     expect(openNinaChatTurn).not.toHaveBeenCalled()
   })
 
+  it('refuses a message in a NOTE session — the one side door into a turn there', async () => {
+    getNinaMessagesByIds.mockResolvedValue([runnerRow()])
+    const queries = await import('@/lib/nina/queries')
+    vi.mocked(queries.getNinaSession).mockResolvedValueOnce({
+      id: 'session-note',
+      title: null,
+      titleSource: null,
+      pinnedAt: null,
+      noteAt: new Date(),
+      createdAt: new Date(),
+    })
+
+    const result = await actions.resendNinaMessage({ messageId: runnerRow().id })
+
+    expect(result.reason).toBe('note')
+    expect(openNinaChatTurn).not.toHaveBeenCalled()
+    expect(deferred).toHaveLength(0)
+  })
+
   it('refuses one of HER rows, even though no button would have offered one', async () => {
     getNinaMessagesByIds.mockResolvedValue([runnerRow({ id: HERS, role: 'nina' })])
 

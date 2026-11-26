@@ -196,6 +196,13 @@ describe('ninaFlightView', () => {
     expect(view).toEqual({ awaiting: false, cursor: 8 })
   })
 
+  it('a note session is never awaiting on a trailing runner row — only on a live claim', () => {
+    const rows = [row('nina', 9_000, 11), row('runner', 2_000, 12)]
+    expect(ninaFlightView(rows, NOW, null, true)).toEqual({ awaiting: false, cursor: 12 })
+    /* A turn that was already running when he switched the chat to a note is still running. */
+    expect(ninaFlightView(rows, NOW, new Date(NOW - 5_000), true).awaiting).toBe(true)
+  })
+
   it('carries the newest seq as the cursor even while awaiting', () => {
     const view = ninaFlightView([row('nina', 9_000, 11), row('runner', 2_000, 12)], NOW)
     expect(view).toEqual({ awaiting: true, cursor: 12 })

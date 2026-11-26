@@ -140,6 +140,7 @@ function baseProps(overrides?: {
     todayISO: '2026-09-11',
     userId: 'user-1',
     sessionId: 'session-1',
+    note: false,
     pending: null,
     pendingPhoto: null,
     flight: overrides?.flight ?? NOT_AWAITING,

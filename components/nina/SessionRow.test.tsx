@@ -3,15 +3,20 @@ import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { setNinaChatSessionPinned, renameNinaChatSession, removeNinaChatSession } = vi.hoisted(
-  () => ({
-    setNinaChatSessionPinned: vi.fn(),
-    renameNinaChatSession: vi.fn(),
-    removeNinaChatSession: vi.fn(),
-  }),
-)
+const {
+  setNinaChatSessionPinned,
+  setNinaChatSessionNote,
+  renameNinaChatSession,
+  removeNinaChatSession,
+} = vi.hoisted(() => ({
+  setNinaChatSessionPinned: vi.fn(),
+  setNinaChatSessionNote: vi.fn(),
+  renameNinaChatSession: vi.fn(),
+  removeNinaChatSession: vi.fn(),
+}))
 vi.mock('@/lib/nina/sessionActions', () => ({
   setNinaChatSessionPinned,
+  setNinaChatSessionNote,
   renameNinaChatSession,
   removeNinaChatSession,
 }))
@@ -45,6 +50,7 @@ function session(overrides?: Partial<SidebarSession>): SidebarSession {
     title: 'Morning runs',
     href: '/nina?s=sess-1',
     pinned: false,
+    note: false,
     dayLabel: 'Today',
     ...overrides,
   }
@@ -74,6 +80,7 @@ function disclosure() {
 describe('SessionRow', () => {
   beforeEach(() => {
     setNinaChatSessionPinned.mockReset().mockResolvedValue({ ok: true, next: null })
+    setNinaChatSessionNote.mockReset().mockResolvedValue({ ok: true, next: null })
     renameNinaChatSession.mockReset().mockResolvedValue({ ok: true, next: null })
     removeNinaChatSession.mockReset().mockResolvedValue({ ok: true, next: null })
     routerReplace.mockReset()
@@ -151,6 +158,39 @@ describe('SessionRow', () => {
     await waitFor(() => expect(routerRefresh).toHaveBeenCalledTimes(1))
     await waitFor(() => expect(disclosure().getAttribute('aria-expanded')).toBe('false'))
     expect(routerReplace).not.toHaveBeenCalled()
+  })
+
+  it('the note toggle reports its state, and a note row says so beside its title', async () => {
+    const user = userEvent.setup()
+    const chat = renderRow({ session: { note: false } })
+    expect(screen.queryByText('Note')).not.toBeInTheDocument()
+    await user.click(disclosure())
+    expect(screen.getByRole('button', { name: 'Sesi catatan' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
+    chat.unmount()
+
+    renderRow({ session: { note: true } })
+    expect(screen.getByText('Note')).toBeInTheDocument()
+    await user.click(disclosure())
+    expect(screen.getByRole('button', { name: 'Sesi catatan' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+  })
+
+  it('toggling the note asks the server to flip THIS row, then refreshes', async () => {
+    const user = userEvent.setup()
+    renderRow({ session: { note: false } })
+    await user.click(disclosure())
+    await user.click(screen.getByRole('button', { name: 'Sesi catatan' }))
+
+    await waitFor(() =>
+      expect(setNinaChatSessionNote).toHaveBeenCalledWith({ sessionId: 'sess-1', note: true }),
+    )
+    await waitFor(() => expect(routerRefresh).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(disclosure().getAttribute('aria-expanded')).toBe('false'))
   })
 
   it('a refused action leaves the menu open with the row’s own sentence in it', async () => {

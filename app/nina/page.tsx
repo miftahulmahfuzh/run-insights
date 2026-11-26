@@ -205,7 +205,12 @@ export default async function NinaPage({ searchParams }: PageProps<'/nina'>) {
    *
    * `null` means he has no sessions — nothing to revive, nothing to sweep, zero queries.
    */
-  if (activeSessionId !== null) {
+  /* A note session is where he writes and nothing answers. Read off the list this render already
+   * holds, and it gates the two places a page load could otherwise make her speak or look like she
+   * is about to: the revive just below, and the cold-load flight view. */
+  const activeIsNote = sessions.find((session) => session.id === activeSessionId)?.noteAt != null
+
+  if (activeSessionId !== null && !activeIsNote) {
     await reviveNinaChatTurn(userId, activeSessionId)
   }
 
@@ -354,7 +359,7 @@ export default async function NinaPage({ searchParams }: PageProps<'/nina'>) {
    * Component's one-shot render read the clock there and would flag a binding —
    * `app/nina/jobs/page.tsx` quotes this exact call as its own precedent.
    */
-  const flight = ninaFlightView(rows, Date.now(), pendingTurn?.createdAt ?? null)
+  const flight = ninaFlightView(rows, Date.now(), pendingTurn?.createdAt ?? null, activeIsNote)
 
   /*
    * The sidebar's rows — F35 R6/R4/R11, phase 5.
@@ -378,6 +383,7 @@ export default async function NinaPage({ searchParams }: PageProps<'/nina'>) {
      * themselves). The sidebar only ever asks "is it pinned", so the boolean is derived here, once,
      * on the server. */
     pinned: row.pinnedAt !== null,
+    note: row.noteAt !== null,
     dayLabel: sessionDayLabel(
       row.lastUserMessageAt == null ? null : jakartaDayOf(row.lastUserMessageAt),
       todayISO,
@@ -608,6 +614,7 @@ export default async function NinaPage({ searchParams }: PageProps<'/nina'>) {
           todayISO={todayISO}
           userId={userId}
           sessionId={activeSessionId}
+          note={activeIsNote}
           pending={pending}
           pendingPhoto={pendingPhoto}
           flight={flight}

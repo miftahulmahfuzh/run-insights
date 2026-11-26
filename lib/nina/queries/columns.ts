@@ -30,6 +30,7 @@ export const sessionColumns = {
   title: ninaChatSessions.title,
   titleSource: ninaChatSessions.titleSource,
   pinnedAt: ninaChatSessions.pinnedAt,
+  noteAt: ninaChatSessions.noteAt,
   createdAt: ninaChatSessions.createdAt,
 }
 

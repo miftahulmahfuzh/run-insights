@@ -7,6 +7,7 @@ import { NINA_DESCRIPTION_UNAVAILABLE } from '../prompts/describe'
 import {
   getNinaMessageImagesForMessages,
   getNinaMessagesByIds,
+  getNinaSession,
   listNinaMessages,
   type NinaMessageRow,
 } from '../queries'
@@ -68,6 +69,9 @@ export type NinaResendRefusal =
    * saying so is the difference between a runner who waits and a runner who taps again.
    */
   | 'turn-live'
+  /** The message lives in a NOTE session, where nothing answers — a resend would be the one way
+   *  to make her speak in it. */
+  | 'note'
   /** The claim could not be opened. The row is untouched; one more tap is the whole recovery. */
   | 'failed'
 
@@ -123,6 +127,12 @@ export async function resendNinaMessage(input: {
    * herself, and `runNinaBackgroundTurn` would stamp the reply's `reply_to_id` at a bubble of her
    * own. The sheet does not offer it; this refuses it anyway. */
   if (row.role !== 'runner') return resendRefused('not-mine')
+
+  /* A note session answers nothing, and "Resend your message" is otherwise a side door into a
+   * turn. A missing session row cannot happen for a message that exists (the FK cascades), so
+   * `null` falls through to the ordinary path rather than inventing a refusal. */
+  const session = await getNinaSession(userId, row.sessionId)
+  if (session?.noteAt != null) return resendRefused('note')
 
   /*
    * HIS PHOTOS, AND WHY THEY ARE READ RATHER THAN ASSUMED ABSENT.

@@ -136,6 +136,7 @@ export function Composer({
   bottomCss,
   padBottomCss,
   userId,
+  note,
   reply,
   onCancelReply,
   attachment,
@@ -166,6 +167,9 @@ export function Composer({
   /** Needed to build `nina/<userId>/chat/<id>.jpg`. Not a capability — see `useComposerPhotos`'s
    *  header, which is what builds it. */
   userId: string
+  /** A note session — nothing answers what he sends. Changes the placeholder and nothing else:
+   *  a note is composed, attached to and sent exactly like a message. */
+  note: boolean
   /**
    * Phase 7 (R12). The message this draft answers. Null is the ordinary composer.
    *
@@ -416,7 +420,11 @@ export function Composer({
                the requirement's own words — "user can input additional text question / comment
                (optional)" — so the box says out loud that typing is not required. */
             placeholder={
-              attachment === null && photo === null ? 'Message Nina' : 'Add a note, or just send it'
+              attachment !== null || photo !== null
+                ? 'Add a note, or just send it'
+                : note
+                  ? 'Write a note — Nina won’t reply'
+                  : 'Message Nina'
             }
             aria-label="Message Nina"
             className={cn(

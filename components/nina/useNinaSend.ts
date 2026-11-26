@@ -254,7 +254,10 @@ export function useNinaSend({
        */
       adoptSession(result.sessionId)
       takeCursor(result.cursor)
-      beginAwaiting()
+      /* A note session answers nothing, so there is nothing to await: no typing indicator, no
+       * poll, and no 'no-reply' notice four minutes later for a note that was never a question.
+       * The server says which it was — see `SendNinaMessageResult.note`. */
+      if (!result.note) beginAwaiting()
       return true
     },
     [sessionId, setMessages, setNotice, adoptSession, takeCursor, beginAwaiting, endTurn],

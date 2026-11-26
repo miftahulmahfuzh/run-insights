@@ -47,6 +47,7 @@ const SESSIONS: SidebarSession[] = [
     title: 'Marathon plan',
     href: '/nina?s=sess000000a1',
     pinned: false,
+    note: false,
     dayLabel: 'Today',
   },
   {
@@ -54,6 +55,7 @@ const SESSIONS: SidebarSession[] = [
     title: 'Injury check-in',
     href: '/nina?s=sess000000b2',
     pinned: true,
+    note: false,
     dayLabel: '3 Sep',
   },
 ]

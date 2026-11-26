@@ -203,6 +203,7 @@ describe('a send that arrives while she is thinking', () => {
       sessionId: SESSION,
       cursor: 41,
       turnId: TURN2,
+      note: false,
     })
     expect(openNinaChatTurn).toHaveBeenCalledWith(USER, {
       sessionId: SESSION,
@@ -210,6 +211,27 @@ describe('a send that arrives while she is thinking', () => {
       depth: 0,
     })
     expect(deferred).toHaveLength(1)
+  })
+
+  it('a NOTE session stores his message and opens no turn at all', async () => {
+    spies.getNinaSession.mockResolvedValue({ id: SESSION, noteAt: new Date() })
+    openNinaChatTurn.mockResolvedValue(TURN2)
+
+    const result = await send()
+
+    expect(result).toEqual({
+      ok: true,
+      userMessageId: HIS,
+      sessionId: SESSION,
+      cursor: 41,
+      turnId: null,
+      note: true,
+    })
+    /* Stored like any message … */
+    expect(spies.insertNinaMessages).toHaveBeenCalledTimes(1)
+    /* … and nothing that could make her speak: no claim, so no deferred model call. */
+    expect(openNinaChatTurn).not.toHaveBeenCalled()
+    expect(deferred).toHaveLength(0)
   })
 
   it('keeps the current behavior when the cancel loses the race', async () => {
@@ -226,6 +248,7 @@ describe('a send that arrives while she is thinking', () => {
       sessionId: SESSION,
       cursor: 41,
       turnId: null,
+      note: false,
     })
     expect(deferred).toHaveLength(0)
   })

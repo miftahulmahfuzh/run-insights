@@ -10,6 +10,7 @@ import { cn } from '@/lib/cn'
 import {
   removeNinaChatSession,
   renameNinaChatSession,
+  setNinaChatSessionNote,
   setNinaChatSessionPinned,
   type NinaSessionActionResult,
 } from '@/lib/nina/sessionActions'
@@ -241,6 +242,18 @@ export function SessionRow({
       },
     )
 
+  /* The note toggle — `pin`'s shape exactly: flip THIS row on the server, then refresh. The
+     refresh is what carries the new state to the chat screen too (its placeholder, and whether a
+     send waits for her), because `/nina` re-renders with the row it just changed. */
+  const toggleNote = () =>
+    run(
+      () => setNinaChatSessionNote({ sessionId: session.id, note: !session.note }),
+      () => {
+        setMode('idle')
+        router.refresh()
+      },
+    )
+
   const rename = () =>
     run(
       () => renameNinaChatSession({ sessionId: session.id, title: draft }),
@@ -285,6 +298,15 @@ export function SessionRow({
       </span>
       <span className="mt-0.5 flex items-center gap-1.5 text-[11px] font-medium text-ink-3">
         {session.pinned && <PinnedIcon />}
+        {/* The note mark rides the title the way the pin's does, with its word beside it: a pin
+            only changes where a row sits, but this one changes what the chat DOES, so the list
+            says it in text and not by glyph alone. */}
+        {session.note && (
+          <span className="flex items-center gap-1 font-semibold text-ink-2">
+            <NoteIcon className="size-3.5 shrink-0" />
+            Note
+          </span>
+        )}
         {session.dayLabel !== null && <span>{session.dayLabel}</span>}
         {active && <span className="font-semibold text-ink-2">Open</span>}
       </span>
@@ -343,6 +365,24 @@ export function SessionRow({
               onClick={pin}
             >
               <PinIcon />
+            </Button>
+            {/*
+              "Set as Note Session" — a TOGGLE, so it is the one control here that shows its own
+              state: `aria-pressed` for a screen reader, the primary skin for the eye. The name
+              stays put while the state flips (the ARIA toggle-button rule — a name that changed
+              too would announce the state twice). On = whatever he writes in this chat, nothing
+              answers.
+            */}
+            <Button
+              size="md"
+              variant={session.note ? 'primary' : 'secondary'}
+              loading={pending}
+              aria-label="Sesi catatan"
+              aria-pressed={session.note}
+              title="Set as Note Session"
+              onClick={toggleNote}
+            >
+              <NoteIcon className="size-[18px]" />
             </Button>
             <Button
               size="md"
@@ -501,6 +541,30 @@ function PinIcon() {
 }
 
 /** "Ganti nama" — the pencil, the standard rename glyph in every Lucide-era app. */
+/* lucide's `notebook-pen` — a page with a pen across it. The note toggle's glyph and the row's
+   note mark, at two sizes, so the caller passes the box. */
+function NoteIcon({ className }: { className: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M13.4 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7.4" />
+      <path d="M2 6h4" />
+      <path d="M2 10h4" />
+      <path d="M2 14h4" />
+      <path d="M2 18h4" />
+      <path d="M21.378 5.626a1 1 0 1 0-3.004-3.004l-5.01 5.012a2 2 0 0 0-.506.854l-.837 2.87a.5.5 0 0 0 .62.62l2.87-.837a2 2 0 0 0 .854-.506z" />
+    </svg>
+  )
+}
+
 function PencilIcon() {
   return (
     <svg

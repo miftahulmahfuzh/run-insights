@@ -128,6 +128,7 @@ export function ChatScreen({
   todayISO,
   userId,
   sessionId,
+  note,
   pending,
   pendingPhoto,
   flight,
@@ -169,6 +170,12 @@ export function ChatScreen({
    * one. That key is not decoration — see the comment at the call site.
    */
   sessionId: string | null
+  /**
+   * This conversation is a NOTE session: he writes, nothing answers. Read here for one thing only,
+   * the composer's placeholder, so the box says which kind of chat he is typing into. Whether a
+   * send waits for her is NOT decided from this prop — `sendNinaMessage` reports it per send.
+   */
+  note: boolean
   /**
    * Phase 8 (R13). The run `/r/[id]`'s icon just handed over, resolved and formatted on the server
    * from `?attach=<runId>`, or null. It becomes composer state immediately — see the cleanup
@@ -592,6 +599,7 @@ export function ChatScreen({
         bottomCss={composerBottomCss(overlap, COMPOSER_CLEARANCE_PX)}
         padBottomCss={composerPadBottomCss(overlap)}
         userId={userId}
+        note={note}
         reply={draftQuote}
         onCancelReply={() => setDraftQuote(null)}
         attachment={attachment}

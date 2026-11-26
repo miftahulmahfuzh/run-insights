@@ -188,7 +188,14 @@ export async function listNinaSessions(userId: string): Promise<NinaSessionListR
  * cannot take and a constraint we must not add are the alternatives.
  */
 export async function ensureNinaSession(userId: string): Promise<string> {
-  const existing = mostRecentNinaSession(await readNinaSessionsWithActivity(userId))
+  /* A note session is never a WRITE destination for her: this is the session her proactive
+   * messages, her finished photographs and a session-less send resolve to, and "whatever I put in
+   * a note, Nina does not respond" has to hold for the things she starts on her own too. With
+   * only note sessions left, a fresh chat is created rather than a note being spoken into. */
+  const candidates = (await readNinaSessionsWithActivity(userId)).filter(
+    (session) => session.noteAt === null,
+  )
+  const existing = mostRecentNinaSession(candidates)
   if (existing != null) return existing.id
   return (await createNinaSession(userId)).id
 }
@@ -280,6 +287,29 @@ export async function setNinaSessionPinned(
   const updated = await db
     .update(ninaChatSessions)
     .set({ pinnedAt: pinned ? now : null })
+    .where(and(eq(ninaChatSessions.userId, userId), eq(ninaChatSessions.id, id)))
+    .returning({ id: ninaChatSessions.id })
+
+  return updated.length > 0
+}
+
+/**
+ * The note toggle. `note_at` is stamped or cleared, `setNinaSessionPinned`'s shape exactly — `now`
+ * is a parameter for the same reason.
+ *
+ * It only flips the column. A turn already in flight when he switches a chat to a note is left to
+ * finish: closing it here would need this file to reach into `nina_turns`, and one last bubble
+ * for a question he had already asked is the honest outcome, not a broken promise.
+ */
+export async function setNinaSessionNote(
+  userId: string,
+  id: string,
+  note: boolean,
+  now: Date = new Date(),
+): Promise<boolean> {
+  const updated = await db
+    .update(ninaChatSessions)
+    .set({ noteAt: note ? now : null })
     .where(and(eq(ninaChatSessions.userId, userId), eq(ninaChatSessions.id, id)))
     .returning({ id: ninaChatSessions.id })
 

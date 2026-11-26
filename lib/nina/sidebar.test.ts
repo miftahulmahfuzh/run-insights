@@ -19,6 +19,7 @@ function session(id: string, over: Partial<SidebarSession> = {}): SidebarSession
     title: `Chat ${id}`,
     href: `/nina?s=${id}`,
     pinned: false,
+    note: false,
     dayLabel: 'Today',
     ...over,
   }

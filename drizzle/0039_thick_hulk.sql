@@ -1,0 +1,1 @@
+ALTER TABLE "nina_chat_sessions" ADD COLUMN "note_at" timestamp with time zone;

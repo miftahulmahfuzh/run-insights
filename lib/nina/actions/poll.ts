@@ -4,7 +4,13 @@ import { requireUserId } from '@/lib/auth/requireUserId'
 import { isValidId } from '@/lib/id'
 
 import { getPendingNinaChatTurn, sweepStaleNinaChatTurns } from '../chatturn'
-import { listNinaMessages, listNinaMessagesAfter, type NinaMessageRow } from '../queries'
+import {
+  getNinaSession,
+  listNinaMessages,
+  listNinaMessagesAfter,
+  type NinaMessageRow,
+  type NinaSessionRow,
+} from '../queries'
 import { NINA_TURN_STALE_MS, ninaAwaitingByMessage } from '../turnflight'
 import type { SentBubble } from '../turnrun'
 
@@ -79,14 +85,16 @@ export async function pollNinaReply(input: {
   let fresh: NinaMessageRow[]
   let newestRows: NinaMessageRow[]
   let pending: Awaited<ReturnType<typeof getPendingNinaChatTurn>>
+  let session: NinaSessionRow | null
   try {
     /* Three indexed reads, one round trip. Spelled as three separate `let`s and a plain tuple
      * destructure rather than a nested pattern, so `tsc` infers each element rather than widening
      * the tuple to a union of the three row shapes. */
-    ;[fresh, newestRows, pending] = await Promise.all([
+    ;[fresh, newestRows, pending, session] = await Promise.all([
       listNinaMessagesAfter(userId, { sessionId, afterSeq }),
       listNinaMessages(userId, { limit: 1, sessionId }),
       getPendingNinaChatTurn(userId, sessionId),
+      getNinaSession(userId, sessionId),
     ])
   } catch (cause) {
     console.warn('[nina] reply poll failed', { error: String(cause) })
@@ -122,7 +130,14 @@ export async function pollNinaReply(input: {
    * `app/nina/page.tsx` uses for its cold-load heuristic — one definition of "unanswered", asserted
    * in `lib/nina/turnflight.test.ts`, so the screen and the server cannot come to disagree.
    */
-  const awaiting = live || ninaAwaitingByMessage(newest, now)
+  /*
+   * A NOTE session drops the message disjunct: there, a fresh runner row with nothing after it is
+   * the resting state, not a hand-off gap, and reading it as "unanswered" would hold the typing
+   * indicator up for `NINA_TURN_STALE_MS` after every note. `live` is kept — a turn that was
+   * already running when he switched the chat to a note is still really running.
+   */
+  const noteSession = session?.noteAt != null
+  const awaiting = live || (!noteSession && ninaAwaitingByMessage(newest, now))
 
   /*
    * HER bubbles only. His own rows come back from `listNinaMessagesAfter` too — a second tab may

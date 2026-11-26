@@ -57,5 +57,6 @@ export const RESEND_REFUSAL_TEXT: Record<NinaResendRefusal, string> = {
   'not-mine': 'Only your own messages can be resent.',
   empty: 'There’s nothing left in that message for her to answer.',
   'turn-live': 'She’s already working on this chat — that one is next, give her a moment.',
+  note: 'This chat is a note session, so she doesn’t answer here. Turn that off to ask her.',
   failed: 'That couldn’t be resent just now. Try it again in a moment.',
 }

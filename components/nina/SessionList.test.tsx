@@ -22,6 +22,7 @@ function session(overrides?: Partial<SidebarSession>): SidebarSession {
     title: 'Morning runs',
     href: '/nina?s=sess-1',
     pinned: false,
+    note: false,
     dayLabel: 'Today',
     ...overrides,
   }
