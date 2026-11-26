@@ -172,7 +172,8 @@ export function ChatScreen({
   sessionId: string | null
   /**
    * This conversation is a NOTE session: he writes, nothing answers. Read here for one thing only,
-   * the composer's placeholder, so the box says which kind of chat he is typing into. Whether a
+   * the composer's placeholder and the message sheet (which offers "Open in browser" where a chat
+   * offers Resend), so the screen says which kind of chat he is in. Whether a
    * send waits for her is NOT decided from this prop — `sendNinaMessage` reports it per send.
    */
   note: boolean
@@ -626,6 +627,7 @@ export function ChatScreen({
       */}
       <MessageActionsSheet
         key={acting?.id ?? 'none'}
+        note={note}
         target={
           acting === null
             ? null

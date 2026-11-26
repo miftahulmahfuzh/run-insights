@@ -3,9 +3,16 @@
 import { useRef, useState } from 'react'
 
 import { Button } from '@/components/ui'
+import { buttonClasses } from '@/components/ui/Button'
 import { Sheet } from '@/components/ui/Sheet'
 import { cn } from '@/lib/cn'
-import { canResendMessage, editCapFor, planMessageEdit, type EditTarget } from '@/lib/nina/edit'
+import {
+  canResendMessage,
+  editCapFor,
+  firstUrlIn,
+  planMessageEdit,
+  type EditTarget,
+} from '@/lib/nina/edit'
 
 /**
  * R8's surface: rewrite this message, or remove it. Three states in one sheet.
@@ -66,6 +73,7 @@ type Mode = 'menu' | 'edit'
 
 export function MessageActionsSheet({
   target,
+  note,
   retryable,
   onRetry,
   onClose,
@@ -75,6 +83,12 @@ export function MessageActionsSheet({
 }: {
   /** The message the gesture picked, or null — which renders nothing at all. */
   target: EditTarget | null
+  /**
+   * The conversation is a NOTE session — nothing answers there. Two things follow in this sheet:
+   * the Resend slot becomes "Open in browser" (for a bubble that holds a link), and the subtitle
+   * stops promising that Nina reads the message.
+   */
+  note: boolean
   /**
    * True when the picked row is a failed send that CAN be retried: it is the caller's own row,
    * unconfirmed, and carries no photos. Only meaningful together with a `target` that is not
@@ -123,6 +137,7 @@ export function MessageActionsSheet({
    * TypeScript cannot carry the narrowing across a closure boundary, and a non-null assertion
    * would state the same fact less honestly. */
   const picked = target
+  const noteUrl = note ? firstUrlIn(picked.body) : null
   const whose = picked.mine ? 'your message' : 'Nina’s message'
   const max = editCapFor(picked.mine)
   /* The failed shape, as distinct from the confirmed one the menu was written for. `ChatScreen`
@@ -219,7 +234,9 @@ export function MessageActionsSheet({
         mode === 'menu' && failed
           ? 'This did not reach Nina — the red outline marks a send that failed.'
           : mode === 'menu'
-            ? 'Whatever this says is what Nina reads as context on her next reply.'
+            ? note
+              ? 'A note — Nina doesn’t answer in this chat.'
+              : 'Whatever this says is what Nina reads as context on her next reply.'
             : undefined
       }
     >
@@ -287,7 +304,28 @@ export function MessageActionsSheet({
                 Between Edit and Delete deliberately. Delete stays last because it is the destructive
                 one, and Resend is the only item here that changes nothing about the message.
               */}
-              {canResendMessage(picked) && (
+              {/*
+                THE NOTE SESSION'S SLOT. A note is never resent — `resendNinaMessage` refuses it —
+                so the same position carries what a saved link is FOR. A real `<a>`, not a button
+                calling `window.open`: iOS only leaves a home-screen app for Safari on a genuine
+                link activation, and `target="_blank"` is what sends it there instead of
+                navigating this app away from the chat. `noopener noreferrer` because the
+                destination is whatever he pasted. A note with no link in it gets no button
+                rather than a dead one.
+              */}
+              {note && noteUrl !== null && (
+                <a
+                  href={noteUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={onClose}
+                  className={buttonClasses({ variant: 'secondary', fullWidth: true })}
+                >
+                  Open in browser
+                </a>
+              )}
+
+              {!note && canResendMessage(picked) && (
                 <>
                   <Button fullWidth variant="secondary" loading={pending} onClick={resend}>
                     Resend your message

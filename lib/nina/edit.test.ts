@@ -12,6 +12,7 @@ import {
   applyMessageEdit,
   canActOnMessage,
   canResendMessage,
+  firstUrlIn,
   decideMessageActionSwipe,
   decideMessageActionTap,
   editCapFor,
@@ -469,5 +470,39 @@ describe('canResendMessage', () => {
       const his = target({ ...patch, mine: true })
       expect(canResendMessage(his)).toBe(canActOnMessage(his))
     }
+  })
+})
+
+/* ── firstUrlIn ───────────────────────────────────────────────────────────────────────────── */
+
+describe('firstUrlIn', () => {
+  it('returns a bare link unchanged, query string and all', () => {
+    expect(firstUrlIn('https://youtube.com/shorts/vKIIejFL_2M?si=VI1h9M5vrZ0QyB40')).toBe(
+      'https://youtube.com/shorts/vKIIejFL_2M?si=VI1h9M5vrZ0QyB40',
+    )
+    expect(firstUrlIn('http://10.194.2.20:3001/d/afff/go-chatbot-cd?orgId=1')).toBe(
+      'http://10.194.2.20:3001/d/afff/go-chatbot-cd?orgId=1',
+    )
+  })
+
+  it('finds the link inside a sentence, across lines, and takes the first of several', () => {
+    expect(firstUrlIn('cool viz site https://example.com/a')).toBe('https://example.com/a')
+    expect(firstUrlIn('line one,\nline two https://example.com/b')).toBe('https://example.com/b')
+    expect(firstUrlIn('https://one.example https://two.example')).toBe('https://one.example')
+  })
+
+  it('trims the punctuation that ends a sentence, but keeps a bracket the URL opened', () => {
+    expect(firstUrlIn('see https://example.com/a.')).toBe('https://example.com/a')
+    expect(firstUrlIn('(https://example.com/a)')).toBe('https://example.com/a')
+    expect(firstUrlIn('https://en.wikipedia.org/wiki/Pace_(speed)')).toBe(
+      'https://en.wikipedia.org/wiki/Pace_(speed)',
+    )
+  })
+
+  it('answers null for no link, and for any scheme that is not http(s)', () => {
+    expect(firstUrlIn('rabu pake batik')).toBeNull()
+    expect(firstUrlIn('')).toBeNull()
+    expect(firstUrlIn('javascript:alert(1)')).toBeNull()
+    expect(firstUrlIn('www.example.com')).toBeNull()
   })
 })

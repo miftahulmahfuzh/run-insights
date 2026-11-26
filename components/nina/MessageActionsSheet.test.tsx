@@ -37,6 +37,7 @@ function deferred<T>() {
 
 function baseProps() {
   return {
+    note: false,
     retryable: false,
     onRetry: vi.fn(async () => true),
     onClose: vi.fn(),
@@ -63,6 +64,40 @@ describe('MessageActionsSheet', () => {
     const props = baseProps()
     render(<MessageActionsSheet {...props} target={target({ body: '' })} />)
     expect(screen.getByText('No text — a photo, or a shared run.')).toBeInTheDocument()
+  })
+
+  describe('in a note session', () => {
+    it('offers "Open in browser" on the bubble’s link, in place of Resend', () => {
+      const props = baseProps()
+      render(
+        <MessageActionsSheet
+          {...props}
+          note
+          target={target({ body: 'cool viz site https://example.com/a?b=1' })}
+        />,
+      )
+      const link = screen.getByRole('link', { name: 'Open in browser' })
+      expect(link).toHaveAttribute('href', 'https://example.com/a?b=1')
+      expect(link).toHaveAttribute('target', '_blank')
+      expect(link).toHaveAttribute('rel', 'noopener noreferrer')
+      expect(screen.queryByRole('button', { name: 'Resend your message' })).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Edit your message' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Delete your message' })).toBeInTheDocument()
+    })
+
+    it('draws neither button for a note with no link in it', () => {
+      const props = baseProps()
+      render(<MessageActionsSheet {...props} note target={target({ body: 'pake batik' })} />)
+      expect(screen.queryByRole('link', { name: 'Open in browser' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Resend your message' })).not.toBeInTheDocument()
+    })
+
+    it('an ordinary chat keeps Resend and never draws the link', () => {
+      const props = baseProps()
+      render(<MessageActionsSheet {...props} target={target({ body: 'https://example.com' })} />)
+      expect(screen.getByRole('button', { name: 'Resend your message' })).toBeInTheDocument()
+      expect(screen.queryByRole('link', { name: 'Open in browser' })).not.toBeInTheDocument()
+    })
   })
 
   describe('confirmed menu', () => {

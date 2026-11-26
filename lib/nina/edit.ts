@@ -544,3 +544,29 @@ export function decideMessageActionTap(
 export function canResendMessage(target: EditTarget): boolean {
   return canActOnMessage(target) && target.mine
 }
+
+/**
+ * **The link a note bubble opens** — the first `http(s)` URL in a message body, or null.
+ *
+ * A note session is where he keeps links, and its sheet offers "Open in browser" in the slot a
+ * chat's sheet gives to Resend (which a note refuses anyway). This is that button's `href`, and
+ * whether the button exists at all.
+ *
+ * `http` and `https` only, by construction of the pattern: the result goes straight into an
+ * `<a href>`, and a body is free text he (or an import) wrote — a `javascript:` or `data:` scheme
+ * must not be able to arrive there. Trailing sentence punctuation is trimmed because "see
+ * https://example.com." ends a sentence, not a path; a closing bracket is trimmed only when the
+ * URL has no opening one, so a Wikipedia-style `…_(disambiguation)` keeps its own.
+ */
+export function firstUrlIn(body: string): string | null {
+  const match = /https?:\/\/[^\s<>"']+/i.exec(body)
+  if (match === null) return null
+  let url = match[0].replace(/[.,;:!?]+$/, '')
+  while (url.endsWith(')') && !url.includes('(')) url = url.slice(0, -1)
+  try {
+    const parsed = new URL(url)
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? url : null
+  } catch {
+    return null
+  }
+}
